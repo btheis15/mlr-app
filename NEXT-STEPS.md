@@ -99,12 +99,21 @@ All seed content is plain data; no backend needed for these. Edit, commit, push 
 
 You chose **Supabase**: one service that covers email one-time-code login, a database, realtime chat, and photo storage. Do this once and most of the "not built yet" list lights up.
 
+> ### ⭐⭐ ONE identity across both apps — non-negotiable
+> A person is **one account**, whether they're in MLR or Family Fest. No double logins, no duplicate profiles. This is guaranteed by **one rule:**
+> - **Both apps point at the SAME Supabase project** — same auth, **one** `profiles` table keyed by the auth user ID. Never a per-app users table.
+> - So "Brian" is a single row with his MLR committees *and* his Family Fest committee on it; signing in anywhere is the same account.
+> - **Same login token:** both apps are on the same origin (`btheis15.github.io`), so the saved Supabase session can be shared — sign in once, the other app knows you. (If they ever live on different domains, it's sign-in-once-per-app but still the *same account*, never a duplicate.)
+> - **The §0b merge removes the question entirely:** once Family Fest is a section inside MLR, it's one app / one login / one profile.
+> - ⚠️ **Today (pre-backend) they do NOT share identity** — separate localStorage keys (`mlr-user` vs `family-fest-user`). That goes away the moment both use the shared Supabase project; delete the local-only identity then.
+
 ### 3a. Create the project
-- [ ] Create a Supabase project. Note the **Project URL** and **anon public key**.
+- [ ] Create **one** Supabase project for **both** apps (see the rule above — do not create two).
+- [ ] Note the **Project URL** and **anon public key**.
 - [ ] Add to each app as env vars (and in Vercel/Pages build env if needed):
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] `npm install @supabase/supabase-js` in each repo; add a `lib/supabase.ts` client.
+- [ ] `npm install @supabase/supabase-js` in each repo; add a `lib/supabase.ts` client (point both at the same project URL/key).
 
 > ⚠️ GitHub Pages serves **static files only** — there's no server to hold secrets. The `NEXT_PUBLIC_*` anon key is safe to ship (it's meant to be public, protected by Row Level Security). But anything needing a **secret** (Resend key, Drive service account, web-push private key, admin enforcement) needs a real server — use **Supabase Edge Functions** or move hosting to **Vercel**. See §7.
 
