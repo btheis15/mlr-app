@@ -19,6 +19,7 @@ export function FestStatus({
   endDate,
   items,
   photosHref,
+  volunteerContact,
 }: {
   startDate: string;
   endDate: string;
@@ -26,6 +27,9 @@ export function FestStatus({
   /** Where "Add your photos" points during wrap (the resort hub omits it and
    *  leans on the "Enter the full Family Fest app" link below instead). */
   photosHref?: string;
+  /** Planning-season volunteer contact (tap-to-email / tap-to-call). Omit to
+   *  hide the "want to help?" block. */
+  volunteerContact?: { name: string; email: string; phone: string };
 }) {
   const season = useFestSeason(startDate, endDate);
 
@@ -91,6 +95,49 @@ export function FestStatus({
     );
   }
 
-  // off-season / planning — a countdown to the next fest.
-  return <Countdown target={startDate} />;
+  // off-season / planning — a countdown, plus a "want to help?" contact once
+  // planning is underway (~60 days out).
+  return (
+    <div className="space-y-3">
+      <Countdown target={startDate} />
+      {season?.isPlanning && volunteerContact && (
+        <VolunteerContact contact={volunteerContact} />
+      )}
+    </div>
+  );
+}
+
+/** Planning-season volunteer prompt — tap-to-email / tap-to-call the contact. */
+function VolunteerContact({
+  contact,
+}: {
+  contact: { name: string; email: string; phone: string };
+}) {
+  const mailto = `mailto:${contact.email}?subject=${encodeURIComponent(
+    "Family Fest — I'd like to help out",
+  )}`;
+  return (
+    <div className="rounded-2xl bg-card p-3 ring-1 ring-border">
+      <p className="text-center text-xs font-semibold text-primary">
+        🙋 Want to help plan Family Fest?
+      </p>
+      <p className="mt-0.5 text-center text-xs text-foreground/60">
+        Reach out to {contact.name}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <a
+          href={mailto}
+          className="rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+        >
+          ✉️ Email
+        </a>
+        <a
+          href={`tel:${contact.phone}`}
+          className="rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+        >
+          📞 Call
+        </a>
+      </div>
+    </div>
+  );
 }

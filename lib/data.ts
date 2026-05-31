@@ -175,6 +175,15 @@ export const FAMILY_FEST = {
   endDate: "2026-07-18",
   /** Deployed standalone Family Fest app (the deep experience). */
   appUrl: "https://family-fest.vercel.app",
+  /** Volunteer / planning contact, surfaced during the "planning" season so
+   *  people can reach out to help (tap-to-email / tap-to-call). A real point of
+   *  contact for now; this moves to the Committees feature once there's a
+   *  backend (NEXT-STEPS §5c). Phone is E.164 so tel:/sms: work everywhere. */
+  organizer: {
+    name: "Brian Theis",
+    email: "brian.theis15@gmail.com",
+    phone: "+12248005389",
+  },
   highlights: [
     { id: "welcome-bonfire", day: "2026-07-11", start: "19:30", title: "Welcome bonfire & s'mores", emoji: "🔥" },
     { id: "musky-tournament", day: "2026-07-13", start: "06:00", title: "Musky fishing tournament", emoji: "🎣" },

@@ -36,6 +36,7 @@ export default function FamilyFestPage() {
         startDate={FAMILY_FEST.startDate}
         endDate={FAMILY_FEST.endDate}
         items={FAMILY_FEST.highlights}
+        volunteerContact={FAMILY_FEST.organizer}
       />
 
       <section className="space-y-2">
