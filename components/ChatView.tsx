@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { timeAgo } from "@/lib/format";
 import { useIdentity } from "@/components/IdentityProvider";
+import { READ_ONLY } from "@/lib/features";
+import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 
 const STORAGE_KEY = "mlr-chat";
 
@@ -69,10 +71,12 @@ export function ChatView({ seed }: { seed: ChatMessage[] }) {
         </p>
       </header>
 
-      <p className="mb-3 rounded-xl bg-card px-3 py-2 text-xs text-foreground/60 ring-1 ring-border">
-        Messages are stored on this device for now — a shared room across
-        everyone&rsquo;s phones is the next step.
-      </p>
+      {!READ_ONLY && (
+        <p className="mb-3 rounded-xl bg-card px-3 py-2 text-xs text-foreground/60 ring-1 ring-border">
+          Messages are stored on this device for now — a shared room across
+          everyone&rsquo;s phones is the next step.
+        </p>
+      )}
 
       <div className="flex-1 space-y-3">
         {messages.map((m) => {
@@ -100,7 +104,15 @@ export function ChatView({ seed }: { seed: ChatMessage[] }) {
         <div ref={bottomRef} />
       </div>
 
-      {user ? (
+      {READ_ONLY ? (
+        <div className="sticky bottom-20 mt-3">
+          <ComingSoonCTA
+            icon="💬"
+            title="Posting opens soon"
+            note="Sign in to join the conversation is on the way — read along for now."
+          />
+        </div>
+      ) : user ? (
         <form
           onSubmit={send}
           className="sticky bottom-20 mt-3 flex gap-2 bg-background/80 py-2 backdrop-blur"

@@ -2,9 +2,42 @@
 
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { useIdentity } from "@/components/IdentityProvider";
+import { READ_ONLY } from "@/lib/features";
+import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
+
+  // Read-only launch: accounts aren't live yet. Browsing stays fully open;
+  // profiles + sign-in arrive with the backend (NEXT-STEPS.md §3).
+  if (READ_ONLY) {
+    return (
+      <div className="space-y-4 pt-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+          <p className="text-sm text-foreground/60">
+            Everything here is open to browse — no account needed.
+          </p>
+        </header>
+        <ComingSoonCTA
+          icon="👋"
+          title="Member profiles are coming soon"
+          note="Sign-in, RSVP, chat, and shared photos land in the next update. For now, explore away."
+        />
+        <ul className="space-y-2 text-sm text-foreground/70">
+          <li className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border">
+            <span className="text-lg">💬</span> Resort chat — read along today
+          </li>
+          <li className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border">
+            <span className="text-lg">🎉</span> Family Fest — schedule, crew &amp; photos
+          </li>
+          <li className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border">
+            <span className="text-lg">🔔</span> Alerts &amp; RSVP — once sign-in is live
+          </li>
+        </ul>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

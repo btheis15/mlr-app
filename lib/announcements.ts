@@ -24,18 +24,11 @@ import type { Announcement } from "./types";
 
 export const ANNOUNCEMENTS: Announcement[] = [
   {
-    id: "dinner-time-change",
-    severity: "alert",
-    title: "Tonight's dinner moved to 6:00 PM",
-    body: "The Lodge dinner shifted from 5:00 to 6:00 so the fishing crew can make it back in time.",
-    ts: "2026-05-31T09:00:00Z",
-  },
-  {
-    id: "wifi-back",
+    id: "welcome",
     severity: "info",
-    title: "Guest WiFi is back up",
-    body: "The lodge WiFi outage is resolved. Network MLR-Guest is working again.",
-    ts: "2026-05-30T18:30:00Z",
+    title: "Welcome to the new resort app 🌲",
+    body: "Browse activities, dining, amenities, and what's on for Family Fest. Sign-in, chat, and push alerts are coming soon.",
+    ts: "2026-05-31T09:00:00Z",
   },
 ];
 
