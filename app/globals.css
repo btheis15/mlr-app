@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MLR App theme. Sleek, dark, mobile-first. Tokens are exposed to Tailwind v4
+   via @theme so utilities like bg-background / text-foreground / bg-card /
+   ring-border / text-primary / text-accent are generated automatically.
+   Change a color here and it flows through the whole app.
+   ──────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-background: #0a0a0b; /* near-black page bg */
+  --color-foreground: #fafafa; /* primary text */
+  --color-card: #161618; /* raised surfaces */
+  --color-border: #262629; /* hairline borders */
+  --color-primary: #6366f1; /* indigo accent */
+  --color-accent: #22d3ee; /* cyan accent */
+}
+
+html,
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
