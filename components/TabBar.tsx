@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { FAMILY_FEST } from "@/lib/data";
+import { useFestSeason } from "@/lib/useFestSeason";
 
 const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
@@ -13,6 +15,9 @@ const TABS = [
 
 export function TabBar() {
   const pathname = usePathname();
+  // During the event week, mark the Family Fest tab "live" so the takeover is
+  // discoverable from anywhere in the resort app.
+  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
 
   return (
     <nav
@@ -23,6 +28,8 @@ export function TabBar() {
         {TABS.map((tab) => {
           const active =
             tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+          const live =
+            tab.href === "/family-fest" && (season?.isLive || season?.isWrap);
           return (
             <li key={tab.href} className="flex-1">
               <Link
@@ -31,7 +38,15 @@ export function TabBar() {
                   active ? "text-primary" : "text-foreground/50"
                 }`}
               >
-                <span className="text-lg leading-none">{tab.icon}</span>
+                <span className="relative text-lg leading-none">
+                  {tab.icon}
+                  {live && (
+                    <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-campfire/70" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-campfire" />
+                    </span>
+                  )}
+                </span>
                 {tab.label}
               </Link>
             </li>

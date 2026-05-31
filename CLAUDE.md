@@ -19,6 +19,18 @@ embedded as a hub at `/family-fest` that mirrors the event highlights and links
 out to the deep standalone `family-fest` app — so the two read as "two apps in
 one" without sharing a backend yet.
 
+**One-app feel via a shared "season"** — rather than the full code merge (still
+deferred to the Supabase phase, NEXT-STEPS §0b), both apps share a **Family Fest
+season model** ([`lib/festSeason.ts`](lib/festSeason.ts), mirrored byte-for-byte
+in the `family-fest` repo) so the fest reads as a *season of the resort* that
+rises and recedes through the year across four phases: **off-season** (quiet
+banner) → **planning** (from ~60 days out: a partial takeover that rallies
+volunteers and previews what's being planned) → **live** (the event week: MLR
+leads with Family Fest — a "Day n of N + today's events" takeover, a live dot on
+the tab, resort content recedes) → **wrap** (2 weeks after: the full takeover
+lingers, nudging people to post the photos they didn't get to). See **Family
+Fest season** below.
+
 **Data model:** client-only for now. Resort content (activities, dining,
 amenities, Family Fest highlights) is static in [`lib/data.ts`](lib/data.ts);
 types in [`lib/types.ts`](lib/types.ts). Identity, chat, alert dismissals, and
@@ -29,9 +41,9 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — Family Fest banner, nav, amenities, front-desk call |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — Family Fest spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx), season-aware), nav, amenities, front-desk call |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
-| `/family-fest` | [`app/family-fest/page.tsx`](app/family-fest/page.tsx) | Embedded Family Fest hub (countdown + highlights + link out) |
+| `/family-fest` | [`app/family-fest/page.tsx`](app/family-fest/page.tsx) | Embedded Family Fest hub — live status ([`FestStatus`](components/FestStatus.tsx): countdown → "Day n of N + today") + highlights + link out |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, admin alert composer, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
@@ -55,6 +67,31 @@ is the single source of truth for routes + labels + icons).
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.
+
+## Family Fest season (the "one app" spine)
+
+Both apps share a phase model so Family Fest behaves as a season of the resort,
+not a separate app — no backend needed:
+
+- [`lib/festSeason.ts`](lib/festSeason.ts) — pure `getFestSeason(start, end)` →
+  `{ phase: "off-season" | "planning" | "live" | "wrap", isLive, isPlanning,
+  isWrap, isTakeover, daysUntilStart, isSoon, dayNumber, totalDays, daysSinceEnd,
+  wrapDaysLeft }`, plus `toISODate()` and the `PLANNING_LEAD_DAYS` (60) /
+  `WRAP_TAIL_DAYS` (14) window constants. **Mirrored byte-for-byte in the
+  `family-fest` repo** (like the EVENT/FAMILY_FEST seed data) — edit both.
+- [`lib/useFestSeason.ts`](lib/useFestSeason.ts) — client hook; computes the
+  phase **on the client** (returns `null` until mounted → no hydration mismatch)
+  so the live week is correct on the static Pages build *and* Vercel. A
+  build-time `new Date()` would freeze the phase at deploy.
+- Consumers: [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) (home —
+  quiet banner → planning partial-takeover → live takeover hero → wrap "post
+  your photos"), [`FestStatus`](components/FestStatus.tsx) (hub — countdown →
+  "Day n of N + Today at the Fest" → wrap photo nudge), and
+  [`TabBar`](components/TabBar.tsx) (live dot on the Family Fest tab during
+  live + wrap).
+- Dates come from `FAMILY_FEST.startDate` / `.endDate` in `lib/data.ts`.
+- The §0b full code merge is unchanged/deferred; this is the lighter-touch
+  "feels like one app" layer that ships before the backend.
 
 ## Backend seams (planned, not yet wired)
 

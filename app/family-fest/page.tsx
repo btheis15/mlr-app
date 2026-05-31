@@ -1,4 +1,4 @@
-import { Countdown } from "@/components/Countdown";
+import { FestStatus } from "@/components/FestStatus";
 import { FAMILY_FEST } from "@/lib/data";
 import { formatDateLong, formatTime } from "@/lib/format";
 
@@ -32,7 +32,12 @@ export default function FamilyFestPage() {
         </p>
       </header>
 
-      <Countdown target={FAMILY_FEST.startDate} />
+      <FestStatus
+        startDate={FAMILY_FEST.startDate}
+        endDate={FAMILY_FEST.endDate}
+        items={FAMILY_FEST.highlights}
+        volunteerContact={FAMILY_FEST.organizer}
+      />
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-accent">Highlights</h2>

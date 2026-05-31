@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ACTIVITIES, AMENITIES, FAMILY_FEST, RESORT } from "@/lib/data";
-import { daysUntil } from "@/lib/format";
+import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 
 // Northwoods-toned quick nav. Chip classes are literal so Tailwind generates them.
 const NAV = [
@@ -26,24 +26,16 @@ export default function HomePage() {
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
 
-      {/* Family Fest banner — sunset-over-the-lake gradient. */}
-      <Link
-        href="/family-fest"
-        className="block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
-              🎉 {FAMILY_FEST.name}
-            </p>
-            <p className="mt-1 text-sm font-semibold">{FAMILY_FEST.tagline}</p>
-            <p className="mt-0.5 text-xs text-foreground/60">
-              Starts {daysUntil(FAMILY_FEST.startDate)} →
-            </p>
-          </div>
-          <span className="text-3xl">🎆</span>
-        </div>
-      </Link>
+      {/* Family Fest — quiet banner most of the year, a takeover hero during
+          the event week (see FamilyFestSpotlight). This is what makes the fest
+          read as a season of the resort app rather than a separate app. */}
+      <FamilyFestSpotlight
+        name={FAMILY_FEST.name}
+        tagline={FAMILY_FEST.tagline}
+        startDate={FAMILY_FEST.startDate}
+        endDate={FAMILY_FEST.endDate}
+        highlights={FAMILY_FEST.highlights}
+      />
 
       <section className="grid grid-cols-2 gap-3">
         {NAV.map((n) => (

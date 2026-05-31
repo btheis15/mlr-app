@@ -112,7 +112,7 @@ To preview the GitHub Pages (static export) build locally: `PAGES_BASE_PATH=/mlr
 All seed content is plain data; no backend needed for these. Edit, commit, push → auto-deploys.
 
 ### family-fest → `lib/data.ts`
-- [ ] `EVENT.startDate` / `EVENT.endDate` — real dates (currently 2026-07-11 → 2026-07-18).
+- [x] `EVENT.startDate` / `EVENT.endDate` — set to 2026-07-27 → 2026-07-31 (Mon–Fri). Mirrored in `mlr-app` `FAMILY_FEST`.
 - [ ] `EVENT.address` — real resort address.
 - [ ] `EVENT.facebookGroupUrl` — your real Family Fest Facebook group link (used by photo "Share").
 - [ ] `SCHEDULE` — the actual week's agenda.
