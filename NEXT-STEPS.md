@@ -141,9 +141,16 @@ Members register with email, then build a profile that's used **everywhere** in 
 - [ ] Profile editor screen: avatar, display name, my emails (+ which is for group mail), notification prefs, directory opt-out.
 - [ ] Keep it extensible — expect to add more per-profile fields over time (this is the "social" layer).
 
+**Viewable member profiles (the "mini family social network"):**
+- [ ] **Tappable profiles everywhere** — a name/avatar in chat, a committee roster (§5c), the member directory (§5b), an RSVP, a "posted by" → opens that member's **profile page**.
+- [ ] **Public profile page** shows: avatar + display name, **which committees they're in** (linked to each committee), and whatever fields they've chosen to make public (e.g. email, household, bio, phone). Eric's page shows Eric's committees + his public info; tapping a committee jumps to it.
+- [ ] **Your own profile** shows the same, plus your committees as **quick links**, and edit controls.
+- [ ] **Per-field privacy** — each profile field (and each email) has a **public / members-only / private** visibility toggle. Default sensible (e.g. display name + avatar + committees visible to members; email private unless they opt to share). Only what the member marks shareable shows on their public page.
+- [ ] Data: add a `visibility` setting per field (e.g. a `profile_visibility` JSON/columns, and `member_emails.public` bool). A `/members/[id]` profile route reads `profiles` + `committee_members` (their committees) + the public subset of `member_emails`.
+
 ### 3c. Database tables (suggested)
-- [ ] `profiles` — id (auth uid), display_name, avatar_url, full_name (optional/private), email_alerts (bool), is_admin (bool), include_in_directory (bool).
-- [ ] `member_emails` — id, user_id, email, label, verified (bool), use_for_group (bool). (See §5b.)
+- [ ] `profiles` — id (auth uid), display_name, avatar_url, full_name (optional/private), bio, household, email_alerts (bool), is_admin (bool), include_in_directory (bool), plus per-field **visibility** settings (public / members-only / private). A `/members/[id]` route renders the public subset.
+- [ ] `member_emails` — id, user_id, email, label, verified (bool), use_for_group (bool), **public** (bool — show on profile). (See §5b.)
 - [ ] `messages` — id, author_id (→ profiles), text, created_at. Render the current `display_name`/avatar by join, don't copy the name onto the row. (MLR chat)
 - [ ] `rsvps` — id, household, headcount, status, bringing, created_by (→ profiles). (Family Fest crew)
 - [ ] `photos` — id, storage_path, caption, created_by (→ profiles), created_at.
