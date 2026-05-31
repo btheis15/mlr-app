@@ -1,7 +1,19 @@
 import { ACTIVITIES } from "@/lib/data";
 import type { ActivityCategory } from "@/lib/types";
 
-const ORDER: ActivityCategory[] = ["On the water", "On land", "For kids", "Evening"];
+// Each category gets a Northwoods tone (header + icon chip + price). Literal
+// classes so Tailwind generates them.
+const CATEGORIES: {
+  name: ActivityCategory;
+  head: string;
+  chip: string;
+  price: string;
+}[] = [
+  { name: "On the water", head: "text-lake", chip: "bg-lake/12", price: "text-lake" },
+  { name: "On land", head: "text-primary", chip: "bg-primary/12", price: "text-primary" },
+  { name: "For kids", head: "text-sun", chip: "bg-sun/12", price: "text-sun" },
+  { name: "Evening", head: "text-dusk", chip: "bg-dusk/12", price: "text-dusk" },
+];
 
 export default function ActivitiesPage() {
   return (
@@ -13,23 +25,27 @@ export default function ActivitiesPage() {
         </p>
       </header>
 
-      {ORDER.map((category) => {
-        const items = ACTIVITIES.filter((a) => a.category === category);
+      {CATEGORIES.map((cat) => {
+        const items = ACTIVITIES.filter((a) => a.category === cat.name);
         if (items.length === 0) return null;
         return (
-          <section key={category} className="space-y-2">
-            <h2 className="text-sm font-semibold text-accent">{category}</h2>
+          <section key={cat.name} className="space-y-2">
+            <h2 className={`text-sm font-semibold ${cat.head}`}>{cat.name}</h2>
             <ul className="space-y-2">
               {items.map((a) => (
                 <li
                   key={a.id}
                   className="flex gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
                 >
-                  <div className="text-2xl">{a.emoji}</div>
+                  <div
+                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${cat.chip}`}
+                  >
+                    {a.emoji}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className="truncate text-sm font-semibold">{a.name}</h3>
-                      <span className="shrink-0 text-xs font-medium text-primary">
+                      <span className={`shrink-0 text-xs font-semibold ${cat.price}`}>
                         {a.price}
                       </span>
                     </div>

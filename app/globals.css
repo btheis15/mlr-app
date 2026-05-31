@@ -1,31 +1,37 @@
 @import "tailwindcss";
 
-/* ─────────────────────────────────────────────────────────────────────────
-   MLR App theme — LIGHT MODE ONLY, built around the official Muskellunge Lake
+/* MLR App theme — LIGHT MODE ONLY, built around the official Muskellunge Lake
    Resort logo (white cabin-in-the-pines on deep forest green, "EST 1987").
    Forest green is the brand/primary; the page stays light. Vintage Northwoods
-   heritage (the original resort: Leo & Dorothy Theis — Fishing · Hunting ·
-   Boating, light-housekeeping cabins near Tomahawk, WI).
+   heritage from the original resort: Leo & Dorothy Theis — Fishing, Hunting,
+   Boating; light-housekeeping cabins near Tomahawk, WI.
 
    Tokens drive Tailwind v4 utilities (bg-card, text-foreground, ring-border,
-   text-primary/accent, font-script). Change a color here, it flows through.
+   text-primary, text-accent, font-script). Change a color here, it flows
+   through the whole app.
 
-   ⚠️  LIGHT MODE ONLY — no dark theme / no dark variants.
-   ⚠️  TRANSPARENCY RULE (recurring issue on the author's other apps):
-       translucent layers must stack LIGHT over the light bg (bg-card/95,
-       bg-background/80, bg-primary/10 — white/accent over light). NEVER use a
-       dark translucent surface tint (bg-black/NN, bg-zinc-*/NN) as a card/panel
-       background — it goes muddy grey on light. (bg-black/NN is OK *only* as a
-       full-screen modal scrim.) The forest green belongs to solid branded
-       surfaces (bg-primary), not as a translucent wash.
-   ──────────────────────────────────────────────────────────────────────── */
+   LIGHT MODE ONLY — no dark theme, no dark variants.
+   TRANSPARENCY RULE (a recurring issue on the author's other apps): translucent
+   layers must stack LIGHT over the light bg — use bg-card/95, bg-background/80,
+   bg-primary/10 (white or accent over light). Do NOT use a dark translucent
+   surface tint (bg-black at low opacity, or bg-zinc-800 at 50 percent) as a card
+   or panel background — it turns muddy grey on a light bg. A dark bg-black wash
+   is fine only as a full-screen modal scrim. The forest green belongs to solid
+   branded surfaces (bg-primary), not a translucent wash. */
 @theme {
-  --color-background: #f5f6f3; /* clean near-white, faint pine-neutral */
+  --color-background: #f6f6f1; /* warm birch near-white */
   --color-foreground: #14241c; /* deep pine near-black text */
   --color-card: #ffffff; /* raised surfaces (solid white) */
-  --color-border: #e4e6e0; /* soft hairline borders */
-  --color-primary: #15503a; /* forest green — the logo color; white text passes */
-  --color-accent: #8a4f17; /* vintage chestnut/amber */
+  --color-border: #e5e4da; /* soft warm hairline borders */
+  --color-primary: #15503a; /* pine green — the logo color; white text passes */
+  --color-accent: #c2410c; /* campfire orange (lively warm accent) */
+  /* Northwoods accent palette — lakes, campfires, golden hour, dusk. Used for
+     tints (e.g. bg-lake/10), icons, and text across the app to give it life.
+     All chosen to read on the light bg. */
+  --color-lake: #0e7490; /* lake teal-blue */
+  --color-campfire: #c2410c; /* burnt orange */
+  --color-sun: #b45309; /* golden amber */
+  --color-dusk: #6d28d9; /* evening violet */
   /* Brush script for the resort wordmark (echoes the logo); via next/font. */
   --font-script: var(--font-yellowtail), "Brush Script MT", cursive;
 }
