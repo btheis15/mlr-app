@@ -42,7 +42,9 @@ Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PW
 - **One account per person** across both apps — one `profiles` table keyed by auth user id. Never per-app users.
 - **End state = one app** (Family Fest as a section of MLR); separate repos only until the FF feature set settles.
 - **Public browse, email-to-interact.** Keep it simple; not high-security.
-- **Hosting = GitHub Pages now** (auto-deploy on push to `main`); Vercel/custom domain is an option, esp. once a server is needed for secrets.
+- **LIGHT MODE ONLY — no dark mode, ever.** Recurring transparency pitfall (also hit on stock-game / innjoy-mobile): never use dark translucent surface tints (`bg-black/NN`, `bg-zinc-*/NN`) on the light bg — they go muddy grey. Translucent layers must stack LIGHT (white/accent over light); `bg-black/NN` is OK *only* as a modal scrim. Each repo's `app/globals.css` has a guard comment.
+- **Branding:** **MLR** = the official **forest-green** logo (white cabin-in-the-pines, EST 1987) on a light page, plus vintage heritage from the original resort — *Leo & Dorothy Theis · Fishing · Hunting · Boating · light-housekeeping cabins · Tomahawk, WI (Hwy 8)*. Wordmark uses a brush script (Yellowtail). **Family Fest 2026** = **Renaissance / Fantasy** — parchment + heraldic wine/azure + a Roman-serif display (Cinzel); official title TBD.
+- **Hosting:** live on **Vercel** (mlr-app-omega.vercel.app, family-fest.vercel.app) and GitHub Pages.
 - **Don't touch** `stock-game` / `innjoy-mobile` (reference only).
 
 ## Kickoff prompt for the Mac mini (paste this to a fresh Claude session)
@@ -78,8 +80,8 @@ Everything backend-dependent is isolated to one module per feature, so each is a
 - [ ] Port the Family Fest components into `mlr-app/components`: `CrewView`, `PhotosView`, `DinnerCrew`, `PayView` (`Countdown` and `AnnouncementBanner` already exist here; MLR's `IdentityProvider` is the superset — use it, drop FF's).
 - [ ] Merge Family Fest seed data into `mlr-app/lib` (e.g. a `lib/familyFest.ts`: `SCHEDULE`, `CREW`, `MEMORIES`, `DINNERS`, `PAYEES`) — or into Supabase tables.
 - [ ] **Navigation:** decide how the section is reached — e.g. the existing Family Fest tab opens the hub, with its own sub-pages; or add a small in-section nav. Keep the bottom tab bar to ~5 items.
-- [ ] **Theme:** MLR is dark, Family Fest is warm/light. Either scope the warm accent tokens to the `/family-fest/*` routes (a wrapper class) so the section feels festive inside the dark app, or fully adopt MLR's theme. Pick one.
-- [ ] Replace the hub's external "Open the full Family Fest app" link (`FAMILY_FEST.appUrl`) with **internal navigation** to `/family-fest/schedule` etc.
+- [ ] **Theme:** both apps are now LIGHT (MLR = forest-green-on-light heritage; Family Fest = parchment Renaissance/Fantasy). On merge, scope the parchment + heraldic tokens (and the Cinzel display font) to the `/family-fest/*` routes via a wrapper class so that section keeps its Renaissance look inside the green MLR shell.
+- [ ] Replace the hub's external "Enter the full Family Fest app" link (`FAMILY_FEST.appUrl`) with **internal navigation** to `/family-fest/schedule` etc. (Today they cross-link: MLR hub → FF app, and FF has a persistent "← Resort home" link back to MLR.)
 - [ ] **Retire the `family-fest` repo:** archive it. Trade-off to decide first — keeping it deployed gives you a Family-Fest-only link/install for the event week; merging means one URL for everything. You can keep the repo as an archived standalone *and* have the section in MLR if you want both.
 
 > Until you do this, the current setup (two apps, MLR embeds + links to Family Fest) keeps working fine — this is a consolidation, not a fix.

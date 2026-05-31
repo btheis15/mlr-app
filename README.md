@@ -1,27 +1,33 @@
 # Muskellunge Lake Resort (MLR)
 
 The year-round resort app — activities, dining, an embedded Family Fest hub, and
-resort chat — installable to your phone's home screen.
+resort chat — installable to your phone's home screen. **Light mode only**, built
+around the official **forest-green** Muskellunge Lake Resort logo (cabin in the
+pines, EST 1987) with vintage heritage from the original resort (Leo & Dorothy
+Theis · Fishing · Hunting · Boating · Tomahawk, WI).
 
-> **Status:** v1. Home, Activities, Dining & amenities, an embedded Family Fest
-> hub, and resort Chat are wired up against seed data in
-> [`lib/data.ts`](lib/data.ts). The whole app is public to browse; a name +
-> email is only requested when you act (post in chat, RSVP). An admin-only alert
-> composer and a top-of-app announcement banner are in place.
-> Several pieces are deliberately scaffolded with a clean backend seam — see
-> [CLAUDE.md](./CLAUDE.md) "Backend seams" (Drive-fed alerts, email OTP, shared
-> chat, email/Android-push alerts).
+> **Live:** https://mlr-app-omega.vercel.app (Vercel) · https://btheis15.github.io/mlr-app/ (Pages)
+>
+> **Status: read-only launch.** The whole browse experience is live (Home,
+> Activities, Dining & amenities, the Family Fest hub, reading Chat) against seed
+> data in [`lib/data.ts`](lib/data.ts). Interactive features (sign-in, chat
+> posting, RSVP, admin alerts) are gated behind a "coming soon" via the
+> `READ_ONLY` flag in [`lib/features.ts`](lib/features.ts) until the Supabase
+> backend lands — see [CLAUDE.md](./CLAUDE.md) "Backend seams" and
+> [NEXT-STEPS.md](./NEXT-STEPS.md).
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbtheis15%2Fmlr-app)
 
 ## Stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Tailwind v4** (theme tokens as CSS variables via `@theme` in
-  [`app/globals.css`](app/globals.css))
+- **Tailwind v4** — light-mode-only theme tokens (forest-green primary) as CSS
+  variables via `@theme` in [`app/globals.css`](app/globals.css); brush-script
+  wordmark (Yellowtail) via `next/font`
 - **Framer Motion** for interactions
 - **PWA** — standalone manifest, "Add to Home Screen" hint on iOS
-- **Vercel** — auto-deploy on push to `main`
+- **Hosting** — live on **Vercel** + **GitHub Pages** (Pages auto-deploys on
+  push to `main`; Vercel is currently manual via `vercel --prod`)
 
 ## Quick start
 

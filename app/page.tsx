@@ -7,13 +7,22 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6 pt-4">
-      <header className="space-y-2">
-        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-2xl">
-          🌲
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">{RESORT.name}</h1>
-        <p className="text-foreground/60">{RESORT.tagline}</p>
+      {/* Logo-style brand badge — white on forest green, echoing the official
+          Muskellunge Lake Resort mark (cabin in the pines, EST 1987). */}
+      <header className="rounded-3xl bg-primary px-5 py-6 text-center text-white shadow-sm">
+        <div className="text-3xl">🌲</div>
+        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70">
+          {RESORT.heritageTagline}
+        </p>
+        <h1 className="font-script text-[2.75rem] leading-[1.05]">Muskellunge Lake</h1>
+        <p className="-mt-1 text-sm font-bold uppercase tracking-[0.4em] text-white/90">
+          Resort
+        </p>
+        <p className="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/60">
+          Est. {RESORT.est} · {RESORT.town}
+        </p>
       </header>
+      <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
 
       {/* Family Fest banner — the embedded "app within the app". */}
       <Link
@@ -84,6 +93,23 @@ export default function HomePage() {
         📞 Call the front desk
         <span className="block text-xs text-foreground/50">{RESORT.frontDesk}</span>
       </a>
+
+      {/* Heritage — a nod to the original resort's business card. */}
+      <section className="rounded-2xl border-2 border-double border-border bg-card p-5 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-foreground/50">
+          {RESORT.heritageTagline}
+        </p>
+        <p className="font-script mt-2 text-2xl text-primary">Muskellunge Lake Resort</p>
+        <p className="text-[11px] uppercase tracking-[0.25em] text-foreground/40">
+          Light Housekeeping Cabins
+        </p>
+        <p className="mt-3 text-xs leading-relaxed text-foreground/60">
+          {RESORT.heritageNote}
+        </p>
+        <p className="mt-3 text-xs italic text-foreground/50">
+          Est. {RESORT.est} · {RESORT.founders}
+        </p>
+      </section>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Yellowtail } from "next/font/google";
 import "./globals.css";
 import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
@@ -6,13 +7,23 @@ import { IdentityProvider } from "@/components/IdentityProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
 
+// Brush script for the resort wordmark (echoes the official logo's hand-script
+// "Muskellunge Lake"). Self-hosted by next/font (works in static export + PWA);
+// feeds --font-script in globals.css via the .font-script utility.
+const yellowtail = Yellowtail({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-yellowtail",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Muskellunge Lake Resort",
   description: "Muskellunge Lake Resort — activities, dining, Family Fest, and resort chat.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "MLR",
   },
   formatDetection: { telephone: false },
@@ -23,7 +34,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0b",
+  themeColor: "#f5f6f3",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -37,7 +48,7 @@ export default async function RootLayout({
   const announcements = await getAnnouncements();
 
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={`h-full ${yellowtail.variable}`}>
       <body className="min-h-full bg-background text-foreground antialiased">
         <IdentityProvider>
           <InstallHint />

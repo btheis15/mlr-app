@@ -23,8 +23,15 @@ export function isAdmin(email: string | undefined): boolean {
 export const RESORT = {
   name: "Muskellunge Lake Resort",
   shortName: "MLR",
-  tagline: "Your home on the water in the Northwoods.",
-  address: "N1234 Resort Rd, Northwoods, WI 54501",
+  tagline: "Your Northwoods home on Muskellunge Lake.",
+  /** Heritage (from the original resort's business card + the EST-1987 logo). */
+  est: "1987",
+  founders: "Leo & Dorothy Theis",
+  heritageTagline: "Fishing · Hunting · Boating",
+  heritageNote:
+    "The original light-housekeeping cabins on Muskellunge Lake — five miles out of Tomahawk on Highway 8.",
+  town: "Tomahawk, Wisconsin",
+  address: "Muskellunge Lake · 5 mi from Tomahawk on Hwy 8 · Tomahawk, WI",
   phone: "+17155550100",
   frontDesk: "Lodge front desk · 7am–9pm",
   checkIn: "4:00 PM",
@@ -160,7 +167,10 @@ export const AMENITIES: Amenity[] = [
  *  full experience lives in the standalone family-fest app. */
 export const FAMILY_FEST = {
   name: "Family Fest 2026",
-  tagline: "One week. The whole family. The lake.",
+  tagline: "One week. The whole clan. The lake.",
+  /** 2026 theme (from the poster); official title still TBD. */
+  theme: "Renaissance · Fantasy",
+  themeNote: "Official title coming soon",
   startDate: "2026-07-11",
   endDate: "2026-07-18",
   /** Deployed standalone Family Fest app (the deep experience). */

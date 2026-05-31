@@ -1,28 +1,49 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   MLR App theme. Sleek, dark, mobile-first. Tokens are exposed to Tailwind v4
-   via @theme so utilities like bg-background / text-foreground / bg-card /
-   ring-border / text-primary / text-accent are generated automatically.
-   Change a color here and it flows through the whole app.
+   MLR App theme — LIGHT MODE ONLY, built around the official Muskellunge Lake
+   Resort logo (white cabin-in-the-pines on deep forest green, "EST 1987").
+   Forest green is the brand/primary; the page stays light. Vintage Northwoods
+   heritage (the original resort: Leo & Dorothy Theis — Fishing · Hunting ·
+   Boating, light-housekeeping cabins near Tomahawk, WI).
+
+   Tokens drive Tailwind v4 utilities (bg-card, text-foreground, ring-border,
+   text-primary/accent, font-script). Change a color here, it flows through.
+
+   ⚠️  LIGHT MODE ONLY — no dark theme / no dark variants.
+   ⚠️  TRANSPARENCY RULE (recurring issue on the author's other apps):
+       translucent layers must stack LIGHT over the light bg (bg-card/95,
+       bg-background/80, bg-primary/10 — white/accent over light). NEVER use a
+       dark translucent surface tint (bg-black/NN, bg-zinc-*/NN) as a card/panel
+       background — it goes muddy grey on light. (bg-black/NN is OK *only* as a
+       full-screen modal scrim.) The forest green belongs to solid branded
+       surfaces (bg-primary), not as a translucent wash.
    ──────────────────────────────────────────────────────────────────────── */
 @theme {
-  --color-background: #0a0a0b; /* near-black page bg */
-  --color-foreground: #fafafa; /* primary text */
-  --color-card: #161618; /* raised surfaces */
-  --color-border: #262629; /* hairline borders */
-  --color-primary: #6366f1; /* indigo accent */
-  --color-accent: #22d3ee; /* cyan accent */
+  --color-background: #f5f6f3; /* clean near-white, faint pine-neutral */
+  --color-foreground: #14241c; /* deep pine near-black text */
+  --color-card: #ffffff; /* raised surfaces (solid white) */
+  --color-border: #e4e6e0; /* soft hairline borders */
+  --color-primary: #15503a; /* forest green — the logo color; white text passes */
+  --color-accent: #8a4f17; /* vintage chestnut/amber */
+  /* Brush script for the resort wordmark (echoes the logo); via next/font. */
+  --font-script: var(--font-yellowtail), "Brush Script MT", cursive;
 }
 
 html,
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  color-scheme: light; /* form controls, scrollbars render light */
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Opt-in script wordmark (the "Muskellunge Lake" hand-script on the logo). */
+.font-script {
+  font-family: var(--font-script);
 }

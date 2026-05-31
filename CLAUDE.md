@@ -5,10 +5,14 @@ Entry point for Claude/AI sessions on this repo. Read this first.
 ## What this repo is
 
 A **Next.js 16 + React 19 + Tailwind v4 PWA** for **Muskellunge Lake Resort
-(MLR)** — the year-round resort app. Mobile-first, vertical, dark theme. Same
+(MLR)** — the year-round resort app. Mobile-first, vertical, **light mode only**,
+built around the official **forest-green** MLR logo (white cabin-in-the-pines,
+EST 1987) with vintage heritage from the original resort (Leo & Dorothy Theis ·
+Fishing · Hunting · Boating · light-housekeeping cabins · Tomahawk, WI). Same
 conventions as the author's other apps (`stock-game`, `innjoy-mobile`): App
-Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint, Vercel
-auto-deploy on push to `main`.
+Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint. Live on
+**Vercel** (mlr-app-omega.vercel.app) + GitHub Pages; currently **read-only**
+(see `lib/features.ts` `READ_ONLY`).
 
 MLR is the **umbrella app**. **Family Fest** (the one-week annual gathering) is
 embedded as a hub at `/family-fest` that mirrors the event highlights and links
@@ -72,7 +76,16 @@ Vercel Postgres/KV + Resend + web-push) can cover all of these.
 - **Theme** — all colors are CSS variables in the `@theme` block of
   [`app/globals.css`](app/globals.css). Tailwind v4 turns each `--color-*` into
   `bg-*` / `text-*` / `ring-*` / `border-*` utilities. Never hard-code hex in
-  components; add or edit a token.
+  components; add or edit a token. Palette: `--color-primary` = forest green
+  (`#15503a`, the logo), `--color-accent` = vintage chestnut, on a near-white
+  page. The resort wordmark uses `.font-script` (Yellowtail, via next/font).
+  - ⚠️ **LIGHT MODE ONLY — never add a dark theme.** And **never** use a dark
+    translucent surface tint (`bg-black/NN`, `bg-zinc-*/NN`) as a card/panel bg —
+    it goes muddy grey on light (a recurring issue across the author's apps).
+    Translucent layers stack LIGHT; `bg-black/NN` is OK only as a modal scrim.
+- **Cross-nav** — the **Family Fest** tab → `/family-fest` hub → "Enter the full
+  Family Fest app" (the standalone FF app). FF has a persistent "← Resort home"
+  link back to MLR. (After the §0b merge this becomes internal routing.)
 - **Formatting** — dates/numbers/currency go through
   [`lib/format.ts`](lib/format.ts). Add new formatters there.
 - **`@/*`** path alias maps to repo root (see `tsconfig.json`).

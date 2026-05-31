@@ -13,7 +13,7 @@ export function ComingSoonCTA({
   note?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-card/60 px-4 py-3 text-center">
+    <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-3 text-center">
       <p className="text-sm font-medium text-foreground/80">
         {icon} {title}
       </p>

@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#0a0a0b"/>
-  <text x="50%" y="52%" text-anchor="middle" dominant-baseline="central" font-family="-apple-system, Helvetica, Arial, sans-serif" font-weight="700" font-size="240" fill="#6366f1">M</text>
+  <rect width="512" height="512" rx="112" fill="#15503a"/>
+  <g fill="#ffffff">
+    <rect x="244" y="372" width="24" height="46" rx="4"/>
+    <polygon points="256,96 196,206 316,206"/>
+    <polygon points="256,158 176,288 336,288"/>
+    <polygon points="256,224 156,374 356,374"/>
+  </g>
 </svg>
