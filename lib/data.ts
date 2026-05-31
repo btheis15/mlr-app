@@ -164,7 +164,7 @@ export const FAMILY_FEST = {
   startDate: "2026-07-11",
   endDate: "2026-07-18",
   /** Deployed standalone Family Fest app (the deep experience). */
-  appUrl: "https://btheis15.github.io/family-fest/",
+  appUrl: "https://family-fest.vercel.app",
   highlights: [
     { id: "welcome-bonfire", day: "2026-07-11", start: "19:30", title: "Welcome bonfire & s'mores", emoji: "🔥" },
     { id: "musky-tournament", day: "2026-07-13", start: "06:00", title: "Musky fishing tournament", emoji: "🎣" },
