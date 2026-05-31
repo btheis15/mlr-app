@@ -34,11 +34,16 @@ export function TabBar() {
             <li key={tab.href} className="flex-1">
               <Link
                 href={tab.href}
+                aria-current={active ? "page" : undefined}
                 className={`flex flex-col items-center gap-0.5 py-2 text-[11px] transition-colors ${
-                  active ? "text-primary" : "text-foreground/50"
+                  active ? "font-semibold text-primary" : "text-foreground/50"
                 }`}
               >
-                <span className="relative text-lg leading-none">
+                <span
+                  className={`relative text-lg leading-none transition-transform ${
+                    active ? "scale-110" : ""
+                  }`}
+                >
                   {tab.icon}
                   {live && (
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">

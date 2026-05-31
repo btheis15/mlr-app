@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BackLink } from "@/components/BackLink";
 import { SCHEDULE } from "@/lib/data";
 import { formatDateLong, formatTime } from "@/lib/format";
 
@@ -19,12 +19,7 @@ export default async function EventDetailPage({
 
   return (
     <div className="space-y-5 pt-1">
-      <Link
-        href="/family-fest/schedule"
-        className="inline-block text-sm font-medium text-foreground/60"
-      >
-        ← Full schedule
-      </Link>
+      <BackLink href="/family-fest/schedule" label="Schedule" />
 
       <header className="space-y-1">
         <p className="text-xs text-foreground/50">
