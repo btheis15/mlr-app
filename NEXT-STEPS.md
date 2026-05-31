@@ -201,6 +201,38 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 
 ---
 
+## 5c. Committees (volunteer member groups + request-to-join) ⭐
+
+Named groups of volunteer members who've agreed to help with an area. Members can see each committee, who's on it, and what's happening; anyone can **request to join**, and an **admin (or committee lead) approves** to add them.
+
+**The committees:**
+- **Beautification** (MLR) — planting trees, maintaining paths, ideas to make the resort look nicer.
+- **Maintenance** (MLR) — cabin updates, mowing, general upkeep.
+- **Family Fest committee** (Family Fest section) — meal planning, event planning for the fest week.
+
+**Each committee shows:**
+- [ ] Description + emoji/icon.
+- [ ] **Member roster** — display_name + avatar (from `profiles`), with an optional "lead" badge.
+- [ ] **What's happening** — an activity feed: posts/updates (and optionally simple tasks/to-dos) scoped to that committee. (Reuse the chat/posts pattern, filtered by committee.)
+- [ ] **Request to join** button → creates a pending request (signed-in members only; guests get the sign-in prompt).
+
+**Admin / lead review:**
+- [ ] A "Join requests" view (in the admin area, or per-committee for its lead): approve → insert into `committee_members`; decline → mark declined. Optionally notify the requester by email (ties to §5/§5b).
+
+**Data model (Supabase):**
+- [ ] `committees` — id, slug, name, description, emoji, scope (`mlr` | `family-fest`).
+- [ ] `committee_members` — id, committee_id, user_id (→ profiles), role (`member` | `lead`), joined_at.
+- [ ] `committee_join_requests` — id, committee_id, user_id, message (optional), status (`pending`|`approved`|`declined`), created_at, reviewed_by.
+- [ ] RLS: anyone signed-in can read committees/members and insert a join request; only admins/leads can approve or post as the committee.
+
+**Where it lives:**
+- [ ] **MLR:** a `/committees` list + `/committees/[slug]` detail (Beautification, Maintenance). Reach it from a Home nav card (bottom tab bar is already at 5).
+- [ ] **Family Fest:** the Family Fest committee as a section reached from the FF Home (or, after the §0b merge, it's just another committee under MLR scoped to `family-fest`).
+
+> Buildable as a **static preview now** (seed the 3 committees + rosters + a sample activity feed; "Request to join" prompts sign-in) — but the real request→approve loop and live rosters need the backend, so it slots into the Supabase phase.
+
+---
+
 ## 6. Social photo sharing (Instagram / Facebook)
 
 - Already works: the Photos "Share ↗" button uses the **Web Share API** → the phone's native share sheet (Instagram, Facebook, Messages, etc.), with the Facebook group as a fallback.
@@ -227,9 +259,10 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 5. Merge Family Fest into MLR as a section (§0b) — best done here, once both share one login + DB and the FF feature set has settled.
 6. Admin alerts → email via Edge Function + Resend (§5).
 7. Member directory + "email everyone" by name (§5b) — builds on profiles + verified emails.
-8. Google Drive feed for announcements + chef contacts (§4).
-9. Android web push (§5, optional).
-10. Custom domain / hosting polish (§7).
+8. Committees + request-to-join/admin-approve (§5c) — builds on profiles + admin roles.
+9. Google Drive feed for announcements + chef contacts (§4).
+10. Android web push (§5, optional).
+11. Custom domain / hosting polish (§7).
 
 ---
 
