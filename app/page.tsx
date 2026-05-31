@@ -2,19 +2,11 @@ import Link from "next/link";
 import { FAMILY_FEST, RESORT } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 
-// Northwoods-toned quick nav. Chip classes are literal so Tailwind generates them.
-const NAV = [
-  { href: "/activities", emoji: "🛶", title: "Activities", body: "Boats, fishing, trails & more.", chip: "bg-lake/12 text-lake" },
-  { href: "/dining", emoji: "🍔", title: "Dining", body: "Where & when to eat.", chip: "bg-campfire/12 text-campfire" },
-  { href: "/chat", emoji: "💬", title: "Chat", body: "What's happening around the lake.", chip: "bg-primary/12 text-primary" },
-  { href: "/family-fest", emoji: "🎉", title: "Family Fest", body: "This year's big week.", chip: "bg-dusk/12 text-dusk" },
-];
-
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
- * headline, a tidy quick-nav, and the front-desk call. The detail (full
- * amenities, dining, activity hours, heritage) lives on its own tabs/pages, so
- * the front page never feels overwhelming.
+ * headline, the front-desk call. Navigation lives in the bottom tab bar
+ * (Activities, Family Fest, Chat, Profile), so the home doesn't repeat it as
+ * cards; the one link here is Dining, which isn't a tab.
  */
 export default function HomePage() {
   return (
@@ -41,21 +33,25 @@ export default function HomePage() {
         highlights={FAMILY_FEST.highlights}
       />
 
-      <section className="grid grid-cols-2 gap-3">
-        {NAV.map((n) => (
-          <Link
-            key={n.href}
-            href={n.href}
-            className="rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
-          >
-            <div className={`inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${n.chip}`}>
-              {n.emoji}
-            </div>
-            <h3 className="mt-2 text-sm font-semibold">{n.title}</h3>
-            <p className="mt-0.5 text-xs text-foreground/60">{n.body}</p>
-          </Link>
-        ))}
-      </section>
+      {/* Dining is the one spot that isn't a bottom tab, so it gets a home link.
+          (Activities / Family Fest / Chat are tabs — no duplicate cards.) */}
+      <Link
+        href="/dining"
+        className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+      >
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-campfire/12 text-2xl text-campfire">
+          🍔
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Dining &amp; amenities</h3>
+          <p className="text-xs text-foreground/60">
+            Where &amp; when to eat, WiFi, check-in &amp; more.
+          </p>
+        </div>
+        <span className="ml-auto text-foreground/30" aria-hidden>
+          ›
+        </span>
+      </Link>
 
       <a
         href={`tel:${RESORT.phone}`}
