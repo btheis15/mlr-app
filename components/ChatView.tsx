@@ -14,7 +14,7 @@ const STORAGE_KEY = "mlr-chat";
  * the view and CLAUDE.md. The composer + message shape are backend-ready.
  */
 export function ChatView({ seed }: { seed: ChatMessage[] }) {
-  const { user } = useIdentity();
+  const { user, promptSignIn } = useIdentity();
   const [posted, setPosted] = useState<ChatMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState("");
@@ -100,24 +100,33 @@ export function ChatView({ seed }: { seed: ChatMessage[] }) {
         <div ref={bottomRef} />
       </div>
 
-      <form
-        onSubmit={send}
-        className="sticky bottom-20 mt-3 flex gap-2 bg-background/80 py-2 backdrop-blur"
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={`Message as ${user?.name ?? "guest"}…`}
-          className="flex-1 rounded-full bg-card px-4 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-        />
-        <button
-          type="submit"
-          disabled={!text.trim()}
-          className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+      {user ? (
+        <form
+          onSubmit={send}
+          className="sticky bottom-20 mt-3 flex gap-2 bg-background/80 py-2 backdrop-blur"
         >
-          Send
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={`Message as ${user.name}…`}
+            className="flex-1 rounded-full bg-card px-4 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            Send
+          </button>
+        </form>
+      ) : (
+        <button
+          onClick={promptSignIn}
+          className="sticky bottom-20 mt-3 w-full rounded-full bg-primary py-2.5 text-sm font-semibold text-white"
+        >
+          Add your name &amp; email to join the chat
         </button>
-      </form>
+      )}
     </div>
   );
 }

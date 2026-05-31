@@ -4,8 +4,32 @@ import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { useIdentity } from "@/components/IdentityProvider";
 
 export default function ProfilePage() {
-  const { user, isAdmin, updateUser, signOut } = useIdentity();
-  if (!user) return null;
+  const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
+
+  if (!user) {
+    return (
+      <div className="space-y-4 pt-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+          <p className="text-sm text-foreground/60">
+            You&rsquo;re browsing as a guest.
+          </p>
+        </header>
+        <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
+          <p className="text-sm text-foreground/70">
+            Add your name and email to post in chat, RSVP, and get alerts. Looking
+            around stays open to everyone.
+          </p>
+          <button
+            onClick={promptSignIn}
+            className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+          >
+            Add your name &amp; email
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const initials = user.name
     .split(" ")

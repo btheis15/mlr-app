@@ -37,10 +37,14 @@ is the single source of truth for routes + labels + icons).
 
 ## Identity, admins & alerts
 
-- **Identity gate** — [`components/IdentityProvider.tsx`](components/IdentityProvider.tsx)
-  wraps the app and requires name + email before use (stored in `localStorage`,
-  no verification yet). `useIdentity()` exposes `{ user, isAdmin, updateUser,
-  signOut }`. At sign-in the guest opts in/out of email alerts.
+- **Identity (on-demand, not a gate)** — the whole app is **public to browse**.
+  [`components/IdentityProvider.tsx`](components/IdentityProvider.tsx) only asks
+  for name + email when you try to *do* something (post in chat, RSVP, …): those
+  actions call `promptSignIn()`, which opens a dismissible sign-in sheet.
+  `useIdentity()` exposes `{ user, isAdmin, updateUser, promptSignIn, signOut }`
+  (`user` is `null` while browsing as a guest). Identity is stored in
+  `localStorage`, no verification yet; at sign-in the guest opts in/out of email
+  alerts.
 - **Admins** — allow-list of emails in [`lib/data.ts`](lib/data.ts)
   (`ADMIN_EMAILS` / `isAdmin`). Only admins see the alert composer
   ([`components/AdminAlertComposer.tsx`](components/AdminAlertComposer.tsx)).

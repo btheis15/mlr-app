@@ -12,6 +12,9 @@ interface IdentityValue {
   isAdmin: boolean;
   /** Patch the current user (e.g. toggle email alerts). */
   updateUser: (patch: Partial<User>) => void;
+  /** Open the sign-in sheet on demand — call this from any action that needs
+   *  an identity (post a message, RSVP, etc.). No-op if already signed in. */
+  promptSignIn: () => void;
   signOut: () => void;
 }
 
@@ -19,6 +22,7 @@ const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
   updateUser: () => {},
+  promptSignIn: () => {},
   signOut: () => {},
 });
 
@@ -28,15 +32,17 @@ export function useIdentity() {
 }
 
 /**
- * Lightweight identity gate. Requires a name + email before the app is usable,
- * stored on-device (localStorage). There's no verification yet — a one-time
+ * Identity, on-demand. The whole app is public to browse — nobody is gated at
+ * the door. Identity (name + email, stored on-device) is only required to *do*
+ * things: post a message, RSVP, etc. Those actions call `promptSignIn()`, which
+ * opens a dismissible sign-in sheet. There's no verification yet — a one-time
  * code / magic link is the planned next layer, and this is where it slots in
- * (verify the email before calling setUser). Until then this just ties activity
- * (like chat) to a name + email so it's not anonymous.
+ * (verify the email before calling persist).
  */
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const [prompting, setPrompting] = useState(false);
 
   useEffect(() => {
     try {
@@ -51,6 +57,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const persist = (u: User) => {
     setUser(u);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    setPrompting(false);
   };
 
   const updateUser = (patch: Partial<User>) => {
@@ -58,26 +65,37 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     persist({ ...user, ...patch });
   };
 
+  const promptSignIn = () => {
+    if (!user) setPrompting(true);
+  };
+
   const signOut = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  // Avoid flashing the gate before we've read storage.
+  // Avoid a flash before we've read storage.
   if (!ready) return null;
-
-  if (!user) return <SignInGate onSignIn={persist} />;
 
   return (
     <IdentityContext.Provider
-      value={{ user, isAdmin: isAdmin(user.email), updateUser, signOut }}
+      value={{ user, isAdmin: isAdmin(user?.email), updateUser, promptSignIn, signOut }}
     >
       {children}
+      {prompting && !user && (
+        <SignInGate onSignIn={persist} onClose={() => setPrompting(false)} />
+      )}
     </IdentityContext.Provider>
   );
 }
 
-function SignInGate({ onSignIn }: { onSignIn: (u: User) => void }) {
+function SignInGate({
+  onSignIn,
+  onClose,
+}: {
+  onSignIn: (u: User) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -95,16 +113,27 @@ function SignInGate({ onSignIn }: { onSignIn: (u: User) => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-6">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center">
+      <form
+        onSubmit={submit}
+        className="relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-6 ring-1 ring-border"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 rounded-full px-1 text-foreground/40 hover:text-foreground"
+        >
+          ✕
+        </button>
         <div className="space-y-2 text-center">
           <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
             🌲
           </div>
-          <h1 className="text-xl font-bold">Muskellunge Lake Resort</h1>
+          <h1 className="text-xl font-bold">Join in</h1>
           <p className="text-sm text-foreground/60">
-            Add your name and email to join — it keeps the chat and updates tied
-            to real people, not strangers.
+            Browsing is open to everyone. Add your name and email to post,
+            RSVP, and get updates — so activity is tied to real people.
           </p>
         </div>
 

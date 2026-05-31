@@ -5,8 +5,9 @@ resort chat — installable to your phone's home screen.
 
 > **Status:** v1. Home, Activities, Dining & amenities, an embedded Family Fest
 > hub, and resort Chat are wired up against seed data in
-> [`lib/data.ts`](lib/data.ts). A lightweight identity gate (name + email),
-> admin-only alert composer, and a top-of-app announcement banner are in place.
+> [`lib/data.ts`](lib/data.ts). The whole app is public to browse; a name +
+> email is only requested when you act (post in chat, RSVP). An admin-only alert
+> composer and a top-of-app announcement banner are in place.
 > Several pieces are deliberately scaffolded with a clean backend seam — see
 > [CLAUDE.md](./CLAUDE.md) "Backend seams" (Drive-fed alerts, email OTP, shared
 > chat, email/Android-push alerts).
