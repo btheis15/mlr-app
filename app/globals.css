@@ -41,6 +41,9 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   color-scheme: light; /* form controls, scrollbars render light */
+  /* Slightly larger base so the whole app (rem-based text + spacing) reads
+     bigger and roomier — easier for everyone, especially older eyes. */
+  font-size: 17px;
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -52,4 +55,30 @@ body {
 /* Opt-in script wordmark (the "Muskellunge Lake" hand-script on the logo). */
 .font-script {
   font-family: var(--font-script);
+}
+
+/* ── Family Fest section — Renaissance / parchment theme, SCOPED ──────────────
+   Family Fest lives inside the resort app at /family-fest/*, but keeps its own
+   look. These re-declare the SAME CSS variables Tailwind's utilities read, so
+   every bg-*/text-*/ring-*/border-* inside `.ff-section` renders parchment +
+   heraldry, while the rest of the resort app stays forest-green. Cinzel
+   (--font-cinzel) is loaded by app/family-fest/layout.tsx and feeds
+   --font-display here. Still LIGHT MODE ONLY (parchment is a light surface). */
+.ff-section {
+  --color-background: #f4ecd8; /* aged parchment */
+  --color-foreground: #3a2a18; /* sepia ink */
+  --color-card: #fdfaf1; /* light vellum surfaces */
+  --color-border: #d8c7a3; /* tan / vellum hairline */
+  --color-primary: #8b2e2e; /* heraldic wine (gules) */
+  --color-accent: #1e3a8a; /* heraldic azure */
+  --font-display: var(--font-cinzel), Georgia, "Iowan Old Style", "Times New Roman", serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* In the Family Fest section, titles get the Roman-inscription display serif. */
+.ff-section h1,
+.ff-section .font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
 }

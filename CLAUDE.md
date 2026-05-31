@@ -14,10 +14,15 @@ Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint. Live on
 **Vercel** (mlr-app-omega.vercel.app) + GitHub Pages; currently **read-only**
 (see `lib/features.ts` `READ_ONLY`).
 
-MLR is the **umbrella app**. **Family Fest** (the one-week annual gathering) is
-embedded as a hub at `/family-fest` that mirrors the event highlights and links
-out to the deep standalone `family-fest` app — so the two read as "two apps in
-one" without sharing a backend yet.
+MLR is the **umbrella app**, and **Family Fest** (the one-week annual gathering)
+is now a **built-in section** of it at `/family-fest/*` — schedule, dinners,
+crew/RSVP, photos, pay, plus anytime "things to do" (the scavenger hunt). There's
+no separate app and no "open the full app" hop anymore. The section keeps its own
+**Renaissance / parchment look**, scoped via the `.ff-section` class +
+[`app/family-fest/layout.tsx`](app/family-fest/layout.tsx) (Cinzel font), and has
+its own in-section sub-nav ([`FamilyFestNav`](components/FamilyFestNav.tsx)); the
+forest-green resort chrome (bottom tabs, announcements) stays above it. *(The
+standalone `family-fest` repo is being retired/redirected to this section.)*
 
 **One-app feel via a shared "season"** — rather than the full code merge (still
 deferred to the Supabase phase, NEXT-STEPS §0b), both apps share a **Family Fest
@@ -41,9 +46,9 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), quick-nav grid, front-desk call, one-line heritage. Amenities / activity hours / full heritage live on Dining & Activities |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), one Dining link (the only non-tab destination — no cards that duplicate the tabs), front-desk call, one-line heritage |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
-| `/family-fest` | [`app/family-fest/page.tsx`](app/family-fest/page.tsx) | Embedded Family Fest hub — live status ([`FestStatus`](components/FestStatus.tsx): countdown → "Day n of N + today") + highlights + link out |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, admin alert composer, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
@@ -120,9 +125,16 @@ Vercel Postgres/KV + Resend + web-push) can cover all of these.
     translucent surface tint (`bg-black/NN`, `bg-zinc-*/NN`) as a card/panel bg —
     it goes muddy grey on light (a recurring issue across the author's apps).
     Translucent layers stack LIGHT; `bg-black/NN` is OK only as a modal scrim.
-- **Cross-nav** — the **Family Fest** tab → `/family-fest` hub → "Enter the full
-  Family Fest app" (the standalone FF app). FF has a persistent "← Resort home"
-  link back to MLR. (After the §0b merge this becomes internal routing.)
+- **Cross-nav** — the **Family Fest** bottom tab → `/family-fest` overview, then
+  the in-section [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav switches
+  between Schedule / Dinners / Crew / Photos / Pay. All internal routes — no
+  external hop. (The §0b merge is now done; identity stays per-app localStorage
+  until the Supabase phase.)
+- **Family Fest theme scoping** — the FF section's parchment/Renaissance palette
+  + Cinzel serif are scoped to `.ff-section` (see `app/globals.css` and
+  [`app/family-fest/layout.tsx`](app/family-fest/layout.tsx)): the wrapper
+  re-declares the `--color-*` / `--font-display` variables that Tailwind's
+  utilities read, so only that subtree changes. Don't hard-code hex.
 - **Formatting** — dates/numbers/currency go through
   [`lib/format.ts`](lib/format.ts). Add new formatters there.
 - **`@/*`** path alias maps to repo root (see `tsconfig.json`).
