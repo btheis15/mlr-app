@@ -4,26 +4,20 @@
   "description": "Muskellunge Lake Resort — activities, dining, Family Fest, and resort chat.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f6f3",
+  "background_color": "#0c4029",
   "theme_color": "#15503a",
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
