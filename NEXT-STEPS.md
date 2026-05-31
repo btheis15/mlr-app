@@ -24,6 +24,27 @@ Everything backend-dependent is isolated to one module per feature, so each is a
 
 ---
 
+## 0b. TARGET ARCHITECTURE — merge into one app ⭐
+
+**Decision:** the end state is **one app**. MLR is *the* app; **Family Fest becomes a section inside MLR**, not a separate repo/deploy.
+
+**Why it's a separate repo for now (on purpose):** Family Fest is the heaviest ongoing work, so it lives in its own repo as a workshop — you can iterate hard on it without destabilizing the MLR app. Fold it in once its feature set settles.
+
+**Do the merge during the Supabase work (§3)** — that's the natural time, because once both share one login + one database, there's no reason to keep two apps.
+
+**Migration checklist (mlr-app):**
+- [ ] Move Family Fest routes under MLR: `app/family-fest/schedule`, `/family-fest/crew`, `/family-fest/photos`, `/family-fest/pay` (the `/family-fest` hub page already exists).
+- [ ] Port the Family Fest components into `mlr-app/components`: `CrewView`, `PhotosView`, `DinnerCrew`, `PayView` (`Countdown` and `AnnouncementBanner` already exist here; MLR's `IdentityProvider` is the superset — use it, drop FF's).
+- [ ] Merge Family Fest seed data into `mlr-app/lib` (e.g. a `lib/familyFest.ts`: `SCHEDULE`, `CREW`, `MEMORIES`, `DINNERS`, `PAYEES`) — or into Supabase tables.
+- [ ] **Navigation:** decide how the section is reached — e.g. the existing Family Fest tab opens the hub, with its own sub-pages; or add a small in-section nav. Keep the bottom tab bar to ~5 items.
+- [ ] **Theme:** MLR is dark, Family Fest is warm/light. Either scope the warm accent tokens to the `/family-fest/*` routes (a wrapper class) so the section feels festive inside the dark app, or fully adopt MLR's theme. Pick one.
+- [ ] Replace the hub's external "Open the full Family Fest app" link (`FAMILY_FEST.appUrl`) with **internal navigation** to `/family-fest/schedule` etc.
+- [ ] **Retire the `family-fest` repo:** archive it. Trade-off to decide first — keeping it deployed gives you a Family-Fest-only link/install for the event week; merging means one URL for everything. You can keep the repo as an archived standalone *and* have the section in MLR if you want both.
+
+> Until you do this, the current setup (two apps, MLR embeds + links to Family Fest) keeps working fine — this is a consolidation, not a fix.
+
+---
+
 ## 1. Local dev setup (Mac mini)
 
 ```bash
@@ -148,12 +169,14 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 ## 8. Suggested order
 
 1. Replace placeholder content (§2) — instant payoff, no backend.
-2. Stand up Supabase + email-OTP auth (§3a–3b).
-3. Move chat, RSVP, photos to Supabase (§3c–3d) — the "real multi-user" jump.
-4. Admin alerts → email via Edge Function + Resend (§5).
-5. Google Drive feed for announcements + chef contacts (§4).
-6. Android web push (§5, optional).
-7. Custom domain / hosting polish (§7).
+2. Keep building out Family Fest in its own repo (that's why it's separate — it's the heaviest ongoing work; isolating it keeps MLR stable).
+3. Stand up Supabase + email-OTP auth (§3a–3b).
+4. Move chat, RSVP, photos to Supabase (§3c–3d) — the "real multi-user" jump.
+5. Merge Family Fest into MLR as a section (§0b) — best done here, once both share one login + DB and the FF feature set has settled.
+6. Admin alerts → email via Edge Function + Resend (§5).
+7. Google Drive feed for announcements + chef contacts (§4).
+8. Android web push (§5, optional).
+9. Custom domain / hosting polish (§7).
 
 ---
 
