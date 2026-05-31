@@ -41,6 +41,9 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   color-scheme: light; /* form controls, scrollbars render light */
+  /* Slightly larger base so the whole app (rem-based text + spacing) reads
+     bigger and roomier — easier for everyone, especially older eyes. */
+  font-size: 17px;
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
