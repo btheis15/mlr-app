@@ -1,9 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#15503a"/>
+  <rect width="512" height="512" fill="#15503a"/>
   <g fill="#ffffff">
-    <rect x="244" y="372" width="24" height="46" rx="4"/>
-    <polygon points="256,96 196,206 316,206"/>
-    <polygon points="256,158 176,288 336,288"/>
-    <polygon points="256,224 156,374 356,374"/>
+    <path d="M64 404 Q256 366 448 404 L448 422 Q256 386 64 422 Z"/>
+    <polygon points="120,232 150,300 90,300"/>
+    <polygon points="120,270 156,344 84,344"/>
+    <polygon points="168,150 206,250 130,250"/>
+    <polygon points="168,206 214,316 122,316"/>
+    <polygon points="168,272 220,392 116,392"/>
+    <polygon points="360,134 402,240 318,240"/>
+    <polygon points="360,196 410,318 310,318"/>
+    <polygon points="360,266 418,392 302,392"/>
+    <rect x="300" y="250" width="22" height="58" rx="3"/>
+    <polygon points="172,318 256,232 340,318"/>
+    <rect x="196" y="312" width="150" height="80" rx="4"/>
   </g>
+  <g fill="#15503a">
+    <rect x="196" y="334" width="150" height="6"/>
+    <rect x="196" y="354" width="150" height="6"/>
+    <rect x="196" y="374" width="150" height="6"/>
+    <rect x="242" y="266" width="28" height="28" rx="3"/>
+    <rect x="224" y="350" width="34" height="42" rx="3"/>
+    <rect x="292" y="330" width="28" height="28" rx="3"/>
+  </g>
+  <path d="M311 248 q 18 -16 4 -34 q -14 -16 4 -34" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
 </svg>
