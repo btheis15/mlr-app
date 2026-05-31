@@ -28,7 +28,8 @@ export function TabBar() {
         {TABS.map((tab) => {
           const active =
             tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
-          const live = tab.href === "/family-fest" && season?.isLive;
+          const live =
+            tab.href === "/family-fest" && (season?.isLive || season?.isWrap);
           return (
             <li key={tab.href} className="flex-1">
               <Link

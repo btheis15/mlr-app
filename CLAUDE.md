@@ -23,10 +23,13 @@ one" without sharing a backend yet.
 deferred to the Supabase phase, NEXT-STEPS §0b), both apps share a **Family Fest
 season model** ([`lib/festSeason.ts`](lib/festSeason.ts), mirrored byte-for-byte
 in the `family-fest` repo) so the fest reads as a *season of the resort* that
-rises and recedes through the year. In the run-up the home shows a quiet banner;
-during the event **week MLR leads with Family Fest** (a live "Day n of N + today's
-events" takeover, a live dot on the Family Fest tab) and the resort's own content
-recedes below. See **Family Fest season** below.
+rises and recedes through the year across four phases: **off-season** (quiet
+banner) → **planning** (from ~60 days out: a partial takeover that rallies
+volunteers and previews what's being planned) → **live** (the event week: MLR
+leads with Family Fest — a "Day n of N + today's events" takeover, a live dot on
+the tab, resort content recedes) → **wrap** (2 weeks after: the full takeover
+lingers, nudging people to post the photos they didn't get to). See **Family
+Fest season** below.
 
 **Data model:** client-only for now. Resort content (activities, dining,
 amenities, Family Fest highlights) is static in [`lib/data.ts`](lib/data.ts);
@@ -71,17 +74,21 @@ Both apps share a phase model so Family Fest behaves as a season of the resort,
 not a separate app — no backend needed:
 
 - [`lib/festSeason.ts`](lib/festSeason.ts) — pure `getFestSeason(start, end)` →
-  `{ phase: "before" | "live" | "after", isLive, daysUntilStart, isSoon,
-  dayNumber, totalDays }`, plus `toISODate()`. **Mirrored byte-for-byte in the
+  `{ phase: "off-season" | "planning" | "live" | "wrap", isLive, isPlanning,
+  isWrap, isTakeover, daysUntilStart, isSoon, dayNumber, totalDays, daysSinceEnd,
+  wrapDaysLeft }`, plus `toISODate()` and the `PLANNING_LEAD_DAYS` (60) /
+  `WRAP_TAIL_DAYS` (14) window constants. **Mirrored byte-for-byte in the
   `family-fest` repo** (like the EVENT/FAMILY_FEST seed data) — edit both.
 - [`lib/useFestSeason.ts`](lib/useFestSeason.ts) — client hook; computes the
   phase **on the client** (returns `null` until mounted → no hydration mismatch)
   so the live week is correct on the static Pages build *and* Vercel. A
   build-time `new Date()` would freeze the phase at deploy.
 - Consumers: [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) (home —
-  quiet banner → live takeover hero), [`FestStatus`](components/FestStatus.tsx)
-  (hub — countdown → "Day n of N + Today at the Fest"), and
-  [`TabBar`](components/TabBar.tsx) (live dot on the Family Fest tab).
+  quiet banner → planning partial-takeover → live takeover hero → wrap "post
+  your photos"), [`FestStatus`](components/FestStatus.tsx) (hub — countdown →
+  "Day n of N + Today at the Fest" → wrap photo nudge), and
+  [`TabBar`](components/TabBar.tsx) (live dot on the Family Fest tab during
+  live + wrap).
 - Dates come from `FAMILY_FEST.startDate` / `.endDate` in `lib/data.ts`.
 - The §0b full code merge is unchanged/deferred; this is the lighter-touch
   "feels like one app" layer that ships before the backend.

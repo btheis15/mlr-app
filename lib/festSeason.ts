@@ -11,20 +11,37 @@
  * Vercel — a build-time `new Date()` would freeze the phase at deploy time.
  */
 
-export type FestPhase = "before" | "live" | "after";
+export type FestPhase = "off-season" | "planning" | "live" | "wrap";
+
+/** How early the partial "planning" takeover begins (rally volunteers + show
+ *  what's being planned), in days before the start. */
+export const PLANNING_LEAD_DAYS = 60;
+/** How long the full takeover lingers after the event ends (so people can keep
+ *  posting photos they didn't get to during the week), in days after the end. */
+export const WRAP_TAIL_DAYS = 14;
 
 export interface FestSeason {
   phase: FestPhase;
   /** Convenience: phase === "live" (the event week is happening). */
   isLive: boolean;
+  /** phase === "planning" — partial takeover in the 60-day run-up. */
+  isPlanning: boolean;
+  /** phase === "wrap" — full takeover lingers for 2 weeks after, to post photos. */
+  isWrap: boolean;
+  /** Any non-quiet phase (planning | live | wrap) — the fest is prominent. */
+  isTakeover: boolean;
   /** Whole days from today until the start (0 once it has started). */
   daysUntilStart: number;
-  /** Final run-up — within a week of the start. */
+  /** Final run-up — within a week of the start (subset of "planning"). */
   isSoon: boolean;
   /** 1-based day of the event while live (e.g. 3), else null. */
   dayNumber: number | null;
   /** Total inclusive days in the event window (Sat→Sat = 8). */
   totalDays: number;
+  /** Whole days since the event ended (0 before/at the end). */
+  daysSinceEnd: number;
+  /** Days the photo-posting window stays open during "wrap" (0 otherwise). */
+  wrapDaysLeft: number;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -57,17 +74,37 @@ export function getFestSeason(
   const start = parseDay(startDate);
   const end = parseDay(endDate);
 
-  const daysUntilStart = Math.max(0, Math.round((start - today) / MS_PER_DAY));
+  const daysToStart = Math.round((start - today) / MS_PER_DAY);
+  const daysAfterEnd = Math.round((today - end) / MS_PER_DAY);
   const totalDays = Math.round((end - start) / MS_PER_DAY) + 1;
 
   let phase: FestPhase;
-  if (today < start) phase = "before";
-  else if (today <= end) phase = "live";
-  else phase = "after";
+  if (today < start) {
+    phase = daysToStart <= PLANNING_LEAD_DAYS ? "planning" : "off-season";
+  } else if (today <= end) {
+    phase = "live";
+  } else {
+    phase = daysAfterEnd <= WRAP_TAIL_DAYS ? "wrap" : "off-season";
+  }
 
   const isLive = phase === "live";
+  const isPlanning = phase === "planning";
+  const isWrap = phase === "wrap";
   const dayNumber = isLive ? Math.round((today - start) / MS_PER_DAY) + 1 : null;
-  const isSoon = phase === "before" && daysUntilStart <= 7;
+  const daysUntilStart = Math.max(0, daysToStart);
+  const daysSinceEnd = Math.max(0, daysAfterEnd);
 
-  return { phase, isLive, daysUntilStart, isSoon, dayNumber, totalDays };
+  return {
+    phase,
+    isLive,
+    isPlanning,
+    isWrap,
+    isTakeover: phase !== "off-season",
+    daysUntilStart,
+    isSoon: isPlanning && daysUntilStart <= 7,
+    dayNumber,
+    totalDays,
+    daysSinceEnd,
+    wrapDaysLeft: isWrap ? Math.max(0, WRAP_TAIL_DAYS - daysAfterEnd) : 0,
+  };
 }
