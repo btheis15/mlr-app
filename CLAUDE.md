@@ -41,7 +41,7 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — Family Fest spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx), season-aware), nav, amenities, front-desk call |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), quick-nav grid, front-desk call, one-line heritage. Amenities / activity hours / full heritage live on Dining & Activities |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
 | `/family-fest` | [`app/family-fest/page.tsx`](app/family-fest/page.tsx) | Embedded Family Fest hub — live status ([`FestStatus`](components/FestStatus.tsx): countdown → "Day n of N + today") + highlights + link out |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
