@@ -3,10 +3,12 @@
 Follow-up checklist for finishing the **MLR** + **Family Fest** apps from your Mac mini.
 This file lives in the `mlr-app` repo but covers **both** repos.
 
-- **MLR (resort umbrella):** https://github.com/btheis15/mlr-app → live at https://btheis15.github.io/mlr-app/
-- **Family Fest (event app):** https://github.com/btheis15/family-fest → live at https://btheis15.github.io/family-fest/
+- **MLR (resort umbrella):** https://github.com/btheis15/mlr-app → live on **Vercel: https://mlr-app-omega.vercel.app** (also GitHub Pages: https://btheis15.github.io/mlr-app/)
+- **Family Fest (event app):** https://github.com/btheis15/family-fest → live on **Vercel: https://family-fest.vercel.app** (also GitHub Pages: https://btheis15.github.io/family-fest/)
 
-Both deploy to GitHub Pages automatically on every push to `main` (Settings → Pages → Source is set to "GitHub Actions"). The reference apps `stock-game` and `innjoy-mobile` are **not** part of this — leave them alone.
+> **Deployed 2026-05-31 (read-only launch):** both apps are live on Vercel (root-served → PWA icons/manifest work; SSR + env-secrets ready for the backend) **and** GitHub Pages. They run in **READ-ONLY mode** — the `READ_ONLY` flag in each repo's `lib/features.ts` gates the write features (sign-in, chat posting, RSVP, photo upload) behind a "coming soon" affordance; the whole browse experience is live. Flip `READ_ONLY = false` (and wire auth, PRs mlr-app#15 / family-fest#5) to turn interaction on. **Note:** Vercel deploys were done via `vercel --prod` (CLI), so they're **manual** — run `vercel git connect` (or import the repo in the Vercel dashboard) to get auto-deploy-on-push like the other apps. Pages still auto-deploys on push to `main`.
+
+The reference apps `stock-game` and `innjoy-mobile` are **not** part of this — leave them alone.
 
 ---
 
