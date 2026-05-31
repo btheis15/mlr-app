@@ -10,6 +10,45 @@ Both deploy to GitHub Pages automatically on every push to `main` (Settings → 
 
 ---
 
+## What this is (read first)
+
+A private app for the **Muskellunge Lake Resort** family/community. **MLR** is the year-round umbrella app; **Family Fest** is the one-week annual gathering. They were built as two repos so Family Fest (the heaviest, most-iterated piece) could move fast on its own — but **the end goal is one app**: Family Fest folds into MLR as a section (see §0b).
+
+It's effectively a **small private social network for the family + resort community**: anyone can browse, but a **verified email unlocks interaction**. Once in, members get profiles (avatar + nickname, used everywhere), chat, a shared photo album, event tools (schedule, RSVP/potluck, dinner head-chefs, payments), a member directory + "email everyone," volunteer **committees**, and **announcements/alerts** an admin can push (with a Google-Drive feed behind them).
+
+Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PWA. Currently a **client-only v1** (seed data + localStorage); the real multi-user layer is **Supabase** (§3). Every backend-dependent feature is already isolated to one module so it's a drop-in.
+
+## The full vision (one-glance checklist)
+
+- [x] MLR resort app: Home, Activities, Dining/amenities, Family Fest hub, Chat, Profile.
+- [x] Family Fest app: Home/countdown, Schedule + dinner chefs (call/text), Crew (RSVP + potluck), Photos (+ IG/FB share), Pay (Venmo/Zelle).
+- [x] Public to browse; **name + email required to interact**; admin role + alert banner.
+- [ ] **Passwordless login** — email one-time code + saved session (no passwords). [§3b]
+- [ ] **One shared identity** across both apps (one Supabase project / one profiles table). [§3 callout]
+- [ ] **Rich profiles** — avatar, nickname, shown everywhere; **viewable member profiles** with per-field privacy. [§3b-2]
+- [ ] **Real shared chat**, RSVP, and a **shared photo album** (cross-device). [§3c–3d]
+- [ ] **Member directory + "email everyone"** by name using each person's current address. [§5b]
+- [ ] **Committees** (Beautification, Maintenance, Family Fest) with request-to-join → admin approval. [§5c]
+- [ ] **Announcements/alerts** admin-pushed + **email opt-in** + Android push, fed by a **Google Drive** file. [§4, §5]
+- [ ] **Merge Family Fest into MLR** as one app. [§0b]
+- [ ] Real content: dates, rosters, chef phones, Venmo/Zelle handles, FB group URL, theme/design. [§2]
+
+## Decisions locked (don't relitigate)
+
+- **Backend = Supabase** (auth + Postgres + realtime + storage). One project for **both** apps.
+- **Auth = passwordless**: Supabase **email OTP + persisted session** (stay logged in on device). Free SMTP (Resend/Gmail) for delivery. **No passwords. No Stytch/paid vendor.** Passkeys/Face ID = optional later.
+- **One account per person** across both apps — one `profiles` table keyed by auth user id. Never per-app users.
+- **End state = one app** (Family Fest as a section of MLR); separate repos only until the FF feature set settles.
+- **Public browse, email-to-interact.** Keep it simple; not high-security.
+- **Hosting = GitHub Pages now** (auto-deploy on push to `main`); Vercel/custom domain is an option, esp. once a server is needed for secrets.
+- **Don't touch** `stock-game` / `innjoy-mobile` (reference only).
+
+## Kickoff prompt for the Mac mini (paste this to a fresh Claude session)
+
+> I'm continuing two linked apps, `mlr-app` and `family-fest` (both cloned locally, both deploy to GitHub Pages on push to `main`). Read `NEXT-STEPS.md` in `mlr-app` and each repo's `CLAUDE.md` first — they have the full product context, decisions, and a step-by-step plan. They're a client-only v1 today; I want to start the backend. Follow the §8 order: begin by standing up **one** Supabase project for **both** apps, wire **passwordless email-OTP auth with a saved session** (§3b), and create the `profiles` table so there's **one shared identity** across both apps (§3 callout). Confirm the plan with me before writing code, then go step by step. Don't touch `stock-game` or `innjoy-mobile`.
+
+---
+
 ## 0. Where things stand
 
 **Done & live (client-only v1, no backend yet):**
