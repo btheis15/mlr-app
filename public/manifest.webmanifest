@@ -1,7 +1,7 @@
 {
-  "name": "MLR App",
+  "name": "Muskellunge Lake Resort",
   "short_name": "MLR",
-  "description": "MLR App — mobile-first PWA.",
+  "description": "Muskellunge Lake Resort — activities, dining, Family Fest, and resort chat.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0b",

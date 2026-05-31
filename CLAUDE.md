@@ -4,25 +4,64 @@ Entry point for Claude/AI sessions on this repo. Read this first.
 
 ## What this repo is
 
-A **Next.js 16 + React 19 + Tailwind v4 PWA** scaffold. Mobile-first,
-vertical, dark theme. Same conventions as the author's other apps
-(`stock-game`, `innjoy-mobile`): App Router, CSS-variable theme tokens, bottom
-`TabBar`, iOS install hint, Vercel auto-deploy on push to `main`.
+A **Next.js 16 + React 19 + Tailwind v4 PWA** for **Muskellunge Lake Resort
+(MLR)** — the year-round resort app. Mobile-first, vertical, dark theme. Same
+conventions as the author's other apps (`stock-game`, `innjoy-mobile`): App
+Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint, Vercel
+auto-deploy on push to `main`.
 
-**The product is not yet defined.** "MLR" is currently a placeholder name —
-before building features, confirm with the user what MLR App is supposed to do.
-The feature tabs are stubs.
+MLR is the **umbrella app**. **Family Fest** (the one-week annual gathering) is
+embedded as a hub at `/family-fest` that mirrors the event highlights and links
+out to the deep standalone `family-fest` app — so the two read as "two apps in
+one" without sharing a backend yet.
+
+**Data model:** client-only for now. Resort content (activities, dining,
+amenities, Family Fest highlights) is static in [`lib/data.ts`](lib/data.ts);
+types in [`lib/types.ts`](lib/types.ts). Identity, chat, alert dismissals, and
+admin-posted alerts persist per-device in `localStorage`. Several features are
+deliberately scaffolded with a clean seam for a backend — see **Backend seams**.
 
 ## The tabs
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Landing — hero + feature cards |
-| `/activity` | [`app/activity/page.tsx`](app/activity/page.tsx) | Placeholder (`ComingSoon`) |
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Placeholder (`ComingSoon`) |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — Family Fest banner, nav, amenities, front-desk call |
+| `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
+| `/family-fest` | [`app/family-fest/page.tsx`](app/family-fest/page.tsx) | Embedded Family Fest hub (countdown + highlights + link out) |
+| `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, admin alert composer, sign out |
+| `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons).
+
+## Identity, admins & alerts
+
+- **Identity gate** — [`components/IdentityProvider.tsx`](components/IdentityProvider.tsx)
+  wraps the app and requires name + email before use (stored in `localStorage`,
+  no verification yet). `useIdentity()` exposes `{ user, isAdmin, updateUser,
+  signOut }`. At sign-in the guest opts in/out of email alerts.
+- **Admins** — allow-list of emails in [`lib/data.ts`](lib/data.ts)
+  (`ADMIN_EMAILS` / `isAdmin`). Only admins see the alert composer
+  ([`components/AdminAlertComposer.tsx`](components/AdminAlertComposer.tsx)).
+- **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
+  shows notices at the top of the app (server-fed seed +
+  admin-posted local alerts), dismissible per-device.
+
+## Backend seams (planned, not yet wired)
+
+These are built UI-first with the swap point isolated to one module each:
+
+| Feature | Seam today | Becomes |
+|---|---|---|
+| Google-Drive-fed announcements | [`lib/announcements.ts`](lib/announcements.ts) `getAnnouncements()` | server route reading a Drive file (API or published CSV/JSON), revalidated / webhook-pushed |
+| Email OTP / magic link | `IdentityProvider` sign-in | verify email before `setUser` |
+| Shared chat | [`components/ChatView.tsx`](components/ChatView.tsx) (localStorage) | shared DB + realtime/poll |
+| Admin alerts → broadcast | [`lib/localAnnouncements.ts`](lib/localAnnouncements.ts) | server validates admin, broadcasts, **emails opted-in guests**, web-push for Android |
+| Email alerts opt-in | `user.emailAlerts` flag | mail provider (Resend/SendGrid) sends on alert |
+
+A single backend (e.g. Supabase: email OTP auth + Postgres + realtime, or
+Vercel Postgres/KV + Resend + web-push) can cover all of these.
 
 ## Conventions
 
