@@ -171,8 +171,8 @@ export const FAMILY_FEST = {
   /** 2026 theme (from the poster); official title still TBD. */
   theme: "Renaissance · Fantasy",
   themeNote: "Official title coming soon",
-  startDate: "2026-07-11",
-  endDate: "2026-07-18",
+  startDate: "2026-07-27",
+  endDate: "2026-07-31",
   /** Deployed standalone Family Fest app (the deep experience). */
   appUrl: "https://family-fest.vercel.app",
   /** Volunteer / planning contact, surfaced during the "planning" season so
@@ -185,10 +185,10 @@ export const FAMILY_FEST = {
     phone: "+12248005389",
   },
   highlights: [
-    { id: "welcome-bonfire", day: "2026-07-11", start: "19:30", title: "Welcome bonfire & s'mores", emoji: "🔥" },
-    { id: "musky-tournament", day: "2026-07-13", start: "06:00", title: "Musky fishing tournament", emoji: "🎣" },
-    { id: "talent-show", day: "2026-07-16", start: "19:00", title: "Family talent show", emoji: "🎤" },
-    { id: "fireworks", day: "2026-07-17", start: "21:30", title: "Fireworks over the lake", emoji: "🎆" },
+    { id: "welcome-bonfire", day: "2026-07-27", start: "19:30", title: "Welcome bonfire & s'mores", emoji: "🔥" },
+    { id: "musky-tournament", day: "2026-07-29", start: "06:00", title: "Musky fishing tournament", emoji: "🎣" },
+    { id: "talent-show", day: "2026-07-30", start: "19:00", title: "Family talent show", emoji: "🎤" },
+    { id: "fireworks", day: "2026-07-31", start: "21:30", title: "Fireworks over the lake", emoji: "🎆" },
   ] as FestHighlight[],
 };
 

@@ -36,7 +36,7 @@ export interface FestSeason {
   isSoon: boolean;
   /** 1-based day of the event while live (e.g. 3), else null. */
   dayNumber: number | null;
-  /** Total inclusive days in the event window (Sat→Sat = 8). */
+  /** Total inclusive days in the event window (e.g. Mon→Fri = 5). */
   totalDays: number;
   /** Whole days since the event ended (0 before/at the end). */
   daysSinceEnd: number;
