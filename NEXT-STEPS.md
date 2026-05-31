@@ -108,10 +108,22 @@ You chose **Supabase**: one service that covers email one-time-code login, a dat
 
 > ⚠️ GitHub Pages serves **static files only** — there's no server to hold secrets. The `NEXT_PUBLIC_*` anon key is safe to ship (it's meant to be public, protected by Row Level Security). But anything needing a **secret** (Resend key, Drive service account, web-push private key, admin enforcement) needs a real server — use **Supabase Edge Functions** or move hosting to **Vercel**. See §7.
 
-### 3b. Auth — email one-time code
-- [ ] Enable Supabase Auth **email OTP / magic link**.
-- [ ] In `components/IdentityProvider.tsx` (both apps): replace the on-device `persist()` step with: send OTP → verify code → set the real session. The `promptSignIn()` flow and "public browse, sign-in to act" UX stay exactly the same; you're just swapping what happens on submit.
-- [ ] Store profile (name, email, `email_alerts`, `is_admin`) in a `profiles` table; move the admin check off the client `ADMIN_EMAILS` list to a DB column / RLS policy so it can't be spoofed.
+### 3b. Auth — PASSWORDLESS (email one-time code + passkey / Face ID) ⭐
+
+**Hard requirement: no passwords, ever.** Two layers:
+
+1. **Email OTP (first sign-in / new device):** user enters their email → a 6-digit code lands in their inbox → they type it → they're in. No password to create or remember.
+2. **Passkey / biometric (every time after):** right after the first OTP login, prompt "Set up Face ID / fingerprint." That creates a **passkey (WebAuthn)** the phone secures with Face ID / Touch ID. Next sign-ins are just a face/finger tap — no code, no password. (Face ID itself isn't the login; it *unlocks the passkey* on the device.)
+
+**Provider — pick one (this is a real decision):**
+- **Option A — Stytch** (the passwordless-auth company; likely what you're picturing — it's Stytch, not a Twilio product). Native **email OTP *and* passkeys/biometrics**, so both layers are turnkey. Best fit if you want passkeys with the least custom code. Pair **Stytch (auth) + Supabase (data/realtime/storage)** — common and clean. *(Note: innjoy-mobile doesn't actually contain a Stytch integration to copy — the "verify" mentions there are git auth — so this would be set up fresh.)*
+- **Option B — Supabase Auth only.** Email OTP is built in and free; **passkeys/WebAuthn are not first-class yet**, so the biometric layer needs a custom WebAuthn flow (e.g. the `SimpleWebAuthn` library + an Edge Function to store credentials). Fewer vendors, more glue code for passkeys.
+- **Recommendation:** if Face ID/passkeys matter to you (they do), go **Stytch for auth + Supabase for everything else**. If you'd rather one vendor, start **Supabase email OTP now**, add passkeys later.
+
+**Wiring (either provider):**
+- [ ] In `components/IdentityProvider.tsx` (both apps): replace the on-device `persist()` with → send OTP → verify code → real session; then offer passkey enrollment. The `promptSignIn()` + "public browse, sign-in to act" UX stays identical — only what happens on submit changes.
+- [ ] On supported devices, attempt passkey sign-in first; fall back to email OTP (new device, passkey not set up, etc.).
+- [ ] Store profile (display_name, avatar, `email_alerts`, `is_admin`) in `profiles`; move the admin check off the client `ADMIN_EMAILS` list to a DB column / RLS policy so it can't be spoofed.
 
 ### 3b-2. Rich, customizable profiles ⭐ (this is becoming a light social app)
 
@@ -205,7 +217,7 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 
 1. Replace placeholder content (§2) — instant payoff, no backend.
 2. Keep building out Family Fest in its own repo (that's why it's separate — it's the heaviest ongoing work; isolating it keeps MLR stable).
-3. Stand up Supabase + email-OTP auth (§3a–3b).
+3. Stand up the backend + **passwordless auth** — email OTP, then passkey/Face ID (§3a–3b). Decide Stytch-vs-Supabase for auth here.
 4. Move chat, RSVP, photos to Supabase (§3c–3d) — the "real multi-user" jump.
 5. Merge Family Fest into MLR as a section (§0b) — best done here, once both share one login + DB and the FF feature set has settled.
 6. Admin alerts → email via Edge Function + Resend (§5).
