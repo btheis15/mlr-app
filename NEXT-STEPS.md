@@ -113,11 +113,23 @@ You chose **Supabase**: one service that covers email one-time-code login, a dat
 - [ ] In `components/IdentityProvider.tsx` (both apps): replace the on-device `persist()` step with: send OTP → verify code → set the real session. The `promptSignIn()` flow and "public browse, sign-in to act" UX stay exactly the same; you're just swapping what happens on submit.
 - [ ] Store profile (name, email, `email_alerts`, `is_admin`) in a `profiles` table; move the admin check off the client `ADMIN_EMAILS` list to a DB column / RLS policy so it can't be spoofed.
 
+### 3b-2. Rich, customizable profiles ⭐ (this is becoming a light social app)
+
+Members register with email, then build a profile that's used **everywhere** in both apps. The key idea: throughout the UI people are shown by their **display name + avatar**, never their legal name or email.
+
+- [ ] `profiles` fields (beyond the basics): `display_name` / nickname (Matthew → "Matt"), `avatar_url`, optional `full_name` (private), maybe `household`, `bio`/short blurb.
+- [ ] **Avatar upload** → Supabase **Storage** bucket; show it in chat, photo posts, RSVP, member directory.
+- [ ] **Display everywhere by `display_name` + avatar:** chat messages, photo captions/uploader, RSVP, "posted by". Store `author_id` on each row and render the *current* profile (so a name/avatar change updates retroactively) rather than copying the name onto each message.
+- [ ] Emails live in `member_emails` (see §5b), not as a single column.
+- [ ] Profile editor screen: avatar, display name, my emails (+ which is for group mail), notification prefs, directory opt-out.
+- [ ] Keep it extensible — expect to add more per-profile fields over time (this is the "social" layer).
+
 ### 3c. Database tables (suggested)
-- [ ] `profiles` — id (auth uid), name, email, email_alerts (bool), is_admin (bool).
-- [ ] `messages` — id, author_name, author_id, text, created_at. (MLR chat)
-- [ ] `rsvps` — id, household, headcount, status, bringing, created_by. (Family Fest crew)
-- [ ] `photos` — id, storage_path, caption, created_by, created_at.
+- [ ] `profiles` — id (auth uid), display_name, avatar_url, full_name (optional/private), email_alerts (bool), is_admin (bool), include_in_directory (bool).
+- [ ] `member_emails` — id, user_id, email, label, verified (bool), use_for_group (bool). (See §5b.)
+- [ ] `messages` — id, author_id (→ profiles), text, created_at. Render the current `display_name`/avatar by join, don't copy the name onto the row. (MLR chat)
+- [ ] `rsvps` — id, household, headcount, status, bringing, created_by (→ profiles). (Family Fest crew)
+- [ ] `photos` — id, storage_path, caption, created_by (→ profiles), created_at.
 - [ ] `announcements` — id, severity, title, body, created_at, created_by. (admin alerts + Drive feed both write here)
 - [ ] Add **Row Level Security**: anyone can `select` (public read); only authenticated users can `insert`; only admins can write `announcements`.
 
@@ -149,6 +161,29 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 
 ---
 
+## 5b. Member directory & "email everyone" (always-current addresses) ⭐
+
+**The problem it kills:** today mass emails go to hand-maintained lists, so people get missed, old addresses linger, and the same person shows up as 3–4 stale addresses in a thread. Since everyone logs in with their email, the app already *is* the source of truth — let members keep their own address current and let anyone compose to people by **name**, not by typing addresses.
+
+**Data model (Supabase):**
+- [ ] `member_emails` table: `id`, `user_id` (→ profiles), `email`, `label` (e.g. "personal" / "work"), `verified` (bool), `use_for_group` (bool). A person can add several; they flag which one(s) receive group email. Verify each new address with a one-time code (same OTP flow as login) before it's usable.
+- [ ] Profile screen: "My emails" — add/remove addresses, mark the one to use for group messages. (This same delegated address is what alert emails in §5 should use.)
+- [ ] `include_in_directory` / opt-out flag per member ("don't include me in member emails").
+
+**Compose flow (new screen, e.g. `/members` or a "Message" action):**
+- [ ] Multi-select recipients **by name**, plus "Select all".
+- [ ] App resolves each selected member → their delegated (`use_for_group`) verified email. No address list is ever typed or stored by the sender.
+
+**Sending — two options:**
+- [ ] **v1 (no email server):** build a `mailto:?bcc=<resolved,addresses>&subject=…&body=…` that opens the sender's own mail app pre-filled. Genuinely "from them," replies thread normally, zero setup. Caveat: URL length limits very large lists; chunk if needed.
+- [ ] **v2 (app-sent):** Supabase Edge Function + **Resend** sends the blast with **Reply-To = sender's chosen email** so replies go to them. Better for big lists/threads/tracking; needs domain SPF/DKIM/deliverability setup.
+
+**Privacy & control:**
+- [ ] Always **BCC** (or server-send) so members can't harvest each other's addresses.
+- [ ] Decide who may email everyone: any signed-in member, or admins only. Add light rate-limiting / abuse guard if it's open to all.
+
+---
+
 ## 6. Social photo sharing (Instagram / Facebook)
 
 - Already works: the Photos "Share ↗" button uses the **Web Share API** → the phone's native share sheet (Instagram, Facebook, Messages, etc.), with the Facebook group as a fallback.
@@ -174,9 +209,10 @@ Goal: update a Drive file, the app updates. The seam is already in place.
 4. Move chat, RSVP, photos to Supabase (§3c–3d) — the "real multi-user" jump.
 5. Merge Family Fest into MLR as a section (§0b) — best done here, once both share one login + DB and the FF feature set has settled.
 6. Admin alerts → email via Edge Function + Resend (§5).
-7. Google Drive feed for announcements + chef contacts (§4).
-8. Android web push (§5, optional).
-9. Custom domain / hosting polish (§7).
+7. Member directory + "email everyone" by name (§5b) — builds on profiles + verified emails.
+8. Google Drive feed for announcements + chef contacts (§4).
+9. Android web push (§5, optional).
+10. Custom domain / hosting polish (§7).
 
 ---
 
