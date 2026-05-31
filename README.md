@@ -1,11 +1,16 @@
-# MLR App
+# Muskellunge Lake Resort (MLR)
 
-A mobile-first PWA scaffold, installable to your phone's home screen.
+The year-round resort app — activities, dining, an embedded Family Fest hub, and
+resort chat — installable to your phone's home screen.
 
-> **Status:** fresh scaffold. The stack, navigation, theme, and PWA plumbing
-> are in place; the feature tabs (Activity / Profile) are placeholders waiting
-> on the real product definition. (What is "MLR"? Tell Claude and the features
-> get built out.)
+> **Status:** v1. Home, Activities, Dining & amenities, an embedded Family Fest
+> hub, and resort Chat are wired up against seed data in
+> [`lib/data.ts`](lib/data.ts). The whole app is public to browse; a name +
+> email is only requested when you act (post in chat, RSVP). An admin-only alert
+> composer and a top-of-app announcement banner are in place.
+> Several pieces are deliberately scaffolded with a clean backend seam — see
+> [CLAUDE.md](./CLAUDE.md) "Backend seams" (Drive-fed alerts, email OTP, shared
+> chat, email/Android-push alerts).
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbtheis15%2Fmlr-app)
 
