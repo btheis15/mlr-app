@@ -31,6 +31,12 @@ jobs:
         env:
           # Serves the project site at https://<user>.github.io/mlr-app/
           PAGES_BASE_PATH: /mlr-app
+          # Supabase (anon key is public-safe). Set these as repo Variables:
+          # Settings → Secrets and variables → Actions → Variables. Same values
+          # in BOTH repos so they share one project / one identity (§3). Until
+          # set, the build falls back to on-device identity (no error).
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npm run build
       - name: Disable Jekyll (so _next/ is served)
         run: touch out/.nojekyll

@@ -30,12 +30,36 @@ npm install            # .npmrc already sets legacy-peer-deps
 npm run dev            # http://localhost:3000
 ```
 
+## Activate login (Supabase email-OTP) — ~4 steps
+
+Passwordless email-code auth is **wired but dormant** until you point it at a
+Supabase project. The app builds and runs without it (falling back to on-device
+identity), so this is optional to get going but required for real, verified,
+cross-device accounts. **Use ONE project for both `mlr-app` and `family-fest`**
+so everyone is a single shared account (see [NEXT-STEPS.md](./NEXT-STEPS.md) §3).
+
+1. **Create one Supabase project** → Project Settings → API → copy the
+   **Project URL** and **anon public key**.
+2. **Run the schema:** SQL Editor → paste [`supabase/schema.sql`](supabase/schema.sql) → Run.
+3. **Set env vars** in *both* repos:
+   - Local: `cp .env.local.example .env.local` and fill in the two values.
+   - CI/Pages: repo **Settings → Secrets and variables → Actions → Variables** →
+     add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (same
+     values in both repos). The build reads these (see `.github/workflows/pages.yml`).
+4. **(Recommended) Free SMTP:** Supabase's built-in code email is rate-limited.
+   Auth → Email → plug in Resend (free 3k/mo) or Gmail SMTP so codes always land.
+
+That's it — `signInWithOtp` / `verifyOtp` run client-side, so no server is
+needed on GitHub Pages. Make yourself an admin: after signing in once, set
+`is_admin = true` on your row in the `profiles` table.
+
 ## Project layout
 
 ```
 app/            App Router routes (page.tsx per tab) + layout + globals.css
-components/     TabBar, InstallHint, shared UI
-lib/            format.ts and other pure helpers
+components/     TabBar, InstallHint, IdentityProvider, shared UI
+lib/            supabase.ts (shared client), format.ts, data.ts, types.ts
+supabase/       schema.sql — run once in the shared project
 public/         manifest.webmanifest, icon.svg
 ```
 

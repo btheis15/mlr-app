@@ -42,9 +42,18 @@ is the single source of truth for routes + labels + icons).
   for name + email when you try to *do* something (post in chat, RSVP, …): those
   actions call `promptSignIn()`, which opens a dismissible sign-in sheet.
   `useIdentity()` exposes `{ user, isAdmin, updateUser, promptSignIn, signOut }`
-  (`user` is `null` while browsing as a guest). Identity is stored in
-  `localStorage`, no verification yet; at sign-in the guest opts in/out of email
-  alerts.
+  (`user` is `null` while browsing as a guest); at sign-in the guest opts in/out
+  of email alerts.
+  - **Auth is now real (passwordless email-OTP), env-gated.** When
+    [`lib/supabase.ts`](lib/supabase.ts) finds `NEXT_PUBLIC_SUPABASE_URL` /
+    `_ANON_KEY`, `promptSignIn()` runs Supabase email-OTP (email → 6-digit code →
+    persisted session) and hydrates `user` from the shared `profiles` row — the
+    SAME account as `family-fest` (one project for both). With no env it falls
+    back to the legacy on-device (localStorage) sheet, unchanged. The public
+    `useIdentity()` API is identical in both modes, so no callers changed.
+  - `isAdmin` prefers the non-spoofable `profiles.is_admin` column, falling back
+    to the `ADMIN_EMAILS` allow-list pre-backend. See README "Activate login" +
+    [`supabase/schema.sql`](supabase/schema.sql).
 - **Admins** — allow-list of emails in [`lib/data.ts`](lib/data.ts)
   (`ADMIN_EMAILS` / `isAdmin`). Only admins see the alert composer
   ([`components/AdminAlertComposer.tsx`](components/AdminAlertComposer.tsx)).
@@ -59,7 +68,7 @@ These are built UI-first with the swap point isolated to one module each:
 | Feature | Seam today | Becomes |
 |---|---|---|
 | Google-Drive-fed announcements | [`lib/announcements.ts`](lib/announcements.ts) `getAnnouncements()` | server route reading a Drive file (API or published CSV/JSON), revalidated / webhook-pushed |
-| Email OTP / magic link | `IdentityProvider` sign-in | verify email before `setUser` |
+| Email OTP / magic link | ✅ **WIRED** — `IdentityProvider` + [`lib/supabase.ts`](lib/supabase.ts), env-gated | just add a Supabase project + env vars (README "Activate login") |
 | Shared chat | [`components/ChatView.tsx`](components/ChatView.tsx) (localStorage) | shared DB + realtime/poll |
 | Admin alerts → broadcast | [`lib/localAnnouncements.ts`](lib/localAnnouncements.ts) | server validates admin, broadcasts, **emails opted-in guests**, web-push for Android |
 | Email alerts opt-in | `user.emailAlerts` flag | mail provider (Resend/SendGrid) sends on alert |

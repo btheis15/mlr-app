@@ -60,14 +60,24 @@ export interface Announcement {
   ts: string;
 }
 
-/** The signed-in guest. Identity is name + email for now (no verification yet);
- *  a one-time-code / magic-link step is the planned next layer. */
+/** The signed-in guest. With Supabase wired (NEXT-STEPS.md §3) this is hydrated
+ *  from the shared `profiles` row after email-OTP verification; before the
+ *  backend exists it's just the name + email captured on-device. The extra
+ *  fields are optional so both paths share one shape. */
 export interface User {
+  /** Supabase auth user id (the `profiles` primary key). Absent on the
+   *  device-only fallback path. */
+  id?: string;
   name: string;
   email: string;
   /** Opt-in: email me when an admin pushes an alert. (Sending happens
    *  server-side once a mail provider is wired up.) */
   emailAlerts: boolean;
+  /** Avatar from the profile (Supabase Storage); shown wherever the user appears. */
+  avatarUrl?: string;
+  /** Admin from the `profiles.is_admin` column once the backend is live — the
+   *  authoritative, non-spoofable source (falls back to the email allow-list). */
+  isAdmin?: boolean;
 }
 
 /** A single chat/comment message, tied to the author's identity. */

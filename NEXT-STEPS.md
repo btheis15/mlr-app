@@ -23,8 +23,8 @@ Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PW
 - [x] MLR resort app: Home, Activities, Dining/amenities, Family Fest hub, Chat, Profile.
 - [x] Family Fest app: Home/countdown, Schedule + dinner chefs (call/text), Crew (RSVP + potluck), Photos (+ IG/FB share), Pay (Venmo/Zelle).
 - [x] Public to browse; **name + email required to interact**; admin role + alert banner.
-- [ ] **Passwordless login** — email one-time code + saved session (no passwords). [§3b]
-- [ ] **One shared identity** across both apps (one Supabase project / one profiles table). [§3 callout]
+- [~] **Passwordless login** — email one-time code + saved session (no passwords). [§3b] — *code wired in BOTH apps, env-gated; needs a Supabase project to go live.*
+- [~] **One shared identity** across both apps (one Supabase project / one profiles table). [§3 callout] — *client + `profiles` upsert wired; `supabase/schema.sql` ready to run.*
 - [ ] **Rich profiles** — avatar, nickname, shown everywhere; **viewable member profiles** with per-field privacy. [§3b-2]
 - [ ] **Real shared chat**, RSVP, and a **shared photo album** (cross-device). [§3c–3d]
 - [ ] **Member directory + "email everyone"** by name using each person's current address. [§5b]
@@ -138,6 +138,13 @@ All seed content is plain data; no backend needed for these. Edit, commit, push 
 
 You chose **Supabase**: one service that covers email one-time-code login, a database, realtime chat, and photo storage. Do this once and most of the "not built yet" list lights up.
 
+> **✅ Code pass 2026-05-31 (Claude):** the *client side* of §3a–§3b is done in **both** repos, env-gated so the apps still build/run with no backend:
+> - `lib/supabase.ts` — shared client (`persistSession`+`autoRefreshToken`), exports `isSupabaseConfigured`.
+> - `components/IdentityProvider.tsx` — real **email-OTP** sheet (email → 6-digit code → session), session restore on load, profile upsert/hydrate; legacy on-device sheet kept as the no-env fallback. Public `useIdentity()` API unchanged, so no callers touched.
+> - `supabase/schema.sql` — `profiles` (+ auto-create trigger, `is_admin()`), and the core `messages`/`rsvps`/`photos`/`announcements` tables with RLS.
+> - `.env.local.example` in both repos; `NEXT_PUBLIC_SUPABASE_*` added to both `pages.yml` builds (read from repo **Variables**).
+> - Build-verified in both. **Remaining (only you can do): create the project, run `schema.sql`, set the env vars, plug in SMTP (§3b), then flip `is_admin=true` on your row.** §3c–§3d (wiring chat/RSVP/photos to the DB) is the next code pass.
+
 > ### ⭐⭐ ONE identity across both apps — non-negotiable
 > A person is **one account**, whether they're in MLR or Family Fest. No double logins, no duplicate profiles. This is guaranteed by **one rule:**
 > - **Both apps point at the SAME Supabase project** — same auth, **one** `profiles` table keyed by the auth user ID. Never a per-app users table.
@@ -152,7 +159,7 @@ You chose **Supabase**: one service that covers email one-time-code login, a dat
 - [ ] Add to each app as env vars (and in Vercel/Pages build env if needed):
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] `npm install @supabase/supabase-js` in each repo; add a `lib/supabase.ts` client (point both at the same project URL/key).
+- [x] `npm install @supabase/supabase-js` in each repo; add a `lib/supabase.ts` client (point both at the same project URL/key). ✅ *done — identical client in both repos, env-gated.*
 
 > ⚠️ GitHub Pages serves **static files only** — there's no server to hold secrets. The `NEXT_PUBLIC_*` anon key is safe to ship (it's meant to be public, protected by Row Level Security). But anything needing a **secret** (Resend key, Drive service account, web-push private key, admin enforcement) needs a real server — use **Supabase Edge Functions** or move hosting to **Vercel**. See §7.
 
@@ -173,10 +180,10 @@ How it feels to a user:
 - Supabase has no native passkey support, so Face ID would mean a custom WebAuthn build — extra work, and the email-code-plus-saved-session above already delivers "easy, no password." So **skip it for v1.** Revisit only if you later want one-tap biometric sign-in; it's a nice-to-have, not required. **Not using Stytch** (avoids any paid tier).
 
 **Wiring:**
-- [ ] `npm install @supabase/supabase-js`; create `lib/supabase.ts` with `persistSession: true` + `autoRefreshToken: true` (defaults) so the session sticks.
-- [ ] In `components/IdentityProvider.tsx` (both apps): replace the on-device `persist()` with → `signInWithOtp({ email })` → verify code (`verifyOtp`) → real session. The `promptSignIn()` + "public browse, sign-in to act" UX stays identical — only what happens on submit changes.
-- [ ] On load, restore the existing Supabase session (so returning users skip the code automatically). Sign out clears it.
-- [ ] Store profile (display_name, avatar, `email_alerts`, `is_admin`) in `profiles`; move the admin check off the client `ADMIN_EMAILS` list to a DB column / RLS policy so it can't be spoofed.
+- [x] `npm install @supabase/supabase-js`; create `lib/supabase.ts` with `persistSession: true` + `autoRefreshToken: true` (defaults) so the session sticks. ✅
+- [x] In `components/IdentityProvider.tsx` (both apps): replace the on-device `persist()` with → `signInWithOtp({ email })` → verify code (`verifyOtp`) → real session. The `promptSignIn()` + "public browse, sign-in to act" UX stays identical — only what happens on submit changes. ✅
+- [x] On load, restore the existing Supabase session (so returning users skip the code automatically). Sign out clears it. ✅
+- [x] Store profile (display_name, avatar, `email_alerts`, `is_admin`) in `profiles`; move the admin check off the client `ADMIN_EMAILS` list to a DB column / RLS policy so it can't be spoofed. ✅ *schema + `is_admin` preference wired; **you** run `schema.sql` and set `is_admin=true` on your row.*
 
 ### 3b-2. Rich, customizable profiles ⭐ (this is becoming a light social app)
 
