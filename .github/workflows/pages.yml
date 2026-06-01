@@ -34,6 +34,7 @@ jobs:
           # Supabase public, client-safe values (repo Actions *variables*).
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_MEDIA_URL: ${{ vars.NEXT_PUBLIC_MEDIA_URL }}
         run: npm run build
       - name: Disable Jekyll (so _next/ is served)
         run: touch out/.nojekyll
