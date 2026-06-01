@@ -1,5 +1,6 @@
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
+import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
 
 /**
@@ -31,6 +32,9 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
+
+      {/* Pay-your-dues CTA, prominent during the run-up. */}
+      <FestDuesCallout />
 
       {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
       <HomePreFestCards />
