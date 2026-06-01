@@ -127,7 +127,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
   };
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       promptSignIn();
@@ -148,11 +148,19 @@ export function PostsView({ seed }: { seed: Post[] }) {
     setPreviewUrl(null);
     setStatus(
       alsoFacebook
-        ? "Posted ✓ — opening Facebook with your photo & caption ready…"
+        ? post.text
+          ? "Posted to the app ✓ — caption copied. In Facebook: tap the post box, paste, add your photo, then post."
+          : "Posted to the app ✓ — opening our Facebook group. Add your photo and post."
         : "Posted to the feed ✓",
     );
-    window.setTimeout(() => setStatus(null), 4000);
-    if (alsoFacebook) await shareOut(post);
+    window.setTimeout(() => setStatus(null), 7000);
+    if (alsoFacebook) {
+      // FB blocks pre-filling a post and auto-posting to a group, so make it
+      // one-paste: copy the caption (text only — the clipboard can't carry the
+      // photo too) and open the group. The photo's already in their camera roll.
+      if (post.text) navigator.clipboard.writeText(post.text).catch(() => {});
+      window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
+    }
   };
 
   const toggleLike = (id: string) => {
@@ -232,9 +240,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
             className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
           />
           <span className="text-foreground/70">
-            <span className="font-semibold text-foreground">Also post to our Facebook group</span> — two birds, one stone.
+            <span className="font-semibold text-foreground">Also share to our Facebook group</span> — post in both places.
             <span className="block text-foreground/45">
-              Facebook opens with your photo &amp; caption already filled — just pick our group and tap Post. (We remember your choice.)
+              We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post. (We remember your choice.)
             </span>
           </span>
         </label>
