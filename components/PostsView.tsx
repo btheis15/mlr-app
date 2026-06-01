@@ -73,6 +73,9 @@ interface TagRow {
 
 const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
 const BUCKET = "post-photos";
+// When set (the Mac mini's tunnel URL), media uploads go there instead of
+// Supabase Storage — no size cap. Falls back to Supabase Storage if unset.
+const MEDIA_URL = (process.env.NEXT_PUBLIC_MEDIA_URL || "").replace(/\/+$/, "");
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 /**
@@ -137,7 +140,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
     const mediaByPost: Record<string, Media[]> = {};
     for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
       (mediaByPost[m.post_id] ||= []).push({
-        url: sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
+        url: m.storage_path.startsWith("http")
+          ? m.storage_path
+          : sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
         type: m.media_type === "video" ? "video" : "image",
       });
     }
@@ -263,27 +268,39 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
-      const MAX = 50 * 1024 * 1024; // Supabase free-tier per-file cap (~50 MB)
-      const bigVideos = files.filter((f) => f.type.startsWith("video") && f.size > MAX);
-      if (bigVideos.length) {
-        setStatus(`Video too big (~50 MB max on our current plan): ${bigVideos.map((f) => f.name).join(", ")}. Trim it shorter for now — we're sorting out longer videos.`);
-        window.setTimeout(() => setStatus(null), 9000);
-        return;
+      if (!MEDIA_URL) {
+        // Supabase Storage has a ~50 MB free-tier cap; the mini doesn't.
+        const big = files.filter((f) => f.type.startsWith("video") && f.size > 50 * 1024 * 1024);
+        if (big.length) {
+          setStatus(`Video too big (~50 MB max): ${big.map((f) => f.name).join(", ")}. Trim it shorter.`);
+          window.setTimeout(() => setStatus(null), 9000);
+          return;
+        }
       }
       setPosting(true);
       try {
         // Upload everything FIRST, so a failure can never leave a half-finished
-        // post. Photos are compressed to web-friendly JPEGs (smaller + faster,
-        // and fixes HDR/HEIC display).
+        // post. Photos are compressed to web JPEGs (smaller + faster, fixes
+        // HDR/HEIC display); videos upload as-is. With MEDIA_URL set, files go
+        // to the Mac mini (no size cap) and storage_path holds the full mini
+        // URL; otherwise they go to Supabase Storage.
+        const token = MEDIA_URL ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
+        if (MEDIA_URL && !token) throw new Error("Not signed in.");
         const uploaded: { path: string; type: MediaType }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const ext = isVideo ? ((raw.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4") : "jpg";
-          const path = `${uid}/${Date.now()}-${i}.${ext}`;
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f);
-          if (upErr) throw upErr;
+          let path: string;
+          if (MEDIA_URL) {
+            path = await uploadToMini(MEDIA_URL, f, token!);
+          } else {
+            const ext = isVideo ? ((raw.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4") : "jpg";
+            const key = `${uid}/${Date.now()}-${i}.${ext}`;
+            const { error: upErr } = await supabase.storage.from(BUCKET).upload(key, f);
+            if (upErr) throw upErr;
+            path = key;
+          }
           uploaded.push({ path, type: isVideo ? "video" : "image" });
         }
         const { data: np, error: insErr } = await supabase
@@ -660,6 +677,23 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
       <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
+}
+
+async function uploadToMini(mediaUrl: string, file: File, token: string): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${mediaUrl}/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(t.slice(0, 160) || `media upload failed (${res.status})`);
+  }
+  const json = (await res.json()) as { url?: string };
+  if (!json.url) throw new Error("media server returned no URL");
+  return json.url;
 }
 
 async function compressImage(file: File): Promise<File> {
