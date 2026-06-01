@@ -13,9 +13,10 @@ function shift(iso: string, days: number): string {
 }
 
 /**
- * Testing/demo tool: "see the app as if it's this day." Sets a device-local
- * date override (DemoDateProvider) so you can preview the run-up, each day of
- * the live week, and the after/wrap state without waiting for the calendar.
+ * Testing/demo tool: "see the app as if it's this day." Pick ANY calendar date
+ * to preview how the app behaves then (countdown, the live week, the
+ * after-wrap, or any future/TBD day). Device-local override (DemoDateProvider);
+ * the fest-day buttons are just shortcuts.
  */
 export function DemoDateControl() {
   const { demoDate, setDemoDate, today } = useDemoDate();
@@ -30,10 +31,11 @@ export function DemoDateControl() {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-accent">🧪 Demo — see the app as a day</h2>
+      <h2 className="text-sm font-semibold text-accent">🧪 Demo — see the app as any day</h2>
       <p className="text-xs text-foreground/50">
-        Preview how Family Fest looks on a given day (countdown, the live week,
-        the after-wrap). This only changes what you see on this device.
+        Pick any calendar date to preview how the app looks that day — handy for
+        planning things on dates that are still TBD. Only changes what you see on
+        this device.
       </p>
       <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <p className="text-xs text-foreground/60">
@@ -43,29 +45,34 @@ export function DemoDateControl() {
           </span>
         </p>
 
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setDemoDate(runUp)} className={pill(demoDate === runUp)}>
-            Run-up
-          </button>
-          {days.map((d, i) => (
-            <button key={d} onClick={() => setDemoDate(d)} className={pill(demoDate === d)}>
-              Day {i + 1}
-            </button>
-          ))}
-          <button onClick={() => setDemoDate(after)} className={pill(demoDate === after)}>
-            After
-          </button>
-        </div>
-
-        <label className="block text-xs text-foreground/60">
-          Or pick any date
+        {/* Primary: jump to ANY date */}
+        <label className="block text-xs font-medium text-foreground/70">
+          Jump to any date
           <input
             type="date"
             value={demoDate ?? today ?? ""}
             onChange={(e) => setDemoDate(e.target.value || null)}
-            className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            className="mt-1 w-full rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
         </label>
+
+        {/* Shortcuts to the fest moments */}
+        <div className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wide text-foreground/40">Quick jumps</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setDemoDate(runUp)} className={pill(demoDate === runUp)}>
+              Run-up
+            </button>
+            {days.map((d, i) => (
+              <button key={d} onClick={() => setDemoDate(d)} className={pill(demoDate === d)}>
+                Day {i + 1}
+              </button>
+            ))}
+            <button onClick={() => setDemoDate(after)} className={pill(demoDate === after)}>
+              After
+            </button>
+          </div>
+        </div>
 
         {demoDate && (
           <button
