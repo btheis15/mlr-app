@@ -52,7 +52,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`h-full ${yellowtail.variable}`}>
-      <body className="min-h-full bg-background text-foreground antialiased">
+      <body className="min-h-full text-foreground antialiased">
         <IdentityProvider>
           <InstallHint />
           <main
