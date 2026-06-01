@@ -41,8 +41,14 @@ export function AdminAlertComposer() {
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
           Admin
         </span>
-        <h2 className="text-sm font-semibold">Push an alert</h2>
+        <h2 className="text-sm font-semibold">Push a notice</h2>
       </div>
+      <p className="text-xs text-foreground/60">
+        Shows a banner at the top of the app. It&rsquo;s <strong>in-app only — no email or
+        push is sent</strong> (reaching everyone&rsquo;s devices + emailing opted-in members
+        comes with the backend). <strong>📣 Alert</strong> = a bold, hard-to-miss banner;{" "}
+        <strong>ℹ️ Info</strong> = a quiet notice. Same delivery — only the look differs.
+      </p>
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -62,8 +68,8 @@ export function AdminAlertComposer() {
           onChange={(e) => setSeverity(e.target.value as "info" | "alert")}
           className="flex-1 rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         >
-          <option value="alert">Alert (loud)</option>
-          <option value="info">Info (quiet)</option>
+          <option value="alert">📣 Alert — loud banner</option>
+          <option value="info">ℹ️ Info — quiet notice</option>
         </select>
         <button
           type="submit"
