@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { CommitteeJoin } from "@/components/CommitteeJoin";
 import { COMMITTEES } from "@/lib/data";
 
 // Static export (GitHub Pages) needs every dynamic route enumerated up front.
@@ -27,6 +28,8 @@ export default async function CommitteePage({
         </h1>
         <p className="text-sm text-foreground/60">{committee.description}</p>
       </header>
+
+      <CommitteeJoin committee={committee} />
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Members</h2>
