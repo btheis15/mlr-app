@@ -1,0 +1,64 @@
+# MLR media server (Mac mini)
+
+Stores + serves the app's post photos/videos from your Mac mini, so we're not
+capped by cloud storage. **Login and all data stay on cloud Supabase** — this
+only holds the media *files*, and the app saves a link to each file here.
+
+Uploads are gated to signed-in family members (the Supabase token is verified
+against the cloud project). Read access is public (so anyone with the app link
+can view the photos).
+
+## Setup on the mini
+
+**1. Get the code + Node 18+.**
+```bash
+git clone https://github.com/btheis15/mlr-app.git   # or: git pull
+cd mlr-app/media-server
+npm install
+```
+
+**2. Configure.** Copy `.env.example` → `.env` and fill it in (the Supabase
+values are already filled; you'll set `PUBLIC_URL` after step 5):
+```bash
+cp .env.example .env
+```
+
+**3. Pick where files live.** Default is `./media`. To use an external drive,
+set `MEDIA_DIR=/Volumes/.../mlr` in `.env`. **Back this folder up** (Time
+Machine / rsync) — it's the only copy of the photos.
+
+**4. Run it.**
+```bash
+npm start            # foreground test
+```
+For always-on (recommended), use pm2:
+```bash
+npm i -g pm2
+pm2 start server.js --name mlr-media
+pm2 save && pm2 startup     # restart on reboot
+```
+
+**5. Put a STABLE public HTTPS tunnel in front.** Easiest free option that needs
+no domain — **Tailscale Funnel**:
+```bash
+# install Tailscale, then:
+tailscale up
+tailscale funnel 8787       # exposes it publicly over HTTPS
+```
+That prints a stable URL like `https://your-mini.your-tailnet.ts.net`.
+Put that in `.env` as `PUBLIC_URL`, then restart (`pm2 restart mlr-media`).
+*(Alternative: a **named** Cloudflare Tunnel if you own a domain — avoid the
+random `trycloudflare.com` quick tunnels, those URLs change and would break
+stored links.)*
+
+**6. Verify** from any network:
+```
+https://your-mini.your-tailnet.ts.net/health   →  {"ok":true}
+```
+
+**7. Send me that `PUBLIC_URL`** — I'll point the app at it.
+
+## Notes
+- ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
+- Photos are compressed by the app before upload; videos upload as-is (cap via `MAX_MB`).
+- Endpoints: `POST /upload` (auth, field `file`), `GET /f/<name>` (public), `GET /health`.
