@@ -41,6 +41,18 @@ export default async function CommitteePage({
                   </span>
                 )}
               </div>
+              {m.roles && m.roles.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {m.roles.map((r) => (
+                    <span
+                      key={r}
+                      className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent"
+                    >
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="mt-2 grid grid-cols-3 gap-2">
                 <a
                   href={`mailto:${m.email}`}
