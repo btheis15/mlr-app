@@ -34,8 +34,26 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [alsoFacebook, setAlsoFacebook] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
+
+  // Remember the Facebook choice so it feels like a setting, not a per-post chore.
+  useEffect(() => {
+    try {
+      setAlsoFacebook(localStorage.getItem("posts-share-fb") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const setShareFb = (v: boolean) => {
+    setAlsoFacebook(v);
+    try {
+      localStorage.setItem("posts-share-fb", v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(
     () => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)),
@@ -102,11 +120,17 @@ export function PostsView({ seed }: { seed: Post[] }) {
       file: file ?? undefined,
     };
     setAdded((prev) => [post, ...prev]);
-    if (alsoFacebook) await shareOut(post);
     setText("");
     setFile(null);
     setPreviewUrl(null);
-    setAlsoFacebook(false);
+    setStatus(
+      alsoFacebook
+        ? "Posted ✓ — opening Facebook with your photo & caption ready…"
+        : "Posted to the feed ✓",
+    );
+    window.setTimeout(() => setStatus(null), 4000);
+    // Keep the Facebook choice on (sticky) — don't reset it.
+    if (alsoFacebook) await shareOut(post);
   };
 
   const feed: FeedPost[] = [...added, ...seed];
@@ -152,6 +176,22 @@ export function PostsView({ seed }: { seed: Post[] }) {
             </button>
           </div>
         )}
+        {/* Two-birds toggle: post here AND hand it straight to the Facebook group. */}
+        <label className="flex items-start gap-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
+          <input
+            type="checkbox"
+            checked={alsoFacebook}
+            onChange={(e) => setShareFb(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
+          />
+          <span className="text-foreground/70">
+            <span className="font-semibold text-foreground">Also post to our Facebook group</span> — two birds, one stone.
+            <span className="block text-foreground/45">
+              Facebook opens with your photo &amp; caption already filled — just pick our group and tap Post. (We remember your choice.)
+            </span>
+          </span>
+        </label>
+
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -165,18 +205,15 @@ export function PostsView({ seed }: { seed: Post[] }) {
             type="submit"
             className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white"
           >
-            Post
+            {alsoFacebook ? "Post + Facebook" : "Post"}
           </button>
         </div>
-        <label className="flex items-center gap-2 text-xs text-foreground/70">
-          <input
-            type="checkbox"
-            checked={alsoFacebook}
-            onChange={(e) => setAlsoFacebook(e.target.checked)}
-            className="h-4 w-4 accent-[var(--color-primary)]"
-          />
-          Also share to the family Facebook group
-        </label>
+
+        {status && (
+          <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">
+            {status}
+          </p>
+        )}
         <p className="text-[11px] text-foreground/40">
           Posts are saved on this device for now — a shared feed everyone sees arrives with sign-in.
         </p>
