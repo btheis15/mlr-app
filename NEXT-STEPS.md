@@ -127,7 +127,7 @@ All seed content is plain data; no backend needed for these. Edit, commit, push 
 ### mlr-app → `lib/data.ts`
 - [ ] `RESORT` — name, address, **phone** (E.164, used by "Call the front desk"), front-desk hours, check-in/out, WiFi network + password.
 - [ ] `ACTIVITIES`, `DINING`, `AMENITIES` — real resort info.
-- [ ] `ADMIN_EMAILS` — who can push alerts (currently `brian@innjoybnb.com`). Add your dad / aunt as needed.
+- [ ] `ADMIN_EMAILS` — bootstrap admin allow-list (now `brian.theis15@gmail.com`). Promote others by setting `profiles.is_admin = true` in Supabase after they sign in (no code change needed).
 - [ ] `FAMILY_FEST` — dates + `highlights`. `appUrl` already points to the live Family Fest site.
 - [ ] `SEED_CHAT` — starter messages (or empty it once real chat is live).
 
