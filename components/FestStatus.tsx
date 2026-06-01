@@ -173,9 +173,13 @@ function VolunteerContact({
 }: {
   contact: { name: string; email: string; phone: string };
 }) {
+  const firstName = contact.name.split(" ")[0];
+  const body = `Hi ${firstName}, I'd like to help plan Family Fest. What can I pitch in on?`;
   const mailto = `mailto:${contact.email}?subject=${encodeURIComponent(
     "Family Fest — I'd like to help out",
-  )}`;
+  )}&body=${encodeURIComponent(body)}`;
+  // `?&body=` is the cross-platform form that pre-fills the text on both iOS & Android.
+  const smsto = `sms:${contact.phone}?&body=${encodeURIComponent(body)}`;
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <p className="text-center text-sm font-semibold text-primary">
@@ -184,7 +188,7 @@ function VolunteerContact({
       <p className="mt-0.5 text-center text-xs text-foreground/60">
         Reach out to {contact.name}
       </p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <a
           href={mailto}
           className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
@@ -196,6 +200,12 @@ function VolunteerContact({
           className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
         >
           📞 Call
+        </a>
+        <a
+          href={smsto}
+          className="rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+        >
+          💬 Text
         </a>
       </div>
     </div>

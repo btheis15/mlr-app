@@ -81,7 +81,7 @@ body {
 /* ── Family Fest section — Renaissance / parchment theme, SCOPED ──────────────
    Family Fest lives inside the resort app at /family-fest/*, but keeps its own
    look. These re-declare the SAME CSS variables Tailwind's utilities read, so
-   every bg-*/text-*/ring-*/border-* inside `.ff-section` renders parchment +
+   every bg-, text-, ring-, and border- utility inside `.ff-section` renders parchment +
    heraldry, while the rest of the resort app stays forest-green. Cinzel
    (--font-cinzel) is loaded by app/family-fest/layout.tsx and feeds
    --font-display here. Still LIGHT MODE ONLY (parchment is a light surface). */
