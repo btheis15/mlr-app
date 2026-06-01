@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Post } from "@/lib/types";
+import type { Post, PostComment } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { timeAgo } from "@/lib/format";
@@ -18,47 +18,82 @@ interface FeedPost {
   /** Seed-only gradient tile. */
   gradient?: string;
   emoji?: string;
+  /** Seed baseline like count. */
+  likes?: number;
 }
 
+const LS = {
+  shareFb: "posts-share-fb",
+  liked: "posts-liked",
+  comments: "posts-comments",
+  hidden: "posts-hidden",
+};
+
 /**
- * The shared feed — one place to post a photo and/or a note, like a small
- * Facebook feed. Each post (and the composer) can share out to the family
- * Facebook group via the phone's native share sheet. No backend yet, so posts
- * you add are device-local for the session; the swap to a shared feed (everyone
- * sees them, under one login) is a drop-in later.
+ * The shared feed — post a photo and/or note, like, comment, and (optionally)
+ * share out to the family Facebook group. No backend yet, so what you add /
+ * like / comment / hide is device-local; it becomes a real shared feed (one
+ * login, everyone sees it, with moderation) when the backend lands.
  */
 export function PostsView({ seed }: { seed: Post[] }) {
-  const { user, promptSignIn } = useIdentity();
+  const { user, isAdmin, promptSignIn } = useIdentity();
   const [added, setAdded] = useState<FeedPost[]>([]);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [alsoFacebook, setAlsoFacebook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [comments, setComments] = useState<Record<string, PostComment[]>>({});
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
 
-  // Remember the Facebook choice so it feels like a setting, not a per-post chore.
   useEffect(() => {
     try {
-      setAlsoFacebook(localStorage.getItem("posts-share-fb") === "1");
+      setAlsoFacebook(localStorage.getItem(LS.shareFb) === "1");
+      setLiked(JSON.parse(localStorage.getItem(LS.liked) || "{}"));
+      setComments(JSON.parse(localStorage.getItem(LS.comments) || "{}"));
+      setHidden(JSON.parse(localStorage.getItem(LS.hidden) || "[]"));
     } catch {
       /* ignore */
     }
+    setLoaded(true);
   }, []);
-  const setShareFb = (v: boolean) => {
-    setAlsoFacebook(v);
+
+  const persist = (key: string, value: unknown) => {
     try {
-      localStorage.setItem("posts-share-fb", v ? "1" : "0");
+      localStorage.setItem(key, JSON.stringify(value));
     } catch {
       /* ignore */
     }
   };
+  useEffect(() => {
+    if (loaded) persist(LS.liked, liked);
+  }, [liked, loaded]);
+  useEffect(() => {
+    if (loaded) persist(LS.comments, comments);
+  }, [comments, loaded]);
+  useEffect(() => {
+    if (loaded) persist(LS.hidden, hidden);
+  }, [hidden, loaded]);
 
   useEffect(
     () => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)),
     [],
   );
+
+  const setShareFb = (v: boolean) => {
+    setAlsoFacebook(v);
+    try {
+      localStorage.setItem(LS.shareFb, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
   const pickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -70,35 +105,23 @@ export function PostsView({ seed }: { seed: Post[] }) {
     e.target.value = "";
   };
 
-  /**
-   * Share a post out via the OS share sheet (Facebook app, Messages, etc.).
-   * Falls back to opening the family Facebook group where file sharing isn't
-   * supported. (Auto-posting straight into a FB group needs Meta app review.)
-   */
   const shareOut = async (p: { text?: string; file?: File }) => {
-    const nav = navigator as Navigator & {
-      canShare?: (d?: ShareData) => boolean;
-    };
-    const data: ShareData = {
-      title: FAMILY_FEST.shortName,
-      text: p.text || FAMILY_FEST.shortName,
-    };
+    const nav = navigator as Navigator & { canShare?: (d?: ShareData) => boolean };
+    const data: ShareData = { title: FAMILY_FEST.shortName, text: p.text || FAMILY_FEST.shortName };
     if (p.file) data.files = [p.file];
     if (nav.share && nav.canShare?.(data)) {
       try {
         await nav.share(data);
         return;
       } catch {
-        return; // cancelled
+        return;
       }
     }
-    // Fallback (e.g. desktop / no share sheet): copy the caption so it's ready
-    // to paste, then open the group to post.
     if (p.text) {
       try {
         await navigator.clipboard.writeText(p.text);
       } catch {
-        /* clipboard unavailable */
+        /* ignore */
       }
     }
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
@@ -129,11 +152,35 @@ export function PostsView({ seed }: { seed: Post[] }) {
         : "Posted to the feed ✓",
     );
     window.setTimeout(() => setStatus(null), 4000);
-    // Keep the Facebook choice on (sticky) — don't reset it.
     if (alsoFacebook) await shareOut(post);
   };
 
-  const feed: FeedPost[] = [...added, ...seed];
+  const toggleLike = (id: string) => {
+    if (!user) return promptSignIn();
+    setLiked((p) => ({ ...p, [id]: !p[id] }));
+  };
+  const addComment = (id: string, body: string) => {
+    if (!user) return promptSignIn();
+    const t = body.trim();
+    if (!t) return;
+    const c: PostComment = { id: `c-${Date.now()}`, author: user.name, text: t, ts: new Date().toISOString() };
+    setComments((p) => ({ ...p, [id]: [...(p[id] || []), c] }));
+  };
+  const removeComment = (postId: string, cid: string) =>
+    setComments((p) => ({ ...p, [postId]: (p[postId] || []).filter((c) => c.id !== cid) }));
+
+  const canDeletePost = (p: FeedPost, isAdded: boolean) =>
+    isAdmin || (isAdded && !!user && p.author === user.name);
+  const deletePost = (p: FeedPost, isAdded: boolean) => {
+    if (!window.confirm("Delete this post?")) return;
+    if (isAdded) setAdded((prev) => prev.filter((x) => x.id !== p.id));
+    else setHidden((prev) => [...prev, p.id]);
+  };
+
+  const feed: { post: FeedPost; isAdded: boolean }[] = [
+    ...added.map((p) => ({ post: p, isAdded: true })),
+    ...seed.filter((s) => !hidden.includes(s.id)).map((p) => ({ post: p as FeedPost, isAdded: false })),
+  ];
 
   return (
     <div className="space-y-5 pt-2">
@@ -176,7 +223,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
             </button>
           </div>
         )}
-        {/* Two-birds toggle: post here AND hand it straight to the Facebook group. */}
+
         <label className="flex items-start gap-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
           <input
             type="checkbox"
@@ -201,10 +248,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
             📷 Photo
           </button>
           <input ref={inputRef} type="file" accept="image/*" onChange={pickPhoto} className="hidden" />
-          <button
-            type="submit"
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white"
-          >
+          <button type="submit" className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white">
             {alsoFacebook ? "Post + Facebook" : "Post"}
           </button>
         </div>
@@ -215,45 +259,117 @@ export function PostsView({ seed }: { seed: Post[] }) {
           </p>
         )}
         <p className="text-[11px] text-foreground/40">
-          Posts are saved on this device for now — a shared feed everyone sees arrives with sign-in.
+          Posts, likes &amp; comments are saved on this device for now — a shared feed everyone sees arrives with sign-in.
         </p>
       </form>
 
       <ul className="space-y-3">
-        {feed.map((p) => (
-          <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
-            <div className="flex items-center gap-2 px-4 pt-3">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                {initials(p.author)}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{p.author}</p>
-                <p className="text-[11px] text-foreground/40">{timeAgo(p.ts)}</p>
+        {feed.map(({ post: p, isAdded }) => {
+          const likeCount = (p.likes ?? 0) + (liked[p.id] ? 1 : 0);
+          const postComments = comments[p.id] ?? [];
+          return (
+            <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+              <div className="flex items-center gap-2 px-4 pt-3">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                  {initials(p.author)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{p.author}</p>
+                  <p className="text-[11px] text-foreground/40">{timeAgo(p.ts)}</p>
+                </div>
+                {canDeletePost(p, isAdded) && (
+                  <button
+                    onClick={() => deletePost(p, isAdded)}
+                    className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary"
+                    aria-label="Delete post"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
-            </div>
-            {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
-            {p.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.imageUrl} alt="" className="mt-3 w-full object-cover" />
-            ) : p.gradient ? (
-              <div
-                className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}
-              >
-                {p.emoji}
+
+              {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
+              {p.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.imageUrl} alt="" className="mt-3 w-full object-cover" />
+              ) : p.gradient ? (
+                <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>
+                  {p.emoji}
+                </div>
+              ) : null}
+
+              {/* actions */}
+              <div className="flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
+                <button
+                  onClick={() => toggleLike(p.id)}
+                  className={`flex items-center gap-1 rounded-full px-3 py-1.5 font-medium ${
+                    liked[p.id] ? "text-primary" : "text-foreground/55"
+                  }`}
+                  aria-pressed={!!liked[p.id]}
+                >
+                  {liked[p.id] ? "❤️" : "🤍"} {likeCount > 0 ? likeCount : "Like"}
+                </button>
+                <span className="flex items-center gap-1 rounded-full px-3 py-1.5 text-foreground/55">
+                  💬 {postComments.length > 0 ? postComments.length : "Comment"}
+                </span>
+                <button
+                  onClick={() => shareOut(p)}
+                  className="ml-auto rounded-full px-3 py-1.5 font-medium text-primary"
+                >
+                  Share ↗
+                </button>
               </div>
-            ) : null}
-            <div className="flex justify-end px-4 py-2">
-              <button
-                onClick={() => shareOut(p)}
-                className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
-              >
-                Share to Facebook ↗
-              </button>
-            </div>
-          </li>
-        ))}
+
+              {/* comments */}
+              {(postComments.length > 0 || user) && (
+                <div className="space-y-2 border-t border-border px-4 py-3">
+                  {postComments.map((c) => (
+                    <div key={c.id} className="flex items-start gap-2 text-xs">
+                      <span className="font-semibold">{c.author}</span>
+                      <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
+                      {(isAdmin || (user && c.author === user.name)) && (
+                        <button
+                          onClick={() => removeComment(p.id, c.id)}
+                          className="shrink-0 text-foreground/30 hover:text-primary"
+                          aria-label="Delete comment"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <CommentBox onAdd={(t) => addComment(p.id, t)} />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
+  );
+}
+
+function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
+  const [v, setV] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onAdd(v);
+        setV("");
+      }}
+      className="flex gap-2"
+    >
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        placeholder="Add a comment…"
+        className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+      />
+      <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
+        Send
+      </button>
+    </form>
   );
 }
 
