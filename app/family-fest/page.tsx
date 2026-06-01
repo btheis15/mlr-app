@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FestStatus } from "@/components/FestStatus";
 import { FestWeek } from "@/components/FestWeek";
+import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { FAMILY_FEST, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
@@ -30,6 +31,9 @@ export default function FamilyFestPage() {
           {formatDateLong(FAMILY_FEST.startDate)} – {formatDateLong(FAMILY_FEST.endDate)}
         </p>
       </header>
+
+      {/* Pay-your-dues CTA, prominent during the run-up. */}
+      <FestDuesCallout />
 
       <FestStatus
         startDate={FAMILY_FEST.startDate}
