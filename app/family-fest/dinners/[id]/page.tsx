@@ -19,7 +19,7 @@ export default async function DinnerDetailPage({
 
   return (
     <div className="space-y-5 pt-1">
-      <BackLink href="/family-fest/dinners" label="Dinners" />
+      <BackLink href="/family-fest" label="Family Fest" />
 
       <header className="space-y-1">
         <p className="text-xs text-foreground/50">{formatDateLong(dinner.day)}</p>

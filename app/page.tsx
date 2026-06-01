@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { FAMILY_FEST, RESORT } from "@/lib/data";
+import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
- * headline, the front-desk call. Navigation lives in the bottom tab bar
- * (Activities, Family Fest, Chat, Profile), so the home doesn't repeat it as
- * cards; the one link here is Dining, which isn't a tab.
+ * headline, the front-desk call. The bottom tab bar (Photos, Family Fest, Chat,
+ * Profile) handles the rest; Activities & Dining aren't tabs, so they get the
+ * two quick links here.
  */
 export default function HomePage() {
   return (
@@ -30,28 +30,32 @@ export default function HomePage() {
         tagline={FAMILY_FEST.tagline}
         startDate={FAMILY_FEST.startDate}
         endDate={FAMILY_FEST.endDate}
-        highlights={FAMILY_FEST.highlights}
+        schedule={SCHEDULE}
       />
 
-      {/* Dining is the one spot that isn't a bottom tab, so it gets a home link.
-          (Activities / Family Fest / Chat are tabs — no duplicate cards.) */}
-      <Link
-        href="/dining"
-        className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
-      >
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-campfire/12 text-2xl text-campfire">
-          🍔
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Dining &amp; amenities</h3>
-          <p className="text-xs text-foreground/60">
-            Where &amp; when to eat, WiFi, check-in &amp; more.
-          </p>
-        </div>
-        <span className="ml-auto text-foreground/30" aria-hidden>
-          ›
-        </span>
-      </Link>
+      {/* Activities & Dining aren't bottom tabs, so they get quick links here. */}
+      <section className="grid grid-cols-2 gap-3">
+        <Link
+          href="/activities"
+          className="rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        >
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-lake/12 text-2xl text-lake">
+            🛶
+          </span>
+          <h3 className="mt-2 text-sm font-semibold">Activities</h3>
+          <p className="mt-0.5 text-xs text-foreground/60">Boats, fishing, trails &amp; more.</p>
+        </Link>
+        <Link
+          href="/dining"
+          className="rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        >
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-campfire/12 text-2xl text-campfire">
+            🍔
+          </span>
+          <h3 className="mt-2 text-sm font-semibold">Dining</h3>
+          <p className="mt-0.5 text-xs text-foreground/60">Where &amp; when to eat, WiFi, check-in.</p>
+        </Link>
+      </section>
 
       <a
         href={`tel:${RESORT.phone}`}

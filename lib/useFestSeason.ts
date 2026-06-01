@@ -1,26 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { getFestSeason, type FestSeason } from "./festSeason";
+import { useDemoDate } from "./DemoDateProvider";
 
 /**
- * Client hook for the Family Fest season. Returns `null` until mounted so the
- * server render and the first client paint match (no hydration mismatch on the
- * date-sensitive phase); the real value lands right after mount. Re-checks
- * hourly so a long-open tab rolls into — or out of — the live week on its own.
+ * Client hook for the Family Fest season. Reads the effective "now" from the
+ * DemoDateProvider (the real date, or a simulated one set in Profile), so the
+ * season is correct on the static Pages build and Vercel, and respects the
+ * "see as if it's this day" demo override. Returns `null` until mounted so the
+ * server render and first client paint match (no hydration mismatch).
  */
 export function useFestSeason(
   startDate: string,
   endDate: string,
 ): FestSeason | null {
-  const [season, setSeason] = useState<FestSeason | null>(null);
-
-  useEffect(() => {
-    const update = () => setSeason(getFestSeason(startDate, endDate));
-    update();
-    const id = setInterval(update, 60 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [startDate, endDate]);
-
-  return season;
+  const { now } = useDemoDate();
+  if (!now) return null;
+  return getFestSeason(startDate, endDate, now);
 }

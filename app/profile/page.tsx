@@ -4,6 +4,7 @@ import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { useIdentity } from "@/components/IdentityProvider";
 import { READ_ONLY } from "@/lib/features";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
+import { DemoDateControl } from "@/components/DemoDateControl";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -35,6 +36,8 @@ export default function ProfilePage() {
             <span className="text-lg">🔔</span> Alerts &amp; RSVP — once sign-in is live
           </li>
         </ul>
+
+        <DemoDateControl />
       </div>
     );
   }
