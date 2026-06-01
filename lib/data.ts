@@ -11,6 +11,7 @@ import type {
   Activity,
   Amenity,
   ChatMessage,
+  Committee,
   CrewMember,
   DiningSpot,
   Dinner,
@@ -20,6 +21,48 @@ import type {
   Payee,
   ScheduleEvent,
 } from "./types";
+
+/**
+ * Resort committees — year-round volunteer groups. Members below are
+ * ILLUSTRATIVE placeholders (made-up names + example.com emails + 555 phones)
+ * to show how the rosters read; swap in the real people later. Phones are E.164
+ * so tel:/sms: work everywhere.
+ */
+export const COMMITTEES: Committee[] = [
+  {
+    slug: "resort-maintenance",
+    name: "Resort Maintenance",
+    emoji: "🛠️",
+    description: "Cabin upkeep, docks, mowing, and getting the grounds ready each season.",
+    members: [
+      { name: "Dale Whitaker", role: "Lead", email: "dale.whitaker@example.com", phone: "+17155550201" },
+      { name: "Marie Olson", email: "marie.olson@example.com", phone: "+17155550202" },
+      { name: "Greg Sandberg", email: "greg.sandberg@example.com", phone: "+17155550203" },
+    ],
+  },
+  {
+    slug: "family-fest",
+    name: "Family Fest",
+    emoji: "🎉",
+    description: "Plans the week — schedule, meals & dinners, and activities for the whole clan.",
+    members: [
+      { name: "Cathy Hofer", role: "Lead", email: "cathy.hofer@example.com", phone: "+17155550211" },
+      { name: "Brian Theis", email: "brian.theis15@gmail.com", phone: "+12248005389" },
+      { name: "Susan Park", email: "susan.park@example.com", phone: "+17155550212" },
+    ],
+  },
+  {
+    slug: "beautification",
+    name: "Beautification",
+    emoji: "🌲",
+    description: "Planting, flower beds, trails, and keeping the resort looking its best.",
+    members: [
+      { name: "Linda Brauer", role: "Lead", email: "linda.brauer@example.com", phone: "+17155550221" },
+      { name: "Tom Becker", email: "tom.becker@example.com", phone: "+17155550222" },
+      { name: "Janet Cole", email: "janet.cole@example.com", phone: "+17155550223" },
+    ],
+  },
+];
 
 /**
  * Admins can push alerts to everyone. For now this is a hard-coded allow-list
