@@ -379,7 +379,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
           .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], tags: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
       ];
 
-  const tagMembers = members.filter((m) => m.id !== uid && m.name.toLowerCase().includes(tagQuery.toLowerCase()));
+  // Friendly search: empty shows everyone (including you); otherwise match a
+  // substring or any word that starts with what you've typed ("b" → all B names).
+  const tagMembers = members.filter((m) => {
+    const q = tagQuery.trim().toLowerCase();
+    if (!q) return true;
+    const n = m.name.toLowerCase();
+    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+  });
 
   return (
     <div className="space-y-5 pt-2">
@@ -400,17 +407,26 @@ export function PostsView({ seed }: { seed: Post[] }) {
           className="w-full resize-none rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         />
         {previews.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="grid grid-cols-3 gap-2">
             {previews.map((m, i) => (
-              <div key={i} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
+              <div key={i} className="relative aspect-square overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
                 {m.type === "video" ? (
-                  <video src={m.url} className="h-full w-full object-cover" muted />
+                  <video src={m.url} className="h-full w-full object-cover" muted playsInline />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={m.url} alt="" className="h-full w-full object-cover" />
                 )}
-                {m.type === "video" && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] text-white">▶ video</span>}
-                <button type="button" onClick={() => removePreview(i)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 px-1.5 text-xs font-medium text-white" aria-label="Remove">×</button>
+                {m.type === "video" && (
+                  <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">▶ Video</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removePreview(i)}
+                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white"
+                  aria-label="Remove"
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>
@@ -450,7 +466,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                         onClick={() => toggleTag(m.id)}
                         className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs ${on ? "bg-primary/10 text-primary" : "text-foreground/70"}`}
                       >
-                        <span>{m.name}</span>
+                        <span>{m.name}{m.id === uid ? " (you)" : ""}</span>
                         <span>{on ? "✓" : "+"}</span>
                       </button>
                     );
@@ -602,9 +618,21 @@ function MediaCarousel({ media }: { media: Media[] }) {
 }
 
 function MediaItem({ m }: { m: Media }) {
-  if (m.type === "video") return <video src={m.url} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={m.url} alt="" className="w-full object-cover" />;
+  // Uniform square frame so single posts and carousels line up cleanly. Photos
+  // fill (cropped); videos fit on black (never cropped).
+  if (m.type === "video") {
+    return (
+      <div className="aspect-square w-full bg-black">
+        <video src={m.url} controls playsInline className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+  return (
+    <div className="aspect-square w-full bg-black/5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={m.url} alt="" className="h-full w-full object-cover" />
+    </div>
+  );
 }
 
 function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
