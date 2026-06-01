@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FestStatus } from "@/components/FestStatus";
 import { FestWeek } from "@/components/FestWeek";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
+import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FAMILY_FEST, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
@@ -42,6 +43,9 @@ export default function FamilyFestPage() {
         dinners={DINNERS}
         volunteerContact={FAMILY_FEST.organizer}
       />
+
+      {/* During the week, committees stay reachable under the daily summary. */}
+      <FestCommitteesLink />
 
       <FestWeek
         events={SCHEDULE}
