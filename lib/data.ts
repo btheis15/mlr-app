@@ -86,11 +86,13 @@ export const COMMITTEES: Committee[] = [
 ];
 
 /**
- * Admins can push alerts to everyone. For now this is a hard-coded allow-list
- * matched by email; when there's a backend, this check moves server-side (and
- * the role lives on the user record) so it can't be spoofed from the client.
+ * Bootstrap admin allow-list. The email(s) here are ALWAYS admin (so there's an
+ * admin from day one, before anyone's promoted). Everyone else becomes admin by
+ * setting `profiles.is_admin = true` in Supabase after they've signed in — see
+ * IdentityProvider (`isAdmin = profile.is_admin || this list`). Keep it tiny;
+ * it's the only admin source outside the database.
  */
-export const ADMIN_EMAILS: string[] = ["brian@innjoybnb.com"];
+export const ADMIN_EMAILS: string[] = ["brian.theis15@gmail.com"];
 
 export function isAdmin(email: string | undefined): boolean {
   return !!email && ADMIN_EMAILS.includes(email.toLowerCase());
