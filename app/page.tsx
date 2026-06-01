@@ -39,14 +39,6 @@ export default function HomePage() {
       {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
       <HomePreFestCards />
 
-      <a
-        href={`tel:${RESORT.phone}`}
-        className="block rounded-2xl bg-primary p-4 text-center text-sm font-semibold text-white shadow-sm"
-      >
-        📞 Call the front desk
-        <span className="block text-xs font-normal text-white/70">{RESORT.frontDesk}</span>
-      </a>
-
       {/* Heritage, condensed to a single line. */}
       <p className="text-center text-[11px] italic text-foreground/40">
         Est. {RESORT.est} · {RESORT.founders} · {RESORT.town}
