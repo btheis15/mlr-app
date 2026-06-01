@@ -36,9 +36,25 @@
   --font-script: var(--font-yellowtail), "Brush Script MT", cursive;
 }
 
+/* Northwoods ambient backdrop. A subtle, light-mode-only atmosphere instead of
+   flat white: a faint misty lake-blue glow up top + a soft pine-green grounding
+   at the bottom over a birch→sage vertical wash. It rides on `html` (the base
+   --color-background still feeds Tailwind's bg-background utilities; this only
+   paints the page canvas) so cards/surfaces still read crisp and white on top.
+   LIGHT MODE ONLY — these are low-opacity tints, never a dark wash. */
+html {
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(120% 75% at 50% -5%, rgba(14, 116, 144, 0.06), transparent 60%),
+    radial-gradient(125% 70% at 50% 108%, rgba(21, 80, 58, 0.1), transparent 60%),
+    linear-gradient(176deg, #f6f7f3 0%, #eef1ea 55%, #e7ece3 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100%;
+}
+
 html,
 body {
-  background: var(--color-background);
   color: var(--color-foreground);
   color-scheme: light; /* form controls, scrollbars render light */
   /* Slightly larger base so the whole app (rem-based text + spacing) reads
@@ -50,6 +66,11 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Body is transparent so the html ambient shows through. */
+body {
+  background: transparent;
 }
 
 /* Opt-in script wordmark (the "Muskellunge Lake" hand-script on the logo). */
@@ -72,7 +93,14 @@ body {
   --color-primary: #8b2e2e; /* heraldic wine (gules) */
   --color-accent: #1e3a8a; /* heraldic azure */
   --font-display: var(--font-cinzel), Georgia, "Iowan Old Style", "Times New Roman", serif;
-  background: var(--color-background);
+  /* Aged-vellum atmosphere: a faint heraldic-wine glow up top + a soft sepia
+     vignette at the bottom over a warm parchment wash — moodier than flat
+     parchment, still light so the vellum cards pop. */
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, rgba(139, 46, 46, 0.05), transparent 55%),
+    radial-gradient(125% 90% at 50% 100%, rgba(58, 42, 24, 0.11), transparent 55%),
+    linear-gradient(180deg, #f7efdb 0%, #ece0c2 100%);
   color: var(--color-foreground);
 }
 
