@@ -175,6 +175,9 @@ export interface CommitteeMember {
   name: string;
   /** e.g. "Lead". Omitted for regular members. */
   role?: string;
+  /** Areas this person owns, e.g. ["Meals", "Scavenger Hunt"]. Used on the
+   *  busier committees (Family Fest) where people wear several hats. */
+  roles?: string[];
   email: string;
   /** E.164 phone, e.g. "+17155550201". */
   phone: string;
