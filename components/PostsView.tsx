@@ -7,16 +7,21 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { timeAgo } from "@/lib/format";
 
+type MediaType = "image" | "video";
+interface Media {
+  url: string;
+  type: MediaType;
+}
+
 interface FeedPost {
   id: string;
   author: string;
-  authorId?: string; // DB posts — for author/admin delete
+  authorId?: string;
   ts: string;
   text?: string;
-  imageUrl?: string; // public URL (DB) or object URL (local fallback)
-  file?: File; // local fallback only (for the share sheet)
-  gradient?: string; // seed only
-  emoji?: string; // seed only
+  media: Media[];
+  gradient?: string; // seed only (local fallback)
+  emoji?: string;
 }
 
 interface CommentItem {
@@ -41,6 +46,12 @@ interface CommentRow {
   created_at: string;
   author_id: string;
 }
+interface MediaRow {
+  post_id: string;
+  storage_path: string;
+  media_type: string;
+  position: number;
+}
 interface ReactionRow {
   post_id: string;
   user_id: string;
@@ -49,14 +60,13 @@ interface ReactionRow {
 
 const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
 const BUCKET = "post-photos";
-/** Tappable reactions — Unicode, so each phone renders its own native emoji. */
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 /**
- * The shared feed. With the backend configured it's fully cross-device: posts,
- * photos (Storage), comments, and emoji reactions all live server-side with a
- * realtime subscription, so everyone with the link sees the same feed live.
- * Falls back to the original device-local posts when there's no backend.
+ * The shared feed — a little family social space. Posts carry multiple photos
+ * and videos (swipeable carousel), with shared comments and emoji reactions,
+ * all live via Supabase. Author names are resolved from a separate profiles
+ * query (no PostgREST embed) so an ambiguous relationship can't blank the feed.
  */
 export function PostsView({ seed }: { seed: Post[] }) {
   const { user, isAdmin, promptSignIn } = useIdentity();
@@ -70,8 +80,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [added, setAdded] = useState<FeedPost[]>([]); // local fallback only
 
   const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<Media[]>([]);
   const [alsoFacebook, setAlsoFacebook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
@@ -82,61 +92,52 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
 
-  // ---- Shared feed (posts + comments + reactions) from the database ----
+  // ---- Shared feed (posts + media + comments + reactions) from the database ----
   const refetch = async () => {
     const sb = supabase;
     if (!sb) return;
-    const [postsRes, commentsRes, reactionsRes, profilesRes] = await Promise.all([
-      sb
-        .from("posts")
-        .select("id, text, image_path, created_at, author_id")
-        .order("created_at", { ascending: false }),
-      sb
-        .from("post_comments")
-        .select("id, post_id, text, created_at, author_id")
-        .order("created_at", { ascending: true }),
+    const [postsRes, mediaRes, commentsRes, reactionsRes, profilesRes] = await Promise.all([
+      sb.from("posts").select("id, text, image_path, created_at, author_id").order("created_at", { ascending: false }),
+      sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
+      sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("profiles").select("id, display_name"),
     ]);
 
-    // Resolve author names client-side (no PostgREST embed, so a missing
-    // relationship in the schema cache can never blank the feed).
     const names = new Map<string, string>();
     for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null }[]) {
       names.set(p.id, p.display_name?.trim() || "Member");
     }
     const nameOf = (id: string) => names.get(id) || "Member";
 
+    const mediaByPost: Record<string, Media[]> = {};
+    for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
+      (mediaByPost[m.post_id] ||= []).push({
+        url: sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
+        type: m.media_type === "video" ? "video" : "image",
+      });
+    }
+
     const postRows = (postsRes.data ?? []) as unknown as PostRow[];
     setDbPosts(
-      postRows.map((r) => ({
-        id: r.id,
-        author: nameOf(r.author_id),
-        authorId: r.author_id,
-        ts: r.created_at,
-        text: r.text || undefined,
-        imageUrl: r.image_path
-          ? sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl
-          : undefined,
-      })),
+      postRows.map((r) => {
+        const media = mediaByPost[r.id]?.length
+          ? mediaByPost[r.id]
+          : r.image_path
+            ? [{ url: sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl, type: "image" as const }]
+            : [];
+        return { id: r.id, author: nameOf(r.author_id), authorId: r.author_id, ts: r.created_at, text: r.text || undefined, media };
+      }),
     );
 
-    const commentRows = (commentsRes.data ?? []) as unknown as CommentRow[];
     const byPost: Record<string, CommentItem[]> = {};
-    for (const c of commentRows) {
-      (byPost[c.post_id] ||= []).push({
-        id: c.id,
-        author: nameOf(c.author_id),
-        authorId: c.author_id,
-        text: c.text,
-        ts: c.created_at,
-      });
+    for (const c of (commentsRes.data ?? []) as unknown as CommentRow[]) {
+      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at });
     }
     setDbComments(byPost);
 
-    const reactionRows = (reactionsRes.data ?? []) as unknown as ReactionRow[];
     const reByPost: Record<string, ReactionRow[]> = {};
-    for (const r of reactionRows) (reByPost[r.post_id] ||= []).push(r);
+    for (const r of (reactionsRes.data ?? []) as unknown as ReactionRow[]) (reByPost[r.post_id] ||= []).push(r);
     setDbReactions(reByPost);
 
     setFeedLoaded(true);
@@ -153,6 +154,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     const ch = sb
       .channel("posts-feed")
       .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, () => refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, () => refetch())
       .subscribe();
@@ -162,7 +164,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- device-local bits: FB preference + hidden seed posts (fallback) ----
   useEffect(() => {
     try {
       setAlsoFacebook(localStorage.getItem(LS.shareFb) === "1");
@@ -173,9 +174,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     setLoaded(true);
   }, []);
   useEffect(() => {
-    if (loaded) {
-      try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ }
-    }
+    if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
   useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
@@ -184,25 +183,33 @@ export function PostsView({ seed }: { seed: Post[] }) {
     try { localStorage.setItem(LS.shareFb, v ? "1" : "0"); } catch { /* ignore */ }
   };
 
-  const pickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const url = URL.createObjectURL(f);
-    createdUrls.current.push(url);
-    setFile(f);
-    setPreviewUrl(url);
+  const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
+    const nf = [...files];
+    const np = [...previews];
+    for (const f of Array.from(list)) {
+      const url = URL.createObjectURL(f);
+      createdUrls.current.push(url);
+      nf.push(f);
+      np.push({ url, type: f.type.startsWith("video") ? "video" : "image" });
+    }
+    setFiles(nf);
+    setPreviews(np);
     e.target.value = "";
+  };
+  const removePreview = (i: number) => {
+    setFiles(files.filter((_, idx) => idx !== i));
+    setPreviews(previews.filter((_, idx) => idx !== i));
   };
 
   const openFacebook = (caption?: string) => {
     if (caption) navigator.clipboard.writeText(caption).catch(() => {});
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
   };
-
-  const shareOut = async (p: { text?: string; file?: File }) => {
+  const shareOut = async (p: FeedPost) => {
     const nav = navigator as Navigator & { canShare?: (d?: ShareData) => boolean };
     const data: ShareData = { title: FAMILY_FEST.shortName, text: p.text || FAMILY_FEST.shortName };
-    if (p.file) data.files = [p.file];
     if (nav.share && nav.canShare?.(data)) {
       try { await nav.share(data); return; } catch { return; }
     }
@@ -212,27 +219,35 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { promptSignIn(); return; }
-    if (!text.trim() && !file) return;
+    if (!text.trim() && files.length === 0) return;
     const caption = text.trim();
 
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
       setPosting(true);
       try {
-        let imagePath: string | null = null;
-        if (file) {
-          const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-          const path = `${uid}/${Date.now()}.${ext}`;
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
-          if (upErr) throw upErr;
-          imagePath = path;
-        }
-        const { error: insErr } = await supabase
+        const { data: np, error: insErr } = await supabase
           .from("posts")
-          .insert({ author_id: uid, text: caption || null, image_path: imagePath });
+          .insert({ author_id: uid, text: caption || null })
+          .select("id")
+          .single();
         if (insErr) throw insErr;
+        const postId = (np as { id: string } | null)?.id;
+        if (!postId) throw new Error("Could not create the post.");
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const isVideo = f.type.startsWith("video");
+          const ext = (f.name.split(".").pop() || (isVideo ? "mp4" : "jpg")).toLowerCase().replace(/[^a-z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
+          const path = `${uid}/${Date.now()}-${i}.${ext}`;
+          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f);
+          if (upErr) throw upErr;
+          const { error: medErr } = await supabase
+            .from("post_media")
+            .insert({ post_id: postId, storage_path: path, media_type: isVideo ? "video" : "image", position: i });
+          if (medErr) throw medErr;
+        }
         await refetch();
-        setText(""); setFile(null); setPreviewUrl(null);
+        setText(""); setFiles([]); setPreviews([]);
         if (alsoFacebook) openFacebook(caption);
         setStatus(
           alsoFacebook
@@ -256,19 +271,16 @@ export function PostsView({ seed }: { seed: Post[] }) {
       author: user.name,
       ts: new Date().toISOString(),
       text: caption || undefined,
-      imageUrl: previewUrl ?? undefined,
-      file: file ?? undefined,
+      media: previews,
     };
     setAdded((prev) => [post, ...prev]);
-    setText(""); setFile(null); setPreviewUrl(null);
+    setText(""); setFiles([]); setPreviews([]);
     if (alsoFacebook) openFacebook(caption);
     setStatus(alsoFacebook ? "Posted ✓ — caption copied for Facebook." : "Posted to the feed ✓");
     window.setTimeout(() => setStatus(null), 7000);
   };
 
-  // ---- reactions (DB) ----
-  const myReaction = (postId: string) =>
-    dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
+  const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
   const reactionSummary = (postId: string) => {
     const counts: Record<string, number> = {};
     for (const r of dbReactions[postId] ?? []) counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
@@ -280,14 +292,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (myReaction(postId) === emoji) {
       await supabase.from("post_reactions").delete().eq("post_id", postId).eq("user_id", uid);
     } else {
-      await supabase
-        .from("post_reactions")
-        .upsert({ post_id: postId, user_id: uid, emoji }, { onConflict: "post_id,user_id" });
+      await supabase.from("post_reactions").upsert({ post_id: postId, user_id: uid, emoji }, { onConflict: "post_id,user_id" });
     }
     await refetch();
   };
 
-  // ---- comments (DB) ----
   const addComment = async (postId: string, body: string) => {
     const t = body.trim();
     if (!t) return;
@@ -302,10 +311,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
   };
 
   const canDeletePost = (p: FeedPost, isAdded: boolean) =>
-    configured
-      ? isAdmin || (!!uid && p.authorId === uid)
-      : isAdmin || (isAdded && !!user && p.author === user.name);
-
+    configured ? isAdmin || (!!uid && p.authorId === uid) : isAdmin || (isAdded && !!user && p.author === user.name);
   const deletePost = async (p: FeedPost, isAdded: boolean) => {
     if (!window.confirm("Delete this post?")) return;
     if (configured && supabase) {
@@ -321,7 +327,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
     ? dbPosts.map((p) => ({ post: p, isAdded: false }))
     : [
         ...added.map((p) => ({ post: p, isAdded: true })),
-        ...seed.filter((s) => !hidden.includes(s.id)).map((p) => ({ post: p as FeedPost, isAdded: false })),
+        ...seed
+          .filter((s) => !hidden.includes(s.id))
+          .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
       ];
 
   return (
@@ -329,14 +337,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
         <p className="text-sm text-foreground/60">
-          Share a photo or a note with everyone — and out to the family Facebook group.
+          Share photos &amp; videos with everyone — and out to the family Facebook group.
         </p>
-        <a
-          href={FAMILY_FEST.facebookGroupUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-xs font-medium text-primary"
-        >
+        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-primary">
           Open the family Facebook group ↗
         </a>
       </header>
@@ -349,34 +352,38 @@ export function PostsView({ seed }: { seed: Post[] }) {
           rows={2}
           className="w-full resize-none rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         />
-        {previewUrl && (
-          <div className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="" className="max-h-56 w-full rounded-xl object-cover" />
-            <button
-              type="button"
-              onClick={() => {
-                setFile(null);
-                setPreviewUrl(null);
-              }}
-              className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-1 text-xs font-medium text-white"
-            >
-              Remove
-            </button>
+        {previews.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {previews.map((m, i) => (
+              <div key={i} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
+                {m.type === "video" ? (
+                  <video src={m.url} className="h-full w-full object-cover" muted />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                )}
+                {m.type === "video" && (
+                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] text-white">▶ video</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removePreview(i)}
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 px-1.5 text-xs font-medium text-white"
+                  aria-label="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
         <label className="flex items-start gap-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
-          <input
-            type="checkbox"
-            checked={alsoFacebook}
-            onChange={(e) => setShareFb(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
-          />
+          <input type="checkbox" checked={alsoFacebook} onChange={(e) => setShareFb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]" />
           <span className="text-foreground/70">
             <span className="font-semibold text-foreground">Also share to our Facebook group</span> — post in both places.
             <span className="block text-foreground/45">
-              We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post. (We remember your choice.)
+              We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post.
             </span>
           </span>
         </label>
@@ -387,34 +394,24 @@ export function PostsView({ seed }: { seed: Post[] }) {
             onClick={() => inputRef.current?.click()}
             className="rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
           >
-            📷 Photo
+            📷 Photos / video
           </button>
-          <input ref={inputRef} type="file" accept="image/*" onChange={pickPhoto} className="hidden" />
-          <button
-            type="submit"
-            disabled={posting}
-            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
+          <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
+          <button type="submit" disabled={posting} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
             {posting ? "Posting…" : alsoFacebook ? "Post + Facebook" : "Post"}
           </button>
         </div>
 
-        {status && (
-          <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">
-            {status}
-          </p>
-        )}
+        {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}
         <p className="text-[11px] text-foreground/40">
           {configured
-            ? "Photos, notes, reactions & comments are all shared with everyone, live."
+            ? "Photos, videos, reactions & comments are all shared with everyone, live. Add several at once — they swipe as a carousel."
             : "Posts are saved on this device for now — a shared feed everyone sees arrives with sign-in."}
         </p>
       </form>
 
       {configured && feedLoaded && feed.length === 0 && (
-        <p className="rounded-2xl bg-card p-6 text-center text-sm text-foreground/60 ring-1 ring-border">
-          No posts yet — share the first photo! 📸
-        </p>
+        <p className="rounded-2xl bg-card p-6 text-center text-sm text-foreground/60 ring-1 ring-border">No posts yet — share the first photo! 📸</p>
       )}
 
       <ul className="space-y-3">
@@ -433,37 +430,26 @@ export function PostsView({ seed }: { seed: Post[] }) {
                   <p className="text-[11px] text-foreground/40">{timeAgo(p.ts)}</p>
                 </div>
                 {canDeletePost(p, isAdded) && (
-                  <button
-                    onClick={() => deletePost(p, isAdded)}
-                    className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary"
-                    aria-label="Delete post"
-                  >
+                  <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">
                     Delete
                   </button>
                 )}
               </div>
 
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
-              {p.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.imageUrl} alt="" className="mt-3 w-full object-cover" />
+
+              {p.media.length > 0 ? (
+                <MediaCarousel media={p.media} />
               ) : p.gradient ? (
-                <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>
-                  {p.emoji}
-                </div>
+                <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
 
-              {/* reaction summary */}
               {summary.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
                   {summary.map(([emoji, count]) => (
                     <span
                       key={emoji}
-                      className={`rounded-full px-2 py-0.5 text-xs ring-1 ${
-                        mine === emoji
-                          ? "bg-primary/10 text-primary ring-primary/30"
-                          : "bg-background text-foreground/60 ring-border"
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}
                     >
                       {emoji} {count}
                     </span>
@@ -471,45 +457,24 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 </div>
               )}
 
-              {/* actions */}
               <div className="mt-2 flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
-                <button
-                  onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)}
-                  className={`rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`}
-                  aria-expanded={pickerFor === p.id}
-                >
+                <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`} aria-expanded={pickerFor === p.id}>
                   {mine ? `${mine} Reacted` : "🙂 React"}
                 </button>
-                <span className="rounded-full px-3 py-1.5 text-foreground/55">
-                  💬 {postComments.length > 0 ? postComments.length : "Comment"}
-                </span>
-                <button
-                  onClick={() => shareOut(p)}
-                  className="ml-auto rounded-full px-3 py-1.5 font-medium text-primary"
-                >
-                  Share ↗
-                </button>
+                <span className="rounded-full px-3 py-1.5 text-foreground/55">💬 {postComments.length > 0 ? postComments.length : "Comment"}</span>
+                <button onClick={() => shareOut(p)} className="ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
               </div>
 
-              {/* emoji picker */}
               {pickerFor === p.id && (
                 <div className="flex gap-1 border-t border-border px-2 py-2">
                   {REACTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => react(p.id, emoji)}
-                      className={`flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${
-                        mine === emoji ? "bg-primary/15" : "bg-background"
-                      }`}
-                      aria-label={`React ${emoji}`}
-                    >
+                    <button key={emoji} onClick={() => react(p.id, emoji)} className={`flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${mine === emoji ? "bg-primary/15" : "bg-background"}`} aria-label={`React ${emoji}`}>
                       {emoji}
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* comments */}
               {(postComments.length > 0 || user) && (
                 <div className="space-y-2 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
@@ -517,13 +482,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                       <span className="font-semibold">{c.author}</span>
                       <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
                       {(isAdmin || (!!uid && c.authorId === uid)) && (
-                        <button
-                          onClick={() => removeComment(c.id)}
-                          className="shrink-0 text-foreground/30 hover:text-primary"
-                          aria-label="Delete comment"
-                        >
-                          ✕
-                        </button>
+                        <button onClick={() => removeComment(c.id)} className="shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
                       )}
                     </div>
                   ))}
@@ -536,6 +495,41 @@ export function PostsView({ seed }: { seed: Post[] }) {
       </ul>
     </div>
   );
+}
+
+function MediaCarousel({ media }: { media: Media[] }) {
+  const [active, setActive] = useState(0);
+  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} /></div>;
+  return (
+    <div className="relative mt-3">
+      <div
+        onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
+        className="flex snap-x snap-mandatory overflow-x-auto"
+      >
+        {media.map((m, i) => (
+          <div key={i} className="w-full shrink-0 snap-center">
+            <MediaItem m={m} />
+          </div>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center gap-1.5">
+        {media.map((_, i) => (
+          <span key={i} className={`h-1.5 w-1.5 rounded-full ring-1 ring-black/10 ${i === active ? "bg-white" : "bg-white/50"}`} />
+        ))}
+      </div>
+      <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white">
+        {active + 1}/{media.length}
+      </div>
+    </div>
+  );
+}
+
+function MediaItem({ m }: { m: Media }) {
+  if (m.type === "video") {
+    return <video src={m.url} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={m.url} alt="" className="w-full object-cover" />;
 }
 
 function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
@@ -555,18 +549,11 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
         placeholder="Add a comment…"
         className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
-      <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
-        Send
-      </button>
+      <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
 }
 
 function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 }
