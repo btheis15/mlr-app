@@ -74,6 +74,15 @@ export function PostsView({ seed }: { seed: Post[] }) {
         return; // cancelled
       }
     }
+    // Fallback (e.g. desktop / no share sheet): copy the caption so it's ready
+    // to paste, then open the group to post.
+    if (p.text) {
+      try {
+        await navigator.clipboard.writeText(p.text);
+      } catch {
+        /* clipboard unavailable */
+      }
+    }
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
   };
 
@@ -109,6 +118,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
         <p className="text-sm text-foreground/60">
           Share a photo or a note with everyone — and out to the family Facebook group.
         </p>
+        <a
+          href={FAMILY_FEST.facebookGroupUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block text-xs font-medium text-primary"
+        >
+          Open the family Facebook group ↗
+        </a>
       </header>
 
       <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">

@@ -254,7 +254,7 @@ export const FAMILY_FEST = {
   location: "Muskellunge Lake Resort",
   address: "Muskellunge Lake · 5 mi from Tomahawk on Hwy 8 · Tomahawk, WI",
   /** Shared Facebook group — fallback target for photo sharing. */
-  facebookGroupUrl: "https://www.facebook.com/groups/your-family-fest-group",
+  facebookGroupUrl: "https://www.facebook.com/share/g/1B7Z7eVBnb/?mibextid=wwXIfr",
   /** Cost to attend, shown on the Pay screen. Kids' price still TBD. */
   dues: { perAdult: "$100", perKid: "TBD", per: "for the week" },
   /** Volunteer / planning contact, surfaced during the "planning" season so
