@@ -76,8 +76,8 @@ export function FestStatus({
             ? ` — the album's open ${season.wrapDaysLeft} more day${season.wrapDaysLeft === 1 ? "" : "s"}.`
             : "."}
         </p>
-        <Link href="/photos" className="mt-2 inline-block text-sm font-semibold text-primary">
-          Add your photos →
+        <Link href="/posts" className="mt-2 inline-block text-sm font-semibold text-primary">
+          Post your photos →
         </Link>
       </div>
     );
