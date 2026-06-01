@@ -33,7 +33,6 @@ interface PostRow {
   image_path: string | null;
   created_at: string;
   author_id: string;
-  profiles: { display_name: string | null } | null;
 }
 interface CommentRow {
   id: string;
@@ -41,7 +40,6 @@ interface CommentRow {
   text: string;
   created_at: string;
   author_id: string;
-  profiles: { display_name: string | null } | null;
 }
 interface ReactionRow {
   post_id: string;
@@ -88,23 +86,32 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const refetch = async () => {
     const sb = supabase;
     if (!sb) return;
-    const [postsRes, commentsRes, reactionsRes] = await Promise.all([
+    const [postsRes, commentsRes, reactionsRes, profilesRes] = await Promise.all([
       sb
         .from("posts")
-        .select("id, text, image_path, created_at, author_id, profiles(display_name)")
+        .select("id, text, image_path, created_at, author_id")
         .order("created_at", { ascending: false }),
       sb
         .from("post_comments")
-        .select("id, post_id, text, created_at, author_id, profiles(display_name)")
+        .select("id, post_id, text, created_at, author_id")
         .order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
+      sb.from("profiles").select("id, display_name"),
     ]);
+
+    // Resolve author names client-side (no PostgREST embed, so a missing
+    // relationship in the schema cache can never blank the feed).
+    const names = new Map<string, string>();
+    for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null }[]) {
+      names.set(p.id, p.display_name?.trim() || "Member");
+    }
+    const nameOf = (id: string) => names.get(id) || "Member";
 
     const postRows = (postsRes.data ?? []) as unknown as PostRow[];
     setDbPosts(
       postRows.map((r) => ({
         id: r.id,
-        author: r.profiles?.display_name?.trim() || "Member",
+        author: nameOf(r.author_id),
         authorId: r.author_id,
         ts: r.created_at,
         text: r.text || undefined,
@@ -119,7 +126,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     for (const c of commentRows) {
       (byPost[c.post_id] ||= []).push({
         id: c.id,
-        author: c.profiles?.display_name?.trim() || "Member",
+        author: nameOf(c.author_id),
         authorId: c.author_id,
         text: c.text,
         ts: c.created_at,
