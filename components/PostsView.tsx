@@ -263,8 +263,29 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
+      const MAX = 50 * 1024 * 1024; // Supabase free-tier per-file cap (~50 MB)
+      const bigVideos = files.filter((f) => f.type.startsWith("video") && f.size > MAX);
+      if (bigVideos.length) {
+        setStatus(`Video too big (~50 MB max on our current plan): ${bigVideos.map((f) => f.name).join(", ")}. Trim it shorter for now — we're sorting out longer videos.`);
+        window.setTimeout(() => setStatus(null), 9000);
+        return;
+      }
       setPosting(true);
       try {
+        // Upload everything FIRST, so a failure can never leave a half-finished
+        // post. Photos are compressed to web-friendly JPEGs (smaller + faster,
+        // and fixes HDR/HEIC display).
+        const uploaded: { path: string; type: MediaType }[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const raw = files[i];
+          const isVideo = raw.type.startsWith("video");
+          const f = isVideo ? raw : await compressImage(raw);
+          const ext = isVideo ? ((raw.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4") : "jpg";
+          const path = `${uid}/${Date.now()}-${i}.${ext}`;
+          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f);
+          if (upErr) throw upErr;
+          uploaded.push({ path, type: isVideo ? "video" : "image" });
+        }
         const { data: np, error: insErr } = await supabase
           .from("posts")
           .insert({ author_id: uid, text: caption || null })
@@ -273,16 +294,10 @@ export function PostsView({ seed }: { seed: Post[] }) {
         if (insErr) throw insErr;
         const postId = (np as { id: string } | null)?.id;
         if (!postId) throw new Error("Could not create the post.");
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
-          const isVideo = f.type.startsWith("video");
-          const ext = (f.name.split(".").pop() || (isVideo ? "mp4" : "jpg")).toLowerCase().replace(/[^a-z0-9]/g, "") || (isVideo ? "mp4" : "jpg");
-          const path = `${uid}/${Date.now()}-${i}.${ext}`;
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f);
-          if (upErr) throw upErr;
+        for (let i = 0; i < uploaded.length; i++) {
           const { error: medErr } = await supabase
             .from("post_media")
-            .insert({ post_id: postId, storage_path: path, media_type: isVideo ? "video" : "image", position: i });
+            .insert({ post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i });
           if (medErr) throw medErr;
         }
         if (tagIds.length) {
@@ -302,7 +317,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
             : "Posted — everyone can see it now ✓",
         );
       } catch (err) {
-        setStatus(`Couldn't post: ${err instanceof Error ? err.message : "please try again"}`);
+        const msg = err instanceof Error ? err.message : "please try again";
+        const friendly = /max|size|large|exceed|413|payload/i.test(msg) ? "a file was too big to upload (~50 MB max on our current plan)." : msg;
+        setStatus(`Couldn't post: ${friendly}`);
       } finally {
         setPosting(false);
         window.setTimeout(() => setStatus(null), 7000);
@@ -643,6 +660,28 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
       <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
+}
+
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image")) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.82));
+    bitmap.close();
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file; // never block posting on a compression hiccup
+  }
 }
 
 function initials(name: string): string {
