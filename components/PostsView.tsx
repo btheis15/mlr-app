@@ -12,6 +12,14 @@ interface Media {
   url: string;
   type: MediaType;
 }
+interface Tag {
+  id: string;
+  name: string;
+}
+interface Member {
+  id: string;
+  name: string;
+}
 
 interface FeedPost {
   id: string;
@@ -20,6 +28,7 @@ interface FeedPost {
   ts: string;
   text?: string;
   media: Media[];
+  tags: Tag[];
   gradient?: string; // seed only (local fallback)
   emoji?: string;
 }
@@ -57,6 +66,10 @@ interface ReactionRow {
   user_id: string;
   emoji: string;
 }
+interface TagRow {
+  post_id: string;
+  tagged_user_id: string;
+}
 
 const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
 const BUCKET = "post-photos";
@@ -64,8 +77,8 @@ const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 /**
  * The shared feed — a little family social space. Posts carry multiple photos
- * and videos (swipeable carousel), with shared comments and emoji reactions,
- * all live via Supabase. Author names are resolved from a separate profiles
+ * and videos (swipeable carousel), tagged members, shared comments, and emoji
+ * reactions, all live via Supabase. Names/tags resolve from a separate profiles
  * query (no PostgREST embed) so an ambiguous relationship can't blank the feed.
  */
 export function PostsView({ seed }: { seed: Post[] }) {
@@ -76,12 +89,17 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [dbPosts, setDbPosts] = useState<FeedPost[]>([]);
   const [dbComments, setDbComments] = useState<Record<string, CommentItem[]>>({});
   const [dbReactions, setDbReactions] = useState<Record<string, ReactionRow[]>>({});
+  const [members, setMembers] = useState<Member[]>([]);
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [added, setAdded] = useState<FeedPost[]>([]); // local fallback only
 
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<Media[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [filterTaggedMe, setFilterTaggedMe] = useState(false);
   const [alsoFacebook, setAlsoFacebook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
@@ -92,22 +110,28 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
 
-  // ---- Shared feed (posts + media + comments + reactions) from the database ----
+  // ---- Shared feed from the database ----
   const refetch = async () => {
     const sb = supabase;
     if (!sb) return;
-    const [postsRes, mediaRes, commentsRes, reactionsRes, profilesRes] = await Promise.all([
+    const [postsRes, mediaRes, commentsRes, reactionsRes, tagsRes, profilesRes] = await Promise.all([
       sb.from("posts").select("id, text, image_path, created_at, author_id").order("created_at", { ascending: false }),
       sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
+      sb.from("post_tags").select("post_id, tagged_user_id"),
       sb.from("profiles").select("id, display_name"),
     ]);
 
     const names = new Map<string, string>();
+    const memberList: Member[] = [];
     for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null }[]) {
-      names.set(p.id, p.display_name?.trim() || "Member");
+      const n = p.display_name?.trim() || "Member";
+      names.set(p.id, n);
+      memberList.push({ id: p.id, name: n });
     }
+    memberList.sort((a, b) => a.name.localeCompare(b.name));
+    setMembers(memberList);
     const nameOf = (id: string) => names.get(id) || "Member";
 
     const mediaByPost: Record<string, Media[]> = {};
@@ -118,6 +142,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
       });
     }
 
+    const tagsByPost: Record<string, Tag[]> = {};
+    for (const t of (tagsRes.data ?? []) as unknown as TagRow[]) {
+      (tagsByPost[t.post_id] ||= []).push({ id: t.tagged_user_id, name: nameOf(t.tagged_user_id) });
+    }
+
     const postRows = (postsRes.data ?? []) as unknown as PostRow[];
     setDbPosts(
       postRows.map((r) => {
@@ -126,7 +155,15 @@ export function PostsView({ seed }: { seed: Post[] }) {
           : r.image_path
             ? [{ url: sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl, type: "image" as const }]
             : [];
-        return { id: r.id, author: nameOf(r.author_id), authorId: r.author_id, ts: r.created_at, text: r.text || undefined, media };
+        return {
+          id: r.id,
+          author: nameOf(r.author_id),
+          authorId: r.author_id,
+          ts: r.created_at,
+          text: r.text || undefined,
+          media,
+          tags: tagsByPost[r.id] ?? [],
+        };
       }),
     );
 
@@ -157,6 +194,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, () => refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => refetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, () => refetch())
       .subscribe();
     return () => {
       sb.removeChannel(ch);
@@ -202,6 +240,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     setFiles(files.filter((_, idx) => idx !== i));
     setPreviews(previews.filter((_, idx) => idx !== i));
   };
+  const toggleTag = (id: string) => setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const openFacebook = (caption?: string) => {
     if (caption) navigator.clipboard.writeText(caption).catch(() => {});
@@ -246,8 +285,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
             .insert({ post_id: postId, storage_path: path, media_type: isVideo ? "video" : "image", position: i });
           if (medErr) throw medErr;
         }
+        if (tagIds.length) {
+          const { error: tagErr } = await supabase
+            .from("post_tags")
+            .insert(tagIds.map((t) => ({ post_id: postId, tagged_user_id: t })));
+          if (tagErr) throw tagErr;
+        }
         await refetch();
-        setText(""); setFiles([]); setPreviews([]);
+        setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
         if (alsoFacebook) openFacebook(caption);
         setStatus(
           alsoFacebook
@@ -272,9 +317,10 @@ export function PostsView({ seed }: { seed: Post[] }) {
       ts: new Date().toISOString(),
       text: caption || undefined,
       media: previews,
+      tags: tagIds.map((t) => ({ id: t, name: members.find((m) => m.id === t)?.name || "Member" })),
     };
     setAdded((prev) => [post, ...prev]);
-    setText(""); setFiles([]); setPreviews([]);
+    setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
     if (alsoFacebook) openFacebook(caption);
     setStatus(alsoFacebook ? "Posted ✓ — caption copied for Facebook." : "Posted to the feed ✓");
     window.setTimeout(() => setStatus(null), 7000);
@@ -323,22 +369,23 @@ export function PostsView({ seed }: { seed: Post[] }) {
     else setHidden((prev) => [...prev, p.id]);
   };
 
+  const shownPosts = configured && filterTaggedMe && uid ? dbPosts.filter((p) => p.tags.some((t) => t.id === uid)) : dbPosts;
   const feed: { post: FeedPost; isAdded: boolean }[] = configured
-    ? dbPosts.map((p) => ({ post: p, isAdded: false }))
+    ? shownPosts.map((p) => ({ post: p, isAdded: false }))
     : [
         ...added.map((p) => ({ post: p, isAdded: true })),
         ...seed
           .filter((s) => !hidden.includes(s.id))
-          .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
+          .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], tags: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
       ];
+
+  const tagMembers = members.filter((m) => m.id !== uid && m.name.toLowerCase().includes(tagQuery.toLowerCase()));
 
   return (
     <div className="space-y-5 pt-2">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
-        <p className="text-sm text-foreground/60">
-          Share photos &amp; videos with everyone — and out to the family Facebook group.
-        </p>
+        <p className="text-sm text-foreground/60">Share photos &amp; videos with everyone — and out to the family Facebook group.</p>
         <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-primary">
           Open the family Facebook group ↗
         </a>
@@ -362,19 +409,56 @@ export function PostsView({ seed }: { seed: Post[] }) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={m.url} alt="" className="h-full w-full object-cover" />
                 )}
-                {m.type === "video" && (
-                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] text-white">▶ video</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removePreview(i)}
-                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 px-1.5 text-xs font-medium text-white"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
+                {m.type === "video" && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px] text-white">▶ video</span>}
+                <button type="button" onClick={() => removePreview(i)} className="absolute right-0.5 top-0.5 rounded-full bg-black/60 px-1.5 text-xs font-medium text-white" aria-label="Remove">×</button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Tag people */}
+        {configured && (
+          <div className="space-y-2">
+            {tagIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {tagIds.map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    {members.find((m) => m.id === t)?.name || "Member"}
+                    <button type="button" onClick={() => toggleTag(t)} aria-label="Remove tag" className="text-primary/60">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={() => setTagPickerOpen((o) => !o)} className="text-xs font-medium text-primary">
+              🏷️ {tagIds.length ? "Edit tags" : "Tag people"}
+            </button>
+            {tagPickerOpen && (
+              <div className="space-y-2 rounded-xl bg-background p-2 ring-1 ring-border">
+                <input
+                  value={tagQuery}
+                  onChange={(e) => setTagQuery(e.target.value)}
+                  placeholder="Search family…"
+                  className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <div className="max-h-40 space-y-1 overflow-y-auto">
+                  {tagMembers.map((m) => {
+                    const on = tagIds.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => toggleTag(m.id)}
+                        className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs ${on ? "bg-primary/10 text-primary" : "text-foreground/70"}`}
+                      >
+                        <span>{m.name}</span>
+                        <span>{on ? "✓" : "+"}</span>
+                      </button>
+                    );
+                  })}
+                  {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No matching members.</p>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -382,18 +466,12 @@ export function PostsView({ seed }: { seed: Post[] }) {
           <input type="checkbox" checked={alsoFacebook} onChange={(e) => setShareFb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]" />
           <span className="text-foreground/70">
             <span className="font-semibold text-foreground">Also share to our Facebook group</span> — post in both places.
-            <span className="block text-foreground/45">
-              We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post.
-            </span>
+            <span className="block text-foreground/45">We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post.</span>
           </span>
         </label>
 
         <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
-          >
+          <button type="button" onClick={() => inputRef.current?.click()} className="rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
             📷 Photos / video
           </button>
           <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
@@ -403,15 +481,23 @@ export function PostsView({ seed }: { seed: Post[] }) {
         </div>
 
         {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}
-        <p className="text-[11px] text-foreground/40">
-          {configured
-            ? "Photos, videos, reactions & comments are all shared with everyone, live. Add several at once — they swipe as a carousel."
-            : "Posts are saved on this device for now — a shared feed everyone sees arrives with sign-in."}
-        </p>
       </form>
 
+      {configured && user && (
+        <div className="flex gap-2 text-xs">
+          <button onClick={() => setFilterTaggedMe(false)} className={`rounded-full px-3 py-1.5 font-medium ${!filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+            Everyone
+          </button>
+          <button onClick={() => setFilterTaggedMe(true)} className={`rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+            📸 Photos of me
+          </button>
+        </div>
+      )}
+
       {configured && feedLoaded && feed.length === 0 && (
-        <p className="rounded-2xl bg-card p-6 text-center text-sm text-foreground/60 ring-1 ring-border">No posts yet — share the first photo! 📸</p>
+        <p className="rounded-2xl bg-card p-6 text-center text-sm text-foreground/60 ring-1 ring-border">
+          {filterTaggedMe ? "No posts you're tagged in yet." : "No posts yet — share the first photo! 📸"}
+        </p>
       )}
 
       <ul className="space-y-3">
@@ -422,21 +508,20 @@ export function PostsView({ seed }: { seed: Post[] }) {
           return (
             <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center gap-2 px-4 pt-3">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                  {initials(p.author)}
-                </span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">{initials(p.author)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.author}</p>
                   <p className="text-[11px] text-foreground/40">{timeAgo(p.ts)}</p>
                 </div>
                 {canDeletePost(p, isAdded) && (
-                  <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">
-                    Delete
-                  </button>
+                  <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
                 )}
               </div>
 
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
+              {p.tags.length > 0 && (
+                <p className="px-4 pt-1 text-xs text-primary">🏷️ with {p.tags.map((t) => t.name).join(", ")}</p>
+              )}
 
               {p.media.length > 0 ? (
                 <MediaCarousel media={p.media} />
@@ -447,10 +532,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
               {summary.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
                   {summary.map(([emoji, count]) => (
-                    <span
-                      key={emoji}
-                      className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}
-                    >
+                    <span key={emoji} className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}>
                       {emoji} {count}
                     </span>
                   ))}
@@ -502,10 +584,7 @@ function MediaCarousel({ media }: { media: Media[] }) {
   if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} /></div>;
   return (
     <div className="relative mt-3">
-      <div
-        onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
-        className="flex snap-x snap-mandatory overflow-x-auto"
-      >
+      <div onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} className="flex snap-x snap-mandatory overflow-x-auto">
         {media.map((m, i) => (
           <div key={i} className="w-full shrink-0 snap-center">
             <MediaItem m={m} />
@@ -517,17 +596,13 @@ function MediaCarousel({ media }: { media: Media[] }) {
           <span key={i} className={`h-1.5 w-1.5 rounded-full ring-1 ring-black/10 ${i === active ? "bg-white" : "bg-white/50"}`} />
         ))}
       </div>
-      <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white">
-        {active + 1}/{media.length}
-      </div>
+      <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white">{active + 1}/{media.length}</div>
     </div>
   );
 }
 
 function MediaItem({ m }: { m: Media }) {
-  if (m.type === "video") {
-    return <video src={m.url} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />;
-  }
+  if (m.type === "video") return <video src={m.url} controls playsInline className="max-h-[28rem] w-full bg-black object-contain" />;
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={m.url} alt="" className="w-full object-cover" />;
 }
@@ -535,20 +610,8 @@ function MediaItem({ m }: { m: Media }) {
 function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
   const [v, setV] = useState("");
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onAdd(v);
-        setV("");
-      }}
-      className="flex gap-2"
-    >
-      <input
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        placeholder="Add a comment…"
-        className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-      />
+    <form onSubmit={(e) => { e.preventDefault(); onAdd(v); setV(""); }} className="flex gap-2">
+      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Add a comment…" className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
       <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
