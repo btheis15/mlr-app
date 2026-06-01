@@ -191,6 +191,8 @@ export const FAMILY_FEST = {
   address: "Muskellunge Lake · 5 mi from Tomahawk on Hwy 8 · Tomahawk, WI",
   /** Shared Facebook group — fallback target for photo sharing. */
   facebookGroupUrl: "https://www.facebook.com/groups/your-family-fest-group",
+  /** Cost to attend, shown on the Pay screen. Kids' price still TBD. */
+  dues: { perAdult: "$100", perKid: "TBD", per: "for the week" },
   /** Volunteer / planning contact, surfaced during the "planning" season so
    *  people can reach out to help (tap-to-email / tap-to-call). A real point of
    *  contact for now; this moves to the Committees feature once there's a
@@ -451,8 +453,7 @@ export const MEMORIES: Memory[] = [
  * or copy the Zelle handle so payment happens in the user's own app.
  */
 export const PAYEES: Payee[] = [
-  { id: "events-lead", name: "Aunt Linda", role: "Events & activities", venmo: "Linda-Peterson", zelle: "linda@example.com" },
-  { id: "food-lead", name: "Dad", role: "Food & supplies", venmo: "Dad-MLR", zelle: "+17155550100" },
+  { id: "dues", name: "Cathy Hofer", role: "Family Fest dues — collects for the week", venmo: "Cathy-Hofer-1" },
 ];
 
 /** Days of the fest as ISO strings, derived from the event window. */

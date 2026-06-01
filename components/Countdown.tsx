@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDemoDate } from "@/lib/DemoDateProvider";
 
 /**
- * Live countdown to a target date. Starts ticking once mounted to avoid a
+ * Live countdown to a target date. Ticks in real time normally; when a demo
+ * date is being simulated (Profile → "see as if it's this day") it shows a
+ * static countdown from that date instead. Starts null until mounted to avoid a
  * hydration mismatch on the time-sensitive numbers.
  */
 export function Countdown({ target }: { target: string }) {
-  const [now, setNow] = useState<number | null>(null);
+  const { demoDate, now: demoNow } = useDemoDate();
+  const [realNow, setRealNow] = useState<number | null>(null);
 
   useEffect(() => {
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    if (demoDate) return; // simulating a date → static, no ticking
+    setRealNow(Date.now());
+    const id = setInterval(() => setRealNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [demoDate]);
 
+  const now = demoDate ? (demoNow?.getTime() ?? null) : realNow;
   const targetMs = new Date(`${target}T15:00:00`).getTime();
   const diff = now == null ? 0 : Math.max(0, targetMs - now);
 

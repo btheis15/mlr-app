@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
-import { toISODate } from "@/lib/festSeason";
+import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime } from "@/lib/format";
-import type { FestHighlight } from "@/lib/types";
+import type { ScheduleEvent } from "@/lib/types";
 
 /**
  * The Family Fest presence on the resort home. It's the seam that makes the
@@ -27,19 +27,23 @@ export function FamilyFestSpotlight({
   tagline,
   startDate,
   endDate,
-  highlights,
+  schedule,
 }: {
   name: string;
   tagline: string;
   startDate: string;
   endDate: string;
-  highlights: FestHighlight[];
+  schedule: ScheduleEvent[];
 }) {
   const season = useFestSeason(startDate, endDate);
+  const { today } = useDemoDate();
 
-  // Live week — the resort app puts Family Fest front and center.
+  // Live week — the resort app puts Family Fest front and center, with today's
+  // events (time + where) right here so you see what's on without digging.
   if (season?.isLive) {
-    const todays = highlights.filter((h) => h.day === toISODate());
+    const todays = schedule
+      .filter((e) => e.day === today)
+      .sort((a, b) => a.start.localeCompare(b.start));
     return (
       <Link
         href="/family-fest"
@@ -50,21 +54,23 @@ export function FamilyFestSpotlight({
           Day {season.dayNumber} of {season.totalDays} at the lake 🎆
         </p>
         {todays.length > 0 ? (
-          <ul className="mt-2 space-y-1">
-            {todays.map((h) => (
-              <li key={h.id} className="flex items-center gap-2 text-sm">
-                <span>{h.emoji}</span>
-                <span className="font-medium">{h.title}</span>
-                <span className="text-foreground/55">{formatTime(h.start)}</span>
+          <ul className="mt-2 space-y-1.5">
+            {todays.map((e) => (
+              <li key={e.id} className="flex items-center gap-2 text-sm">
+                <span>{e.emoji}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{e.title}</span>
+                  <span className="text-foreground/55"> · 📍 {e.location}</span>
+                </span>
+                <span className="shrink-0 text-foreground/55">{formatTime(e.start)}</span>
               </li>
             ))}
           </ul>
         ) : (
           <p className="mt-1 text-sm text-foreground/70">{tagline}</p>
         )}
-        <p className="mt-2 text-xs font-medium text-campfire">Open the Family Fest hub →</p>
-        <p className="mt-2 text-[11px] text-foreground/45">
-          Resort info &amp; activities are below ↓
+        <p className="mt-2 text-xs font-medium text-campfire">
+          Open Family Fest for today&rsquo;s details →
         </p>
       </Link>
     );
@@ -97,7 +103,7 @@ export function FamilyFestSpotlight({
 
   // Planning — partial takeover: gather volunteers and preview what's planned.
   if (season?.isPlanning) {
-    const preview = highlights.slice(0, 3);
+    const preview = schedule.slice(0, 3);
     return (
       <Link
         href="/family-fest"

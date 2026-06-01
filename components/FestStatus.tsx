@@ -3,62 +3,61 @@
 import Link from "next/link";
 import { Countdown } from "@/components/Countdown";
 import { useFestSeason } from "@/lib/useFestSeason";
-import { toISODate } from "@/lib/festSeason";
+import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime } from "@/lib/format";
-import type { ScheduleEvent } from "@/lib/types";
+import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
- * The status block on the Family Fest section, driven by the shared season
- * model: a countdown in the run-up (with a "volunteers welcome" nudge once
- * planning is underway), a "Day n of N + Today at the Fest" panel during the
- * week, and a "post your photos" panel for the two weeks after (wrap).
+ * The focal block at the top of the Family Fest section. During the event week
+ * it surfaces EVERYTHING for today inline — each event with time, location,
+ * description, what to bring, and who's in charge (tap-to-call/text), plus
+ * tonight's dinner with the head chef — so nobody has to dig the day of. Before
+ * the week it's a countdown (+ volunteer prompt while planning); after, a
+ * "post your photos" nudge.
  */
 export function FestStatus({
   startDate,
   endDate,
-  items,
+  events,
+  dinners,
   volunteerContact,
 }: {
   startDate: string;
   endDate: string;
-  items: ScheduleEvent[];
-  /** Planning-season volunteer contact (tap-to-email / tap-to-call). */
+  events: ScheduleEvent[];
+  dinners: Dinner[];
   volunteerContact?: { name: string; email: string; phone: string };
 }) {
   const season = useFestSeason(startDate, endDate);
+  const { today: t } = useDemoDate();
 
   if (season?.isLive) {
-    const todays = items.filter((i) => i.day === toISODate());
+    const today = events
+      .filter((e) => e.day === t)
+      .sort((a, b) => a.start.localeCompare(b.start));
+    const dinner = dinners.find((d) => d.day === t);
     return (
       <div className="space-y-3">
         <div className="rounded-2xl bg-primary/10 p-4 text-center">
           <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
-            Happening now
+            Happening today
           </p>
           <p className="mt-1 text-xl font-bold text-primary">
             Day {season.dayNumber} of {season.totalDays}
           </p>
           <p className="text-sm text-foreground/60">
-            We&rsquo;re at the lake — welcome to the fest 🎆
+            Everything you need for today, right here.
           </p>
         </div>
-        {todays.length > 0 && (
-          <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
-            <h2 className="text-sm font-semibold text-accent">Today at the Fest</h2>
-            <ul className="mt-2 space-y-2">
-              {todays.map((i) => (
-                <li key={i.id} className="flex items-center gap-3">
-                  <span className="text-xl">{i.emoji}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{i.title}</p>
-                    <p className="text-xs text-foreground/50">
-                      {formatTime(i.start)} · {i.location}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+
+        {today.map((e) => (
+          <TodayEvent key={e.id} e={e} />
+        ))}
+        {dinner && <TodayDinner d={dinner} />}
+        {today.length === 0 && !dinner && (
+          <p className="rounded-2xl bg-card p-4 text-center text-sm text-foreground/60 ring-1 ring-border">
+            Nothing scheduled today — enjoy the lake! 🛶
+          </p>
         )}
       </div>
     );
@@ -70,27 +69,21 @@ export function FestStatus({
         <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
           That&rsquo;s a wrap
         </p>
-        <p className="mt-1 text-lg font-bold text-primary">
-          Thanks for a great week 🎆
-        </p>
+        <p className="mt-1 text-lg font-bold text-primary">Thanks for a great week 🎆</p>
         <p className="mt-1 text-sm text-foreground/60">
           Post any photos you didn&rsquo;t get to share
           {season.wrapDaysLeft > 0
-            ? ` — the album's open for ${season.wrapDaysLeft} more day${season.wrapDaysLeft === 1 ? "" : "s"}.`
+            ? ` — the album's open ${season.wrapDaysLeft} more day${season.wrapDaysLeft === 1 ? "" : "s"}.`
             : "."}
         </p>
-        <Link
-          href="/family-fest/photos"
-          className="mt-2 inline-block text-sm font-semibold text-primary"
-        >
+        <Link href="/photos" className="mt-2 inline-block text-sm font-semibold text-primary">
           Add your photos →
         </Link>
       </div>
     );
   }
 
-  // off-season / planning — a countdown, plus a "want to help?" contact once
-  // planning is underway (~60 days out).
+  // off-season / planning
   return (
     <div className="space-y-3">
       <Countdown target={startDate} />
@@ -101,7 +94,80 @@ export function FestStatus({
   );
 }
 
-/** Planning-season volunteer prompt — tap-to-email / tap-to-call the contact. */
+/** Today's event, fully expanded — the day-of detail people need at a glance. */
+function TodayEvent({ e }: { e: ScheduleEvent }) {
+  return (
+    <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
+      <div className="flex gap-3">
+        <span className="text-2xl">{e.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold">{e.title}</h3>
+            <span className="shrink-0 text-xs font-medium text-accent">
+              {formatTime(e.start)}
+              {e.end ? `–${formatTime(e.end)}` : ""}
+            </span>
+          </div>
+          <p className="text-xs text-foreground/50">📍 {e.location}</p>
+          <p className="mt-1 text-xs text-foreground/70">{e.description}</p>
+          {e.bring && (
+            <p className="mt-1 text-xs text-foreground/60">
+              🎒 <span className="text-foreground/40">Bring:</span> {e.bring}
+            </p>
+          )}
+        </div>
+      </div>
+      {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
+    </div>
+  );
+}
+
+/** Tonight's dinner, expanded — menu + head chef contact. */
+function TodayDinner({ d }: { d: Dinner }) {
+  return (
+    <div className="rounded-2xl bg-primary/5 p-4 ring-1 ring-primary/20">
+      <div className="flex gap-3">
+        <span className="text-2xl">{d.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold">Dinner · {d.title}</h3>
+            <span className="shrink-0 text-xs font-medium text-accent">{d.time}</span>
+          </div>
+          <p className="text-xs text-foreground/50">
+            📍 {d.location} · prep starts {d.prepTime}
+          </p>
+          <p className="mt-1 text-xs text-foreground/70">{d.menu}</p>
+        </div>
+      </div>
+      <Contact label="Head chef" name={d.chef.name} phone={d.chef.phone} />
+    </div>
+  );
+}
+
+function Contact({ label, name, phone }: { label: string; name: string; phone: string }) {
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
+      <p className="min-w-0 flex-1 truncate text-xs text-foreground/60">
+        <span className="text-foreground/40">{label}:</span> {name}
+      </p>
+      <a
+        href={`tel:${phone}`}
+        aria-label={`Call ${name}`}
+        className="rounded-full bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
+      >
+        📞
+      </a>
+      <a
+        href={`sms:${phone}`}
+        aria-label={`Text ${name}`}
+        className="rounded-full bg-accent/10 px-2.5 py-1.5 text-xs text-accent"
+      >
+        💬
+      </a>
+    </div>
+  );
+}
+
 function VolunteerContact({
   contact,
 }: {
