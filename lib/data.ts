@@ -53,6 +53,13 @@ export const COMMITTEES: Committee[] = [
       { name: "Rick Hofer", roles: ["Dinners & grilling"], email: "rick.hofer@example.com", phone: "+17155550213" },
       { name: "Megan Doyle", roles: ["Photos & memories"], email: "megan.doyle@example.com", phone: "+17155550214" },
       { name: "Paul Stenberg", roles: ["Setup & cleanup"], email: "paul.stenberg@example.com", phone: "+17155550215" },
+      { name: "Diane Kessler", roles: ["Welcome & registration"], email: "diane.kessler@example.com", phone: "+17155550240" },
+      { name: "Mark Donnelly", roles: ["Fishing tournament"], email: "mark.donnelly@example.com", phone: "+17155550241" },
+      { name: "Karen Voss", roles: ["Decorations"], email: "karen.voss@example.com", phone: "+17155550242" },
+      { name: "Joe Ferris", roles: ["Bonfire & firewood"], email: "joe.ferris@example.com", phone: "+17155550243" },
+      { name: "Beth Calloway", roles: ["Supplies & shopping", "Meals"], email: "beth.calloway@example.com", phone: "+17155550244" },
+      { name: "Tony Marchetti", roles: ["Music & DJ"], email: "tony.marchetti@example.com", phone: "+17155550245" },
+      { name: "Laura Quinn", roles: ["Kids' activities", "Crafts"], email: "laura.quinn@example.com", phone: "+17155550246" },
     ],
   },
   {
