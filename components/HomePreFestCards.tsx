@@ -5,24 +5,27 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { FAMILY_FEST } from "@/lib/data";
 
 /**
- * Resort cards shown on the home in the run-up to Family Fest (and the rest of
- * the year) — but not during the live week, when the home leads with the fest.
- * Work Weekends + Committees today; more (Prep needed, etc.) can join here.
+ * Resort cards on the home. Committees stays available year-round (including
+ * during the fest week — people message / sign up while everyone's together).
+ * Work Weekends never happen during the week, so it's hidden then and returns
+ * once the fest is over.
  */
 export function HomePreFestCards() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
-  // Hidden until we know the season, and during the live week.
-  if (!season || season.isLive) return null;
+  if (!season) return null;
+  const showWorkWeekends = !season.isLive;
 
   return (
-    <section className="grid grid-cols-2 gap-3">
-      <Card
-        href="/work-weekends"
-        emoji="🛠️"
-        title="Work Weekends"
-        body="Pitch in to get the resort ready."
-        chip="bg-lake/12 text-lake"
-      />
+    <section className={`grid gap-3 ${showWorkWeekends ? "grid-cols-2" : "grid-cols-1"}`}>
+      {showWorkWeekends && (
+        <Card
+          href="/work-weekends"
+          emoji="🛠️"
+          title="Work Weekends"
+          body="Pitch in to get the resort ready."
+          chip="bg-lake/12 text-lake"
+        />
+      )}
       <Card
         href="/committees"
         emoji="🤝"
