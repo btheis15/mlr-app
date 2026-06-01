@@ -47,7 +47,7 @@ export const COMMITTEES: Committee[] = [
     description:
       "The big one — plans the whole week. Each person owns one or more areas (meals, events, scavenger hunt, and more).",
     members: [
-      { name: "Cathy Hofer", role: "Lead", roles: ["Finance & dues", "Meals"], email: "cathy.hofer@example.com", phone: "+17155550211" },
+      { name: "Cathy Hofer", role: "Lead", roles: ["Finances", "Meals"], email: "cathy.hofer@example.com", phone: "+17155550211" },
       { name: "Brian Theis", roles: ["Events", "Scavenger Hunt", "App & comms"], email: "brian.theis15@gmail.com", phone: "+12248005389" },
       { name: "Susan Park", roles: ["Talent show", "Kids' activities"], email: "susan.park@example.com", phone: "+17155550212" },
       { name: "Rick Hofer", roles: ["Dinners & grilling"], email: "rick.hofer@example.com", phone: "+17155550213" },
