@@ -1,5 +1,6 @@
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
+import { HomePreFestCards } from "@/components/HomePreFestCards";
 
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
@@ -30,6 +31,9 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
+
+      {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
+      <HomePreFestCards />
 
       <a
         href={`tel:${RESORT.phone}`}

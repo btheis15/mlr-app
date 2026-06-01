@@ -170,6 +170,25 @@ export interface Dinner {
   prepLocation?: string;
 }
 
+/** A member of a resort committee — contactable by email / call / text. */
+export interface CommitteeMember {
+  name: string;
+  /** e.g. "Lead". Omitted for regular members. */
+  role?: string;
+  email: string;
+  /** E.164 phone, e.g. "+17155550201". */
+  phone: string;
+}
+
+/** A volunteer committee that helps run the resort year-round. */
+export interface Committee {
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string;
+  members: CommitteeMember[];
+}
+
 /** Someone to pay for the fest (organizer, food lead, …) via Venmo/Zelle. */
 export interface Payee {
   id: string;
