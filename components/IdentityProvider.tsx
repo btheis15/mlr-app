@@ -214,7 +214,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <p className="text-sm text-foreground/60">
             {step === "email"
               ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you."
-              : `We sent a 6-digit code to ${normEmail}. Enter it below.`}
+              : `We emailed a code to ${normEmail} — enter it below.`}
           </p>
         </div>
 
@@ -261,8 +261,8 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <>
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="123456"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              placeholder="12345678"
               inputMode="numeric"
               autoComplete="one-time-code"
               className="w-full rounded-xl bg-card px-3 py-3 text-center text-lg font-semibold tracking-[0.3em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
