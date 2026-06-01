@@ -26,10 +26,10 @@ import type {
 /** Seed posts for the shared feed (photos + notes). Placeholder content so the
  *  feed looks alive; real posts are device-local until the backend lands. */
 export const POSTS: Post[] = [
-  { id: "p1", author: "Aunt Linda", ts: "2026-05-31T23:10:00Z", text: "Counting down — can't wait to see everyone at the lake! 🥳" },
-  { id: "p2", author: "Grandpa", ts: "2026-05-31T20:00:00Z", text: "First musky of the season 🎣", gradient: "from-teal-300 to-cyan-500", emoji: "🎣" },
-  { id: "p3", author: "Cousin Sam", ts: "2026-05-30T18:30:00Z", text: "Sunset off the main dock 🌅", gradient: "from-amber-300 to-rose-400", emoji: "🌅" },
-  { id: "p4", author: "The Petersons", ts: "2026-05-29T15:00:00Z", text: "Who's bringing the cornhole boards this year?" },
+  { id: "p1", author: "Aunt Linda", ts: "2026-05-31T23:10:00Z", text: "Counting down — can't wait to see everyone at the lake! 🥳", likes: 4 },
+  { id: "p2", author: "Grandpa", ts: "2026-05-31T20:00:00Z", text: "First musky of the season 🎣", gradient: "from-teal-300 to-cyan-500", emoji: "🎣", likes: 9 },
+  { id: "p3", author: "Cousin Sam", ts: "2026-05-30T18:30:00Z", text: "Sunset off the main dock 🌅", gradient: "from-amber-300 to-rose-400", emoji: "🌅", likes: 6 },
+  { id: "p4", author: "The Petersons", ts: "2026-05-29T15:00:00Z", text: "Who's bringing the cornhole boards this year?", likes: 2 },
 ];
 
 /**

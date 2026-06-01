@@ -92,6 +92,17 @@ export interface Post {
   /** Seed-only placeholder image: Tailwind gradient classes + an emoji. */
   gradient?: string;
   emoji?: string;
+  /** Seed baseline like count (so the feed looks alive). */
+  likes?: number;
+}
+
+/** A comment on a feed post. */
+export interface PostComment {
+  id: string;
+  author: string;
+  text: string;
+  /** ISO timestamp. */
+  ts: string;
 }
 
 /* ── Family Fest section types ───────────────────────────────────────────────
