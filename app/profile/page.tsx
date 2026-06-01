@@ -63,6 +63,8 @@ export default function ProfilePage() {
             Add your name &amp; email
           </button>
         </div>
+
+        <DemoDateControl />
       </div>
     );
   }
@@ -122,6 +124,8 @@ export default function ProfilePage() {
           <AdminAlertComposer />
         </section>
       )}
+
+      <DemoDateControl />
 
       <button
         onClick={signOut}
