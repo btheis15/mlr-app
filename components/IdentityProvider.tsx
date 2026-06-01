@@ -1,19 +1,20 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { type Session } from "@supabase/supabase-js";
 import type { User } from "@/lib/types";
-import { isAdmin } from "@/lib/data";
-
-const STORAGE_KEY = "mlr-user";
+import { isAdmin as isAdminEmail } from "@/lib/data";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 interface IdentityValue {
   user: User | null;
-  /** True when the signed-in user's email is on the admin allow-list. */
+  /** True when the signed-in user is an admin (DB `is_admin`, or the seed
+   *  allow-list as a fallback during the transition). */
   isAdmin: boolean;
-  /** Patch the current user (e.g. toggle email alerts). */
+  /** Patch the current user (display name / email-alerts) → writes `profiles`. */
   updateUser: (patch: Partial<User>) => void;
-  /** Open the sign-in sheet on demand — call this from any action that needs
-   *  an identity (post a message, RSVP, etc.). No-op if already signed in. */
+  /** Open the sign-in sheet on demand — call from any action that needs an
+   *  identity (post, RSVP, …). No-op if already signed in or backend absent. */
   promptSignIn: () => void;
   signOut: () => void;
 }
@@ -26,94 +27,173 @@ const IdentityContext = createContext<IdentityValue>({
   signOut: () => {},
 });
 
-/** Read the signed-in guest from anywhere in the tree. */
+/** Read the signed-in member from anywhere in the tree. */
 export function useIdentity() {
   return useContext(IdentityContext);
 }
 
+interface ProfileRow {
+  display_name: string | null;
+  email_alerts: boolean;
+  is_admin: boolean;
+}
+
 /**
- * Identity, on-demand. The whole app is public to browse — nobody is gated at
- * the door. Identity (name + email, stored on-device) is only required to *do*
- * things: post a message, RSVP, etc. Those actions call `promptSignIn()`, which
- * opens a dismissible sign-in sheet. There's no verification yet — a one-time
- * code / magic link is the planned next layer, and this is where it slots in
- * (verify the email before calling persist).
+ * Identity, on-demand and verified. The whole app stays public to browse —
+ * nobody is gated at the door. Identity is required only to *do* things, and
+ * now it's a real, verified account: passwordless **email OTP** via Supabase
+ * (NEXT-STEPS §3b) with a persisted session (stay logged in on-device). The
+ * `user` shape ({ name, email, emailAlerts }) is unchanged, so consumers
+ * (Posts, Crew, Profile) don't care that it's backed by Supabase now; `name`
+ * comes from the member's `profiles.display_name`.
+ *
+ * Build-safe: if Supabase isn't configured, this degrades to "no sign-in
+ * available" (user stays null) rather than throwing.
  */
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [adminFlag, setAdminFlag] = useState(false);
   const [prompting, setPrompting] = useState(false);
 
   useEffect(() => {
-    // Hydrate any on-device identity after mount. We intentionally render the
-    // app immediately (no blank gate) — `user` starts null on both server and
-    // first client render, so there's no hydration mismatch; it just fills in.
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      /* ignore */
-    }
+    const sb = supabase;
+    if (!sb) return;
+    let active = true;
+
+    const loadFromSession = async (session: Session | null) => {
+      if (!session?.user) {
+        if (active) {
+          setUser(null);
+          setAdminFlag(false);
+        }
+        return;
+      }
+      const email = session.user.email ?? "";
+      const { data } = await sb
+        .from("profiles")
+        .select("display_name, email_alerts, is_admin")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (!active) return;
+      const profile = data as ProfileRow | null;
+      const name =
+        profile?.display_name?.trim() || email.split("@")[0] || "Member";
+      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true });
+      setAdminFlag(Boolean(profile?.is_admin) || isAdminEmail(email));
+    };
+
+    sb.auth.getSession().then(({ data }) => loadFromSession(data.session));
+    const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      loadFromSession(session);
+      if (session) setPrompting(false);
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
-  const persist = (u: User) => {
-    setUser(u);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    setPrompting(false);
-  };
-
-  const updateUser = (patch: Partial<User>) => {
-    if (!user) return;
-    persist({ ...user, ...patch });
+  const updateUser = async (patch: Partial<User>) => {
+    const sb = supabase;
+    if (!sb || !user) return;
+    setUser({ ...user, ...patch }); // optimistic
+    const { data: sess } = await sb.auth.getSession();
+    const id = sess.session?.user.id;
+    if (!id) return;
+    const row: Record<string, unknown> = {};
+    if (patch.name !== undefined) row.display_name = patch.name;
+    if (patch.emailAlerts !== undefined) row.email_alerts = patch.emailAlerts;
+    if (Object.keys(row).length) {
+      await sb.from("profiles").update(row).eq("id", id);
+    }
   };
 
   const promptSignIn = () => {
-    if (!user) setPrompting(true);
+    if (!user && isSupabaseConfigured) setPrompting(true);
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    setAdminFlag(false);
   };
 
   return (
     <IdentityContext.Provider
-      value={{ user, isAdmin: isAdmin(user?.email), updateUser, promptSignIn, signOut }}
+      value={{ user, isAdmin: adminFlag, updateUser, promptSignIn, signOut }}
     >
       {children}
-      {prompting && !user && (
-        <SignInGate onSignIn={persist} onClose={() => setPrompting(false)} />
+      {prompting && !user && isSupabaseConfigured && (
+        <SignInGate onClose={() => setPrompting(false)} />
       )}
     </IdentityContext.Provider>
   );
 }
 
-function SignInGate({
-  onSignIn,
-  onClose,
-}: {
-  onSignIn: (u: User) => void;
-  onClose: () => void;
-}) {
+/**
+ * Two-step passwordless sign-in: email → 6-digit code. Keeps the member in the
+ * app (no browser hop), which matters for an installed PWA. The signup trigger
+ * seeds `profiles.display_name` from the name entered here.
+ */
+function SignInGate({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<"email" | "code">("email");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [emailAlerts, setEmailAlerts] = useState(true);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const valid = name.trim().length > 1 && /\S+@\S+\.\S+/.test(email);
+  const emailValid = /\S+@\S+\.\S+/.test(email);
+  const nameValid = name.trim().length > 1;
+  const normEmail = email.trim().toLowerCase();
 
-  const submit = (e: React.FormEvent) => {
+  const sendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!valid) return;
-    onSignIn({
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      emailAlerts,
+    if (!supabase || !emailValid || !nameValid) return;
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normEmail,
+      options: { shouldCreateUser: true, data: { display_name: name.trim() } },
     });
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setStep("code");
+  };
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = code.trim();
+    if (!supabase || token.length < 6) return;
+    setBusy(true);
+    setError(null);
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: normEmail,
+      token,
+      type: "email",
+    });
+    if (error) {
+      setBusy(false);
+      setError(error.message);
+      return;
+    }
+    // Save the email-alerts choice (display_name is set by the signup trigger).
+    const id = data.session?.user.id;
+    if (id) {
+      await supabase.from("profiles").update({ email_alerts: emailAlerts }).eq("id", id);
+    }
+    setBusy(false);
+    onClose(); // onAuthStateChange picks up the new session
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center">
       <form
-        onSubmit={submit}
+        onSubmit={step === "email" ? sendCode : verify}
         className="relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-6 ring-1 ring-border"
       >
         <button
@@ -128,53 +208,91 @@ function SignInGate({
           <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
             🌲
           </div>
-          <h1 className="text-xl font-bold">Join in</h1>
+          <h1 className="text-xl font-bold">
+            {step === "email" ? "Join in" : "Check your email"}
+          </h1>
           <p className="text-sm text-foreground/60">
-            Browsing is open to everyone. Add your name and email to post,
-            RSVP, and get updates — so activity is tied to real people.
+            {step === "email"
+              ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you."
+              : `We sent a 6-digit code to ${normEmail}. Enter it below.`}
           </p>
         </div>
 
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
-          autoComplete="name"
-          className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-        />
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@email.com"
-          type="email"
-          autoComplete="email"
-          className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-        />
-        <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
-          <input
-            type="checkbox"
-            checked={emailAlerts}
-            onChange={(e) => setEmailAlerts(e.target.checked)}
-            className="h-4 w-4 accent-[var(--color-primary)]"
-          />
-          <span className="text-foreground/80">
-            Email me important alerts
-            <span className="block text-xs text-foreground/40">
-              In case you miss them in the app. You can change this anytime.
-            </span>
-          </span>
-        </label>
-        <button
-          type="submit"
-          disabled={!valid}
-          className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          Enter
-        </button>
-        <p className="text-center text-xs text-foreground/40">
-          Email verification (one-time code) is coming — for now this just
-          identifies you on this device.
-        </p>
+        {step === "email" ? (
+          <>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              autoComplete="name"
+              className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            />
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              type="email"
+              autoComplete="email"
+              className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            />
+            <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
+              <input
+                type="checkbox"
+                checked={emailAlerts}
+                onChange={(e) => setEmailAlerts(e.target.checked)}
+                className="h-4 w-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-foreground/80">
+                Email me important alerts
+                <span className="block text-xs text-foreground/40">
+                  In case you miss them in the app. Change this anytime.
+                </span>
+              </span>
+            </label>
+            <button
+              type="submit"
+              disabled={!nameValid || !emailValid || busy}
+              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? "Sending…" : "Email me a code"}
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="123456"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              className="w-full rounded-xl bg-card px-3 py-3 text-center text-lg font-semibold tracking-[0.3em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              type="submit"
+              disabled={code.trim().length < 6 || busy}
+              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? "Verifying…" : "Verify & sign in"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStep("email");
+                setCode("");
+                setError(null);
+              }}
+              className="w-full text-center text-xs text-foreground/50"
+            >
+              ← Use a different email
+            </button>
+          </>
+        )}
+
+        {error && (
+          <p className="rounded-xl bg-accent/10 px-3 py-2 text-center text-xs font-medium text-accent">
+            {error}
+          </p>
+        )}
       </form>
     </div>
   );

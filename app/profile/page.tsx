@@ -2,16 +2,16 @@
 
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { useIdentity } from "@/components/IdentityProvider";
-import { READ_ONLY } from "@/lib/features";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { DemoDateControl } from "@/components/DemoDateControl";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
 
-  // Read-only launch: accounts aren't live yet. Browsing stays fully open;
-  // profiles + sign-in arrive with the backend (NEXT-STEPS.md §3).
-  if (READ_ONLY) {
+  // Sign-in goes live once the backend is configured (NEXT-STEPS.md §3b).
+  // Until then, browsing stays fully open and this shows a "coming soon".
+  if (!isSupabaseConfigured) {
     return (
       <div className="space-y-4 pt-6">
         <header className="space-y-1">
