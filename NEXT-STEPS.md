@@ -160,6 +160,17 @@ You chose **Supabase**: one service that covers email one-time-code login, a dat
 
 > ⚠️ GitHub Pages serves **static files only** — there's no server to hold secrets. The `NEXT_PUBLIC_*` anon key is safe to ship (it's meant to be public, protected by Row Level Security). But anything needing a **secret** (Resend key, Drive service account, web-push private key, admin enforcement) needs a real server — use **Supabase Edge Functions** or move hosting to **Vercel**. See §7.
 
+### 3a-2. Keep it awake — free, hands-off (no Mac mini, no posting) ✅ (DECIDED)
+
+Free-tier Supabase **pauses a project after 7 days of inactivity** (data is kept; restore from the dashboard within 90 days; Pro never pauses). This app is **seasonal** — busy around Family Fest, quiet off-season — so the off-season is when it could pause. A pause only affects the *interactive* features; the static browse experience (Vercel/Pages) keeps working regardless.
+
+**Decision:** a **GitHub Actions cron** keeps it alive. It runs on GitHub's cloud (**not** the Mac mini), is free, and does a **read-only ping** of the backend every ~3 days — it never posts or writes anything. The workflow [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) is already in the repo and **inert until the backend exists** (no-ops with a green check while the secrets are unset; scheduled runs begin once it's on `main`).
+
+To switch it on when you create the project (with §3a):
+- [ ] Add repo secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions). Same values as the `NEXT_PUBLIC_*` env vars — the anon key is safe to expose.
+- [ ] Confirm the pinged table exists (defaults to `profiles`; any exposed table works, RLS is fine). Override with a `KEEPALIVE_TABLE` Actions variable for a dedicated tiny `keepalive` table.
+- [ ] (Optional) Hit "Run workflow" in the Actions tab once to confirm a green run.
+
 ### 3b. Auth — PASSWORDLESS, FREE: email code + saved session ✅ (DECIDED)
 
 **Decision (free + best UX): Supabase Auth email OTP with a long-lived, persisted session.** No passwords, no paid auth vendor.

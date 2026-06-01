@@ -1,0 +1,48 @@
+# Keeps the free-tier Supabase project from pausing after 7 days idle.
+# Runs on GitHub's cloud (NOT the Mac mini), is free, and only does a
+# READ-ONLY ping of the backend — it never posts or writes anything.
+#
+# Inert until the backend exists: with the secrets unset, every run is a
+# green no-op. To turn it on (during NEXT-STEPS §3a):
+#   1. Create the Supabase project.
+#   2. Add repo secrets SUPABASE_URL + SUPABASE_ANON_KEY
+#      (Settings -> Secrets and variables -> Actions). Same values as the
+#      NEXT_PUBLIC_* env vars; the anon key is safe to expose.
+#   3. The pinged table defaults to `profiles` (any exposed table works;
+#      RLS is fine — a filtered read still returns 200 and still counts as
+#      DB activity). Override with a KEEPALIVE_TABLE Actions variable.
+#   4. Optionally hit "Run workflow" once to confirm a green run.
+#
+# Note: scheduled workflows only run on the default branch, so the cron
+# starts once this is merged to main.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # Every ~3 days — comfortably under Supabase's 7-day free-tier pause
+    # window, with margin for GitHub's occasional scheduled-run delays.
+    - cron: "17 13 */3 * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read-only ping (no writes, no posts)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TABLE: ${{ vars.KEEPALIVE_TABLE || 'profiles' }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Supabase secrets not set yet — backend isn't stood up. Skipping (no-op)."
+            exit 0
+          fi
+          echo "Pinging $SUPABASE_URL (table: $TABLE) ..."
+          code=$(curl -fsS -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/$TABLE?select=*&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY") || {
+              echo "Ping failed (curl error). HTTP=$code"; exit 1;
+            }
+          echo "OK — HTTP $code. Activity registered; project stays awake."
