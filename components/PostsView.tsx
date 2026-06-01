@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Post, PostComment } from "@/lib/types";
+import type { Post } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -10,22 +10,23 @@ import { timeAgo } from "@/lib/format";
 interface FeedPost {
   id: string;
   author: string;
-  /** DB posts carry the author's id so we can allow author/admin delete. */
-  authorId?: string;
+  authorId?: string; // DB posts — for author/admin delete
   ts: string;
   text?: string;
-  /** Public URL (DB) or object URL (local fallback). */
-  imageUrl?: string;
-  /** The original File (local fallback only), so the share sheet has the photo. */
-  file?: File;
-  /** Seed-only gradient tile (local fallback). */
-  gradient?: string;
-  emoji?: string;
-  /** Seed baseline like count (local fallback). */
-  likes?: number;
+  imageUrl?: string; // public URL (DB) or object URL (local fallback)
+  file?: File; // local fallback only (for the share sheet)
+  gradient?: string; // seed only
+  emoji?: string; // seed only
 }
 
-/** One row from the `posts` table (+ joined author). */
+interface CommentItem {
+  id: string;
+  author: string;
+  authorId: string;
+  text: string;
+  ts: string;
+}
+
 interface PostRow {
   id: string;
   text: string | null;
@@ -34,24 +35,30 @@ interface PostRow {
   author_id: string;
   profiles: { display_name: string | null } | null;
 }
+interface CommentRow {
+  id: string;
+  post_id: string;
+  text: string;
+  created_at: string;
+  author_id: string;
+  profiles: { display_name: string | null } | null;
+}
+interface ReactionRow {
+  post_id: string;
+  user_id: string;
+  emoji: string;
+}
 
-const LS = {
-  shareFb: "posts-share-fb",
-  liked: "posts-liked",
-  comments: "posts-comments",
-  hidden: "posts-hidden",
-};
-
+const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
 const BUCKET = "post-photos";
+/** Tappable reactions — Unicode, so each phone renders its own native emoji. */
+const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 /**
- * The shared feed. When the backend is configured it's a real, cross-device
- * feed: photos upload to Supabase Storage, posts live in the `posts` table
- * (public-read so anyone with the link sees them), and a realtime subscription
- * keeps everyone's feed live. Without a backend it falls back to the original
- * device-local behaviour so the build/preview still works.
- *
- * Likes & comments are still per-device for now — they move to the DB next.
+ * The shared feed. With the backend configured it's fully cross-device: posts,
+ * photos (Storage), comments, and emoji reactions all live server-side with a
+ * realtime subscription, so everyone with the link sees the same feed live.
+ * Falls back to the original device-local posts when there's no backend.
  */
 export function PostsView({ seed }: { seed: Post[] }) {
   const { user, isAdmin, promptSignIn } = useIdentity();
@@ -59,6 +66,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
   const [uid, setUid] = useState<string | null>(null);
   const [dbPosts, setDbPosts] = useState<FeedPost[]>([]);
+  const [dbComments, setDbComments] = useState<Record<string, CommentItem[]>>({});
+  const [dbReactions, setDbReactions] = useState<Record<string, ReactionRow[]>>({});
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [added, setAdded] = useState<FeedPost[]>([]); // local fallback only
 
@@ -68,36 +77,61 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [alsoFacebook, setAlsoFacebook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-
-  // Likes / comments / hidden stay device-local for now.
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const [comments, setComments] = useState<Record<string, PostComment[]>>({});
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
 
-  // ---- Shared feed from the database (when configured) ----
+  // ---- Shared feed (posts + comments + reactions) from the database ----
   const refetch = async () => {
-    if (!supabase) return;
-    const { data } = await supabase
-      .from("posts")
-      .select("id, text, image_path, created_at, author_id, profiles(display_name)")
-      .order("created_at", { ascending: false });
-    const rows = (data ?? []) as unknown as PostRow[];
+    const sb = supabase;
+    if (!sb) return;
+    const [postsRes, commentsRes, reactionsRes] = await Promise.all([
+      sb
+        .from("posts")
+        .select("id, text, image_path, created_at, author_id, profiles(display_name)")
+        .order("created_at", { ascending: false }),
+      sb
+        .from("post_comments")
+        .select("id, post_id, text, created_at, author_id, profiles(display_name)")
+        .order("created_at", { ascending: true }),
+      sb.from("post_reactions").select("post_id, user_id, emoji"),
+    ]);
+
+    const postRows = (postsRes.data ?? []) as unknown as PostRow[];
     setDbPosts(
-      rows.map((r) => ({
+      postRows.map((r) => ({
         id: r.id,
         author: r.profiles?.display_name?.trim() || "Member",
         authorId: r.author_id,
         ts: r.created_at,
         text: r.text || undefined,
         imageUrl: r.image_path
-          ? supabase!.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl
+          ? sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl
           : undefined,
       })),
     );
+
+    const commentRows = (commentsRes.data ?? []) as unknown as CommentRow[];
+    const byPost: Record<string, CommentItem[]> = {};
+    for (const c of commentRows) {
+      (byPost[c.post_id] ||= []).push({
+        id: c.id,
+        author: c.profiles?.display_name?.trim() || "Member",
+        authorId: c.author_id,
+        text: c.text,
+        ts: c.created_at,
+      });
+    }
+    setDbComments(byPost);
+
+    const reactionRows = (reactionsRes.data ?? []) as unknown as ReactionRow[];
+    const reByPost: Record<string, ReactionRow[]> = {};
+    for (const r of reactionRows) (reByPost[r.post_id] ||= []).push(r);
+    setDbReactions(reByPost);
+
     setFeedLoaded(true);
   };
 
@@ -111,9 +145,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
     refetch();
     const ch = sb
       .channel("posts-feed")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => {
-        refetch();
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, () => refetch())
       .subscribe();
     return () => {
       sb.removeChannel(ch);
@@ -121,29 +155,21 @@ export function PostsView({ seed }: { seed: Post[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- device-local likes / comments / hidden + FB preference ----
+  // ---- device-local bits: FB preference + hidden seed posts (fallback) ----
   useEffect(() => {
     try {
       setAlsoFacebook(localStorage.getItem(LS.shareFb) === "1");
-      setLiked(JSON.parse(localStorage.getItem(LS.liked) || "{}"));
-      setComments(JSON.parse(localStorage.getItem(LS.comments) || "{}"));
       setHidden(JSON.parse(localStorage.getItem(LS.hidden) || "[]"));
     } catch {
       /* ignore */
     }
     setLoaded(true);
   }, []);
-
-  const persist = (key: string, value: unknown) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      /* ignore */
+  useEffect(() => {
+    if (loaded) {
+      try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ }
     }
-  };
-  useEffect(() => { if (loaded) persist(LS.liked, liked); }, [liked, loaded]);
-  useEffect(() => { if (loaded) persist(LS.comments, comments); }, [comments, loaded]);
-  useEffect(() => { if (loaded) persist(LS.hidden, hidden); }, [hidden, loaded]);
+  }, [hidden, loaded]);
   useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   const setShareFb = (v: boolean) => {
@@ -161,13 +187,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
     e.target.value = "";
   };
 
-  /** Open the FB group with the caption pre-copied (best FB allows from web). */
   const openFacebook = (caption?: string) => {
     if (caption) navigator.clipboard.writeText(caption).catch(() => {});
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
   };
 
-  /** Per-post "Share ↗" — native share sheet, falling back to the FB group. */
   const shareOut = async (p: { text?: string; file?: File }) => {
     const nav = navigator as Navigator & { canShare?: (d?: ShareData) => boolean };
     const data: ShareData = { title: FAMILY_FEST.shortName, text: p.text || FAMILY_FEST.shortName };
@@ -235,19 +259,40 @@ export function PostsView({ seed }: { seed: Post[] }) {
     window.setTimeout(() => setStatus(null), 7000);
   };
 
-  const toggleLike = (id: string) => {
-    if (!user) return promptSignIn();
-    setLiked((p) => ({ ...p, [id]: !p[id] }));
+  // ---- reactions (DB) ----
+  const myReaction = (postId: string) =>
+    dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
+  const reactionSummary = (postId: string) => {
+    const counts: Record<string, number> = {};
+    for (const r of dbReactions[postId] ?? []) counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   };
-  const addComment = (id: string, body: string) => {
-    if (!user) return promptSignIn();
+  const react = async (postId: string, emoji: string) => {
+    setPickerFor(null);
+    if (!supabase || !uid) { promptSignIn(); return; }
+    if (myReaction(postId) === emoji) {
+      await supabase.from("post_reactions").delete().eq("post_id", postId).eq("user_id", uid);
+    } else {
+      await supabase
+        .from("post_reactions")
+        .upsert({ post_id: postId, user_id: uid, emoji }, { onConflict: "post_id,user_id" });
+    }
+    await refetch();
+  };
+
+  // ---- comments (DB) ----
+  const addComment = async (postId: string, body: string) => {
     const t = body.trim();
     if (!t) return;
-    const c: PostComment = { id: `c-${Date.now()}`, author: user.name, text: t, ts: new Date().toISOString() };
-    setComments((p) => ({ ...p, [id]: [...(p[id] || []), c] }));
+    if (!supabase || !uid) { promptSignIn(); return; }
+    await supabase.from("post_comments").insert({ post_id: postId, author_id: uid, text: t });
+    await refetch();
   };
-  const removeComment = (postId: string, cid: string) =>
-    setComments((p) => ({ ...p, [postId]: (p[postId] || []).filter((c) => c.id !== cid) }));
+  const removeComment = async (commentId: string) => {
+    if (!supabase) return;
+    await supabase.from("post_comments").delete().eq("id", commentId);
+    await refetch();
+  };
 
   const canDeletePost = (p: FeedPost, isAdded: boolean) =>
     configured
@@ -269,9 +314,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     ? dbPosts.map((p) => ({ post: p, isAdded: false }))
     : [
         ...added.map((p) => ({ post: p, isAdded: true })),
-        ...seed
-          .filter((s) => !hidden.includes(s.id))
-          .map((p) => ({ post: p as FeedPost, isAdded: false })),
+        ...seed.filter((s) => !hidden.includes(s.id)).map((p) => ({ post: p as FeedPost, isAdded: false })),
       ];
 
   return (
@@ -356,8 +399,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
         )}
         <p className="text-[11px] text-foreground/40">
           {configured
-            ? "Photos & notes are shared with everyone in the app, instantly. (Likes & comments are still per-device for now — coming next.)"
-            : "Posts, likes & comments are saved on this device for now — a shared feed everyone sees arrives with sign-in."}
+            ? "Photos, notes, reactions & comments are all shared with everyone, live."
+            : "Posts are saved on this device for now — a shared feed everyone sees arrives with sign-in."}
         </p>
       </form>
 
@@ -369,8 +412,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
       <ul className="space-y-3">
         {feed.map(({ post: p, isAdded }) => {
-          const likeCount = (p.likes ?? 0) + (liked[p.id] ? 1 : 0);
-          const postComments = comments[p.id] ?? [];
+          const summary = reactionSummary(p.id);
+          const mine = myReaction(p.id);
+          const postComments = dbComments[p.id] ?? [];
           return (
             <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center gap-2 px-4 pt-3">
@@ -402,18 +446,34 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 </div>
               ) : null}
 
+              {/* reaction summary */}
+              {summary.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+                  {summary.map(([emoji, count]) => (
+                    <span
+                      key={emoji}
+                      className={`rounded-full px-2 py-0.5 text-xs ring-1 ${
+                        mine === emoji
+                          ? "bg-primary/10 text-primary ring-primary/30"
+                          : "bg-background text-foreground/60 ring-border"
+                      }`}
+                    >
+                      {emoji} {count}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* actions */}
-              <div className="flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
+              <div className="mt-2 flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
                 <button
-                  onClick={() => toggleLike(p.id)}
-                  className={`flex items-center gap-1 rounded-full px-3 py-1.5 font-medium ${
-                    liked[p.id] ? "text-primary" : "text-foreground/55"
-                  }`}
-                  aria-pressed={!!liked[p.id]}
+                  onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)}
+                  className={`rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`}
+                  aria-expanded={pickerFor === p.id}
                 >
-                  {liked[p.id] ? "❤️" : "🤍"} {likeCount > 0 ? likeCount : "Like"}
+                  {mine ? `${mine} Reacted` : "🙂 React"}
                 </button>
-                <span className="flex items-center gap-1 rounded-full px-3 py-1.5 text-foreground/55">
+                <span className="rounded-full px-3 py-1.5 text-foreground/55">
                   💬 {postComments.length > 0 ? postComments.length : "Comment"}
                 </span>
                 <button
@@ -424,6 +484,24 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 </button>
               </div>
 
+              {/* emoji picker */}
+              {pickerFor === p.id && (
+                <div className="flex gap-1 border-t border-border px-2 py-2">
+                  {REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => react(p.id, emoji)}
+                      className={`flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${
+                        mine === emoji ? "bg-primary/15" : "bg-background"
+                      }`}
+                      aria-label={`React ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* comments */}
               {(postComments.length > 0 || user) && (
                 <div className="space-y-2 border-t border-border px-4 py-3">
@@ -431,9 +509,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
                     <div key={c.id} className="flex items-start gap-2 text-xs">
                       <span className="font-semibold">{c.author}</span>
                       <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
-                      {(isAdmin || (user && c.author === user.name)) && (
+                      {(isAdmin || (!!uid && c.authorId === uid)) && (
                         <button
-                          onClick={() => removeComment(p.id, c.id)}
+                          onClick={() => removeComment(c.id)}
                           className="shrink-0 text-foreground/30 hover:text-primary"
                           aria-label="Delete comment"
                         >
