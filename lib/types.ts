@@ -80,6 +80,20 @@ export interface ChatMessage {
   ts: string;
 }
 
+/** A post in the shared feed — a photo and/or a note, by a member. (Combines
+ *  the old chat + photos.) Runtime posts add a real image; seed posts use a
+ *  gradient tile so the feed looks alive without shipping image binaries. */
+export interface Post {
+  id: string;
+  author: string;
+  /** ISO timestamp. */
+  ts: string;
+  text?: string;
+  /** Seed-only placeholder image: Tailwind gradient classes + an emoji. */
+  gradient?: string;
+  emoji?: string;
+}
+
 /* ── Family Fest section types ───────────────────────────────────────────────
    The Family Fest experience lives inside this app at /family-fest/*. These
    shapes back its schedule, dinners, crew/RSVP, photos, pay, and anytime
