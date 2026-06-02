@@ -3,6 +3,7 @@ import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
+import { ShareApp } from "@/components/ShareApp";
 
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
@@ -22,6 +23,9 @@ export default function HomePage() {
         />
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
+
+      {/* Easy, visible way for anyone to share the app with family. */}
+      <ShareApp />
 
       {/* Family Fest — quiet banner most of the year, a takeover hero during
           the event week (see FamilyFestSpotlight). This is what makes the fest
