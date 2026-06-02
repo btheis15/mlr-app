@@ -11,8 +11,12 @@ export default function DiningPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-campfire">Eat &amp; drink</h2>
         <ul className="space-y-2">
-          {DINING.map((d) => (
-            <li key={d.id} className="flex gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
+          {DINING.map((d, i) => (
+            <li
+              key={d.id}
+              className="rise flex gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
+              style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+            >
               <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-campfire/12 text-2xl">
                 {d.emoji}
               </div>
@@ -29,10 +33,11 @@ export default function DiningPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-lake">Amenities</h2>
         <ul className="space-y-2">
-          {AMENITIES.map((a) => (
+          {AMENITIES.map((a, i) => (
             <li
               key={a.id}
-              className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border"
+              className="rise flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border"
+              style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
             >
               <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-lake/10 text-lg">
                 {a.emoji}

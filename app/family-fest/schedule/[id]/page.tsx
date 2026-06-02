@@ -51,13 +51,13 @@ export default async function EventDetailPage({
           <div className="mt-3 grid grid-cols-2 gap-2">
             <a
               href={`tel:${event.lead.phone}`}
-              className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+              className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
             >
               📞 Call
             </a>
             <a
               href={`sms:${event.lead.phone}`}
-              className="rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+              className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
             >
               💬 Text
             </a>

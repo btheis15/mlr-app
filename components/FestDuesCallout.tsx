@@ -17,7 +17,7 @@ export function FestDuesCallout() {
   return (
     <Link
       href="/family-fest/pay"
-      className="flex items-center gap-3 rounded-2xl bg-primary p-4 text-white shadow-sm"
+      className="press flex items-center gap-3 rounded-2xl bg-primary p-4 text-white shadow-sm"
     >
       <span className="text-2xl">💸</span>
       <div className="min-w-0 flex-1">

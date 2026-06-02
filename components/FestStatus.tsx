@@ -76,7 +76,7 @@ export function FestStatus({
             ? ` — the album's open ${season.wrapDaysLeft} more day${season.wrapDaysLeft === 1 ? "" : "s"}.`
             : "."}
         </p>
-        <Link href="/posts" className="mt-2 inline-block text-sm font-semibold text-primary">
+        <Link href="/posts" className="press mt-2 inline-block text-sm font-semibold text-primary">
           Post your photos →
         </Link>
       </div>
@@ -153,14 +153,14 @@ function Contact({ label, name, phone }: { label: string; name: string; phone: s
       <a
         href={`tel:${phone}`}
         aria-label={`Call ${name}`}
-        className="rounded-full bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
+        className="press rounded-full bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
       >
         📞
       </a>
       <a
         href={`sms:${phone}`}
         aria-label={`Text ${name}`}
-        className="rounded-full bg-accent/10 px-2.5 py-1.5 text-xs text-accent"
+        className="press rounded-full bg-accent/10 px-2.5 py-1.5 text-xs text-accent"
       >
         💬
       </a>
@@ -191,19 +191,19 @@ function VolunteerContact({
       <div className="mt-3 grid grid-cols-3 gap-2">
         <a
           href={mailto}
-          className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
         >
           ✉️ Email
         </a>
         <a
           href={`tel:${contact.phone}`}
-          className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
         >
           📞 Call
         </a>
         <a
           href={smsto}
-          className="rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+          className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
         >
           💬 Text
         </a>

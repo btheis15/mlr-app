@@ -74,7 +74,7 @@ export function AdminAlertComposer() {
         <button
           type="submit"
           disabled={!title.trim()}
-          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          className="press rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
         >
           Push
         </button>

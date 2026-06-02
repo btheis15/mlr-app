@@ -100,14 +100,14 @@ export function TeeTimesView() {
           href={buildForeUpUrl()}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[15px] font-semibold text-white transition-colors active:bg-primary/90"
+          className="press mt-4 flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[15px] font-semibold text-white transition-colors active:bg-primary/90"
         >
           View all available times ↗
         </a>
 
         <a
           href={`tel:${INSHALLA_PHONE_TEL}`}
-          className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-card py-3 text-[14px] font-semibold text-foreground ring-1 ring-border transition-colors active:bg-background"
+          className="press mt-2 flex items-center justify-center gap-2 rounded-2xl bg-card py-3 text-[14px] font-semibold text-foreground ring-1 ring-border transition-colors active:bg-background"
         >
           <PhoneIcon />
           <span>Call pro shop</span>
@@ -125,7 +125,7 @@ export function TeeTimesView() {
           href={DAILY_DEALS_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center rounded-2xl bg-card px-4 py-4 ring-1 ring-border transition-colors active:bg-background"
+          className="press flex items-center rounded-2xl bg-card px-4 py-4 ring-1 ring-border transition-colors active:bg-background"
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -171,7 +171,7 @@ function DayLink({ date, label }: { date: Date; label: string }) {
       href={buildForeUpUrl({ dateMdY: toForeUpDate(date) })}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center px-4 py-4 transition-colors active:bg-background"
+      className="press flex items-center px-4 py-4 transition-colors active:bg-background"
     >
       <div className="min-w-0 flex-1">
         <div className="text-[15px] font-semibold text-foreground">{label}</div>

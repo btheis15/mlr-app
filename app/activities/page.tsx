@@ -32,10 +32,11 @@ export default function ActivitiesPage() {
           <section key={cat.name} className="space-y-2">
             <h2 className={`text-sm font-semibold ${cat.head}`}>{cat.name}</h2>
             <ul className="space-y-2">
-              {items.map((a) => (
+              {items.map((a, i) => (
                 <li
                   key={a.id}
-                  className="flex gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
+                  className="rise flex gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
+                  style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
                 >
                   <div
                     className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${cat.chip}`}

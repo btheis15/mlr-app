@@ -79,7 +79,7 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
             </div>
             <button
               onClick={() => dismiss(a.id)}
-              className="shrink-0 rounded-full px-1 text-foreground/40 hover:text-foreground"
+              className="press shrink-0 rounded-full px-1 text-foreground/40 hover:text-foreground"
               aria-label="Dismiss"
             >
               ✕

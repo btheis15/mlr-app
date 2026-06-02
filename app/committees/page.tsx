@@ -13,11 +13,15 @@ export default function CommitteesPage() {
         </p>
       </header>
       <ul className="space-y-2">
-        {COMMITTEES.map((c) => (
-          <li key={c.slug}>
+        {COMMITTEES.map((c, i) => (
+          <li
+            key={c.slug}
+            className="rise"
+            style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+          >
             <Link
               href={`/committees/${c.slug}`}
-              className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+              className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
             >
               <span className="text-2xl">{c.emoji}</span>
               <div className="min-w-0 flex-1">

@@ -59,19 +59,19 @@ export default async function CommitteePage({
               <div className="mt-2 grid grid-cols-3 gap-2">
                 <a
                   href={`mailto:${m.email}`}
-                  className="rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                  className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
                 >
                   ✉️ Email
                 </a>
                 <a
                   href={`tel:${m.phone}`}
-                  className="rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                  className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
                 >
                   📞 Call
                 </a>
                 <a
                   href={`sms:${m.phone}`}
-                  className="rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
+                  className="press rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
                 >
                   💬 Text
                 </a>
