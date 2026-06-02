@@ -29,6 +29,15 @@ const app = express();
 app.disable("x-powered-by");
 app.use(cors({ origin: ALLOWED.length ? ALLOWED : true, methods: ["GET", "POST", "OPTIONS"] }));
 
+// Lightweight request log (method, path, origin, body size, auth present) so
+// upload problems are diagnosable from logs/server.log.
+app.use((req, _res, next) => {
+  if (req.url !== "/health") {
+    console.log(`[req] ${new Date().toISOString()} ${req.method} ${req.url} origin=${req.headers.origin || "-"} len=${req.headers["content-length"] || "-"} auth=${req.headers.authorization ? "yes" : "no"}`);
+  }
+  next();
+});
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 // Public read of media. express.static honours HTTP Range requests, so video
@@ -56,17 +65,19 @@ async function requireUser(req, res, next) {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${m[1]}` },
     });
-    if (!r.ok) return res.status(401).json({ error: "Invalid or expired session." });
+    if (!r.ok) { console.warn(`[auth] token rejected by Supabase: ${r.status}`); return res.status(401).json({ error: "Invalid or expired session." }); }
     next();
-  } catch {
+  } catch (e) {
+    console.error(`[auth] could not reach Supabase: ${e && e.message}`);
     return res.status(503).json({ error: "Couldn't reach the auth service." });
   }
 }
 
 app.post("/upload", requireUser, (req, res) => {
   upload.single("file")(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: "No file received." });
+    if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
+    if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
+    console.log(`[upload] saved ${req.file.filename} (${req.file.size} bytes)`);
     res.json({ url: `${PUBLIC_URL}/f/${req.file.filename}`, name: req.file.filename });
   });
 });
