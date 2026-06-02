@@ -20,6 +20,7 @@ export interface Action {
   href?: string; // tappable link (tel:/sms:/mailto:/https); absent = copy-only
   note?: string;
   preferred?: boolean;
+  brand?: string; // brand color → render as a smooth filled button (pay methods)
 }
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
@@ -37,11 +38,12 @@ export function contactActions(c: MemberContact): Action[] {
 
 export function payActions(c: MemberContact): Action[] {
   const out: Action[] = [];
-  if (c.venmo) out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: `https://venmo.com/u/${strip(c.venmo, "@")}` });
-  if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app" });
-  if (c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "send in Messages" });
-  if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}` });
-  if (c.paypal) out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "")}` });
+  // venmo.com/<user>?txn=pay opens straight to the Pay screen (not the profile).
+  if (c.venmo) out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`, brand: "#008CFF" });
+  if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app", brand: "#6D1ED4" });
+  if (c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "send in Messages", brand: "#111111" });
+  if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}`, brand: "#00B843" });
+  if (c.paypal) out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "")}`, brand: "#0070BA" });
   return mark(out, c.pay_preferred);
 }
 
