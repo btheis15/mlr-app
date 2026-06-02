@@ -6,6 +6,7 @@ import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { dayKey, formatDayHeading, formatClock, toDatetimeLocal } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -20,12 +21,14 @@ interface Tag {
 interface Member {
   id: string;
   name: string;
+  avatarUrl?: string | null;
 }
 
 interface FeedPost {
   id: string;
   author: string;
   authorId?: string;
+  authorAvatar?: string | null;
   ts: string;
   text?: string;
   media: Media[];
@@ -37,6 +40,7 @@ interface FeedPost {
 interface CommentItem {
   id: string;
   author: string;
+  authorAvatar?: string | null;
   authorId: string;
   text: string;
   ts: string;
@@ -144,7 +148,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
-      sb.from("profiles").select("id, display_name"),
+      sb.from("profiles").select("id, display_name, avatar_url"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
     // the column is missing — fall back to created_at so the feed still loads.
@@ -167,15 +171,18 @@ export function PostsView({ seed }: { seed: Post[] }) {
     const [mediaRes, commentsRes, reactionsRes, tagsRes, profilesRes] = await others;
 
     const names = new Map<string, string>();
+    const avatars = new Map<string, string | null>();
     const memberList: Member[] = [];
-    for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null }[]) {
+    for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]) {
       const n = p.display_name?.trim() || "Member";
       names.set(p.id, n);
-      memberList.push({ id: p.id, name: n });
+      avatars.set(p.id, p.avatar_url);
+      memberList.push({ id: p.id, name: n, avatarUrl: p.avatar_url });
     }
     memberList.sort((a, b) => a.name.localeCompare(b.name));
     setMembers(memberList);
     const nameOf = (id: string) => names.get(id) || "Member";
+    const avatarOf = (id: string) => avatars.get(id) ?? null;
 
     const mediaByPost: Record<string, Media[]> = {};
     for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
@@ -205,6 +212,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           id: r.id,
           author: nameOf(r.author_id),
           authorId: r.author_id,
+          authorAvatar: avatarOf(r.author_id),
           ts: r.occurred_at || r.created_at,
           text: r.text || undefined,
           media,
@@ -215,7 +223,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
     const byPost: Record<string, CommentItem[]> = {};
     for (const c of (commentsRes.data ?? []) as unknown as CommentRow[]) {
-      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at });
+      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorAvatar: avatarOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at });
     }
     setDbComments(byPost);
 
@@ -694,7 +702,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           return (
             <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center gap-2 px-4 pt-3">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">{initials(p.author)}</span>
+                <Avatar name={p.author} url={p.authorAvatar} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.author}</p>
                   <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
@@ -782,6 +790,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <div className="space-y-2 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
                     <div key={c.id} className="flex items-start gap-2 text-xs">
+                      <Avatar name={c.author} url={c.authorAvatar} size={22} className="mt-0.5" />
                       <span className="font-semibold">{c.author}</span>
                       <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
                       {(isAdmin || (!!uid && c.authorId === uid)) && (
@@ -1108,8 +1117,4 @@ async function compressImage(file: File): Promise<File> {
   } catch {
     return file; // never block posting on a compression hiccup
   }
-}
-
-function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 }
