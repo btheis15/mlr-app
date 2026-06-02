@@ -53,7 +53,7 @@ function Card({
   return (
     <Link
       href={href}
-      className="rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+      className="press rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
     >
       <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${chip}`}>
         {emoji}

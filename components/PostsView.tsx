@@ -615,11 +615,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
         })()}
 
         <div className="flex items-center justify-between gap-2">
-          <button type="button" onClick={() => inputRef.current?.click()} className="rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
+          <button type="button" onClick={() => inputRef.current?.click()} className="press rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
             📷 Photos / video
           </button>
           <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
-          <button type="submit" disabled={posting} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <button type="submit" disabled={posting} className="press rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
             {posting ? (progress != null ? `Posting… ${progress}%` : "Posting…") : "Post"}
           </button>
         </div>
@@ -826,7 +826,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       )}
 
       {memberSheet && (
-        <MemberSheet id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
+        <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
       )}
     </div>
   );
