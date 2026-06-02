@@ -47,6 +47,8 @@ PUBLIC_URL = _env("PUBLIC_URL", f"http://localhost:{PORT}")
 MEDIA_DIR = _env("MEDIA_DIR", os.path.join(BASE, "media"))
 TAILSCALE = "/opt/homebrew/bin/tailscale" if os.path.exists(
     "/opt/homebrew/bin/tailscale") else "tailscale"
+# The mobile app's green-house emblem (shown in the header).
+LOGO = os.path.join(BASE, "..", "public", "icon-512.png")
 
 # ---- theme (MLR pine green on warm near-white) ----
 PINE = "#15503a"
@@ -156,7 +158,14 @@ class App:
         self.f_val = tkfont.Font(family="Menlo", size=13)
         self.f_small = tkfont.Font(family="Helvetica Neue", size=10)
         self.f_log = tkfont.Font(family="Menlo", size=10)
+        # Brush-script wordmark to echo the resort's Yellowtail logo.
+        _fams = set(tkfont.families())
+        _logo_fam = next((x for x in ("Brush Script MT", "SignPainter",
+                                      "Snell Roundhand", "Noteworthy") if x in _fams), None)
+        self.f_logo = (tkfont.Font(family=_logo_fam, size=30) if _logo_fam
+                       else tkfont.Font(family="Helvetica Neue", size=18, weight="bold"))
 
+        self.logo_img = self._load_logo()
         self._build()
         self.root.after(150, lambda: self.root.focus_force())
         self._tick()
@@ -166,9 +175,13 @@ class App:
         head.pack(fill="x")
         inner = tk.Frame(head, bg=PINE)
         inner.pack(fill="x", padx=20, pady=16)
-        tk.Label(inner, text="MLR Media Server", bg=PINE, fg="white",
-                 font=self.f_title).pack(anchor="w")
-        tk.Label(inner, text="self-hosted photos & videos  ·  Mac mini",
+        if self.logo_img is not None:
+            tk.Label(inner, image=self.logo_img, bg=PINE).pack(side="left", padx=(0, 12))
+        textcol = tk.Frame(inner, bg=PINE)
+        textcol.pack(side="left", anchor="w")
+        tk.Label(textcol, text="MLR Media Server", bg=PINE, fg="white",
+                 font=self.f_logo).pack(anchor="w")
+        tk.Label(textcol, text="self-hosted photos & videos  ·  Mac mini",
                  bg=PINE, fg="#bcd8c9", font=self.f_sub).pack(anchor="w")
 
         body = tk.Frame(self.root, bg=BG)
@@ -234,6 +247,24 @@ class App:
         b = Btn(parent, text, cmd, CARD, fg=INK, font=self.f_small, pady=8,
                 highlightbackground=BORDER, highlightthickness=1)
         return b
+
+    def _load_logo(self):
+        """The green-house emblem from the mobile app, cropped to drop the
+        'Muskellunge Lake Resort' wordmark (we show 'MLR Media Server'
+        instead). Its green matches the header, so it blends in. Returns None
+        if the image can't load — never blocks the UI."""
+        try:
+            if not os.path.exists(LOGO):
+                return None
+            src = tk.PhotoImage(file=LOGO)  # PNG decode needs Tk 8.6
+            w, h = src.width(), src.height()
+            crop_h = int(h * 0.58)  # keep the cabin badge, drop the wordmark
+            badge = tk.PhotoImage(width=w, height=crop_h)
+            badge.tk.call(badge.name, "copy", src.name,
+                          "-from", 0, 0, w, crop_h, "-to", 0, 0)
+            return badge.subsample(max(1, round(crop_h / 60)))  # ~60px tall
+        except Exception:
+            return None
 
     # ---- status loop ----
     def _tick(self):
