@@ -7,25 +7,30 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { DemoDateControl } from "@/components/DemoDateControl";
 import { Avatar } from "@/components/Avatar";
-import { compressImage } from "@/lib/img";
+import { AvatarCropper } from "@/components/AvatarCropper";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
-  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !supabase) return;
+    if (file) setCropFile(file); // open the cropper; upload happens on "Use photo"
+  };
+
+  const handleCropped = async (out: File) => {
+    setCropFile(null);
+    if (!supabase) return;
     setUploading(true);
     try {
-      const img = await compressImage(file, 512, 0.85);
       const { data: sess } = await supabase.auth.getSession();
       const id = sess.session?.user.id;
       if (!id) throw new Error("Not signed in");
       const path = `${id}/${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from("avatars").upload(path, img, { contentType: "image/jpeg", upsert: true });
+      const { error } = await supabase.storage.from("avatars").upload(path, out, { contentType: "image/jpeg", upsert: true });
       if (error) throw error;
       updateUser({ avatarUrl: supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl });
     } catch {
@@ -162,6 +167,8 @@ export default function ProfilePage() {
       >
         Sign out
       </button>
+
+      {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onSave={handleCropped} />}
     </div>
   );
 }
