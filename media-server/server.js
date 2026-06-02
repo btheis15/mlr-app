@@ -44,6 +44,10 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // seeking/streaming works, and sets long-lived caching (filenames are unique).
 app.use("/f", express.static(MEDIA_DIR, { maxAge: "365d", immutable: true, fallthrough: false }));
 
+// Small static app assets shipped with the repo (e.g. pay-method logos). Served
+// from here so they live on the mini (free) instead of Supabase storage.
+app.use("/assets", express.static(path.join(__dirname, "assets"), { maxAge: "30d" }));
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: MEDIA_DIR,
