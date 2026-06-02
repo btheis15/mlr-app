@@ -72,11 +72,12 @@ interface TagRow {
 }
 
 const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
+// Legacy Supabase Storage bucket — kept only to *display* any media saved
+// there before the move to the mini. New uploads never write here.
 const BUCKET = "post-photos";
-// When set (the Mac mini's tunnel URL), media uploads go there instead of
-// Supabase Storage — no size cap. Falls back to Supabase Storage if unset.
-// Defaults to the resort's Mac-mini media server; NEXT_PUBLIC_MEDIA_URL
-// overrides it (e.g. for local dev or if the tunnel URL ever changes).
+// All post media uploads go to the Mac-mini media server (no size cap);
+// storage_path stores the full URL it returns. Defaults to the resort's mini;
+// NEXT_PUBLIC_MEDIA_URL overrides it (local dev / if the tunnel URL changes).
 const MEDIA_URL = (
   process.env.NEXT_PUBLIC_MEDIA_URL || "https://brians-mac-mini.tail49943c.ts.net"
 ).replace(/\/+$/, "");
@@ -272,39 +273,20 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
-      if (!MEDIA_URL) {
-        // Supabase Storage has a ~50 MB free-tier cap; the mini doesn't.
-        const big = files.filter((f) => f.type.startsWith("video") && f.size > 50 * 1024 * 1024);
-        if (big.length) {
-          setStatus(`Video too big (~50 MB max): ${big.map((f) => f.name).join(", ")}. Trim it shorter.`);
-          window.setTimeout(() => setStatus(null), 9000);
-          return;
-        }
-      }
       setPosting(true);
       try {
         // Upload everything FIRST, so a failure can never leave a half-finished
         // post. Photos are compressed to web JPEGs (smaller + faster, fixes
-        // HDR/HEIC display); videos upload as-is. With MEDIA_URL set, files go
-        // to the Mac mini (no size cap) and storage_path holds the full mini
-        // URL; otherwise they go to Supabase Storage.
-        const token = MEDIA_URL ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
-        if (MEDIA_URL && !token) throw new Error("Not signed in.");
+        // HDR/HEIC display); videos upload as-is. All media goes to the Mac-mini
+        // media server (no size cap); storage_path holds the full mini URL.
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) throw new Error("Not signed in.");
         const uploaded: { path: string; type: MediaType }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          let path: string;
-          if (MEDIA_URL) {
-            path = await uploadToMini(MEDIA_URL, f, token!);
-          } else {
-            const ext = isVideo ? ((raw.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4") : "jpg";
-            const key = `${uid}/${Date.now()}-${i}.${ext}`;
-            const { error: upErr } = await supabase.storage.from(BUCKET).upload(key, f);
-            if (upErr) throw upErr;
-            path = key;
-          }
+          const path = await uploadToMini(MEDIA_URL, f, token);
           uploaded.push({ path, type: isVideo ? "video" : "image" });
         }
         const { data: np, error: insErr } = await supabase
