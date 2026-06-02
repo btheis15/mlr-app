@@ -5,7 +5,7 @@ import type { Post } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { timeAgo } from "@/lib/format";
+import { dayKey, formatDayHeading, formatClock, toDatetimeLocal } from "@/lib/format";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -46,6 +46,7 @@ interface PostRow {
   text: string | null;
   image_path: string | null;
   created_at: string;
+  occurred_at?: string | null;
   author_id: string;
 }
 interface CommentRow {
@@ -100,6 +101,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [added, setAdded] = useState<FeedPost[]>([]); // local fallback only
+  // Whether the DB has the occurred_at column yet (migration 0005). Until then
+  // we fall back to created_at and hide the backdate controls.
+  const [hasOccurredAt, setHasOccurredAt] = useState(false);
 
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -113,8 +117,20 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [posting, setPosting] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Which reaction chip is expanded to show who reacted ({postId, emoji}).
+  const [reactorsFor, setReactorsFor] = useState<{ postId: string; emoji: string } | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Composer "when": default off = posts as now(); on = backdate to this moment.
+  const [customWhen, setCustomWhen] = useState(false);
+  const [whenValue, setWhenValue] = useState("");
+  // Editing an existing post's date/time (author/admin).
+  const [editDateFor, setEditDateFor] = useState<string | null>(null);
+  const [editDateValue, setEditDateValue] = useState("");
+  // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
+  const [jump, setJump] = useState("");
+  // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
@@ -123,14 +139,32 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const refetch = async () => {
     const sb = supabase;
     if (!sb) return;
-    const [postsRes, mediaRes, commentsRes, reactionsRes, tagsRes, profilesRes] = await Promise.all([
-      sb.from("posts").select("id, text, image_path, created_at, author_id").order("created_at", { ascending: false }),
+    const others = Promise.all([
       sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
       sb.from("profiles").select("id, display_name"),
     ]);
+    // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
+    // the column is missing — fall back to created_at so the feed still loads.
+    const withOcc = await sb
+      .from("posts")
+      .select("id, text, image_path, created_at, occurred_at, author_id")
+      .order("occurred_at", { ascending: false });
+    let postRowsRaw: PostRow[];
+    if (withOcc.error) {
+      const base = await sb
+        .from("posts")
+        .select("id, text, image_path, created_at, author_id")
+        .order("created_at", { ascending: false });
+      postRowsRaw = (base.data ?? []) as unknown as PostRow[];
+      setHasOccurredAt(false);
+    } else {
+      postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
+      setHasOccurredAt(true);
+    }
+    const [mediaRes, commentsRes, reactionsRes, tagsRes, profilesRes] = await others;
 
     const names = new Map<string, string>();
     const memberList: Member[] = [];
@@ -158,7 +192,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       (tagsByPost[t.post_id] ||= []).push({ id: t.tagged_user_id, name: nameOf(t.tagged_user_id) });
     }
 
-    const postRows = (postsRes.data ?? []) as unknown as PostRow[];
+    const postRows = postRowsRaw;
     setDbPosts(
       postRows.map((r) => {
         const media = mediaByPost[r.id]?.length
@@ -170,7 +204,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           id: r.id,
           author: nameOf(r.author_id),
           authorId: r.author_id,
-          ts: r.created_at,
+          ts: r.occurred_at || r.created_at,
           text: r.text || undefined,
           media,
           tags: tagsByPost[r.id] ?? [],
@@ -226,6 +260,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
   useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+
+  // Close the photo viewer with Escape.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   const setShareFb = (v: boolean) => {
     setAlsoFacebook(v);
@@ -298,9 +340,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
           uploaded.push({ path, type: isVideo ? "video" : "image" });
         }
         setProgress(100);
+        // Backdate when the author chose a different moment (and the DB supports
+        // it). Otherwise the column default now() lands the post today.
+        const occurredAt =
+          hasOccurredAt && customWhen && whenValue ? new Date(whenValue).toISOString() : null;
         const { data: np, error: insErr } = await supabase
           .from("posts")
-          .insert({ author_id: uid, text: caption || null })
+          .insert({ author_id: uid, text: caption || null, ...(occurredAt ? { occurred_at: occurredAt } : {}) })
           .select("id")
           .single();
         if (insErr) throw insErr;
@@ -320,6 +366,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
         }
         await refetch();
         setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
+        setCustomWhen(false); setWhenValue("");
         if (alsoFacebook) openFacebook(caption);
         setStatus(
           alsoFacebook
@@ -344,18 +391,22 @@ export function PostsView({ seed }: { seed: Post[] }) {
     const post: FeedPost = {
       id: `local-${Date.now()}`,
       author: user.name,
-      ts: new Date().toISOString(),
+      ts: customWhen && whenValue ? new Date(whenValue).toISOString() : new Date().toISOString(),
       text: caption || undefined,
       media: previews,
       tags: tagIds.map((t) => ({ id: t, name: members.find((m) => m.id === t)?.name || "Member" })),
     };
     setAdded((prev) => [post, ...prev]);
     setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
+    setCustomWhen(false); setWhenValue("");
     if (alsoFacebook) openFacebook(caption);
     setStatus(alsoFacebook ? "Posted ✓ — caption copied for Facebook." : "Posted to the feed ✓");
     window.setTimeout(() => setStatus(null), 7000);
   };
 
+  const nameById = (id: string) => (id === uid ? "You" : members.find((m) => m.id === id)?.name || "Member");
+  const toggleReactors = (postId: string, emoji: string) =>
+    setReactorsFor((cur) => (cur && cur.postId === postId && cur.emoji === emoji ? null : { postId, emoji }));
   const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
   const reactionSummary = (postId: string) => {
     const counts: Record<string, number> = {};
@@ -384,6 +435,21 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (!supabase) return;
     await supabase.from("post_comments").delete().eq("id", commentId);
     await refetch();
+  };
+
+  const canEditPost = (p: FeedPost) => hasOccurredAt && (isAdmin || (!!uid && p.authorId === uid));
+  const openEditDate = (p: FeedPost) => {
+    setEditDateValue(toDatetimeLocal(p.ts));
+    setEditDateFor(editDateFor === p.id ? null : p.id);
+  };
+  const saveEditDate = async (p: FeedPost) => {
+    if (!supabase || !editDateValue) { setEditDateFor(null); return; }
+    const { error } = await supabase
+      .from("posts")
+      .update({ occurred_at: new Date(editDateValue).toISOString() })
+      .eq("id", p.id);
+    setEditDateFor(null);
+    if (!error) await refetch();
   };
 
   const canDeletePost = (p: FeedPost, isAdded: boolean) =>
@@ -417,6 +483,19 @@ export function PostsView({ seed }: { seed: Post[] }) {
     const n = m.name.toLowerCase();
     return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
   });
+
+  // ---- Timeline: sort newest-first, filter by the jump selection, group by day ----
+  const sortedFeed = [...feed].sort((a, b) => new Date(b.post.ts).getTime() - new Date(a.post.ts).getTime());
+  const monthsPresent = Array.from(new Set(sortedFeed.map(({ post }) => dayKey(post.ts).slice(0, 7)))); // already desc
+  const filteredFeed = jump ? sortedFeed.filter(({ post }) => dayKey(post.ts).startsWith(jump)) : sortedFeed;
+  const dayGroups: { day: string; items: { post: FeedPost; isAdded: boolean }[] }[] = [];
+  for (const item of filteredFeed) {
+    const k = dayKey(item.post.ts);
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.day === k) last.items.push(item);
+    else dayGroups.push({ day: k, items: [item] });
+  }
+  const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   return (
     <div className="space-y-5 pt-2">
@@ -508,6 +587,31 @@ export function PostsView({ seed }: { seed: Post[] }) {
           </div>
         )}
 
+        {(!configured || hasOccurredAt) && (
+          <div className="rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={customWhen}
+                onChange={(e) => { setCustomWhen(e.target.checked); if (e.target.checked && !whenValue) setWhenValue(toDatetimeLocal(new Date())); }}
+                className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-foreground/70">
+                <span className="font-semibold text-foreground">Set the date &amp; time</span> — posting late? Place it back to when it happened so it flows in with the rest (e.g. lake day at 2pm).
+                <span className="block text-foreground/45">Leave off to post as right now.</span>
+              </span>
+            </label>
+            {customWhen && (
+              <input
+                type="datetime-local"
+                value={whenValue}
+                onChange={(e) => setWhenValue(e.target.value)}
+                className="mt-2 w-full rounded-lg bg-card px-2 py-1.5 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              />
+            )}
+          </div>
+        )}
+
         <label className="flex items-start gap-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
           <input type="checkbox" checked={alsoFacebook} onChange={(e) => setShareFb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]" />
           <span className="text-foreground/70">
@@ -561,8 +665,41 @@ export function PostsView({ seed }: { seed: Post[] }) {
         </p>
       )}
 
-      <ul className="space-y-3">
-        {feed.map(({ post: p, isAdded }) => {
+      {/* Timeline jump: browse back by month, or pick an exact day */}
+      {feed.length > 0 && (monthsPresent.length > 1 || jump) && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <button onClick={() => setJump("")} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${!jump ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>All</button>
+            {monthsPresent.map((m) => (
+              <button key={m} onClick={() => setJump(jump === m ? "" : m)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${jump === m ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+                {monthLabel(m)}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-foreground/55">
+            <span>Jump to a day</span>
+            <input type="date" value={jump.length === 10 ? jump : ""} onChange={(e) => setJump(e.target.value)} className="rounded-lg bg-card px-2 py-1 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+            {jump && <button onClick={() => setJump("")} className="font-medium text-primary">Clear</button>}
+          </label>
+        </div>
+      )}
+
+      {feed.length > 0 && filteredFeed.length === 0 && (
+        <p className="rounded-2xl bg-card p-5 text-center text-sm text-foreground/60 ring-1 ring-border">
+          Nothing posted on that day. <button onClick={() => setJump("")} className="font-medium text-primary">Show all</button>
+        </p>
+      )}
+
+      <div className="space-y-6">
+        {dayGroups.map((g) => (
+        <section key={g.day} className="space-y-3">
+          <h2 className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-foreground/45">
+            <span className="h-px flex-1 bg-border" />
+            {formatDayHeading(g.day)}
+            <span className="h-px flex-1 bg-border" />
+          </h2>
+          <ul className="space-y-3">
+        {g.items.map(({ post: p, isAdded }) => {
           const summary = reactionSummary(p.id);
           const mine = myReaction(p.id);
           const postComments = dbComments[p.id] ?? [];
@@ -572,12 +709,33 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">{initials(p.author)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.author}</p>
-                  <p className="text-[11px] text-foreground/40">{timeAgo(p.ts)}</p>
+                  <p className="text-[11px] text-foreground/40">
+                    {formatClock(p.ts)}
+                    {canEditPost(p) && (
+                      <button onClick={() => openEditDate(p)} className="ml-2 text-primary/70 hover:text-primary" aria-label="Edit date & time">· edit date</button>
+                    )}
+                  </p>
                 </div>
                 {canDeletePost(p, isAdded) && (
                   <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
                 )}
               </div>
+
+              {editDateFor === p.id && (
+                <div className="mx-4 mt-2 space-y-2 rounded-xl bg-background p-3 ring-1 ring-border">
+                  <p className="text-xs font-medium text-foreground/70">Move this post to when it happened:</p>
+                  <input
+                    type="datetime-local"
+                    value={editDateValue}
+                    onChange={(e) => setEditDateValue(e.target.value)}
+                    className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditDateFor(null)} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
+                    <button onClick={() => saveEditDate(p)} className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white">Save</button>
+                  </div>
+                </div>
+              )}
 
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
               {p.tags.length > 0 && (
@@ -585,18 +743,37 @@ export function PostsView({ seed }: { seed: Post[] }) {
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} />
+                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
 
               {summary.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
-                  {summary.map(([emoji, count]) => (
-                    <span key={emoji} className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}>
-                      {emoji} {count}
-                    </span>
-                  ))}
+                <div className="px-4 pt-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {summary.map(([emoji, count]) => {
+                      const open = reactorsFor?.postId === p.id && reactorsFor.emoji === emoji;
+                      return (
+                        <button
+                          key={emoji}
+                          onClick={() => toggleReactors(p.id, emoji)}
+                          className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
+                          aria-label={`See who reacted ${emoji}`}
+                        >
+                          {emoji} {count}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {reactorsFor?.postId === p.id && (
+                    <p className="mt-1.5 text-xs text-foreground/55">
+                      <span className="mr-1">{reactorsFor.emoji}</span>
+                      {(dbReactions[p.id] ?? [])
+                        .filter((r) => r.emoji === reactorsFor.emoji)
+                        .map((r) => nameById(r.user_id))
+                        .join(", ")}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -635,20 +812,42 @@ export function PostsView({ seed }: { seed: Post[] }) {
             </li>
           );
         })}
-      </ul>
+          </ul>
+        </section>
+        ))}
+      </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"
+            aria-label="Close photo"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }
 
-function MediaCarousel({ media }: { media: Media[] }) {
+function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
   const [active, setActive] = useState(0);
-  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} /></div>;
+  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={onOpenPhoto} /></div>;
   return (
     <div className="relative mt-3">
       <div onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} className="flex snap-x snap-mandatory overflow-x-auto">
         {media.map((m, i) => (
           <div key={i} className="w-full shrink-0 snap-center">
-            <MediaItem m={m} />
+            <MediaItem m={m} onOpen={onOpenPhoto} />
           </div>
         ))}
       </div>
@@ -662,9 +861,10 @@ function MediaCarousel({ media }: { media: Media[] }) {
   );
 }
 
-function MediaItem({ m }: { m: Media }) {
+function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) {
   // Uniform square frame so single posts and carousels line up cleanly. Photos
-  // fill (cropped); videos fit on black (never cropped).
+  // fill (cropped) but tap to see the whole image full-screen; videos fit on
+  // black (never cropped) and play inline.
   if (m.type === "video") {
     return (
       <div className="aspect-square w-full bg-black">
@@ -673,10 +873,15 @@ function MediaItem({ m }: { m: Media }) {
     );
   }
   return (
-    <div className="aspect-square w-full bg-black/5">
+    <button
+      type="button"
+      onClick={() => onOpen?.(m.url)}
+      className="block aspect-square w-full cursor-zoom-in bg-black/5"
+      aria-label="View full photo"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={m.url} alt="" className="h-full w-full object-cover" />
-    </div>
+    </button>
   );
 }
 

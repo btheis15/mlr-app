@@ -52,6 +52,39 @@ export function timeAgo(input: string | number | Date): string {
   return `${days}d`;
 }
 
+/** Local "YYYY-MM-DD" key for grouping posts into days (not UTC). */
+export function dayKey(input: string | number | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Timeline day header: "Today", "Yesterday", else "Saturday, July 27, 2026". */
+export function formatDayHeading(input: string | number | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  const today = dayKey(new Date());
+  const yest = dayKey(new Date(Date.now() - 86_400_000));
+  const key = dayKey(d);
+  if (key === today) return "Today";
+  if (key === yest) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
+/** Local value for an <input type="datetime-local">, e.g. "2026-07-27T14:00". */
+export function toDatetimeLocal(input: string | number | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Clock time from an ISO/Date, e.g. "2:00 PM". */
+export function formatClock(input: string | number | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
 /** "3 days", "1 day", "today" — relative day count from now. */
 export function daysUntil(input: string | number | Date): string {
   const target = input instanceof Date ? input : new Date(input);

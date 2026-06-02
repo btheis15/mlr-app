@@ -28,6 +28,14 @@ Start with [`0001_profiles.sql`](migrations/0001_profiles.sql) — the shared
 rsvps, committees + join requests, announcements) are added as each feature is
 wired to the DB.
 
+⚠️ **After pulling the photo-timeline change, run
+[`0005_post_occurred_at.sql`](migrations/0005_post_occurred_at.sql).** It adds
+`posts.occurred_at` (the moment a post is *about*, separate from when it was
+uploaded) plus an UPDATE policy so authors/admins can edit a post's date & time.
+The app detects whether the column exists: until you run it, the feed falls back
+to `created_at` and the backdate controls stay hidden — so nothing breaks, the
+feature just isn't active yet.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
