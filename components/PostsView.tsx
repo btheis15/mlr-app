@@ -90,6 +90,10 @@ const MEDIA_URL = (
 ).replace(/\/+$/, "");
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
+const reduceMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /**
  * The shared feed — a little family social space. Posts carry multiple photos
  * and videos (swipeable carousel), tagged members, shared comments, and emoji
@@ -140,6 +144,20 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [jump, setJump] = useState("");
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lbClosing, setLbClosing] = useState(false);
+  const lbTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeLightbox = () => {
+    if (reduceMotion()) { setLightbox(null); return; }
+    setLbClosing(true);
+    lbTimer.current = setTimeout(() => { setLightbox(null); setLbClosing(false); }, 440);
+  };
+  // Opening must cancel any in-flight close + reset the flag, or reopening
+  // within 440ms inherits the stale closing state and the orphaned timer.
+  const openLightbox = (url: string) => {
+    if (lbTimer.current) { clearTimeout(lbTimer.current); lbTimer.current = null; }
+    setLbClosing(false);
+    setLightbox(url);
+  };
 
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
@@ -273,11 +291,12 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
   useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+  useEffect(() => () => { if (lbTimer.current) clearTimeout(lbTimer.current); }, []);
 
   // Close the photo viewer with Escape.
   useEffect(() => {
     if (!lightbox) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
@@ -492,7 +511,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
         <p className="text-sm text-foreground/60">Share photos &amp; videos with everyone — and out to the family Facebook group.</p>
-        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="inline-block text-xs font-medium text-primary">
+        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press inline-block text-xs font-medium text-primary">
           Open the family Facebook group ↗
         </a>
       </header>
@@ -637,10 +656,10 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
       {configured && user && (
         <div className="flex gap-2 text-xs">
-          <button onClick={() => setFilterTaggedMe(false)} className={`rounded-full px-3 py-1.5 font-medium ${!filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+          <button onClick={() => setFilterTaggedMe(false)} className={`press rounded-full px-3 py-1.5 font-medium ${!filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
             Everyone
           </button>
-          <button onClick={() => setFilterTaggedMe(true)} className={`rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+          <button onClick={() => setFilterTaggedMe(true)} className={`press rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
             🏷️ Tagged me
           </button>
         </div>
@@ -656,9 +675,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
       {feed.length > 0 && (monthsPresent.length > 1 || jump) && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <button onClick={() => setJump("")} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${!jump ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>All</button>
+            <button onClick={() => setJump("")} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${!jump ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>All</button>
             {monthsPresent.map((m) => (
-              <button key={m} onClick={() => setJump(jump === m ? "" : m)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${jump === m ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
+              <button key={m} onClick={() => setJump(jump === m ? "" : m)} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${jump === m ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
                 {monthLabel(m)}
               </button>
             ))}
@@ -666,14 +685,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
           <label className="flex items-center gap-2 text-xs text-foreground/55">
             <span>Jump to a day</span>
             <input type="date" value={jump.length === 10 ? jump : ""} onChange={(e) => setJump(e.target.value)} className="rounded-lg bg-card px-2 py-1 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
-            {jump && <button onClick={() => setJump("")} className="font-medium text-primary">Clear</button>}
+            {jump && <button onClick={() => setJump("")} className="press font-medium text-primary">Clear</button>}
           </label>
         </div>
       )}
 
       {feed.length > 0 && filteredFeed.length === 0 && (
         <p className="rounded-2xl bg-card p-5 text-center text-sm text-foreground/60 ring-1 ring-border">
-          Nothing posted on that day. <button onClick={() => setJump("")} className="font-medium text-primary">Show all</button>
+          Nothing posted on that day. <button onClick={() => setJump("")} className="press font-medium text-primary">Show all</button>
         </p>
       )}
 
@@ -686,14 +705,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
             <span className="h-px flex-1 bg-border" />
           </h2>
           <ul className="space-y-3">
-        {g.items.map(({ post: p, isAdded }) => {
+        {g.items.map(({ post: p, isAdded }, i) => {
           const summary = reactionSummary(p.id);
           const mine = myReaction(p.id);
           const postComments = dbComments[p.id] ?? [];
           return (
-            <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+            <li key={p.id} style={{ "--i": Math.min(i, 8) } as React.CSSProperties} className="rise overflow-hidden rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center gap-2 px-4 pt-3">
-                <button type="button" onClick={() => openMember(p.authorId, p.author, p.authorAvatar)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <button type="button" onClick={() => openMember(p.authorId, p.author, p.authorAvatar)} className="press flex min-w-0 flex-1 items-center gap-2 text-left">
                   <Avatar name={p.author} url={p.authorAvatar} size={32} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{p.author}</p>
@@ -701,11 +720,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
                   </div>
                 </button>
                 {canEditPost(p) ? (
-                  <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
+                  <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
                     {editingId === p.id ? "Close" : "Edit"}
                   </button>
                 ) : canDeletePost(p, isAdded) ? (
-                  <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
+                  <button onClick={() => deletePost(p, isAdded)} className="press shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
                 ) : null}
               </div>
 
@@ -724,12 +743,12 @@ export function PostsView({ seed }: { seed: Post[] }) {
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
               {p.tags.length > 0 && (
                 <p className="px-4 pt-1 text-xs text-primary">🏷️ with {p.tags.map((t, i) => (
-                  <span key={t.id}>{i > 0 ? ", " : ""}<button type="button" onClick={() => openMember(t.id, t.name, members.find((m) => m.id === t.id)?.avatarUrl)} className="font-medium underline decoration-primary/30">{t.name}</button></span>
+                  <span key={t.id}>{i > 0 ? ", " : ""}<button type="button" onClick={() => openMember(t.id, t.name, members.find((m) => m.id === t.id)?.avatarUrl)} className="press font-medium underline decoration-primary/30">{t.name}</button></span>
                 ))}</p>
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
+                <MediaCarousel media={p.media} onOpenPhoto={openLightbox} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
@@ -743,7 +762,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                         <button
                           key={emoji}
                           onClick={() => toggleReactors(p.id, emoji)}
-                          className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
+                          className={`press rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
                           aria-label={`See who reacted ${emoji}`}
                         >
                           {emoji} {count}
@@ -764,17 +783,17 @@ export function PostsView({ seed }: { seed: Post[] }) {
               )}
 
               <div className="mt-2 flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
-                <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`} aria-expanded={pickerFor === p.id}>
+                <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`press rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`} aria-expanded={pickerFor === p.id}>
                   {mine ? `${mine} Reacted` : "🙂 React"}
                 </button>
                 <span className="rounded-full px-3 py-1.5 text-foreground/55">💬 {postComments.length > 0 ? postComments.length : "Comment"}</span>
-                <button onClick={() => shareOut(p)} className="ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
+                <button onClick={() => shareOut(p)} className="press ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
               </div>
 
               {pickerFor === p.id && (
                 <div className="flex gap-1 border-t border-border px-2 py-2">
                   {REACTIONS.map((emoji) => (
-                    <button key={emoji} onClick={() => react(p.id, emoji)} className={`flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${mine === emoji ? "bg-primary/15" : "bg-background"}`} aria-label={`React ${emoji}`}>
+                    <button key={emoji} onClick={() => react(p.id, emoji)} className={`press flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${mine === emoji ? "bg-primary/15" : "bg-background"}`} aria-label={`React ${emoji}`}>
                       {emoji}
                     </button>
                   ))}
@@ -785,13 +804,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <div className="space-y-2 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
                     <div key={c.id} className="flex items-start gap-2 text-xs">
-                      <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="flex shrink-0 items-center gap-1.5">
+                      <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press flex shrink-0 items-center gap-1.5">
                         <Avatar name={c.author} url={c.authorAvatar} size={22} />
                         <span className="font-semibold">{c.author}</span>
                       </button>
                       <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
                       {(isAdmin || (!!uid && c.authorId === uid)) && (
-                        <button onClick={() => removeComment(c.id)} className="shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
+                        <button onClick={() => removeComment(c.id)} className="press shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
                       )}
                     </div>
                   ))}
@@ -808,20 +827,20 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
       {lightbox && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setLightbox(null)}
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 ${lbClosing ? "scrim-out" : "scrim-in"}`}
+          onClick={closeLightbox}
           role="dialog"
           aria-modal="true"
         >
           <button
-            onClick={() => setLightbox(null)}
-            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"
+            onClick={closeLightbox}
+            className="press absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"
             aria-label="Close photo"
           >
             ×
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightbox} alt="" className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={lightbox} alt="" className={`max-h-full max-w-full object-contain ${lbClosing ? "pop-close" : "pop-panel"}`} onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 
@@ -928,7 +947,7 @@ function EditPostPanel({
   };
 
   return (
-    <div className="mx-4 mt-2 space-y-3 rounded-xl bg-background p-3 ring-1 ring-border">
+    <div className="rise mx-4 mt-2 space-y-3 rounded-xl bg-background p-3 ring-1 ring-border">
       <p className="text-xs font-semibold text-foreground/70">Edit post</p>
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Say something…" className="w-full resize-none rounded-lg bg-card px-2 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
 
@@ -963,9 +982,9 @@ function EditPostPanel({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => fileRef.current?.click()} className="rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground/70 ring-1 ring-border">📷 Add photo / video</button>
+        <button type="button" onClick={() => fileRef.current?.click()} className="press rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground/70 ring-1 ring-border">📷 Add photo / video</button>
         <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={addFiles} className="hidden" />
-        <button type="button" onClick={() => setTagOpen((o) => !o)} className="rounded-full bg-card px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-border">🏷️ {tagIds.length ? `Tags (${tagIds.length})` : "Tag people"}</button>
+        <button type="button" onClick={() => setTagOpen((o) => !o)} className="press rounded-full bg-card px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-border">🏷️ {tagIds.length ? `Tags (${tagIds.length})` : "Tag people"}</button>
       </div>
 
       {tagOpen && (
@@ -975,7 +994,7 @@ function EditPostPanel({
             {tagMembers.map((m) => {
               const on = tagIds.includes(m.id);
               return (
-                <button key={m.id} type="button" onClick={() => toggleTag(m.id)} className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs ${on ? "bg-primary/10 text-primary" : "text-foreground/70"}`}>
+                <button key={m.id} type="button" onClick={() => toggleTag(m.id)} className={`press flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs ${on ? "bg-primary/10 text-primary" : "text-foreground/70"}`}>
                   <span>{m.name}{m.id === uid ? " (you)" : ""}</span>
                   <span>{on ? "✓" : "+"}</span>
                 </button>
@@ -996,10 +1015,10 @@ function EditPostPanel({
       {err && <p className="text-xs font-medium text-accent">{err}</p>}
 
       <div className="flex items-center gap-2 pt-1">
-        <button type="button" onClick={onDelete} className="rounded-full px-2 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent">Delete</button>
+        <button type="button" onClick={onDelete} className="press rounded-full px-2 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent">Delete</button>
         <div className="ml-auto flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
-          <button type="button" onClick={save} disabled={saving} className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="press rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
+          <button type="button" onClick={save} disabled={saving} className="press rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
         </div>
       </div>
     </div>
@@ -1043,7 +1062,7 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
     <button
       type="button"
       onClick={() => onOpen?.(m.url)}
-      className="block aspect-square w-full cursor-zoom-in bg-black/5"
+      className="press block aspect-square w-full cursor-zoom-in bg-black/5"
       aria-label="View full photo"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1057,7 +1076,7 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); onAdd(v); setV(""); }} className="flex gap-2">
       <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Add a comment…" className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
-      <button type="submit" className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
+      <button type="submit" className="press rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
 }

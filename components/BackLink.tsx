@@ -10,7 +10,7 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="-ml-1 inline-flex items-center gap-0.5 py-1 text-sm font-semibold text-primary"
+      className="press -ml-1 inline-flex items-center gap-0.5 py-1 text-sm font-semibold text-primary"
     >
       <span aria-hidden className="text-lg leading-none">
         ‹

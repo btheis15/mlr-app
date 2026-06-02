@@ -90,7 +90,7 @@ export default function ProfilePage() {
           </p>
           <button
             onClick={promptSignIn}
-            className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+            className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
           >
             Add your name &amp; email
           </button>
@@ -110,7 +110,7 @@ export default function ProfilePage() {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs text-white ring-2 ring-background disabled:opacity-50"
+            className="press absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs text-white ring-2 ring-background disabled:opacity-50"
             aria-label="Change profile photo"
           >
             {uploading ? "…" : "📷"}
@@ -172,12 +172,12 @@ export default function ProfilePage() {
 
       <button
         onClick={signOut}
-        className="w-full rounded-2xl bg-card py-3 text-sm font-semibold text-foreground/70 ring-1 ring-border"
+        className="press w-full rounded-2xl bg-card py-3 text-sm font-semibold text-foreground/70 ring-1 ring-border"
       >
         Sign out
       </button>
 
-      {cropFile && <AvatarCropper file={cropFile} onCancel={() => setCropFile(null)} onSave={handleCropped} />}
+      {cropFile && <AvatarCropper key={cropFile.name + cropFile.lastModified} file={cropFile} onCancel={() => setCropFile(null)} onSave={handleCropped} />}
     </div>
   );
 }

@@ -17,7 +17,7 @@ export function FestCommitteesLink() {
   return (
     <Link
       href="/committees"
-      className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
+      className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
     >
       <span className="text-2xl">🤝</span>
       <div className="min-w-0 flex-1">

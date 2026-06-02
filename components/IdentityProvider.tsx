@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { type Session } from "@supabase/supabase-js";
 import type { User } from "@/lib/types";
 import { isAdmin as isAdminEmail } from "@/lib/data";
@@ -145,6 +145,17 @@ function SignInGate({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const reduceMotion = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const dismiss = () => {
+    if (reduceMotion()) return onClose();
+    setClosing(true);
+    timer.current = setTimeout(onClose, 440);
+  };
 
   const emailValid = /\S+@\S+\.\S+/.test(email);
   const nameValid = name.trim().length > 1;
@@ -193,16 +204,16 @@ function SignInGate({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center">
+    <div className={`fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center ${closing ? "scrim-out" : "scrim-in"}`}>
       <form
         onSubmit={step === "email" ? sendCode : verify}
-        className="relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-6 ring-1 ring-border"
+        className={`relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-6 ring-1 ring-border ${closing ? "pop-close sm:pop-close" : "pop-panel sm:pop-panel"}`}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={dismiss}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-full px-1 text-foreground/40 hover:text-foreground"
+          className="press absolute right-4 top-4 rounded-full px-1 text-foreground/40 hover:text-foreground"
         >
           ✕
         </button>
@@ -254,7 +265,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             <button
               type="submit"
               disabled={!nameValid || !emailValid || busy}
-              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
+              className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
             >
               {busy ? "Sending…" : "Email me a code"}
             </button>
@@ -272,7 +283,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             <button
               type="submit"
               disabled={code.trim().length < 6 || busy}
-              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
+              className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
             >
               {busy ? "Verifying…" : "Verify & sign in"}
             </button>
@@ -283,7 +294,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
                 setCode("");
                 setError(null);
               }}
-              className="w-full text-center text-xs text-foreground/50"
+              className="press w-full text-center text-xs text-foreground/50"
             >
               ← Use a different email
             </button>

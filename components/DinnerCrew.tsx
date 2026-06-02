@@ -11,11 +11,15 @@ import { formatDate } from "@/lib/format";
 export function DinnerCrew({ dinners }: { dinners: Dinner[] }) {
   return (
     <ul className="space-y-2">
-      {dinners.map((d) => (
-        <li key={d.id}>
+      {dinners.map((d, i) => (
+        <li
+          key={d.id}
+          style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+          className="rise"
+        >
           <Link
             href={`/family-fest/dinners/${d.id}`}
-            className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+            className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
           >
             <span className="text-2xl">{d.emoji}</span>
             <div className="min-w-0 flex-1">

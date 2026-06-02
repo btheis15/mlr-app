@@ -57,7 +57,7 @@ export default function FamilyFestPage() {
 
       <Link
         href="/family-fest/pay"
-        className="block rounded-2xl bg-card p-4 text-center text-sm font-semibold text-primary ring-1 ring-border"
+        className="press block rounded-2xl bg-card p-4 text-center text-sm font-semibold text-primary ring-1 ring-border"
       >
         💸 Pay the organizers →
       </Link>

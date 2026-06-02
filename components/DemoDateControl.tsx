@@ -60,15 +60,15 @@ export function DemoDateControl() {
         <div className="space-y-1.5">
           <p className="text-[11px] uppercase tracking-wide text-foreground/40">Quick jumps</p>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setDemoDate(runUp)} className={pill(demoDate === runUp)}>
+            <button onClick={() => setDemoDate(runUp)} className={`press ${pill(demoDate === runUp)}`}>
               Run-up
             </button>
             {days.map((d, i) => (
-              <button key={d} onClick={() => setDemoDate(d)} className={pill(demoDate === d)}>
+              <button key={d} onClick={() => setDemoDate(d)} className={`press ${pill(demoDate === d)}`}>
                 Day {i + 1}
               </button>
             ))}
-            <button onClick={() => setDemoDate(after)} className={pill(demoDate === after)}>
+            <button onClick={() => setDemoDate(after)} className={`press ${pill(demoDate === after)}`}>
               After
             </button>
           </div>
@@ -77,7 +77,7 @@ export function DemoDateControl() {
         {demoDate && (
           <button
             onClick={() => setDemoDate(null)}
-            className="w-full rounded-xl bg-primary/10 py-2 text-sm font-semibold text-primary"
+            className="press w-full rounded-xl bg-primary/10 py-2 text-sm font-semibold text-primary"
           >
             Reset to today&rsquo;s real date
           </button>

@@ -52,8 +52,12 @@ export function FestWeek({
       {things.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-accent">🗺️ Anytime all week</h2>
-          {things.map((a) => (
-            <div key={a.id} className="rounded-2xl bg-card p-4 ring-1 ring-border">
+          {things.map((a, i) => (
+            <div
+              key={a.id}
+              style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+              className="rise rounded-2xl bg-card p-4 ring-1 ring-border"
+            >
               <p className="text-sm font-semibold">
                 {a.emoji} {a.title}
               </p>
@@ -84,7 +88,7 @@ export function FestWeek({
               <button
                 onClick={() => setOpen((o) => (o === day ? null : day))}
                 aria-expanded={expanded}
-                className="flex w-full items-center gap-2 p-4 text-left"
+                className="press flex w-full items-center gap-2 p-4 text-left"
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">{formatDateLong(day)}</p>
@@ -102,11 +106,12 @@ export function FestWeek({
               </button>
               {expanded && (
                 <div className="space-y-2 px-4 pb-4">
-                  {dayEvents.map((e) => (
+                  {dayEvents.map((e, i) => (
                     <Link
                       key={e.id}
                       href={`/family-fest/schedule/${e.id}`}
-                      className="flex items-center gap-3 rounded-xl bg-background/60 p-2 ring-1 ring-border/60"
+                      style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+                      className="press rise flex items-center gap-3 rounded-xl bg-background/60 p-2 ring-1 ring-border/60"
                     >
                       <span className="text-lg">{e.emoji}</span>
                       <div className="min-w-0 flex-1">
@@ -123,7 +128,7 @@ export function FestWeek({
                   {dinner && (
                     <Link
                       href={`/family-fest/dinners/${dinner.id}`}
-                      className="flex items-center gap-3 rounded-xl bg-primary/5 p-2 ring-1 ring-primary/20"
+                      className="press flex items-center gap-3 rounded-xl bg-primary/5 p-2 ring-1 ring-primary/20"
                     >
                       <span className="text-lg">{dinner.emoji}</span>
                       <div className="min-w-0 flex-1">

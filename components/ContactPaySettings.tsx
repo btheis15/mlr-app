@@ -131,7 +131,7 @@ export function ContactPaySettings() {
       </label>
       <div className="flex items-center justify-end gap-3">
         {status && <span className="text-xs font-medium text-primary">{status}</span>}
-        <button onClick={save} disabled={saving} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button onClick={save} disabled={saving} className="press rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {saving ? "Saving…" : "Save"}
         </button>
       </div>

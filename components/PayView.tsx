@@ -102,7 +102,7 @@ function PayeeCard({
           href={venmoUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex items-center justify-center gap-2 rounded-xl bg-[#3D95CE] py-2.5 text-sm font-semibold text-white"
+          className="press flex items-center justify-center gap-2 rounded-xl bg-[#3D95CE] py-2.5 text-sm font-semibold text-white"
         >
           Pay @{payee.venmo} with Venmo
         </a>
@@ -111,7 +111,7 @@ function PayeeCard({
       {payee.zelle && (
         <button
           onClick={copyZelle}
-          className="flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border"
+          className="press flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border"
         >
           <span className="text-foreground/70">
             Zelle: <span className="font-medium text-foreground">{payee.zelle}</span>

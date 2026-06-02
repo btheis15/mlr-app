@@ -49,13 +49,13 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
       <div className="grid grid-cols-2 gap-2">
         <a
           href={mailto}
-          className="rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
         >
           ✉️ Email {leadFirst}
         </a>
         <a
           href={smsto}
-          className="rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+          className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
         >
           💬 Text {leadFirst}
         </a>
@@ -76,14 +76,14 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           // SEAM (NEXT-STEPS §5c): wire to a Supabase committee_join_requests
           // insert + the Lead's approval queue. Local acknowledgement for now.
           onClick={() => setRequested(true)}
-          className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
         >
           📝 Request to join {committee.name}
         </button>
       ) : (
         <button
           onClick={promptSignIn}
-          className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white"
         >
           Sign in to request to join
         </button>

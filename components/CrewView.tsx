@@ -79,10 +79,11 @@ export function CrewView({ seed }: { seed: CrewMember[] }) {
               {meta.emoji} {meta.label} · {group.length}
             </h2>
             <ul className="space-y-2">
-              {group.map((c) => (
+              {group.map((c, i) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-card p-3 ring-1 ring-border"
+                  style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+                  className="rise flex items-center justify-between gap-3 rounded-2xl bg-card p-3 ring-1 ring-border"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{c.name}</p>
@@ -113,7 +114,7 @@ export function CrewView({ seed }: { seed: CrewMember[] }) {
       ) : (
         <button
           onClick={promptSignIn}
-          className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white"
+          className="press w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white"
         >
           Add your name &amp; email to RSVP
         </button>
@@ -185,7 +186,7 @@ function AddRsvp({ onAdd }: { onAdd: (member: CrewMember) => void }) {
       />
       <button
         type="submit"
-        className="w-full rounded-xl bg-primary py-2 text-sm font-semibold text-white"
+        className="press w-full rounded-xl bg-primary py-2 text-sm font-semibold text-white"
       >
         Add to the crew
       </button>

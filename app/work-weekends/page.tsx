@@ -22,7 +22,7 @@ export default function WorkWeekendsPage() {
 
       <Link
         href="/committees/resort-maintenance"
-        className="block rounded-2xl bg-card p-4 text-center text-sm font-semibold text-primary ring-1 ring-border"
+        className="press block rounded-2xl bg-card p-4 text-center text-sm font-semibold text-primary ring-1 ring-border"
       >
         🛠️ Resort Maintenance committee →
       </Link>

@@ -47,7 +47,7 @@ export function FamilyFestSpotlight({
     return (
       <Link
         href="/family-fest"
-        className="block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
+        className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <LiveDotLabel>{name} · happening now</LiveDotLabel>
         <p className="mt-1 text-lg font-semibold">
@@ -81,7 +81,7 @@ export function FamilyFestSpotlight({
     return (
       <Link
         href="/family-fest"
-        className="block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
+        className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
           🎆 {name} · that&rsquo;s a wrap
@@ -107,7 +107,7 @@ export function FamilyFestSpotlight({
     return (
       <Link
         href="/family-fest"
-        className="block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/25"
+        className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/25"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
           🎉 {name} · planning underway
@@ -138,7 +138,7 @@ export function FamilyFestSpotlight({
   return (
     <Link
       href="/family-fest"
-      className="block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
+      className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
     >
       <div className="flex items-center justify-between">
         <div>
