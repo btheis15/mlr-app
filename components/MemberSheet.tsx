@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { contactActions, payActions, type Action, type MemberContact } from "@/lib/contact";
@@ -23,6 +23,20 @@ export function MemberSheet({
   const [data, setData] = useState<MemberContact | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<number | null>(null);
+  // Play the slide-down/scale-out, THEN unmount (CSS can't animate an unmounted
+  // node); 300ms matches --dur-sheet. Reduce-motion closes immediately. Guard
+  // against double-fire (scrim + ✕); the timer is cleared on unmount.
+  const dismiss = () => {
+    if (closeTimer.current !== null) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = window.setTimeout(onClose, 300);
+  };
 
   useEffect(() => {
     let active = true;
@@ -45,6 +59,19 @@ export function MemberSheet({
     };
   }, [id]);
 
+  // Escape closes (with the dismiss animation); clear any pending timer on unmount.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const contacts = data ? contactActions(data) : [];
   const pays = data ? payActions(data) : [];
   const copy = (v: string, key: string) => {
@@ -54,12 +81,22 @@ export function MemberSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 sm:items-center" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-5 ring-1 ring-border" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} aria-label="Close" className="absolute right-5 top-5 text-foreground/40 hover:text-foreground">✕</button>
+    <div
+      className={`fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 sm:items-center ${closing ? "scrim-out" : "scrim-in"}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="member-sheet-name"
+      onClick={dismiss}
+    >
+      <div
+        className={`relative max-h-[85dvh] w-full max-w-sm space-y-4 overflow-y-auto overscroll-contain rounded-3xl bg-background p-5 ring-1 ring-border ${closing ? "sheet-close sm:pop-close" : "sheet-panel sm:pop-panel"}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto -mt-1 h-1.5 w-10 rounded-full bg-foreground/15 sm:hidden" aria-hidden />
+        <button onClick={dismiss} aria-label="Close" className="press absolute right-5 top-5 text-foreground/40 hover:text-foreground">✕</button>
         <div className="flex flex-col items-center gap-2 pt-1 text-center">
           <Avatar name={name} url={avatarUrl} size={72} />
-          <p className="text-lg font-bold">{name}</p>
+          <p id="member-sheet-name" className="text-lg font-bold">{name}</p>
         </div>
 
         {!loaded && <p className="text-center text-xs text-foreground/40">Loading…</p>}
@@ -119,11 +156,11 @@ function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: 
     </div>
   );
   return a.href ? (
-    <a href={a.href} target={a.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="block">
+    <a href={a.href} target={a.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="press block">
       {inner}
     </a>
   ) : (
-    <button type="button" onClick={onCopy} className="block w-full text-left">
+    <button type="button" onClick={onCopy} className="press block w-full text-left">
       {inner}
     </button>
   );

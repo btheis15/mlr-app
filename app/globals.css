@@ -110,3 +110,91 @@ body {
   font-family: var(--font-display);
   letter-spacing: 0.02em;
 }
+
+/* ---------- Motion system: GPU-only (transform + opacity) ---------- */
+/* iOS-feel curves. Page/sheet use a gentle ease-out; tap is snappier. */
+@theme {
+  --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-ios-in: cubic-bezier(0.4, 0, 1, 1);
+  --dur-page: 260ms;
+  --dur-sheet: 300ms;
+  --dur-tap: 110ms;
+}
+
+@keyframes mlr-page-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes mlr-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes mlr-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes mlr-scrim-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes mlr-sheet-up {
+  from { transform: translate3d(0, 100%, 0); }
+  to   { transform: translate3d(0, 0, 0); }
+}
+@keyframes mlr-sheet-down {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, 100%, 0); }
+}
+@keyframes mlr-pop-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.96); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes mlr-pop-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.96); }
+}
+@keyframes mlr-rise {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Route content wrapper, used by app/template.tsx. */
+@utility page-enter {
+  animation: mlr-page-in var(--dur-page) var(--ease-ios) both;
+}
+
+/* Scrim fade. The -out variant plays while a dialog is dismissing. */
+@utility scrim-in  { animation: mlr-scrim-in 200ms ease-out both; }
+@utility scrim-out { animation: mlr-scrim-out 200ms ease-in both; }
+
+/* Bottom-sheet panel on phones. The -close variant slides it back down. */
+@utility sheet-panel { animation: mlr-sheet-up var(--dur-sheet) var(--ease-ios) both; will-change: transform; }
+@utility sheet-close { animation: mlr-sheet-down var(--dur-sheet) var(--ease-ios-in) both; will-change: transform; }
+
+/* Centered-modal variant for sm and up, and its close. */
+@utility pop-panel { animation: mlr-pop-in var(--dur-sheet) var(--ease-ios) both; will-change: transform, opacity; }
+@utility pop-close { animation: mlr-pop-out var(--dur-sheet) var(--ease-ios-in) both; will-change: transform, opacity; }
+
+/* List/content entrance, with an optional stagger via inline --i. */
+@utility rise {
+  animation: mlr-rise 360ms var(--ease-ios) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Tactile tap. touch-action manipulation removes the iOS legacy tap delay. */
+@utility press {
+  transition: transform var(--dur-tap) var(--ease-ios);
+  touch-action: manipulation;
+}
+.press:active { transform: scale(0.96); }
+
+/* Honor the OS reduce-motion toggle: collapse everything to a 1ms fade. */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .sheet-panel, .sheet-close, .pop-panel, .pop-close,
+  .sm\:pop-panel, .sm\:pop-close,
+  .scrim-in, .scrim-out, .rise {
+    animation: mlr-fade-in 1ms linear both;
+  }
+  .press { transition: none; }
+  .press:active { transform: none; }
+}

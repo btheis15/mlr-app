@@ -44,7 +44,7 @@ export default function HomePage() {
           foreUP booking, same flow as the stock-game app. Year-round. */}
       <Link
         href="/tee-times"
-        className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
       >
         <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-2xl">
           ⛳
