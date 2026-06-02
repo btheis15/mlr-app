@@ -11,6 +11,7 @@ type MediaType = "image" | "video";
 interface Media {
   url: string;
   type: MediaType;
+  path?: string; // raw post_media.storage_path — lets the editor remove this item (absent for legacy image_path)
 }
 interface Tag {
   id: string;
@@ -124,9 +125,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
   // Composer "when": default off = posts as now(); on = backdate to this moment.
   const [customWhen, setCustomWhen] = useState(false);
   const [whenValue, setWhenValue] = useState("");
-  // Editing an existing post's date/time (author/admin).
-  const [editDateFor, setEditDateFor] = useState<string | null>(null);
-  const [editDateValue, setEditDateValue] = useState("");
+  // Which post is open in the consolidated editor (author/admin).
+  const [editingId, setEditingId] = useState<string | null>(null);
   // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
   const [jump, setJump] = useState("");
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
@@ -184,6 +184,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           ? m.storage_path
           : sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
         type: m.media_type === "video" ? "video" : "image",
+        path: m.storage_path,
       });
     }
 
@@ -437,20 +438,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
     await refetch();
   };
 
-  const canEditPost = (p: FeedPost) => hasOccurredAt && (isAdmin || (!!uid && p.authorId === uid));
-  const openEditDate = (p: FeedPost) => {
-    setEditDateValue(toDatetimeLocal(p.ts));
-    setEditDateFor(editDateFor === p.id ? null : p.id);
-  };
-  const saveEditDate = async (p: FeedPost) => {
-    if (!supabase || !editDateValue) { setEditDateFor(null); return; }
-    const { error } = await supabase
-      .from("posts")
-      .update({ occurred_at: new Date(editDateValue).toISOString() })
-      .eq("id", p.id);
-    setEditDateFor(null);
-    if (!error) await refetch();
-  };
+  const canEditPost = (p: FeedPost) => configured && (isAdmin || (!!uid && p.authorId === uid));
 
   const canDeletePost = (p: FeedPost, isAdded: boolean) =>
     configured ? isAdmin || (!!uid && p.authorId === uid) : isAdmin || (isAdded && !!user && p.author === user.name);
@@ -654,7 +642,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
             Everyone
           </button>
           <button onClick={() => setFilterTaggedMe(true)} className={`rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
-            📸 Photos of me
+            🏷️ Tagged me
           </button>
         </div>
       )}
@@ -709,32 +697,27 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">{initials(p.author)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.author}</p>
-                  <p className="text-[11px] text-foreground/40">
-                    {formatClock(p.ts)}
-                    {canEditPost(p) && (
-                      <button onClick={() => openEditDate(p)} className="ml-2 text-primary/70 hover:text-primary" aria-label="Edit date & time">· edit date</button>
-                    )}
-                  </p>
+                  <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
                 </div>
-                {canDeletePost(p, isAdded) && (
+                {canEditPost(p) ? (
+                  <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
+                    {editingId === p.id ? "Close" : "Edit"}
+                  </button>
+                ) : canDeletePost(p, isAdded) ? (
                   <button onClick={() => deletePost(p, isAdded)} className="shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
-                )}
+                ) : null}
               </div>
 
-              {editDateFor === p.id && (
-                <div className="mx-4 mt-2 space-y-2 rounded-xl bg-background p-3 ring-1 ring-border">
-                  <p className="text-xs font-medium text-foreground/70">Move this post to when it happened:</p>
-                  <input
-                    type="datetime-local"
-                    value={editDateValue}
-                    onChange={(e) => setEditDateValue(e.target.value)}
-                    className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => setEditDateFor(null)} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
-                    <button onClick={() => saveEditDate(p)} className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white">Save</button>
-                  </div>
-                </div>
+              {editingId === p.id && (
+                <EditPostPanel
+                  post={p}
+                  members={members}
+                  uid={uid}
+                  hasOccurredAt={hasOccurredAt}
+                  onClose={() => setEditingId(null)}
+                  onDelete={() => deletePost(p, isAdded)}
+                  onSaved={refetch}
+                />
               )}
 
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
@@ -835,6 +818,180 @@ export function PostsView({ seed }: { seed: Post[] }) {
           <img src={lightbox} alt="" className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
+    </div>
+  );
+}
+
+// One subtle "Edit" opens this — change the text, add/remove photos & videos,
+// add/remove tags, move the date, or delete — all in one place so the card
+// itself stays clean. Saves as a diff (RLS lets the author update the post and
+// insert/delete its media + tags).
+function EditPostPanel({
+  post,
+  members,
+  uid,
+  hasOccurredAt,
+  onClose,
+  onDelete,
+  onSaved,
+}: {
+  post: FeedPost;
+  members: Member[];
+  uid: string | null;
+  hasOccurredAt: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [text, setText] = useState(post.text ?? "");
+  const [tagIds, setTagIds] = useState<string[]>(post.tags.map((t) => t.id));
+  const [removed, setRemoved] = useState<string[]>([]); // existing media storage_paths to drop
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<Media[]>([]);
+  const [whenValue, setWhenValue] = useState(toDatetimeLocal(post.ts));
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const created = useRef<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => () => created.current.forEach((u) => URL.revokeObjectURL(u)), []);
+
+  const keptMedia = post.media.filter((m) => !(m.path && removed.includes(m.path)));
+  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list?.length) return;
+    const nf = [...files];
+    const np = [...previews];
+    for (const f of Array.from(list)) {
+      const url = URL.createObjectURL(f);
+      created.current.push(url);
+      nf.push(f);
+      np.push({ url, type: f.type.startsWith("video") ? "video" : "image" });
+    }
+    setFiles(nf);
+    setPreviews(np);
+    e.target.value = "";
+  };
+  const toggleTag = (id: string) => setTagIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const tagMembers = members.filter((m) => {
+    const q = tagQuery.trim().toLowerCase();
+    if (!q) return true;
+    const n = m.name.toLowerCase();
+    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+  });
+
+  const save = async () => {
+    if (!supabase) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      await supabase
+        .from("posts")
+        .update({ text: text.trim() || null, ...(hasOccurredAt && whenValue ? { occurred_at: new Date(whenValue).toISOString() } : {}) })
+        .eq("id", post.id);
+      for (const path of removed) {
+        await supabase.from("post_media").delete().eq("post_id", post.id).eq("storage_path", path);
+      }
+      if (files.length) {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) throw new Error("Not signed in.");
+        let pos = post.media.length;
+        for (const raw of files) {
+          const isVideo = raw.type.startsWith("video");
+          const f = isVideo ? raw : await compressImage(raw);
+          const url = await uploadToMini(MEDIA_URL, f, token);
+          await supabase.from("post_media").insert({ post_id: post.id, storage_path: url, media_type: isVideo ? "video" : "image", position: pos++ });
+        }
+      }
+      const orig = post.tags.map((t) => t.id);
+      const toAdd = tagIds.filter((id) => !orig.includes(id));
+      const toRemove = orig.filter((id) => !tagIds.includes(id));
+      if (toAdd.length) await supabase.from("post_tags").insert(toAdd.map((id) => ({ post_id: post.id, tagged_user_id: id })));
+      for (const id of toRemove) await supabase.from("post_tags").delete().eq("post_id", post.id).eq("tagged_user_id", id);
+      await onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't save the changes.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mx-4 mt-2 space-y-3 rounded-xl bg-background p-3 ring-1 ring-border">
+      <p className="text-xs font-semibold text-foreground/70">Edit post</p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Say something…" className="w-full resize-none rounded-lg bg-card px-2 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+
+      {(keptMedia.length > 0 || previews.length > 0) && (
+        <div className="grid grid-cols-3 gap-2">
+          {keptMedia.map((m, i) => (
+            <div key={`k${i}`} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
+              {m.type === "video" ? (
+                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.url} alt="" className="h-full w-full object-cover" />
+              )}
+              {m.path && (
+                <button type="button" onClick={() => setRemoved((r) => [...r, m.path!])} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
+              )}
+            </div>
+          ))}
+          {previews.map((m, i) => (
+            <div key={`n${i}`} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
+              {m.type === "video" ? (
+                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.url} alt="" className="h-full w-full object-cover" />
+              )}
+              <span className="absolute bottom-1 left-1 rounded bg-primary/80 px-1 py-0.5 text-[9px] font-medium text-white">new</span>
+              <button type="button" onClick={() => { setFiles(files.filter((_, idx) => idx !== i)); setPreviews(previews.filter((_, idx) => idx !== i)); }} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => fileRef.current?.click()} className="rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground/70 ring-1 ring-border">📷 Add photo / video</button>
+        <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={addFiles} className="hidden" />
+        <button type="button" onClick={() => setTagOpen((o) => !o)} className="rounded-full bg-card px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-border">🏷️ {tagIds.length ? `Tags (${tagIds.length})` : "Tag people"}</button>
+      </div>
+
+      {tagOpen && (
+        <div className="space-y-2 rounded-lg bg-card p-2 ring-1 ring-border">
+          <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search family…" className="w-full rounded-lg bg-background px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+          <div className="max-h-40 space-y-1 overflow-y-auto">
+            {tagMembers.map((m) => {
+              const on = tagIds.includes(m.id);
+              return (
+                <button key={m.id} type="button" onClick={() => toggleTag(m.id)} className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs ${on ? "bg-primary/10 text-primary" : "text-foreground/70"}`}>
+                  <span>{m.name}{m.id === uid ? " (you)" : ""}</span>
+                  <span>{on ? "✓" : "+"}</span>
+                </button>
+              );
+            })}
+            {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No matching members.</p>}
+          </div>
+        </div>
+      )}
+
+      {hasOccurredAt && (
+        <label className="block text-xs text-foreground/60">
+          <span className="font-medium text-foreground/70">Date &amp; time</span>
+          <input type="datetime-local" value={whenValue} onChange={(e) => setWhenValue(e.target.value)} className="mt-1 w-full rounded-lg bg-card px-2 py-1.5 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+        </label>
+      )}
+
+      {err && <p className="text-xs font-medium text-accent">{err}</p>}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button type="button" onClick={onDelete} className="rounded-full px-2 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent">Delete</button>
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
+          <button type="button" onClick={save} disabled={saving} className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
     </div>
   );
 }
