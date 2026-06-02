@@ -77,6 +77,18 @@ export function MemberSheet({
     return () => cancelAnimationFrame(raf);
   }, [reduce]);
 
+  // Keep the measured height in sync as the body loads/changes — the mount-time
+  // measure is the short "Loading…" height. Without this, the drag threshold,
+  // the scrim's 1 - y/h math, AND the close slide all use a stale short height,
+  // so close only travels partway (looks like "slides halfway, pauses, vanishes").
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setH(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const close = () => {
     if (closed.current) return;
     closed.current = true;
@@ -85,9 +97,12 @@ export function MemberSheet({
       onClose();
       return;
     }
-    // Slide down by the panel's own height (it's bottom-anchored, so that clears
-    // it) — NOT innerHeight, or the scrim's 1 - y/h math snaps to 0 on frame one.
-    setY(h || (typeof window !== "undefined" ? window.innerHeight : 800));
+    // Slide down by the panel's CURRENT height (bottom-anchored → fully clears),
+    // measured live so a stale mount-time ("Loading…") height can't leave it
+    // half-off. setH keeps the scrim's 1 - y/h fade in step.
+    const ch = panelRef.current?.offsetHeight || h || 800;
+    setH(ch);
+    setY(ch);
     closeTimer.current = window.setTimeout(onClose, SHEET_MS);
   };
 
