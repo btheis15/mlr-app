@@ -91,23 +91,25 @@ export function MemberSheet({
 }
 
 function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: () => void }) {
+  const branded = Boolean(a.brand);
   const inner = (
-    <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border transition-colors active:bg-background">
+    <div
+      className={`flex items-center gap-3 rounded-xl px-3 py-3 transition ${branded ? "text-white shadow-sm active:opacity-90" : "bg-card text-foreground ring-1 ring-border active:bg-background"}`}
+      style={branded ? { backgroundColor: a.brand } : undefined}
+    >
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-sm font-semibold">
           {a.label}
-          {a.preferred && <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">Preferred</span>}
+          {a.preferred && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${branded ? "bg-white/25 text-white" : "bg-primary/15 text-primary"}`}>Preferred</span>
+          )}
         </p>
-        <p className="truncate text-xs text-foreground/55">
+        <p className={`truncate text-xs ${branded ? "text-white/80" : "text-foreground/55"}`}>
           {a.value}
           {a.note ? ` · ${a.note}` : ""}
         </p>
       </div>
-      {a.href ? (
-        <span className="shrink-0 text-xs font-semibold text-primary">Open ↗</span>
-      ) : (
-        <span className="shrink-0 text-xs font-medium text-foreground/50">{copied ? "Copied ✓" : "Copy"}</span>
-      )}
+      {!a.href && copied && <span className={`shrink-0 text-xs font-semibold ${branded ? "text-white" : "text-primary"}`}>Copied ✓</span>}
     </div>
   );
   return a.href ? (

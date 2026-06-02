@@ -6,9 +6,9 @@ import { supabase } from "@/lib/supabase";
 // Profile section to set your phone + pay handles and pick your preferred
 // contact/pay methods — what the member card defaults to. Each is optional.
 // Degrades to a gentle note until migration 0006 is run.
-const FIELDS: { key: string; label: string; placeholder: string }[] = [
+const FIELDS: { key: string; label: string; placeholder: string; hint?: string }[] = [
   { key: "phone", label: "Phone (call / text / Apple Cash)", placeholder: "+1 715 555 0123" },
-  { key: "contact_email", label: "Email for contact", placeholder: "you@email.com" },
+  { key: "contact_email", label: "Email for contact", placeholder: "you@email.com", hint: "Defaults to the email you signed up with — change it to be reached somewhere else." },
   { key: "venmo", label: "Venmo", placeholder: "username" },
   { key: "zelle", label: "Zelle", placeholder: "phone or email" },
   { key: "cashapp", label: "Cash App", placeholder: "$cashtag" },
@@ -100,6 +100,7 @@ export function ContactPaySettings() {
             placeholder={f.placeholder}
             className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
+          {f.hint && <span className="mt-1 block text-[11px] text-foreground/45">{f.hint}</span>}
         </label>
       ))}
       <label className="block">
