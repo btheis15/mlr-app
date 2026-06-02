@@ -6,7 +6,24 @@ This file lives in the `mlr-app` repo but covers **both** repos.
 - **MLR (resort umbrella):** https://github.com/btheis15/mlr-app → live on **Vercel: https://mlr-app-omega.vercel.app** (also GitHub Pages: https://btheis15.github.io/mlr-app/)
 - **Family Fest (event app):** https://github.com/btheis15/family-fest → live on **Vercel: https://family-fest.vercel.app** (also GitHub Pages: https://btheis15.github.io/family-fest/)
 
-> **Deployed 2026-05-31 (read-only launch):** both apps are live on Vercel (root-served → PWA icons/manifest work; SSR + env-secrets ready for the backend) **and** GitHub Pages. They run in **READ-ONLY mode** — the `READ_ONLY` flag in each repo's `lib/features.ts` gates the write features (sign-in, chat posting, RSVP, photo upload) behind a "coming soon" affordance; the whole browse experience is live. Flip `READ_ONLY = false` (and wire auth, PRs mlr-app#15 / family-fest#5) to turn interaction on. **Note:** Vercel deploys were done via `vercel --prod` (CLI), so they're **manual** — run `vercel git connect` (or import the repo in the Vercel dashboard) to get auto-deploy-on-push like the other apps. Pages still auto-deploys on push to `main`.
+## ⭐ Current state — updated 2026-06-02 (read this first)
+
+Big shift since the 2026-05-31 read-only launch: **the Supabase backend is live, interaction is ON, Family Fest is merged into MLR as a section (§0b ✅), and media is self-hosted on the Mac mini** (not Supabase Storage). MLR is live on **Vercel (mlr-app-omega.vercel.app)** + **GitHub Pages**, both built with the Supabase + media env vars. Vercel deploys are still **manual** (`vercel --prod` from `~/mlr-build`); Pages auto-deploys on push to `main`.
+
+**Live now:**
+- **Auth** — passwordless **email OTP** (Supabase + Gmail SMTP), persisted session. Browsing is public; signing in unlocks interaction. (§3a–3b ✅)
+- **One shared identity** — Supabase project `vrksrpzlslrcjvbzchfg`; one `profiles` table (display_name, avatar_url, is_admin, email_alerts, …). Admins via `profiles.is_admin` (bootstrap `brian.theis15@gmail.com`).
+- **Posts feed** (`/posts`) — the social layer that **replaced standalone chat**: multi-photo/video posts, swipe carousel, **tag people**, "photos of me", comments, emoji reactions, a **photo timeline + backdating** (post to a past date), full-screen viewer. Tables in migrations 0001–0005.
+- **Self-hosted media (Mac mini)** — photos/videos upload to a small Express server on the mini behind **Tailscale Funnel** (`brians-mac-mini.tail49943c.ts.net`) → **no Supabase Storage size cap**. Uploads go to the mini **only** (the dead Supabase upload path was removed, #58); the app reads `NEXT_PUBLIC_MEDIA_URL`. See [`media-server/README.md`](media-server/README.md).
+- **Family Fest is a section** — `/family-fest/*` (overview, schedule, dinners, crew, pay) inside MLR, its own parchment theme + a season model (off-season → planning → live → wrap). (§0b ✅)
+- **Tee times** — Home card → `/tee-times`, a hand-off to Inshalla CC's foreUP booking (ported from `stock-game`).
+- **Committees** — `/committees` (+ detail pages); "interested in joining" emails/texts the lead.
+
+**Mac mini ops:** the media server runs as a launchd agent `com.mlr.media-server` (crash-proof, `caffeinate` keeps the mini awake, auto-starts on login). Manage it with the **"MLR Media Server" control panel** app (Dock / Applications) or `launchctl`. Server repo = `~/mlr-app`; the dev/build clone is **`~/mlr-build`** — work there, **NOT `~/Desktop`** (iCloud corrupts repos kept on the Desktop).
+
+**⚠️ Open issue:** a post was reported failing. PRs #57/#58 reworked uploads (mini-only) and #59 added a progress bar — **re-test a multi-photo + video post** and watch the control panel's live log (the server now logs every request: `[req]`/`[upload]`/`[auth]`).
+
+**Still ahead (rest of this doc):** committee request→approve loop + live rosters (§5c), email alerts to opted-in members (§5), member directory / "email everyone" (§5b), Google-Drive-fed announcements + chef contacts (§4), avatar-upload polish (§3b-2), Android web push (§5), custom domain (§7). **`READ_ONLY`** (`lib/features.ts`) is still `true` but only gates the not-yet-backed features; Supabase-backed features gate on `isSupabaseConfigured` and are live — consider flipping/removing `READ_ONLY` now that auth is in.
 
 The reference apps `stock-game` and `innjoy-mobile` are **not** part of this — leave them alone.
 
@@ -25,15 +42,17 @@ Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PW
 - [x] MLR resort app: Home, Activities, Dining/amenities, Family Fest hub, Chat, Profile.
 - [x] Family Fest app: Home/countdown, Schedule + dinner chefs (call/text), Crew (RSVP + potluck), Photos (+ IG/FB share), Pay (Venmo/Zelle).
 - [x] Public to browse; **name + email required to interact**; admin role + alert banner.
-- [ ] **Passwordless login** — email one-time code + saved session (no passwords). [§3b]
-- [ ] **One shared identity** across both apps (one Supabase project / one profiles table). [§3 callout]
-- [ ] **Rich profiles** — avatar, nickname, shown everywhere; **viewable member profiles** with per-field privacy. [§3b-2]
-- [ ] **Real shared chat**, RSVP, and a **shared photo album** (cross-device). [§3c–3d]
+- [x] **Passwordless login** — email one-time code + saved session. [§3b ✅]
+- [x] **One shared identity** — one Supabase project / one `profiles` table. [§3 ✅]
+- [x] **Rich profiles** (basics) — display name + avatar on profiles; *viewable member-profile pages + per-field privacy still to do.* [§3b-2]
+- [x] **Shared, cross-device social** — the **Posts feed** (photos/videos/comments/reactions/tags + timeline), media on the Mac mini; Family Fest crew/RSVP. *(Replaced standalone chat.)* [§3c–3d]
 - [ ] **Member directory + "email everyone"** by name using each person's current address. [§5b]
-- [ ] **Committees** (Beautification, Maintenance, Family Fest) with request-to-join → admin approval. [§5c]
+- [x] **Committees** UI (Beautification, Maintenance, Family Fest); *request-to-join → approve loop + live rosters still pending.* [§5c]
 - [ ] **Announcements/alerts** admin-pushed + **email opt-in** + Android push, fed by a **Google Drive** file. [§4, §5]
-- [ ] **Merge Family Fest into MLR** as one app. [§0b]
-- [ ] Real content: dates, rosters, chef phones, Venmo/Zelle handles, FB group URL, theme/design. [§2]
+- [x] **Merge Family Fest into MLR** as one app — done (`/family-fest/*`). [§0b ✅]
+- [ ] Real content: rosters, chef phones, Venmo/Zelle handles, FB group URL. *(Dates + admin allow-list set.)* [§2]
+- [x] **Self-hosted media on the Mac mini** + a **"MLR Media Server" control panel** app. *(new)*
+- [x] **Tee times** — Home card → `/tee-times` (Inshalla CC / foreUP), ported from `stock-game`. *(new)*
 
 ## Decisions locked (don't relitigate)
 
@@ -55,19 +74,22 @@ Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PW
 
 ## 0. Where things stand
 
-**Done & live (client-only v1, no backend yet):**
-- MLR: Home, Activities, Dining & amenities, embedded Family Fest hub, Chat, Profile.
-- Family Fest: Home (countdown), Schedule + dinner head-chefs (tap-to-call/text), Crew (RSVP + potluck), Photos (+ share to IG/FB), Pay (Venmo/Zelle).
-- Model in both apps: **public to browse, name + email required only to interact** (post/RSVP/add photo).
-- Admin role + admin-only alert composer + dismissible announcement banner (MLR).
+> **Historical (pre-backend, 2026-05-31). For the live state, see "⭐ Current state" at the top.**
 
-**Not built yet (needs a backend — see §3):** real shared chat, email one-time-code login, Google-Drive-fed alerts/chef contacts, email + Android-push notifications, a shared (cross-device) photo album.
+**Done & live (now on the Supabase backend):**
+- MLR tabs: Home, Activities, Dining & amenities, Family Fest section, **Posts** (the social feed — replaced standalone Chat), Profile; plus `/committees`, `/tee-times`, `/work-weekends`.
+- Backend: email-OTP auth, `profiles`, the Posts feed (photos/videos/comments/reactions/tags/timeline) with media on the Mac mini, admin via `profiles.is_admin`.
+- Family Fest merged in as `/family-fest/*` (schedule, dinners, crew, pay) with its season model.
 
-Everything backend-dependent is isolated to one module per feature, so each is a drop-in — see each repo's `CLAUDE.md` → "Backend seams".
+**Still backend-dependent (see §4, §5, §5b, §5c):** Google-Drive-fed alerts/chef contacts, email + Android-push notifications, member directory / "email everyone", the committee request→approve loop + live rosters.
+
+Each remaining feature is isolated to one module — see `CLAUDE.md` → "Backend seams".
 
 ---
 
-## 0b. TARGET ARCHITECTURE — merge into one app ⭐
+## 0b. ✅ DONE — Family Fest merged into MLR as a section
+
+> **Status: done.** Family Fest now lives inside MLR at `/family-fest/*` (overview, schedule, dinners, crew, pay), its parchment theme scoped to that subtree + a shared season model. The plan below is kept for reference.
 
 **Decision:** the end state is **one app**. MLR is *the* app; **Family Fest becomes a section inside MLR**, not a separate repo/deploy.
 
@@ -138,9 +160,11 @@ All seed content is plain data; no backend needed for these. Edit, commit, push 
 
 ---
 
-## 3. The backend — Supabase (the big one)
+## 3. The backend — Supabase ✅ LIVE
 
-You chose **Supabase**: one service that covers email one-time-code login, a database, realtime chat, and photo storage. Do this once and most of the "not built yet" list lights up.
+> **Status: live.** Email-OTP auth, `profiles`, and the Posts feed (posts/media/comments/reactions/tags, migrations 0001–0005) are up. Media files are self-hosted on the Mac mini (see Current state at top), **not** Supabase Storage. The plan below is kept for reference; remaining backend work is §4–§5c.
+
+You chose **Supabase**: one service that covers email one-time-code login, a database, realtime, and photo storage. Do this once and most of the "not built yet" list lights up.
 
 > ### ⭐⭐ ONE identity across both apps — non-negotiable
 > A person is **one account**, whether they're in MLR or Family Fest. No double logins, no duplicate profiles. This is guaranteed by **one rule:**
