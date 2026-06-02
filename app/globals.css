@@ -116,9 +116,9 @@ body {
 @theme {
   --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-ios-in: cubic-bezier(0.4, 0, 1, 1);
-  --dur-page: 260ms;
-  --dur-sheet: 300ms;
-  --dur-tap: 110ms;
+  --dur-page: 340ms;
+  --dur-sheet: 440ms;
+  --dur-tap: 140ms;
 }
 
 @keyframes mlr-page-in {
@@ -158,9 +158,12 @@ body {
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-/* Route content wrapper, used by app/template.tsx. */
+/* Route content wrapper, used by app/template.tsx. `backwards` (NOT `both`) so
+   no transform lingers after the animation: a retained transform would make
+   this div the containing block for position:fixed overlays (member sheet,
+   lightbox), clipping them to the content column instead of the full viewport. */
 @utility page-enter {
-  animation: mlr-page-in var(--dur-page) var(--ease-ios) both;
+  animation: mlr-page-in var(--dur-page) var(--ease-ios) backwards;
 }
 
 /* Scrim fade. The -out variant plays while a dialog is dismissing. */
