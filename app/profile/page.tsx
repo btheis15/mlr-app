@@ -8,6 +8,7 @@ import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { DemoDateControl } from "@/components/DemoDateControl";
 import { Avatar } from "@/components/Avatar";
 import { AvatarCropper } from "@/components/AvatarCropper";
+import { ContactPaySettings } from "@/components/ContactPaySettings";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -150,6 +151,14 @@ export default function ProfilePage() {
           Android push notifications can be enabled here once the backend is in
           place; on iOS, alerts come by email.
         </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-accent">Contact &amp; payment</h2>
+        <p className="px-1 text-xs text-foreground/50">
+          Optional — this is what shows when someone taps your name to contact or pay you.
+        </p>
+        <ContactPaySettings />
       </section>
 
       {isAdmin && (

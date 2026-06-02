@@ -7,6 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { dayKey, formatDayHeading, formatClock, toDatetimeLocal } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { MemberSheet } from "@/components/MemberSheet";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -77,7 +78,7 @@ interface TagRow {
   tagged_user_id: string;
 }
 
-const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
+const LS = { hidden: "posts-hidden" };
 // Legacy Supabase Storage bucket — kept only to *display* any media saved
 // there before the move to the mini. New uploads never write here.
 const BUCKET = "post-photos";
@@ -117,7 +118,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
   const [filterTaggedMe, setFilterTaggedMe] = useState(false);
-  const [alsoFacebook, setAlsoFacebook] = useState(false);
+  // Composer is collapsed by default (just the "Share something…" box); the
+  // photo/tag/date controls reveal once it's focused.
+  const [composerOpen, setComposerOpen] = useState(false);
+  // Tap a member's avatar/name → their contact/pay popup.
+  const [memberSheet, setMemberSheet] = useState<{ id: string; name: string; avatar?: string | null } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
@@ -258,7 +263,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
   useEffect(() => {
     try {
-      setAlsoFacebook(localStorage.getItem(LS.shareFb) === "1");
       setHidden(JSON.parse(localStorage.getItem(LS.hidden) || "[]"));
     } catch {
       /* ignore */
@@ -277,11 +281,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
-
-  const setShareFb = (v: boolean) => {
-    setAlsoFacebook(v);
-    try { localStorage.setItem(LS.shareFb, v ? "1" : "0"); } catch { /* ignore */ }
-  };
 
   const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
@@ -375,15 +374,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
         }
         await refetch();
         setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
-        setCustomWhen(false); setWhenValue("");
-        if (alsoFacebook) openFacebook(caption);
-        setStatus(
-          alsoFacebook
-            ? caption
-              ? "Posted ✓ — caption copied. In Facebook: paste it, add your photo, post."
-              : "Posted ✓ — opening our Facebook group. Add your photo and post."
-            : "Posted — everyone can see it now ✓",
-        );
+        setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
+        setStatus("Posted — everyone can see it now ✓");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "please try again";
         const friendly = /max|size|large|exceed|413|payload/i.test(msg) ? "that file was too big to upload." : msg;
@@ -407,13 +399,15 @@ export function PostsView({ seed }: { seed: Post[] }) {
     };
     setAdded((prev) => [post, ...prev]);
     setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
-    setCustomWhen(false); setWhenValue("");
-    if (alsoFacebook) openFacebook(caption);
-    setStatus(alsoFacebook ? "Posted ✓ — caption copied for Facebook." : "Posted to the feed ✓");
+    setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
+    setStatus("Posted to the feed ✓");
     window.setTimeout(() => setStatus(null), 7000);
   };
 
   const nameById = (id: string) => (id === uid ? "You" : members.find((m) => m.id === id)?.name || "Member");
+  const openMember = (id: string | undefined, name: string, avatar?: string | null) => {
+    if (id) setMemberSheet({ id, name, avatar });
+  };
   const toggleReactors = (postId: string, emoji: string) =>
     setReactorsFor((cur) => (cur && cur.postId === postId && cur.emoji === emoji ? null : { postId, emoji }));
   const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
@@ -507,10 +501,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onFocus={() => setComposerOpen(true)}
           placeholder={user ? "Share something…" : "Add your name to post"}
-          rows={2}
+          rows={composerOpen ? 2 : 1}
           className="w-full resize-none rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         />
+        {composerOpen && (
+        <>
         {previews.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             {previews.map((m, i) => (
@@ -608,14 +605,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
           </div>
         )}
 
-        <label className="flex items-start gap-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
-          <input type="checkbox" checked={alsoFacebook} onChange={(e) => setShareFb(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]" />
-          <span className="text-foreground/70">
-            <span className="font-semibold text-foreground">Also share to our Facebook group</span> — post in both places.
-            <span className="block text-foreground/45">We&rsquo;ll copy your caption &amp; open the group — paste it, add your photo (it&rsquo;s already in your camera roll), and tap Post.</span>
-          </span>
-        </label>
-
         {(() => {
           const big = files.find((f) => f.type.startsWith("video") && f.size > 150 * 1024 * 1024);
           return big ? (
@@ -631,7 +620,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           </button>
           <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
           <button type="submit" disabled={posting} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {posting ? (progress != null ? `Posting… ${progress}%` : "Posting…") : alsoFacebook ? "Post + Facebook" : "Post"}
+            {posting ? (progress != null ? `Posting… ${progress}%` : "Posting…") : "Post"}
           </button>
         </div>
 
@@ -639,6 +628,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
           <div className="h-2 overflow-hidden rounded-full bg-background ring-1 ring-border" role="progressbar" aria-valuenow={progress}>
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
           </div>
+        )}
+        </>
         )}
 
         {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}
@@ -702,11 +693,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
           return (
             <li key={p.id} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center gap-2 px-4 pt-3">
-                <Avatar name={p.author} url={p.authorAvatar} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{p.author}</p>
-                  <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
-                </div>
+                <button type="button" onClick={() => openMember(p.authorId, p.author, p.authorAvatar)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <Avatar name={p.author} url={p.authorAvatar} size={32} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{p.author}</p>
+                    <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
+                  </div>
+                </button>
                 {canEditPost(p) ? (
                   <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
                     {editingId === p.id ? "Close" : "Edit"}
@@ -730,7 +723,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
               {p.text && <p className="px-4 pt-2 text-sm text-foreground/80">{p.text}</p>}
               {p.tags.length > 0 && (
-                <p className="px-4 pt-1 text-xs text-primary">🏷️ with {p.tags.map((t) => t.name).join(", ")}</p>
+                <p className="px-4 pt-1 text-xs text-primary">🏷️ with {p.tags.map((t, i) => (
+                  <span key={t.id}>{i > 0 ? ", " : ""}<button type="button" onClick={() => openMember(t.id, t.name, members.find((m) => m.id === t.id)?.avatarUrl)} className="font-medium underline decoration-primary/30">{t.name}</button></span>
+                ))}</p>
               )}
 
               {p.media.length > 0 ? (
@@ -790,8 +785,10 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <div className="space-y-2 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
                     <div key={c.id} className="flex items-start gap-2 text-xs">
-                      <Avatar name={c.author} url={c.authorAvatar} size={22} className="mt-0.5" />
-                      <span className="font-semibold">{c.author}</span>
+                      <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="flex shrink-0 items-center gap-1.5">
+                        <Avatar name={c.author} url={c.authorAvatar} size={22} />
+                        <span className="font-semibold">{c.author}</span>
+                      </button>
                       <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
                       {(isAdmin || (!!uid && c.authorId === uid)) && (
                         <button onClick={() => removeComment(c.id)} className="shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
@@ -826,6 +823,10 @@ export function PostsView({ seed }: { seed: Post[] }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={lightbox} alt="" className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
+      )}
+
+      {memberSheet && (
+        <MemberSheet id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
       )}
     </div>
   );
