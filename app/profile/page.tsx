@@ -1,13 +1,39 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { useIdentity } from "@/components/IdentityProvider";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { DemoDateControl } from "@/components/DemoDateControl";
+import { Avatar } from "@/components/Avatar";
+import { compressImage } from "@/lib/img";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !supabase) return;
+    setUploading(true);
+    try {
+      const img = await compressImage(file, 512, 0.85);
+      const { data: sess } = await supabase.auth.getSession();
+      const id = sess.session?.user.id;
+      if (!id) throw new Error("Not signed in");
+      const path = `${id}/${Date.now()}.jpg`;
+      const { error } = await supabase.storage.from("avatars").upload(path, img, { contentType: "image/jpeg", upsert: true });
+      if (error) throw error;
+      updateUser({ avatarUrl: supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl });
+    } catch {
+      /* keep the old photo on any hiccup */
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Sign-in goes live once the backend is configured (NEXT-STEPS.md §3b).
   // Until then, browsing stays fully open and this shows a "coming soon".
@@ -69,18 +95,21 @@ export default function ProfilePage() {
     );
   }
 
-  const initials = user.name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   return (
     <div className="space-y-6 pt-6">
       <header className="flex items-center gap-3">
-        <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-xl font-bold text-primary">
-          {initials}
+        <div className="relative shrink-0">
+          <Avatar name={user.name} url={user.avatarUrl} size={64} />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs text-white ring-2 ring-background disabled:opacity-50"
+            aria-label="Change profile photo"
+          >
+            {uploading ? "…" : "📷"}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
         </div>
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-bold">

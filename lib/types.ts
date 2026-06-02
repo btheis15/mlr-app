@@ -68,6 +68,8 @@ export interface User {
   /** Opt-in: email me when an admin pushes an alert. (Sending happens
    *  server-side once a mail provider is wired up.) */
   emailAlerts: boolean;
+  /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
+  avatarUrl?: string | null;
 }
 
 /** A single chat/comment message, tied to the author's identity. */
