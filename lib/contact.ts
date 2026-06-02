@@ -21,29 +21,33 @@ export interface Action {
   note?: string;
   preferred?: boolean;
   brand?: string; // brand color → render as a smooth filled button (pay methods)
+  emoji?: string; // leading emoji (contact methods)
+  logo?: string; // leading logo image URL (pay methods)
 }
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
 const strip = (s: string, ch: string) => (s.startsWith(ch) ? s.slice(1) : s);
+// Pay-method logos live on the mini (served at /assets) — off Supabase storage.
+const ASSETS = (process.env.NEXT_PUBLIC_MEDIA_URL || "https://brians-mac-mini.tail49943c.ts.net").replace(/\/+$/, "") + "/assets";
 
 export function contactActions(c: MemberContact): Action[] {
   const out: Action[] = [];
   if (c.phone) {
-    out.push({ key: "text", label: "Text", value: c.phone, href: `sms:${tel(c.phone)}` });
-    out.push({ key: "call", label: "Call", value: c.phone, href: `tel:${tel(c.phone)}` });
+    out.push({ key: "text", label: "Text", value: c.phone, href: `sms:${tel(c.phone)}`, emoji: "💬" });
+    out.push({ key: "call", label: "Call", value: c.phone, href: `tel:${tel(c.phone)}`, emoji: "📞" });
   }
-  if (c.contact_email) out.push({ key: "email", label: "Email", value: c.contact_email, href: `mailto:${c.contact_email}` });
+  if (c.contact_email) out.push({ key: "email", label: "Email", value: c.contact_email, href: `mailto:${c.contact_email}`, emoji: "✉️" });
   return mark(out, c.contact_preferred);
 }
 
 export function payActions(c: MemberContact): Action[] {
   const out: Action[] = [];
   // venmo.com/<user>?txn=pay opens straight to the Pay screen (not the profile).
-  if (c.venmo) out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`, brand: "#008CFF" });
-  if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app", brand: "#6D1ED4" });
-  if (c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "send in Messages", brand: "#111111" });
-  if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}`, brand: "#00B843" });
-  if (c.paypal) out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "")}`, brand: "#0070BA" });
+  if (c.venmo) out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`, brand: "#008CFF", logo: `${ASSETS}/venmo.svg` });
+  if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app", brand: "#6D1ED4", logo: `${ASSETS}/zelle.svg` });
+  if (c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "send in Messages", brand: "#111111", logo: `${ASSETS}/applepay.svg` });
+  if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}`, brand: "#00B843", logo: `${ASSETS}/cashapp.svg` });
+  if (c.paypal) out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "")}`, brand: "#0070BA", logo: `${ASSETS}/paypal.svg` });
   return mark(out, c.pay_preferred);
 }
 

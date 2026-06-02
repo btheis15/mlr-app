@@ -97,6 +97,12 @@ function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: 
       className={`flex items-center gap-3 rounded-xl px-3 py-3 transition ${branded ? "text-white shadow-sm active:opacity-90" : "bg-card text-foreground ring-1 ring-border active:bg-background"}`}
       style={branded ? { backgroundColor: a.brand } : undefined}
     >
+      {a.logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={a.logo} alt="" className="h-5 w-5 shrink-0" />
+      ) : a.emoji ? (
+        <span className="shrink-0 text-base leading-none">{a.emoji}</span>
+      ) : null}
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-sm font-semibold">
           {a.label}
