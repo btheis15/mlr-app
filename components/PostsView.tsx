@@ -111,6 +111,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [alsoFacebook, setAlsoFacebook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -281,14 +282,22 @@ export function PostsView({ seed }: { seed: Post[] }) {
         // media server (no size cap); storage_path holds the full mini URL.
         const token = (await supabase.auth.getSession()).data.session?.access_token;
         if (!token) throw new Error("Not signed in.");
+        const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
+        let doneBytes = 0;
+        setProgress(0);
         const uploaded: { path: string; type: MediaType }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const path = await uploadToMini(MEDIA_URL, f, token);
+          const path = await uploadToMini(MEDIA_URL, f, token, (loaded, total) => {
+            const frac = total ? loaded / total : 0;
+            setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
+          });
+          doneBytes += raw.size;
           uploaded.push({ path, type: isVideo ? "video" : "image" });
         }
+        setProgress(100);
         const { data: np, error: insErr } = await supabase
           .from("posts")
           .insert({ author_id: uid, text: caption || null })
@@ -321,10 +330,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "please try again";
-        const friendly = /max|size|large|exceed|413|payload/i.test(msg) ? "a file was too big to upload (~50 MB max on our current plan)." : msg;
+        const friendly = /max|size|large|exceed|413|payload/i.test(msg) ? "that file was too big to upload." : msg;
         setStatus(`Couldn't post: ${friendly}`);
       } finally {
         setPosting(false);
+        setProgress(null);
         window.setTimeout(() => setStatus(null), 7000);
       }
       return;
@@ -506,15 +516,30 @@ export function PostsView({ seed }: { seed: Post[] }) {
           </span>
         </label>
 
+        {(() => {
+          const big = files.find((f) => f.type.startsWith("video") && f.size > 150 * 1024 * 1024);
+          return big ? (
+            <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-foreground/70">
+              🎬 Big video (~{Math.round(big.size / 1048576)} MB). It&rsquo;ll post at full quality, but may take a few minutes on slower Wi-Fi — a 1080p clip uploads much faster.
+            </p>
+          ) : null;
+        })()}
+
         <div className="flex items-center justify-between gap-2">
           <button type="button" onClick={() => inputRef.current?.click()} className="rounded-full bg-background px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
             📷 Photos / video
           </button>
           <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
           <button type="submit" disabled={posting} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {posting ? "Posting…" : alsoFacebook ? "Post + Facebook" : "Post"}
+            {posting ? (progress != null ? `Posting… ${progress}%` : "Posting…") : alsoFacebook ? "Post + Facebook" : "Post"}
           </button>
         </div>
+
+        {posting && progress != null && (
+          <div className="h-2 overflow-hidden rounded-full bg-background ring-1 ring-border" role="progressbar" aria-valuenow={progress}>
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        )}
 
         {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}
       </form>
@@ -665,21 +690,40 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
   );
 }
 
-async function uploadToMini(mediaUrl: string, file: File, token: string): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${mediaUrl}/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
+// XMLHttpRequest (not fetch) so we get real upload progress for the bar.
+function uploadToMini(
+  mediaUrl: string,
+  file: File,
+  token: string,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${mediaUrl}/upload`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total);
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json = JSON.parse(xhr.responseText) as { url?: string };
+          if (!json.url) return reject(new Error("media server returned no URL"));
+          resolve(json.url);
+        } catch {
+          reject(new Error("media server returned a bad response"));
+        }
+      } else {
+        reject(new Error((xhr.responseText || "").slice(0, 160) || `media upload failed (${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Couldn't reach the media server."));
+    xhr.send(fd);
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(t.slice(0, 160) || `media upload failed (${res.status})`);
-  }
-  const json = (await res.json()) as { url?: string };
-  if (!json.url) throw new Error("media server returned no URL");
-  return json.url;
 }
 
 async function compressImage(file: File): Promise<File> {
