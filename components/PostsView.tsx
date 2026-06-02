@@ -117,6 +117,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [posting, setPosting] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Which reaction chip is expanded to show who reacted ({postId, emoji}).
+  const [reactorsFor, setReactorsFor] = useState<{ postId: string; emoji: string } | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   // Composer "when": default off = posts as now(); on = backdate to this moment.
@@ -127,6 +129,8 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [editDateValue, setEditDateValue] = useState("");
   // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
   const [jump, setJump] = useState("");
+  // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
@@ -256,6 +260,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
   useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+
+  // Close the photo viewer with Escape.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   const setShareFb = (v: boolean) => {
     setAlsoFacebook(v);
@@ -392,6 +404,9 @@ export function PostsView({ seed }: { seed: Post[] }) {
     window.setTimeout(() => setStatus(null), 7000);
   };
 
+  const nameById = (id: string) => (id === uid ? "You" : members.find((m) => m.id === id)?.name || "Member");
+  const toggleReactors = (postId: string, emoji: string) =>
+    setReactorsFor((cur) => (cur && cur.postId === postId && cur.emoji === emoji ? null : { postId, emoji }));
   const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
   const reactionSummary = (postId: string) => {
     const counts: Record<string, number> = {};
@@ -728,18 +743,37 @@ export function PostsView({ seed }: { seed: Post[] }) {
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} />
+                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
 
               {summary.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
-                  {summary.map(([emoji, count]) => (
-                    <span key={emoji} className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}>
-                      {emoji} {count}
-                    </span>
-                  ))}
+                <div className="px-4 pt-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {summary.map(([emoji, count]) => {
+                      const open = reactorsFor?.postId === p.id && reactorsFor.emoji === emoji;
+                      return (
+                        <button
+                          key={emoji}
+                          onClick={() => toggleReactors(p.id, emoji)}
+                          className={`rounded-full px-2 py-0.5 text-xs ring-1 ${mine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
+                          aria-label={`See who reacted ${emoji}`}
+                        >
+                          {emoji} {count}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {reactorsFor?.postId === p.id && (
+                    <p className="mt-1.5 text-xs text-foreground/55">
+                      <span className="mr-1">{reactorsFor.emoji}</span>
+                      {(dbReactions[p.id] ?? [])
+                        .filter((r) => r.emoji === reactorsFor.emoji)
+                        .map((r) => nameById(r.user_id))
+                        .join(", ")}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -782,19 +816,38 @@ export function PostsView({ seed }: { seed: Post[] }) {
         </section>
         ))}
       </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"
+            aria-label="Close photo"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" className="max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }
 
-function MediaCarousel({ media }: { media: Media[] }) {
+function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
   const [active, setActive] = useState(0);
-  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} /></div>;
+  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={onOpenPhoto} /></div>;
   return (
     <div className="relative mt-3">
       <div onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} className="flex snap-x snap-mandatory overflow-x-auto">
         {media.map((m, i) => (
           <div key={i} className="w-full shrink-0 snap-center">
-            <MediaItem m={m} />
+            <MediaItem m={m} onOpen={onOpenPhoto} />
           </div>
         ))}
       </div>
@@ -808,9 +861,10 @@ function MediaCarousel({ media }: { media: Media[] }) {
   );
 }
 
-function MediaItem({ m }: { m: Media }) {
+function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) {
   // Uniform square frame so single posts and carousels line up cleanly. Photos
-  // fill (cropped); videos fit on black (never cropped).
+  // fill (cropped) but tap to see the whole image full-screen; videos fit on
+  // black (never cropped) and play inline.
   if (m.type === "video") {
     return (
       <div className="aspect-square w-full bg-black">
@@ -819,10 +873,15 @@ function MediaItem({ m }: { m: Media }) {
     );
   }
   return (
-    <div className="aspect-square w-full bg-black/5">
+    <button
+      type="button"
+      onClick={() => onOpen?.(m.url)}
+      className="block aspect-square w-full cursor-zoom-in bg-black/5"
+      aria-label="View full photo"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={m.url} alt="" className="h-full w-full object-cover" />
-    </div>
+    </button>
   );
 }
 
