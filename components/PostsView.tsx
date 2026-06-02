@@ -75,7 +75,11 @@ const LS = { shareFb: "posts-share-fb", hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 // When set (the Mac mini's tunnel URL), media uploads go there instead of
 // Supabase Storage — no size cap. Falls back to Supabase Storage if unset.
-const MEDIA_URL = (process.env.NEXT_PUBLIC_MEDIA_URL || "").replace(/\/+$/, "");
+// Defaults to the resort's Mac-mini media server; NEXT_PUBLIC_MEDIA_URL
+// overrides it (e.g. for local dev or if the tunnel URL ever changes).
+const MEDIA_URL = (
+  process.env.NEXT_PUBLIC_MEDIA_URL || "https://brians-mac-mini.tail49943c.ts.net"
+).replace(/\/+$/, "");
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 /**
