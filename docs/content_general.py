@@ -6,11 +6,13 @@ the design choices, the safeguards, and the trade-offs in plain English, with
 a legal/evidentiary and a light Renaissance-fair frame. Returns a flat list of
 flowables. Built by build_general_pdf.py."""
 
+import os
 from reportlab.platypus import (
-    Paragraph, Spacer, PageBreak, NextPageTemplate, Table, TableStyle, KeepTogether,
+    Paragraph, Spacer, PageBreak, NextPageTemplate, Table, TableStyle, KeepTogether, Image,
 )
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 
 from build_overview_pdf import (
     H1, H3, BODY, SMALL, KICKER, COVER_TITLE, COVER_SUB, TOC, TOCNUM,
@@ -19,8 +21,43 @@ from build_overview_pdf import (
     style, clean_text,
 )
 
+DOCS = os.path.dirname(os.path.abspath(__file__))
+
 def P(t, s=BODY): return Paragraph(clean_text(t), s)
 def sp(h=6): return Spacer(1, h)
+
+# ── Phone-screenshot figures (docs/screens/*.png) ────────────────────────────
+SHOT_W = 1.45 * inch            # display width; captures are 700x1555 (a phone screen)
+SHOT_H = SHOT_W * 1555 / 700
+_SHOTCAP = style("ShotCap", fontName="Helvetica", fontSize=8.3, leading=10.5,
+                 textColor=INK, alignment=TA_CENTER, spaceBefore=5)
+
+def _shot(filename, label, text):
+    """A framed phone screenshot with a step caption — one grid cell."""
+    img = Image(os.path.join(DOCS, "screens", filename), width=SHOT_W, height=SHOT_H)
+    framed = Table([[img]], colWidths=[SHOT_W])
+    framed.setStyle(TableStyle([
+        ("BOX", (0,0), (-1,-1), 0.6, BORDER),
+        ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
+        ("TOPPADDING",(0,0),(-1,-1),0), ("BOTTOMPADDING",(0,0),(-1,-1),0),
+    ]))
+    cap = Paragraph(clean_text(f"<b>{label}</b>  {text}"), _SHOTCAP)
+    return [framed, cap]
+
+def screens_grid(cells):
+    """Lay phone-screenshot cells two-per-row."""
+    rows = [cells[i:i+2] for i in range(0, len(cells), 2)]
+    for r in rows:
+        while len(r) < 2:
+            r.append("")
+    avail = PAGE_W - 2*MARGIN
+    t = Table(rows, colWidths=[avail/2, avail/2])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("TOPPADDING", (0,0), (-1,-1), 6), ("BOTTOMPADDING", (0,0), (-1,-1), 12),
+    ]))
+    return t
 
 def section(num, title, kicker=None):
     out = [Spacer(1, 2)]
@@ -167,6 +204,22 @@ def build_story():
         [P("Every detail page carries a clearly-labeled “back” link that names where it returns to, and the bottom "
            "row of tabs is always present. There’s no maze — you’re always one tap from the porch.", BODY)],
         accent=AZURE, bg=colors.HexColor("#eef1f8"))]
+    F += [PageBreak()]
+
+    # ───────────────── A QUICK VISUAL TOUR (unnumbered) ─────────────────
+    F += [Paragraph("A quick visual tour", H1), Rule(PINE, 1.4, space=8)]
+    F += [P("What a normal first visit looks like, four screens at a time — captured from the app itself, on a phone.")]
+    F += [sp(4), KeepTogether(screens_grid([
+        _shot("home.png",  "1 · Open it",
+              "The home “porch” — resort, festival status, links to everything."),
+        _shot("getin.png", "2 · Get in",
+              "Add your name &amp; email; a one-time code signs you in — no password."),
+        _shot("posts.png", "3 · The family feed",
+              "Photos, videos, comments and reactions — members only."),
+        _shot("fest.png",  "4 · Family Fest",
+              "The reunion week in its own Renaissance colors."),
+    ]))]
+    F += [P("<font color='#5b6b63'><i>Screens shown signed-out, with sample family content; the look is the same once you’re in.</i></font>", SMALL)]
     F += [PageBreak()]
 
     # ───────────────── SECTION 3 — GETTING IN ─────────────────
