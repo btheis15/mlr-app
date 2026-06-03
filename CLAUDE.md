@@ -66,12 +66,36 @@ is the single source of truth for routes + labels + icons).
   (`user` is `null` while browsing as a guest). Identity is stored in
   `localStorage`, no verification yet; at sign-in the guest opts in/out of email
   alerts.
-- **Admins** — allow-list of emails in [`lib/data.ts`](lib/data.ts)
-  (`ADMIN_EMAILS` / `isAdmin`). Only admins see the alert composer
-  ([`components/AdminAlertComposer.tsx`](components/AdminAlertComposer.tsx)).
+- **Admins** — `profiles.is_admin` in Supabase, with the seed allow-list of
+  emails in [`lib/data.ts`](lib/data.ts) (`ADMIN_EMAILS` / `isAdmin`) as a
+  fallback (so the first admin can sign in). Admins see, in Profile → Admin: the
+  alert composer ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)) and
+  the **member directory** ([`AdminMembers`](components/AdminMembers.tsx)) — every
+  registered member, with promote/remove-admin. Clients can't write `is_admin`
+  directly (RLS in `0001`); two admin-gated SECURITY DEFINER functions in
+  [`0008_admin_members.sql`](supabase/migrations/0008_admin_members.sql) back it:
+  `admin_members()` (directory **+ private emails**, kept out of the public
+  profiles table) and `set_admin(target, value)` (can't drop your own). Until
+  `0008` runs, the list works name-only off the public `profiles` read and the
+  promote buttons are disabled with a hint.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.
+- **Privacy wall (guests vs members)** — the app is still browsable, but sensitive
+  info is gated behind sign-in via [`components/Guard.tsx`](components/Guard.tsx) +
+  [`lib/privacy.ts`](lib/privacy.ts): `SignInWall` (whole-screen gate — wraps
+  **Posts** and **Pay**), `Protected` (inline gate for a phone/email/location —
+  guests get a "🔒 Sign in" chip), and `PrivateName` (full name for members,
+  **first name only** for guests). `useGuest()` returns `guest = isSupabaseConfigured && !user`,
+  so with no backend the app stays fully open (we never lock everyone out of an
+  app that can't sign in); during prerender `user` is null, so the static HTML
+  ships the gated/guest view. Applied to: Posts, Pay/dues, MemberSheet
+  (contact+pay), schedule/dinner/committee detail pages (locations, chef/lead/member
+  contacts, "houses on crew"), FestStatus/FestWeek (today's locations + contacts),
+  DinnerCrew, CrewView (household names), CommitteeJoin. ⚠️ **This is the UI layer
+  only** — sensitive seed data still ships in the client bundle and Supabase
+  posts/profiles are still public-read; the real hardening (gated server reads +
+  RLS lockdown, keeping PII out of the bundle) is the planned next step.
 
 ## Family Fest season (the "one app" spine)
 
