@@ -79,7 +79,7 @@ export function GifPicker({ onSelect, onClose }: { onSelect: (gif: PickedGif) =>
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search GIFs…"
           autoFocus
-          className="flex-1 rounded-full bg-card px-3 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+          className="flex-1 rounded-full bg-card px-3 py-1.5 text-base ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         />
         <button type="button" onClick={onClose} className="press rounded-full px-2 py-1 text-xs font-medium text-foreground/50">
           Close
