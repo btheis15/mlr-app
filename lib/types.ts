@@ -4,39 +4,6 @@
  * lib/types.ts) so pages and components agree on the model.
  */
 
-export type ActivityCategory = "On the water" | "On land" | "For kids" | "Evening";
-
-/** Something to do at the resort. */
-export interface Activity {
-  id: string;
-  name: string;
-  emoji: string;
-  category: ActivityCategory;
-  /** Human-readable hours, e.g. "Daily · 8am–dusk". */
-  hours: string;
-  location: string;
-  description: string;
-  /** Display price, e.g. "$45 / half day" or "Free". */
-  price: string;
-}
-
-/** A place to eat or grab something on property. */
-export interface DiningSpot {
-  id: string;
-  name: string;
-  emoji: string;
-  hours: string;
-  description: string;
-}
-
-/** A practical amenity / good-to-know. */
-export interface Amenity {
-  id: string;
-  label: string;
-  value: string;
-  emoji: string;
-}
-
 /** Lightweight summary of one Family Fest schedule highlight, mirrored from the
  *  standalone family-fest app for the embedded hub. */
 export interface FestHighlight {
