@@ -1,8 +1,29 @@
 # MLR media server (Mac mini)
 
-Stores + serves the app's post photos/videos from your Mac mini, so we're not
-capped by cloud storage. **Login and all data stay on cloud Supabase** — this
-only holds the media *files*, and the app saves a link to each file here.
+Stores + serves the app's post photos/videos **and committee-chat attachments**
+from your Mac mini, so we're not capped by cloud storage. **Login and all data
+stay on cloud Supabase** — this only holds the media *files*, and the app saves
+a link to each file here.
+
+## Storage layout
+
+New uploads are filed by feature + month so the folder never becomes one giant
+flat pile (the upload route picks the folder from `?category=` / `?room=`):
+
+```
+<MEDIA_DIR>/
+  posts/<YYYY-MM>/<uuid>.<ext>        # Posts feed
+  posts/legacy/<uuid>.<ext>          # files from before this layout
+  chat/<committee-slug>/<YYYY-MM>/…   # committee-chat attachments
+```
+
+`GET /f/<…>` serves the whole tree, **plus** a fallback mount on `posts/legacy`,
+so flat `/f/<uuid>.<ext>` URLs already saved in the database keep resolving after
+you tidy old files away. To do that tidy on the mini (safe, no DB changes):
+
+```bash
+MEDIA_DIR=/Users/brian/mlr-app/media-server/media bash scripts/organize-legacy.sh
+```
 
 Uploads are gated to signed-in family members (the Supabase token is verified
 against the cloud project). Read access is public (so anyone with the app link
@@ -61,4 +82,4 @@ https://your-mini.your-tailnet.ts.net/health   →  {"ok":true}
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
 - Photos are compressed by the app before upload; videos upload as-is (cap via `MAX_MB`).
-- Endpoints: `POST /upload` (auth, field `file`), `GET /f/<name>` (public), `GET /health`.
+- Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health`.

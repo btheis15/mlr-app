@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { CommitteeJoin } from "@/components/CommitteeJoin";
+import { ChatEntryButton } from "@/components/ChatEntryButton";
+import { AdminJoinRequests } from "@/components/AdminJoinRequests";
 import { Protected, PrivateName } from "@/components/Guard";
 import { COMMITTEES } from "@/lib/data";
 
@@ -29,6 +31,10 @@ export default async function CommitteePage({
         </h1>
         <p className="text-sm text-foreground/60">{committee.description}</p>
       </header>
+
+      <ChatEntryButton slug={committee.slug} name={committee.name} />
+
+      <AdminJoinRequests slug={committee.slug} name={committee.name} />
 
       <CommitteeJoin committee={committee} />
 

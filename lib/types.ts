@@ -39,16 +39,6 @@ export interface User {
   avatarUrl?: string | null;
 }
 
-/** A single chat/comment message, tied to the author's identity. */
-export interface ChatMessage {
-  id: string;
-  author: string;
-  email: string;
-  text: string;
-  /** ISO timestamp. */
-  ts: string;
-}
-
 /** A post in the shared feed — a photo and/or a note, by a member. (Combines
  *  the old chat + photos.) Runtime posts add a real image; seed posts use a
  *  gradient tile so the feed looks alive without shipping image binaries. */

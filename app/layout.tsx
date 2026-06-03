@@ -21,7 +21,7 @@ const yellowtail = Yellowtail({
 
 export const metadata: Metadata = {
   title: "Muskellunge Lake Resort",
-  description: "Muskellunge Lake Resort — activities, dining, Family Fest, and resort chat.",
+  description: "Muskellunge Lake Resort — activities, dining, Family Fest, and committees.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

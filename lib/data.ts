@@ -8,7 +8,6 @@
  */
 
 import type {
-  ChatMessage,
   Committee,
   CrewMember,
   Dinner,
@@ -400,22 +399,3 @@ export function eventDays(): string[] {
   }
   return days;
 }
-
-/** Seed chat so the room isn't empty on first open. Real messages are stored
- *  per-device in localStorage today; a shared backend makes this multi-user. */
-export const SEED_CHAT: ChatMessage[] = [
-  {
-    id: "seed-1",
-    author: "Front Desk",
-    email: "frontdesk@mlr.example",
-    text: "Welcome to Muskellunge Lake Resort! Drop questions here and we'll keep everyone posted on what's happening this week. 🌲",
-    ts: "2026-05-29T15:00:00Z",
-  },
-  {
-    id: "seed-2",
-    author: "Aunt Linda",
-    email: "linda@example.com",
-    text: "Anyone up for kayaks before the pancake breakfast tomorrow?",
-    ts: "2026-05-30T13:20:00Z",
-  },
-];
