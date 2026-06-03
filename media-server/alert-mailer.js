@@ -5,9 +5,12 @@
 //   SUPABASE_URL                (already set for uploads)
 //   SUPABASE_SERVICE_ROLE_KEY   ⚠️ powerful — bypasses RLS to read member emails.
 //                                Keep it ONLY in this mini .env; never in the app/client.
-//   GMAIL_USER                  the Gmail address to send from
-//   GMAIL_APP_PASSWORD          a Gmail *app password* (not your login password)
-//   ALERT_FROM (optional)       e.g. "Muskellunge Lake Resort <you@gmail.com>"
+//   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS   any SMTP provider — e.g. the
+//                                SAME creds you set up in Supabase Auth → SMTP.
+//                                (SMTP_PORT 465 ⇒ secure; or set SMTP_SECURE=true.)
+//     — or, as a shortcut for Gmail: GMAIL_USER + GMAIL_APP_PASSWORD.
+//   ALERT_FROM (optional)       the From address (match what your SMTP allows),
+//                                e.g. "Muskellunge Lake Resort <alerts@yourdomain>"
 //   APP_URL (optional)          link back to the app in the email
 //
 // It subscribes to new alerts via Supabase Realtime and also sweeps any recent
@@ -17,13 +20,20 @@
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const GMAIL_USER = process.env.GMAIL_USER || "";
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || "";
-const ALERT_FROM = process.env.ALERT_FROM || (GMAIL_USER ? `Muskellunge Lake Resort <${GMAIL_USER}>` : "");
+
+// SMTP — works with ANY provider (reuse the same creds you set up in Supabase
+// Auth → SMTP). Generic SMTP_* wins; GMAIL_* is a convenience shortcut.
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || SMTP_PORT === 465;
+const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "";
+const USE_GMAIL = !SMTP_HOST && Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+const ALERT_FROM = process.env.ALERT_FROM || (SMTP_USER ? `Muskellunge Lake Resort <${SMTP_USER}>` : "");
 const APP_URL = (process.env.APP_URL || "https://mlr-app-omega.vercel.app").replace(/\/+$/, "");
 
 function enabled() {
-  return Boolean(SUPABASE_URL && SERVICE_KEY && GMAIL_USER && GMAIL_APP_PASSWORD);
+  return Boolean(SUPABASE_URL && SERVICE_KEY && SMTP_USER && SMTP_PASS && (SMTP_HOST || USE_GMAIL));
 }
 
 function escapeHtml(s) {
@@ -32,18 +42,20 @@ function escapeHtml(s) {
 
 async function start() {
   if (!enabled()) {
-    console.log("[mailer] disabled — set SUPABASE_SERVICE_ROLE_KEY + GMAIL_USER + GMAIL_APP_PASSWORD to email alerts.");
+    console.log("[mailer] disabled — set SUPABASE_SERVICE_ROLE_KEY + SMTP_HOST/SMTP_USER/SMTP_PASS (or GMAIL_USER/GMAIL_APP_PASSWORD) to email alerts.");
     return;
   }
   const { createClient } = require("@supabase/supabase-js");
   const nodemailer = require("nodemailer");
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const transport = nodemailer.createTransport({ service: "gmail", auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD } });
+  const transport = USE_GMAIL
+    ? nodemailer.createTransport({ service: "gmail", auth: { user: SMTP_USER, pass: SMTP_PASS } })
+    : nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, auth: { user: SMTP_USER, pass: SMTP_PASS } });
   try {
     await transport.verify();
-    console.log("[mailer] Gmail SMTP ready");
+    console.log(`[mailer] SMTP ready (${USE_GMAIL ? "gmail" : SMTP_HOST}:${USE_GMAIL ? 465 : SMTP_PORT})`);
   } catch (e) {
-    console.error("[mailer] Gmail verify failed (check GMAIL_APP_PASSWORD):", e && e.message);
+    console.error("[mailer] SMTP verify failed (check SMTP creds):", e && e.message);
     return;
   }
 

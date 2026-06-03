@@ -87,14 +87,21 @@ lead posts a broadcast alert (`alert-mailer.js`, started by `server.js`). It's
 
 ```
 SUPABASE_SERVICE_ROLE_KEY=…   # ⚠️ powerful (bypasses RLS to read emails) — mini only, never the app
-GMAIL_USER=you@gmail.com
-GMAIL_APP_PASSWORD=…          # a Gmail *app password*: https://myaccount.google.com/apppasswords
+# Reuse the SAME SMTP you set up in Supabase Auth → SMTP (any provider):
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587                 # 465 ⇒ TLS; 587 ⇒ STARTTLS (or SMTP_SECURE=true)
+SMTP_USER=…
+SMTP_PASS=…
+ALERT_FROM=Muskellunge Lake Resort <alerts@yourdomain.com>   # match your sender
+# …or the Gmail shortcut: GMAIL_USER + GMAIL_APP_PASSWORD instead of SMTP_*.
 ```
 
 It listens for new `announcements` (Supabase Realtime), pulls opted-in members'
-emails via the `alert_recipients()` RPC, and BCCs them via Gmail SMTP — stamping
+emails via the `alert_recipients()` RPC, and BCCs them over SMTP — stamping
 `email_sent_at` so an alert is never emailed twice. Blank vars = in-app banner
-only (no email). New deps: `@supabase/supabase-js`, `nodemailer`.
+only (no email). New deps: `@supabase/supabase-js`, `nodemailer`. Note: Supabase
+doesn't expose its own Auth SMTP for sending app email, so the mailer connects
+with the same credentials directly.
 
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
