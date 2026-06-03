@@ -10,6 +10,7 @@ import { DemoDateControl } from "@/components/DemoDateControl";
 import { Avatar } from "@/components/Avatar";
 import { AvatarCropper } from "@/components/AvatarCropper";
 import { ContactPaySettings } from "@/components/ContactPaySettings";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -131,8 +132,11 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-accent">Notifications</h2>
+      <CollapsibleSection
+        title="Notifications"
+        icon="🔔"
+        subtitle={user.emailAlerts ? "Email alerts on" : "Email alerts off"}
+      >
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
           <span className="min-w-0">
             <span className="text-sm font-medium">Email me alerts</span>
@@ -152,22 +156,28 @@ export default function ProfilePage() {
           Android push notifications can be enabled here once the backend is in
           place; on iOS, alerts come by email.
         </p>
-      </section>
+      </CollapsibleSection>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-accent">Contact &amp; payment</h2>
+      <CollapsibleSection
+        title="Contact & payment"
+        icon="💳"
+        subtitle="Phone & pay handles for your member card"
+      >
         <p className="px-1 text-xs text-foreground/50">
           Optional — this is what shows when someone taps your name to contact or pay you.
         </p>
         <ContactPaySettings />
-      </section>
+      </CollapsibleSection>
 
       {isAdmin && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-accent">Admin</h2>
+        <CollapsibleSection
+          title="Admin"
+          icon="🛠️"
+          subtitle="Post alerts · manage members"
+        >
           <AdminAlertComposer />
           <AdminMembers />
-        </section>
+        </CollapsibleSection>
       )}
 
       <DemoDateControl />
