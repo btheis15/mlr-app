@@ -44,6 +44,10 @@ TINT      = colors.HexColor("#eef3ef")  # faint pine tint for callouts
 PAGE_W, PAGE_H = LETTER
 MARGIN = 0.85 * inch
 
+# Running header subtitle (top-right of every body page). Overridable per edition
+# — the general-audience build sets a plainer phrase before building.
+RUNNING_SUBTITLE = "Technical & Product Walkthrough"
+
 import re as _re
 # Helvetica (WinAnsi) has no color emoji and no U+2190-block arrows. Strip the
 # emoji and map the few arrows we use onto a WinAnsi-safe guillemet so the doc
@@ -244,7 +248,7 @@ def header_footer(canvas, doc):
     canvas.line(MARGIN, PAGE_H-MARGIN+22, PAGE_W-MARGIN, PAGE_H-MARGIN+22)
     canvas.setFont("Helvetica", 7.5); canvas.setFillColor(MUTE)
     canvas.drawString(MARGIN, PAGE_H-MARGIN+27, "MUSKELLUNGE LAKE RESORT — APP OVERVIEW")
-    canvas.drawRightString(PAGE_W-MARGIN, PAGE_H-MARGIN+27, "Technical & Product Walkthrough")
+    canvas.drawRightString(PAGE_W-MARGIN, PAGE_H-MARGIN+27, RUNNING_SUBTITLE)
     # footer
     canvas.setStrokeColor(BORDER)
     canvas.line(MARGIN, MARGIN-14, PAGE_W-MARGIN, MARGIN-14)
