@@ -88,6 +88,12 @@ can); only app admins set leads (`set_committee_lead`). Also adds the
 the mini's mailer). Until it's run, leads are app-admins-only and the alert
 composer just posts a device-local notice.
 
+⚠️ **Then run [`0016`](migrations/0016_alerts_admin_only.sql)** — narrows
+`can_post_alerts()` to **App Admins only** (0015 also allowed Family Fest leads).
+App-wide alerts (banner + email) are admin-only; Committee Leads keep their
+member-management powers. The `announcements` INSERT policy already calls the
+function, so this one redefinition is all it takes.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

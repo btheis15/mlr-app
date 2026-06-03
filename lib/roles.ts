@@ -27,12 +27,3 @@ export async function fetchMyCommitteeRole(committeeId: string): Promise<"Lead" 
   if (!data) return null;
   return (data as { role: string | null }).role === "Lead" ? "Lead" : "member";
 }
-
-/** Can the signed-in user post app-wide alerts (app admin OR Family Fest lead)? */
-export async function fetchCanPostAlerts(): Promise<boolean> {
-  const sb = supabase;
-  if (!isSupabaseConfigured || !sb) return false;
-  if (!(await sb.auth.getUser()).data.user) return false;
-  const { data, error } = await sb.rpc("can_post_alerts");
-  return !error && Boolean(data);
-}
