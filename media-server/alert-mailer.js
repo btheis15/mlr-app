@@ -69,7 +69,8 @@ async function start() {
       .is("email_sent_at", null)
       .select("id");
     if (!claimed || claimed.length === 0) return; // already handled
-    const { data: recips, error } = await sb.rpc("alert_recipients");
+    let { data: recips, error } = await sb.rpc("alert_recipients", { audience: row.email_audience || "all" });
+    if (error) ({ data: recips, error } = await sb.rpc("alert_recipients")); // pre-0017: no audience param → everyone
     if (error) {
       console.error("[mailer] alert_recipients error:", error.message);
       await sb.from("announcements").update({ email_sent_at: null }).eq("id", row.id);
@@ -96,7 +97,7 @@ async function start() {
   // Sweep recent unsent alerts (one may have been posted while we were down).
   const { data: pending } = await sb
     .from("announcements")
-    .select("id, title, body, severity, notify_email, email_sent_at, created_at")
+    .select("id, title, body, severity, notify_email, email_sent_at, created_at, email_audience")
     .is("email_sent_at", null)
     .eq("notify_email", true)
     .order("created_at", { ascending: false })

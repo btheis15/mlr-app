@@ -18,6 +18,7 @@ export function AdminAlertComposer() {
   const [body, setBody] = useState("");
   const [severity, setSeverity] = useState<"info" | "alert">("alert");
   const [notifyEmail, setNotifyEmail] = useState(true);
+  const [emailAudience, setEmailAudience] = useState<"all" | "admins">("all");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -29,20 +30,23 @@ export function AdminAlertComposer() {
       setSending(true);
       setStatus(null);
       const uid = (await supabase.auth.getUser()).data.user?.id;
-      const { error } = await supabase.from("announcements").insert({
-        author_id: uid,
-        title: title.trim(),
-        body: body.trim() || null,
-        severity,
-        notify_email: notifyEmail,
-      });
+      const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity, notify_email: notifyEmail };
+      let { error } = await supabase.from("announcements").insert({ ...base, email_audience: emailAudience });
+      if (error && /email_audience/i.test(error.message || "")) {
+        // Pre-0017 the column doesn't exist yet — post without it (emails everyone).
+        ({ error } = await supabase.from("announcements").insert(base));
+      }
       setSending(false);
       if (error) {
         setStatus(`Couldn't post: ${error.message}`);
         return;
       }
-      setTitle(""); setBody(""); setSeverity("alert");
-      setStatus(notifyEmail ? "Posted to everyone's banner ✓ (opted-in members emailed if email is set up)" : "Posted to everyone's banner ✓");
+      setTitle(""); setBody(""); setSeverity("alert"); setEmailAudience("all");
+      setStatus(
+        notifyEmail
+          ? `Posted to everyone's banner ✓ (emailed ${emailAudience === "admins" ? "App Admins" : "opted-in members"})`
+          : "Posted to everyone's banner ✓",
+      );
       window.setTimeout(() => setStatus(null), 6000);
       return;
     }
@@ -81,10 +85,22 @@ export function AdminAlertComposer() {
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
       {isSupabaseConfigured && (
-        <label className="flex items-center gap-2 text-xs text-foreground/70">
-          <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
-          Also email members who opted in
-        </label>
+        <div className="space-y-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
+          <label className="flex items-center gap-2 text-xs text-foreground/70">
+            <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+            Also send this as an email
+          </label>
+          {notifyEmail && (
+            <select
+              value={emailAudience}
+              onChange={(e) => setEmailAudience(e.target.value as "all" | "admins")}
+              className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="all">Email everyone who opted in</option>
+              <option value="admins">Email App Admins only</option>
+            </select>
+          )}
+        </div>
       )}
       <div className="flex items-center gap-3">
         <select
