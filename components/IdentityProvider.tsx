@@ -88,8 +88,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   // Restore a saved preview on mount (device-local, SSR-safe — read after mount).
   useEffect(() => {
     try {
+      // Only restore a "guest" preview across reloads. A "member"/specific-person
+      // preview needs the in-memory previewMember (not persisted), so we drop it
+      // on reload rather than show a half-restored phantom.
       const saved = localStorage.getItem(PREVIEW_KEY);
-      if (saved === "member" || saved === "guest") setPreviewState(saved);
+      if (saved === "guest") setPreviewState("guest");
+      else if (saved) localStorage.removeItem(PREVIEW_KEY);
     } catch {
       /* ignore */
     }
