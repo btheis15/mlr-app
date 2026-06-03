@@ -66,18 +66,27 @@ is the single source of truth for routes + labels + icons).
   (`user` is `null` while browsing as a guest). Identity is stored in
   `localStorage`, no verification yet; at sign-in the guest opts in/out of email
   alerts.
-- **Admins** — `profiles.is_admin` in Supabase, with the seed allow-list of
-  emails in [`lib/data.ts`](lib/data.ts) (`ADMIN_EMAILS` / `isAdmin`) as a
-  fallback (so the first admin can sign in). Admins see, in Profile → Admin: the
-  alert composer ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)) and
-  the **member directory** ([`AdminMembers`](components/AdminMembers.tsx)) — every
-  registered member, with promote/remove-admin. Clients can't write `is_admin`
-  directly (RLS in `0001`); two admin-gated SECURITY DEFINER functions in
-  [`0008_admin_members.sql`](supabase/migrations/0008_admin_members.sql) back it:
-  `admin_members()` (directory **+ private emails**, kept out of the public
-  profiles table) and `set_admin(target, value)` (can't drop your own). Until
-  `0008` runs, the list works name-only off the public `profiles` read and the
-  promote buttons are disabled with a hint.
+- **Admins** — strictly `profiles.is_admin` in Supabase; the database is the
+  **single source of truth** (there is no client allow-list — it could only grant
+  UI the server won't honor). The first admin is bootstrapped once from the SQL
+  editor; after that admins promote each other in-app. Admins see, in
+  Profile → Admin: the alert composer
+  ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)), the **member
+  directory** ([`AdminMembers`](components/AdminMembers.tsx)) — promote/remove-admin
+  *and* permanently remove a member — and **recent sign-ins**
+  ([`AdminSignins`](components/AdminSignins.tsx)). Clients can't write `is_admin`
+  (column-level grant in `0001`, insert guard in `0010`); admin-gated SECURITY
+  DEFINER functions back the rest: `admin_members()` + `set_admin()`
+  ([`0008`](supabase/migrations/0008_admin_members.sql)), `delete_member()` (hard
+  delete via `auth.users` cascade; can't delete yourself or an admin —
+  [`0009`](supabase/migrations/0009_admin_remove_member.sql)), and
+  `recent_signins()` (GoTrue audit log + IP, geolocated client-side —
+  [`0011`](supabase/migrations/0011_admin_signin_log.sql)). Each section shows a
+  "run the migration" hint until its function exists. Admins can also **view as**
+  a member or guest ([`PreviewAs`](components/PreviewAs.tsx) + floating
+  [`PreviewBanner`](components/PreviewBanner.tsx)) — a device-local, UI-only
+  `previewMode` override in `IdentityProvider` that re-renders the app as that
+  role (to check the privacy wall); it never touches the real Supabase session.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.

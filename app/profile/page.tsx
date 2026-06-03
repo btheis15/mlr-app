@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminMembers } from "@/components/AdminMembers";
+import { AdminSignins } from "@/components/AdminSignins";
+import { PreviewAs } from "@/components/PreviewAs";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
@@ -173,10 +175,12 @@ export default function ProfilePage() {
         <CollapsibleSection
           title="Admin"
           icon="🛠️"
-          subtitle="Post alerts · manage members"
+          subtitle="Post alerts · manage members · sign-in activity · view as"
         >
           <AdminAlertComposer />
           <AdminMembers />
+          <AdminSignins />
+          <PreviewAs />
         </CollapsibleSection>
       )}
 

@@ -82,18 +82,12 @@ export const COMMITTEES: Committee[] = [
   },
 ];
 
-/**
- * Bootstrap admin allow-list. The email(s) here are ALWAYS admin (so there's an
- * admin from day one, before anyone's promoted). Everyone else becomes admin by
- * setting `profiles.is_admin = true` in Supabase after they've signed in — see
- * IdentityProvider (`isAdmin = profile.is_admin || this list`). Keep it tiny;
- * it's the only admin source outside the database.
- */
-export const ADMIN_EMAILS: string[] = ["brian.theis15@gmail.com"];
-
-export function isAdmin(email: string | undefined): boolean {
-  return !!email && ADMIN_EMAILS.includes(email.toLowerCase());
-}
+// Admin is determined solely by `profiles.is_admin` in Supabase — the database
+// is the single source of truth (see IdentityProvider). The first admin is
+// bootstrapped once from the SQL editor; after that admins promote each other
+// in-app via the gated `set_admin()` function. There is intentionally no client
+// allow-list: it could only ever grant UI access the server doesn't honor,
+// which just produces "the app shows me admin tools but they don't work".
 
 export const RESORT = {
   name: "Muskellunge Lake Resort",
