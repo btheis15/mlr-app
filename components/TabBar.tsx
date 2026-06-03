@@ -7,7 +7,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 
 const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
-  { href: "/posts", label: "Posts", icon: "📣" },
+  { href: "/posts", label: "Feed", icon: "📣" },
   { href: "/family-fest", label: "Family Fest", icon: "🎉" },
   { href: "/profile", label: "Profile", icon: "👤" },
 ] as const;

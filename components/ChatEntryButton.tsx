@@ -45,7 +45,7 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
 
   return (
     <Link
-      href={`/committees/${slug}/chat`}
+      href={`/posts?c=${slug}`}
       className="press flex items-center justify-between gap-3 rounded-2xl bg-primary px-4 py-3.5 text-white shadow-sm"
     >
       <span className="flex items-center gap-2 text-sm font-semibold">💬 Open {name} chat</span>

@@ -1,17 +1,16 @@
-import { PostsView } from "@/components/PostsView";
+import { FeedView } from "@/components/FeedView";
 import { SignInWall } from "@/components/Guard";
-import { POSTS } from "@/lib/data";
 
-// The shared feed — photos + notes, with share-to-Facebook. Replaces the
-// separate Photos and Chat tabs. Members only: photos and posts of the family
-// stay behind sign-in so they aren't public to strangers.
-export default function PostsPage() {
+// The "Feed" tab — the resort-wide Posts feed PLUS a live chat for each
+// committee you're in, switchable by pills at the top (each with an unread
+// badge). Members only: posts, photos, and committee chats stay behind sign-in.
+export default function FeedPage() {
   return (
     <SignInWall
-      title="Posts"
-      note="Family photos and posts are kept private. Add your name & email to see and share them."
+      title="Feed"
+      note="Family posts and your committee chats are kept private. Add your name & email to see them."
     >
-      <PostsView seed={POSTS} />
+      <FeedView />
     </SignInWall>
   );
 }
