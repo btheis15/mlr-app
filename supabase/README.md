@@ -44,6 +44,19 @@ which we deliberately keep out of the world-readable `profiles` table) and
 Profile → Admin → Members list works without it (names only, from the public
 `profiles` read); emails + the promote/remove buttons switch on once it's run.
 
+⚠️ **Then run [`0009`](migrations/0009_admin_remove_member.sql),
+[`0010`](migrations/0010_profiles_insert_guard.sql), and
+[`0011`](migrations/0011_admin_signin_log.sql).**
+- `0009` — `delete_member(target)`: admin-only hard delete of a member (their
+  `auth.users` row, cascading to all their content). Can't delete yourself or an
+  admin (demote first). Powers the **Remove** button in Admin → Members.
+- `0010` — closes the one privilege-escalation gap left by `0001`: clients
+  could `UPDATE` only non-`is_admin` columns, but `INSERT` wasn't column-locked.
+  Adds `is_admin = false` to the profiles insert policy.
+- `0011` — `recent_signins(limit_n)`: admin-only read of GoTrue's
+  `auth.audit_log_entries` (event + email + **IP**), powering Admin → Recent
+  sign-ins. The app resolves each IP to an approximate city/country client-side.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

@@ -3,13 +3,12 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { type Session } from "@supabase/supabase-js";
 import type { User } from "@/lib/types";
-import { isAdmin as isAdminEmail } from "@/lib/data";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 interface IdentityValue {
   user: User | null;
-  /** True when the signed-in user is an admin (DB `is_admin`, or the seed
-   *  allow-list as a fallback during the transition). */
+  /** True when the signed-in user is an admin — strictly the database
+   *  `profiles.is_admin` flag (the single source of truth). */
   isAdmin: boolean;
   /** Patch the current user (display name / email-alerts) → writes `profiles`. */
   updateUser: (patch: Partial<User>) => void;
@@ -80,7 +79,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
       setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, avatarUrl: profile?.avatar_url ?? null });
-      setAdminFlag(Boolean(profile?.is_admin) || isAdminEmail(email));
+      setAdminFlag(Boolean(profile?.is_admin));
     };
 
     sb.auth.getSession().then(({ data }) => loadFromSession(data.session));

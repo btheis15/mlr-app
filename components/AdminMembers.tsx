@@ -76,6 +76,31 @@ export function AdminMembers() {
     setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_admin: value } : x)));
   };
 
+  // Permanently delete a member: their account + everything they posted. Gated
+  // server-side too (delete_member, migration 0009) — admins can't be deleted
+  // without demoting first, and you can't delete yourself. Double-confirm here
+  // because it's irreversible.
+  const removeMember = async (m: MemberRow) => {
+    const sb = supabase;
+    if (!sb) return;
+    const name = m.display_name?.trim() || m.email || "this member";
+    if (
+      !window.confirm(
+        `Permanently remove ${name}?\n\nThis deletes their account and everything they posted — photos, comments, and reactions. It cannot be undone.`,
+      )
+    )
+      return;
+    if (!window.confirm(`Last check: remove ${name} for good?`)) return;
+    setBusyId(m.id);
+    const { error: e } = await sb.rpc("delete_member", { target: m.id });
+    setBusyId(null);
+    if (e) {
+      window.alert(e.message || "Couldn't remove member.");
+      return;
+    }
+    setMembers((prev) => prev.filter((x) => x.id !== m.id));
+  };
+
   const q = query.trim().toLowerCase();
   const shown = q
     ? members.filter((m) =>
@@ -142,17 +167,30 @@ export function AdminMembers() {
                   )}
                 </div>
                 {rpcReady && !isMe && (
-                  <button
-                    onClick={() => setAdmin(m, !m.is_admin)}
-                    disabled={busyId === m.id}
-                    className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
-                      m.is_admin
-                        ? "bg-background text-foreground/60 ring-border"
-                        : "bg-primary text-white ring-primary"
-                    }`}
-                  >
-                    {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      onClick={() => setAdmin(m, !m.is_admin)}
+                      disabled={busyId === m.id}
+                      className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
+                        m.is_admin
+                          ? "bg-background text-foreground/60 ring-border"
+                          : "bg-primary text-white ring-primary"
+                      }`}
+                    >
+                      {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
+                    </button>
+                    {!m.is_admin && (
+                      <button
+                        onClick={() => removeMember(m)}
+                        disabled={busyId === m.id}
+                        aria-label={`Remove ${name}`}
+                        title="Permanently remove this member"
+                        className="press shrink-0 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 )}
               </li>
             );
