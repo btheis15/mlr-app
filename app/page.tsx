@@ -3,6 +3,7 @@ import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
+import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
 
 /**
@@ -23,6 +24,9 @@ export default function HomePage() {
         />
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
+
+      {/* Guests only: a front-page nudge to sign in (no need to find Profile). */}
+      <HomeSignInCTA />
 
       {/* Easy, visible way for anyone to share the app with family. */}
       <ShareApp />
