@@ -170,8 +170,8 @@ def build_story():
           "signing up for a meal — takes a <b>verified email</b>."),
     ], "home.png", side="right", caption="The home screen")]
     F += [figrow([
-        P("It does <b>double duty</b>. Most of the year it’s the year-round resort companion — what to do, where to "
-          "eat, who’s on which volunteer committee, how to book a tee time. Once a year it becomes the home base for "
+        P("It does <b>double duty</b>. Most of the year it’s the year-round resort companion — the volunteer "
+          "committees, the season work-weekends, and tee-time booking. Once a year it becomes the home base for "
           "<b>Family Fest</b>, a week-long reunion, which lives <i>inside</i> the same app as a themed section rather "
           "than off in a separate place."),
     ], "fest.png", side="left", caption="The Family Fest section")]
@@ -180,7 +180,7 @@ def build_story():
         ["", "Year-round resort", "Family Fest week"],
         [
             [("Feel", "b"), "Forest-green Northwoods heritage", "Renaissance-fair parchment &amp; heraldry"],
-            [("What’s there", "b"), "Activities, dining, committees, tee times", "Schedule, the feast nights, dues, the gathering itself"],
+            [("What’s there", "b"), "Committees, tee times, work weekends", "Schedule, the feast nights, dues, the gathering itself"],
             [("Mood", "b"), "Calm and evergreen", "Festive and a little ceremonial"],
         ],
         [0.18, 0.40, 0.42])]
@@ -198,14 +198,6 @@ def build_story():
             "<b>Family Fest</b> (the reunion, Sections 7–8), and <b>Profile</b> (you, Section 3). A handful of "
             "year-round extras are reached from the Home porch rather than getting their own tab:")]
     F += [sp(2), figrow([
-        P("<b>Activities</b> — things to do, sorted into four plain categories (on the water, on land, for kids, and "
-          "evening). Each opens to the details."),
-    ], "activities.png", side="right", caption="Activities")]
-    F += [figrow([
-        P("<b>Dining &amp; amenities</b> — where to eat and drink, plus the practical stuff: Wi-Fi, check-in and "
-          "check-out, laundry, and the like."),
-    ], "dining.png", side="left", caption="Dining & amenities")]
-    F += [figrow([
         P("<b>Committees</b> — the volunteer groups that keep the resort running (Maintenance, Beautification, and "
           "the Family Fest crew). Tap one to see who’s on it and what they do."),
     ], "committees.png", side="right", caption="Committees")]
