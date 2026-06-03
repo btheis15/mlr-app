@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CrewMember, RsvpStatus } from "@/lib/types";
 import { useIdentity } from "@/components/IdentityProvider";
+import { Protected } from "@/components/Guard";
 import { READ_ONLY } from "@/lib/features";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 
@@ -86,7 +87,9 @@ export function CrewView({ seed }: { seed: CrewMember[] }) {
                   className="rise flex items-center justify-between gap-3 rounded-2xl bg-card p-3 ring-1 ring-border"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{c.name}</p>
+                    <p className="truncate text-sm font-semibold">
+                      <Protected label="Sign in to see who">{c.name}</Protected>
+                    </p>
                     {c.bringing && (
                       <p className="truncate text-xs text-foreground/60">
                         🍽️ {c.bringing}

@@ -72,6 +72,21 @@ is the single source of truth for routes + labels + icons).
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.
+- **Privacy wall (guests vs members)** — the app is still browsable, but sensitive
+  info is gated behind sign-in via [`components/Guard.tsx`](components/Guard.tsx) +
+  [`lib/privacy.ts`](lib/privacy.ts): `SignInWall` (whole-screen gate — wraps
+  **Posts** and **Pay**), `Protected` (inline gate for a phone/email/location —
+  guests get a "🔒 Sign in" chip), and `PrivateName` (full name for members,
+  **first name only** for guests). `useGuest()` returns `guest = isSupabaseConfigured && !user`,
+  so with no backend the app stays fully open (we never lock everyone out of an
+  app that can't sign in); during prerender `user` is null, so the static HTML
+  ships the gated/guest view. Applied to: Posts, Pay/dues, MemberSheet
+  (contact+pay), schedule/dinner/committee detail pages (locations, chef/lead/member
+  contacts, "houses on crew"), FestStatus/FestWeek (today's locations + contacts),
+  DinnerCrew, CrewView (household names), CommitteeJoin. ⚠️ **This is the UI layer
+  only** — sensitive seed data still ships in the client bundle and Supabase
+  posts/profiles are still public-read; the real hardening (gated server reads +
+  RLS lockdown, keeping PII out of the bundle) is the planned next step.
 
 ## Family Fest season (the "one app" spine)
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Dinner } from "@/lib/types";
 import { formatDate } from "@/lib/format";
+import { PrivateName } from "@/components/Guard";
 
 /**
  * High-level list of the week's dinners — what each night's meal is and who's
@@ -26,7 +27,7 @@ export function DinnerCrew({ dinners }: { dinners: Dinner[] }) {
               <p className="text-xs text-foreground/50">{formatDate(d.day)}</p>
               <p className="truncate text-sm font-semibold">{d.title}</p>
               <p className="truncate text-xs text-foreground/60">
-                Head chef: {d.chef.name}
+                Head chef: <PrivateName name={d.chef.name} />
               </p>
             </div>
             <span className="shrink-0 text-foreground/30" aria-hidden>
