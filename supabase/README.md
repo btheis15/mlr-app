@@ -94,6 +94,13 @@ App-wide alerts (banner + email) are admin-only; Committee Leads keep their
 member-management powers. The `announcements` INSERT policy already calls the
 function, so this one redefinition is all it takes.
 
+⚠️ **Then run [`0017`](migrations/0017_alert_audience.sql)** — adds
+`announcements.email_audience` ('all' | 'admins') and gives `alert_recipients()`
+an `audience` arg (default 'all', kept so the arg-less call still works). Lets an
+App Admin send an alert whose **email goes only to other App Admins** (the banner
+is still seen by everyone). Recipients with App Admin access get it regardless of
+which committees they lead — roles are additive.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
