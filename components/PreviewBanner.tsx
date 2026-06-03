@@ -10,10 +10,10 @@ import { useIdentity } from "@/components/IdentityProvider";
  * nothing in the normal (off) state.
  */
 export function PreviewBanner() {
-  const { previewMode, setPreviewMode } = useIdentity();
+  const { previewMode, previewMember, setPreviewMode } = useIdentity();
   if (previewMode === "off") return null;
 
-  const label = previewMode === "guest" ? "a guest (signed out)" : "a member";
+  const label = previewMode === "guest" ? "a guest (signed out)" : previewMember ? previewMember.name : "a member";
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4">

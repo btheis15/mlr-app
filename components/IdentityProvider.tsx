@@ -12,6 +12,12 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
  * admin tools; "guest" renders the app as a signed-out visitor.
  */
 export type PreviewMode = "off" | "member" | "guest";
+/** A specific member to preview the app as (UI-only — name/avatar + member view). */
+export interface PreviewMember {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
 const PREVIEW_KEY = "mlr-preview-as";
 
 interface IdentityValue {
@@ -22,8 +28,12 @@ interface IdentityValue {
   isAdmin: boolean;
   /** Current admin "view as" preview (off unless an admin turned it on). */
   previewMode: PreviewMode;
+  /** When previewing as a specific member, who it is (UI-only); null otherwise. */
+  previewMember: PreviewMember | null;
   /** Switch the preview. Entering a preview is admin-only; exiting is always allowed. */
   setPreviewMode: (mode: PreviewMode) => void;
+  /** Preview as a specific member (admin-only); pass null to clear. */
+  setPreviewMember: (m: PreviewMember | null) => void;
   /** Patch the current user (display name / email-alerts) → writes `profiles`. */
   updateUser: (patch: Partial<User>) => void;
   /** Open the sign-in sheet on demand — call from any action that needs an
@@ -36,7 +46,9 @@ const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
   previewMode: "off",
+  previewMember: null,
   setPreviewMode: () => {},
+  setPreviewMember: () => {},
   updateUser: () => {},
   promptSignIn: () => {},
   signOut: () => {},
@@ -71,6 +83,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [adminFlag, setAdminFlag] = useState(false);
   const [prompting, setPrompting] = useState(false);
   const [previewMode, setPreviewState] = useState<PreviewMode>("off");
+  const [previewMember, setPreviewMemberState] = useState<PreviewMember | null>(null);
 
   // Restore a saved preview on mount (device-local, SSR-safe — read after mount).
   useEffect(() => {
@@ -144,9 +157,25 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     // Entering a preview is admin-only; exiting ("off") is always allowed.
     if (mode !== "off" && !adminFlag) return;
     setPreviewState(mode);
+    setPreviewMemberState(null);
     try {
       if (mode === "off") localStorage.removeItem(PREVIEW_KEY);
       else localStorage.setItem(PREVIEW_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Preview as a specific member (admin-only) — UI-only, like the other previews:
+  // it changes the displayed identity + applies the member view; your real
+  // session, data, and permissions are untouched.
+  const setPreviewMember = (m: PreviewMember | null) => {
+    if (m && !adminFlag) return;
+    setPreviewMemberState(m);
+    setPreviewState(m ? "member" : "off");
+    try {
+      if (m) localStorage.setItem(PREVIEW_KEY, "member");
+      else localStorage.removeItem(PREVIEW_KEY);
     } catch {
       /* ignore */
     }
@@ -157,6 +186,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAdminFlag(false);
     setPreviewState("off");
+    setPreviewMemberState(null);
     try {
       localStorage.removeItem(PREVIEW_KEY);
     } catch {
@@ -165,7 +195,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Effective identity the app actually sees — overridden while previewing.
-  const effectiveUser = previewMode === "guest" ? null : user;
+  const effectiveUser =
+    previewMode === "guest"
+      ? null
+      : previewMode === "member" && previewMember
+        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, avatarUrl: previewMember.avatarUrl }
+        : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
 
   return (
@@ -174,7 +209,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         user: effectiveUser,
         isAdmin: effectiveAdmin,
         previewMode,
+        previewMember,
         setPreviewMode,
+        setPreviewMember,
         updateUser,
         promptSignIn,
         signOut,

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
+import { TshirtCallout } from "@/components/TshirtCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
@@ -44,6 +45,9 @@ export default function HomePage() {
 
       {/* Pay-your-dues CTA, prominent during the run-up. */}
       <FestDuesCallout />
+
+      {/* Order T-Shirts — right under dues (placeholder until designs land). */}
+      <TshirtCallout />
 
       {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
       <HomePreFestCards />
