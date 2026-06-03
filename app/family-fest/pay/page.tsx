@@ -1,5 +1,6 @@
 import { BackLink } from "@/components/BackLink";
 import { PayView } from "@/components/PayView";
+import { SignInWall } from "@/components/Guard";
 import { FAMILY_FEST, PAYEES } from "@/lib/data";
 
 export default function PayPage() {
@@ -7,6 +8,10 @@ export default function PayPage() {
     <div className="space-y-3 pt-1">
       <BackLink href="/family-fest" label="Family Fest" />
 
+      <SignInWall
+        title="Pay"
+        note="Payment details (who to pay and how) are kept private. Add your name & email to see them."
+      >
       {/* Dues at a glance */}
       <div className="rounded-2xl bg-primary/10 p-4 text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-primary">
@@ -20,6 +25,7 @@ export default function PayPage() {
       </div>
 
       <PayView payees={PAYEES} />
+      </SignInWall>
     </div>
   );
 }

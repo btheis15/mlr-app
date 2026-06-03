@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { Protected, PrivateName } from "@/components/Guard";
 import { DINNERS } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
@@ -37,11 +38,11 @@ export default async function DinnerDetailPage({
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <DetailTile label="Served" value={dinner.time} sub={dinner.location} emoji="🍽️" />
+        <DetailTile label="Served" value={dinner.time} sub={<Protected label="Sign in for location">{dinner.location}</Protected>} emoji="🍽️" />
         <DetailTile
           label="Crew preps"
           value={dinner.prepTime}
-          sub={dinner.prepLocation ?? dinner.location}
+          sub={<Protected label="Sign in for location">{dinner.prepLocation ?? dinner.location}</Protected>}
           emoji="⏱️"
         />
       </section>
@@ -50,36 +51,42 @@ export default async function DinnerDetailPage({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">
           Houses on crew
         </h2>
-        <div className="flex flex-wrap gap-1.5">
-          {dinner.houses.map((house) => (
-            <span
-              key={house}
-              className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
-            >
-              {house}
-            </span>
-          ))}
-        </div>
+        <Protected label="Sign in to see which families are cooking">
+          <div className="flex flex-wrap gap-1.5">
+            {dinner.houses.map((house) => (
+              <span
+                key={house}
+                className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
+              >
+                {house}
+              </span>
+            ))}
+          </div>
+        </Protected>
       </section>
 
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
         <p className="text-[11px] uppercase tracking-wide text-foreground/40">
           Head chef of the day
         </p>
-        <p className="mt-0.5 text-sm font-semibold">{dinner.chef.name}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <a
-            href={`tel:${dinner.chef.phone}`}
-            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-          >
-            📞 Call
-          </a>
-          <a
-            href={`sms:${dinner.chef.phone}`}
-            className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-          >
-            💬 Text
-          </a>
+        <p className="mt-0.5 text-sm font-semibold"><PrivateName name={dinner.chef.name} /></p>
+        <div className="mt-3">
+          <Protected label="Sign in to call or text">
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={`tel:${dinner.chef.phone}`}
+                className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+              >
+                📞 Call
+              </a>
+              <a
+                href={`sms:${dinner.chef.phone}`}
+                className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+              >
+                💬 Text
+              </a>
+            </div>
+          </Protected>
         </div>
       </section>
     </div>
@@ -94,7 +101,7 @@ function DetailTile({
 }: {
   label: string;
   value: string;
-  sub: string;
+  sub: React.ReactNode;
   emoji: string;
 }) {
   return (

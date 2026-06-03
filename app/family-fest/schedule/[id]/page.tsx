@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { Protected, PrivateName } from "@/components/Guard";
 import { SCHEDULE } from "@/lib/data";
 import { formatDateLong, formatTime } from "@/lib/format";
 
@@ -30,7 +31,7 @@ export default async function EventDetailPage({
           <span className="mr-1">{event.emoji}</span>
           {event.title}
         </h1>
-        <p className="text-sm text-foreground/60">📍 {event.location}</p>
+        <p className="text-sm text-foreground/60">📍 <Protected label="Sign in for location">{event.location}</Protected></p>
       </header>
 
       <p className="text-sm leading-relaxed text-foreground/80">{event.description}</p>
@@ -47,20 +48,24 @@ export default async function EventDetailPage({
       {event.lead && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
           <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>
-          <p className="mt-0.5 text-sm font-semibold">{event.lead.name}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <a
-              href={`tel:${event.lead.phone}`}
-              className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-            >
-              📞 Call
-            </a>
-            <a
-              href={`sms:${event.lead.phone}`}
-              className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-            >
-              💬 Text
-            </a>
+          <p className="mt-0.5 text-sm font-semibold"><PrivateName name={event.lead.name} /></p>
+          <div className="mt-3">
+            <Protected label="Sign in to call or text">
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={`tel:${event.lead.phone}`}
+                  className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+                >
+                  📞 Call
+                </a>
+                <a
+                  href={`sms:${event.lead.phone}`}
+                  className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+                >
+                  💬 Text
+                </a>
+              </div>
+            </Protected>
           </div>
         </section>
       )}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { READ_ONLY } from "@/lib/features";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { useIdentity } from "@/components/IdentityProvider";
+import { Protected } from "@/components/Guard";
 import type { Committee } from "@/lib/types";
 
 /**
@@ -40,26 +41,28 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           🙌 Interested in joining?
         </h2>
         <p className="mt-0.5 text-xs text-foreground/60">
-          {committee.name} is always glad to have more hands. Message {lead.name}{" "}
+          {committee.name} is always glad to have more hands. Message {leadFirst}{" "}
           (Lead) — your note&rsquo;s already written — or request to join right
           in the app.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <a
-          href={mailto}
-          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-        >
-          ✉️ Email {leadFirst}
-        </a>
-        <a
-          href={smsto}
-          className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-        >
-          💬 Text {leadFirst}
-        </a>
-      </div>
+      <Protected label="Sign in to contact the lead" className="w-full justify-center py-2.5">
+        <div className="grid grid-cols-2 gap-2">
+          <a
+            href={mailto}
+            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          >
+            ✉️ Email {leadFirst}
+          </a>
+          <a
+            href={smsto}
+            className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+          >
+            💬 Text {leadFirst}
+          </a>
+        </div>
+      </Protected>
 
       {READ_ONLY ? (
         <ComingSoonCTA

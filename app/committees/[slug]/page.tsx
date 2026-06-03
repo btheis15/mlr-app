@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { CommitteeJoin } from "@/components/CommitteeJoin";
+import { Protected, PrivateName } from "@/components/Guard";
 import { COMMITTEES } from "@/lib/data";
 
 // Static export (GitHub Pages) needs every dynamic route enumerated up front.
@@ -37,7 +38,7 @@ export default async function CommitteePage({
           {committee.members.map((m) => (
             <li key={m.email} className="rounded-2xl bg-card p-4 ring-1 ring-border">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold">{m.name}</p>
+                <p className="text-sm font-semibold"><PrivateName name={m.name} /></p>
                 {m.role && (
                   <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
                     {m.role}
@@ -56,25 +57,29 @@ export default async function CommitteePage({
                   ))}
                 </div>
               )}
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                <a
-                  href={`mailto:${m.email}`}
-                  className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
-                >
-                  ✉️ Email
-                </a>
-                <a
-                  href={`tel:${m.phone}`}
-                  className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
-                >
-                  📞 Call
-                </a>
-                <a
-                  href={`sms:${m.phone}`}
-                  className="press rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
-                >
-                  💬 Text
-                </a>
+              <div className="mt-2">
+                <Protected label="Sign in to contact">
+                  <div className="grid grid-cols-3 gap-2">
+                    <a
+                      href={`mailto:${m.email}`}
+                      className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                    >
+                      ✉️ Email
+                    </a>
+                    <a
+                      href={`tel:${m.phone}`}
+                      className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                    >
+                      📞 Call
+                    </a>
+                    <a
+                      href={`sms:${m.phone}`}
+                      className="press rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
+                    >
+                      💬 Text
+                    </a>
+                  </div>
+                </Protected>
               </div>
             </li>
           ))}

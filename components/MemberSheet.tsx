@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { useGuest } from "@/components/Guard";
+import { firstName } from "@/lib/privacy";
 import { contactActions, payActions, type Action, type MemberContact } from "@/lib/contact";
 
 // Tap a member's avatar/name anywhere → this bottom sheet. It slides up from the
@@ -22,6 +24,7 @@ export function MemberSheet({
   avatarUrl?: string | null;
   onClose: () => void;
 }) {
+  const { guest, promptSignIn } = useGuest();
   const [data, setData] = useState<MemberContact | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -42,7 +45,8 @@ export function MemberSheet({
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!supabase) {
+      // Don't even fetch a member's contact/pay info for guests — it's gated.
+      if (!supabase || guest) {
         setLoaded(true);
         return;
       }
@@ -58,7 +62,7 @@ export function MemberSheet({
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, guest]);
 
   // Measure, place just off-screen (no transition), then slide up next frame.
   useLayoutEffect(() => {
@@ -207,7 +211,7 @@ export function MemberSheet({
           <div className="flex flex-col items-center gap-2 text-center">
             <Avatar name={name} url={avatarUrl} size={72} />
             <p id="member-sheet-name" className="text-lg font-bold">
-              {name}
+              {guest ? firstName(name) : name}
             </p>
           </div>
         </div>
@@ -217,6 +221,20 @@ export function MemberSheet({
           className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pt-4"
           style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
         >
+          {guest ? (
+            <div className="space-y-3 rounded-xl bg-card p-4 text-center ring-1 ring-border">
+              <p className="text-sm text-foreground/70">
+                Contact &amp; payment details are private to members.
+              </p>
+              <button
+                onClick={promptSignIn}
+                className="press w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
+              >
+                🔒 Sign in to see
+              </button>
+            </div>
+          ) : (
+            <>
           {!loaded && <p className="text-center text-xs text-foreground/40">Loading…</p>}
           {loaded && contacts.length === 0 && pays.length === 0 && (
             <p className="rounded-xl bg-card p-3 text-center text-xs text-foreground/50 ring-1 ring-border">
@@ -239,6 +257,8 @@ export function MemberSheet({
                 <ActionRow key={a.key} a={a} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
               ))}
             </section>
+          )}
+            </>
           )}
         </div>
       </div>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateLong, formatTime } from "@/lib/format";
+import { Protected } from "@/components/Guard";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
 /**
@@ -65,7 +66,7 @@ export function FestWeek({
               {a.details && (
                 <p className="mt-1 text-xs leading-relaxed text-foreground/60">{a.details}</p>
               )}
-              {a.location && <p className="mt-1 text-xs text-foreground/50">📍 {a.location}</p>}
+              {a.location && <p className="mt-1 text-xs text-foreground/50">📍 <Protected label="Sign in for location">{a.location}</Protected></p>}
             </div>
           ))}
         </div>
@@ -117,7 +118,7 @@ export function FestWeek({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{e.title}</p>
                         <p className="text-xs text-foreground/50">
-                          {formatTime(e.start)} · {e.location}
+                          {formatTime(e.start)} · <Protected label="Sign in for location">{e.location}</Protected>
                         </p>
                       </div>
                       <span className="text-foreground/30" aria-hidden>
@@ -134,7 +135,7 @@ export function FestWeek({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">Dinner · {dinner.title}</p>
                         <p className="text-xs text-foreground/50">
-                          {dinner.time} · {dinner.location}
+                          {dinner.time} · <Protected label="Sign in for location">{dinner.location}</Protected>
                         </p>
                       </div>
                       <span className="text-foreground/30" aria-hidden>

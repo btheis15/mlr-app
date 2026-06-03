@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { Countdown } from "@/components/Countdown";
+import { Protected, useGuest } from "@/components/Guard";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime } from "@/lib/format";
+import { firstName } from "@/lib/privacy";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
@@ -108,7 +110,7 @@ function TodayEvent({ e }: { e: ScheduleEvent }) {
               {e.end ? `–${formatTime(e.end)}` : ""}
             </span>
           </div>
-          <p className="text-xs text-foreground/50">📍 {e.location}</p>
+          <p className="text-xs text-foreground/50">📍 <Protected label="Sign in for location">{e.location}</Protected></p>
           <p className="mt-1 text-xs text-foreground/70">{e.description}</p>
           {e.bring && (
             <p className="mt-1 text-xs text-foreground/60">
@@ -134,7 +136,7 @@ function TodayDinner({ d }: { d: Dinner }) {
             <span className="shrink-0 text-xs font-medium text-accent">{d.time}</span>
           </div>
           <p className="text-xs text-foreground/50">
-            📍 {d.location} · prep starts {d.prepTime}
+            📍 <Protected label="Sign in for location">{d.location}</Protected> · prep starts {d.prepTime}
           </p>
           <p className="mt-1 text-xs text-foreground/70">{d.menu}</p>
         </div>
@@ -145,25 +147,37 @@ function TodayDinner({ d }: { d: Dinner }) {
 }
 
 function Contact({ label, name, phone }: { label: string; name: string; phone: string }) {
+  const { guest, promptSignIn } = useGuest();
   return (
     <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
       <p className="min-w-0 flex-1 truncate text-xs text-foreground/60">
-        <span className="text-foreground/40">{label}:</span> {name}
+        <span className="text-foreground/40">{label}:</span> {guest ? firstName(name) : name}
       </p>
-      <a
-        href={`tel:${phone}`}
-        aria-label={`Call ${name}`}
-        className="press rounded-full bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
-      >
-        📞
-      </a>
-      <a
-        href={`sms:${phone}`}
-        aria-label={`Text ${name}`}
-        className="press rounded-full bg-accent/10 px-2.5 py-1.5 text-xs text-accent"
-      >
-        💬
-      </a>
+      {guest ? (
+        <button
+          onClick={promptSignIn}
+          className="press rounded-full bg-background px-2.5 py-1.5 text-xs text-foreground/45 ring-1 ring-border"
+        >
+          🔒 Sign in
+        </button>
+      ) : (
+        <>
+          <a
+            href={`tel:${phone}`}
+            aria-label={`Call ${name}`}
+            className="press rounded-full bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
+          >
+            📞
+          </a>
+          <a
+            href={`sms:${phone}`}
+            aria-label={`Text ${name}`}
+            className="press rounded-full bg-accent/10 px-2.5 py-1.5 text-xs text-accent"
+          >
+            💬
+          </a>
+        </>
+      )}
     </div>
   );
 }
@@ -173,8 +187,8 @@ function VolunteerContact({
 }: {
   contact: { name: string; email: string; phone: string };
 }) {
-  const firstName = contact.name.split(" ")[0];
-  const body = `Hi ${firstName}, I'd like to help plan Family Fest. What can I pitch in on?`;
+  const first = firstName(contact.name);
+  const body = `Hi ${first}, I'd like to help plan Family Fest. What can I pitch in on?`;
   const mailto = `mailto:${contact.email}?subject=${encodeURIComponent(
     "Family Fest — I'd like to help out",
   )}&body=${encodeURIComponent(body)}`;
@@ -186,28 +200,30 @@ function VolunteerContact({
         🙋 Want to help plan Family Fest?
       </p>
       <p className="mt-0.5 text-center text-xs text-foreground/60">
-        Reach out to {contact.name}
+        Reach out to {first}
       </p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <a
-          href={mailto}
-          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-        >
-          ✉️ Email
-        </a>
-        <a
-          href={`tel:${contact.phone}`}
-          className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-        >
-          📞 Call
-        </a>
-        <a
-          href={smsto}
-          className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-        >
-          💬 Text
-        </a>
-      </div>
+      <Protected label="Sign in to contact" className="mt-3 w-full justify-center py-2.5">
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <a
+            href={mailto}
+            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          >
+            ✉️ Email
+          </a>
+          <a
+            href={`tel:${contact.phone}`}
+            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
+          >
+            📞 Call
+          </a>
+          <a
+            href={smsto}
+            className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
+          >
+            💬 Text
+          </a>
+        </div>
+      </Protected>
     </div>
   );
 }
