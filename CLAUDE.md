@@ -66,9 +66,18 @@ is the single source of truth for routes + labels + icons).
   (`user` is `null` while browsing as a guest). Identity is stored in
   `localStorage`, no verification yet; at sign-in the guest opts in/out of email
   alerts.
-- **Admins** — allow-list of emails in [`lib/data.ts`](lib/data.ts)
-  (`ADMIN_EMAILS` / `isAdmin`). Only admins see the alert composer
-  ([`components/AdminAlertComposer.tsx`](components/AdminAlertComposer.tsx)).
+- **Admins** — `profiles.is_admin` in Supabase, with the seed allow-list of
+  emails in [`lib/data.ts`](lib/data.ts) (`ADMIN_EMAILS` / `isAdmin`) as a
+  fallback (so the first admin can sign in). Admins see, in Profile → Admin: the
+  alert composer ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)) and
+  the **member directory** ([`AdminMembers`](components/AdminMembers.tsx)) — every
+  registered member, with promote/remove-admin. Clients can't write `is_admin`
+  directly (RLS in `0001`); two admin-gated SECURITY DEFINER functions in
+  [`0008_admin_members.sql`](supabase/migrations/0008_admin_members.sql) back it:
+  `admin_members()` (directory **+ private emails**, kept out of the public
+  profiles table) and `set_admin(target, value)` (can't drop your own). Until
+  `0008` runs, the list works name-only off the public `profiles` read and the
+  promote buttons are disabled with a hint.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
+import { AdminMembers } from "@/components/AdminMembers";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
@@ -165,6 +166,7 @@ export default function ProfilePage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-accent">Admin</h2>
           <AdminAlertComposer />
+          <AdminMembers />
         </section>
       )}
 

@@ -36,6 +36,14 @@ The app detects whether the column exists: until you run it, the feed falls back
 to `created_at` and the backdate controls stay hidden — so nothing breaks, the
 feature just isn't active yet.
 
+⚠️ **For admin member management, run
+[`0008_admin_members.sql`](migrations/0008_admin_members.sql).** It adds two
+admin-gated functions — `admin_members()` (the directory **+ private emails**,
+which we deliberately keep out of the world-readable `profiles` table) and
+`set_admin(target, value)` (grant/revoke admin; you can't remove your own). The
+Profile → Admin → Members list works without it (names only, from the public
+`profiles` read); emails + the promote/remove buttons switch on once it's run.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
