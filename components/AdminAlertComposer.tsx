@@ -1,39 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { fetchCanPostAlerts } from "@/lib/roles";
+import { useIdentity } from "@/components/IdentityProvider";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
 
 /**
- * Compose an app-wide alert (banner notice). Visible to whoever **can post
- * alerts** — app admins + Family Fest committee leads (migration 0015). When the
- * backend is live it inserts an `announcements` row, which broadcasts to every
- * device via Realtime (and the mini's mailer emails opted-in members if email is
- * configured). With no backend it falls back to a device-local notice.
+ * Compose an app-wide alert (banner notice). **App Admins only** (migration
+ * 0016). When the backend is live it inserts an `announcements` row, which
+ * broadcasts to every device via Realtime (and the mini's mailer emails opted-in
+ * members if email is configured). With no backend it falls back to a
+ * device-local notice.
  */
 export function AdminAlertComposer() {
-  const [allowed, setAllowed] = useState(false);
-  const [checked, setChecked] = useState(false);
+  const { isAdmin } = useIdentity();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [severity, setSeverity] = useState<"info" | "alert">("alert");
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    // No backend → still let the (admin-gated) caller post a local notice.
-    if (!isSupabaseConfigured) {
-      setAllowed(true);
-      setChecked(true);
-      return;
-    }
-    fetchCanPostAlerts().then((ok) => {
-      setAllowed(ok);
-      setChecked(true);
-    });
-  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +54,8 @@ export function AdminAlertComposer() {
     window.setTimeout(() => setStatus(null), 4000);
   };
 
-  if (!checked || !allowed) return null;
+  // App admins only (the announcements INSERT policy enforces this server-side too).
+  if (isSupabaseConfigured && !isAdmin) return null;
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
