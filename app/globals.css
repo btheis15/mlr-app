@@ -116,8 +116,12 @@ body {
 @theme {
   --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-ios-in: cubic-bezier(0.4, 0, 1, 1);
+  /* Gentle overshoot for the "poppy/bubbly" tap release — a small spring past
+     1.0, then settle. Tuned to feel alive but not bouncy/overdone. */
+  --ease-spring: cubic-bezier(0.34, 1.46, 0.64, 1);
   --dur-page: 340ms;
   --dur-sheet: 440ms;
+  --dur-collapse: 460ms;
   --dur-tap: 140ms;
 }
 
@@ -184,12 +188,18 @@ body {
   animation-delay: calc(var(--i, 0) * 45ms);
 }
 
-/* Tactile tap. touch-action manipulation removes the iOS legacy tap delay. */
+/* Tactile tap. touch-action manipulation removes the iOS legacy tap delay.
+   Press DOWN is quick + linear-ish (ease-ios); RELEASE springs back with a
+   small overshoot (ease-spring) for the poppy/bubbly iOS feel. */
 @utility press {
-  transition: transform var(--dur-tap) var(--ease-ios);
+  transition: transform 240ms var(--ease-spring);
   touch-action: manipulation;
 }
-.press:active { transform: scale(0.96); }
+.press:active {
+  transform: scale(0.96);
+  transition-duration: var(--dur-tap);
+  transition-timing-function: var(--ease-ios);
+}
 
 /* Honor the OS reduce-motion toggle: collapse everything to a 1ms fade. */
 @media (prefers-reduced-motion: reduce) {
