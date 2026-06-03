@@ -124,7 +124,8 @@ def build_story():
         "on Supabase, with media files self-hosted on a Mac mini. A <font face='Courier' size=9>READ_ONLY</font> "
         "feature flag still gates a few not-yet-backed features (in-app committee join, RSVP writes) behind a "
         "tasteful “coming soon,” so nothing ever looks broken. It’s deployed on both <b>Vercel</b> and "
-        "<b>GitHub Pages</b>.")]
+        "<b>GitHub Pages</b>. Recent additions: an admin <b>member directory</b>, a guest <b>privacy wall</b> "
+        "(sensitive info hidden until sign-in), and a collapsible, spring-animated Profile.")]
     F += [PageBreak()]
 
     # ───────────────── SECTION 2 — THE MAP ─────────────────
@@ -137,7 +138,7 @@ def build_story():
             [("\U0001F3E0 Home", "b"), ("/", "m"), "Logo, share-the-app, the Family Fest season card, dues CTA, resort cards, tee-time link"],
             [("\U0001F4E3 Posts", "b"), ("/posts", "m"), "The shared family feed — photos, videos, comments, reactions, tagging, a photo timeline"],
             [("\U0001F389 Family Fest", "b"), ("/family-fest", "m"), "The whole week in one view; wears a live “pulse” dot during the event"],
-            [("\U0001F464 Profile", "b"), ("/profile", "m"), "Your identity, avatar, contact/pay info, email-alert toggle, admin tools, sign out"],
+            [("\U0001F464 Profile", "b"), ("/profile", "m"), "Identity, avatar, contact/pay info, email-alert toggle, admin tools (incl. member directory), sign out — the sections collapse into tidy windows"],
         ],
         [0.22, 0.18, 0.60])]
     F += [sp(6), P(
@@ -179,7 +180,8 @@ def build_story():
     F += section("3", "Sign-in &amp; identity",
                  "Public to browse, verified to act. No passwords — a 6-digit email code and a session that sticks.")
     F += [P(
-        "Identity is <b>on-demand, not a gate</b>. The entire app is browsable signed-out. The moment you try to "
+        "Identity is <b>on-demand, not a gate</b>. The entire app is browsable signed-out — though sensitive details "
+        "are gated for guests (see “What a guest sees” below). The moment you try to "
         "<i>do</i> something — post, react, RSVP — a sign-in sheet slides up. That’s "
         "<font face='Courier' size=9>promptSignIn()</font> from a small React context "
         "(<font face='Courier' size=9>IdentityProvider</font>) that any component can call.")]
@@ -192,11 +194,22 @@ def build_story():
         "<b>On every load</b>, the provider restores the session and loads the member’s row from the "
         "<font face='Courier' size=9>profiles</font> table (display name, avatar, alert opt-in, admin flag).",
     ])]
+    F += [sp(4), Paragraph("What a guest sees — the privacy wall", H3)]
+    F += [P(
+        "Browsing is open, but anything a stranger or scraper could misuse is hidden until sign-in. A small "
+        "<font face='Courier' size=9>Guard</font> module (<font face='Courier' size=9>SignInWall</font>, "
+        "<font face='Courier' size=9>Protected</font>, <font face='Courier' size=9>PrivateName</font>) plus "
+        "<font face='Courier' size=9>lib/privacy.ts</font> gate it consistently: the <b>Posts</b> feed and the "
+        "<b>Pay</b> screens are full sign-in walls; phone/email/Venmo/Zelle and event locations show a “Sign in” "
+        "chip; and members appear by <b>first name only</b> to guests. Signed-in members see everything as before. "
+        "It activates only when sign-in actually exists, so a backend-less build stays fully open.")]
     F += [sp(4), Paragraph("Admins", H3)]
     F += [P(
         "Admin is a <font face='Courier' size=9>profiles.is_admin</font> boolean in the database (set from the SQL "
         "editor, never from the client), with a tiny bootstrap allow-list in code so there’s an admin from day "
-        "one. Admins get an in-app <b>alert composer</b> on their Profile (Section 6).")]
+        "one. Admins get an in-app <b>alert composer</b> (Section 6) and a <b>member directory</b> on their "
+        "Profile — see everyone who’s registered (with their email) and promote or remove other admins, all from "
+        "<b>Profile → Admin → Members</b>. You can’t remove your own admin access, so you can’t lock yourself out.")]
     F += [sp(4), callout("Why this shape",
         [P("It’s deliberately not high-security — the only requirement is “a real, verified email to "
            "interact.” Email OTP confirms the address, the saved session keeps it effortless for the older "
@@ -251,10 +264,11 @@ def build_story():
         "moved to the front and flagged.",
     ])]
     F += [sp(4), P(
-        "Members fill these in (all optional) under <b>Profile → Contact &amp; payment</b>. Phones are stored "
-        "E.164 so <font face='Courier' size=9>tel:</font>/<font face='Courier' size=9>sms:</font> work on both "
-        "iPhone and Android. No payment credentials ever live in the app — buttons just hand off to the user’s "
-        "own Venmo/bank/Messages.")]
+        "Members fill these in (all optional) under <b>Profile → Contact &amp; payment</b> (a collapsible section). "
+        "Phones are stored E.164 so <font face='Courier' size=9>tel:</font>/<font face='Courier' size=9>sms:</font> "
+        "work on both iPhone and Android. No payment credentials ever live in the app — buttons just hand off to the "
+        "user’s own Venmo/bank/Messages. <b>Guests</b> don’t see any of this: a “Sign in” chip stands in for the "
+        "contact and pay actions (the privacy wall, Section 3).")]
     F += [sp(4), callout("Nice touch",
         [P("The same contact pattern powers committee rosters and the Family Fest “who’s in charge” / "
            "“head chef” lines — it’s one helper (<font face='Courier' size=9>lib/contact.ts</font>) reused "
@@ -360,8 +374,10 @@ def build_story():
         "(they go muddy grey on the light bg); a recurring lesson written into the CSS.",
         "<b>One formatter module</b> — every date/time/currency string goes through "
         "<font face='Courier' size=9>lib/format.ts</font> so the whole app reads consistently.",
-        "<b>A small GPU-only motion system</b> — transform/opacity keyframes (page-enter, sheet, pop, rise) with a "
-        "<font face='Courier' size=9>prefers-reduced-motion</font> collapse to a 1ms fade.",
+        "<b>A small iOS-feel motion system</b> — transform/opacity keyframes (page-enter, sheet, pop, rise), a "
+        "spring-eased “poppy” tap (a scale that overshoots 1.0, then settles), and an auto-height accordion "
+        "(grid-rows) for collapsible sections; everything collapses to a 1ms fade under "
+        "<font face='Courier' size=9>prefers-reduced-motion</font>.",
         "<b>PWA</b> — web manifest, installable, iOS “Add to Home Screen” hint, safe-area insets for notches.",
     ])]
     F += [PageBreak()]
@@ -372,7 +388,7 @@ def build_story():
     F += [P(
         "Static resort content (activities, dining, schedule, dinners, committees, dues) lives as typed seed data in "
         "<font face='Courier' size=9>lib/data.ts</font> — swappable for an API later without touching pages. "
-        "Everything multi-user is in Supabase. The schema is seven idempotent SQL migrations:")]
+        "Everything multi-user is in Supabase. The schema is eight idempotent SQL migrations:")]
     F += [data_table(
         ["Table", "Holds", "Realtime"],
         [
@@ -391,7 +407,12 @@ def build_story():
         "<b>insert your own rows only</b> (<font face='Courier' size=9>auth.uid() = author_id</font>), and "
         "<b>delete/edit your own or admin</b>. Privilege escalation is blocked at the database: clients are "
         "<font face='Courier' size=9>GRANT</font>ed update on specific profile columns only — never "
-        "<font face='Courier' size=9>is_admin</font> — so admin can’t be self-assigned from the client.")]
+        "<font face='Courier' size=9>is_admin</font> — so admin can’t be self-assigned from the client. Admins "
+        "promote or demote each other through an admin-gated <font face='Courier' size=9>SECURITY DEFINER</font> "
+        "function (<font face='Courier' size=9>set_admin</font>); a companion "
+        "<font face='Courier' size=9>admin_members()</font> returns the member directory <i>with</i> private "
+        "emails, which are deliberately kept out of the world-readable <font face='Courier' size=9>profiles</font> "
+        "table (migration 0008).")]
     F += [sp(2), code_block([
         ("-- representative policy (posts)", True),
         ("create policy \"posts: insert own\" on public.posts", False),
@@ -537,11 +558,14 @@ def build_story():
         "PERF", LAKE)]
 
     F += [sp(2), Paragraph("Security &amp; privacy", H3)]
-    F += [idea("“Public read” exposes member contact info",
-        "Every <font face='Courier' size=9>profiles</font> column is world-readable by design (the app is link-private, "
-        "not auth-gated). But that now includes phone, email, Venmo/Zelle/PayPal handles. The product intent is "
-        "per-field visibility (public / members-only / private) — it’s specced but not built. Given it’s a "
-        "small trusted family, is column-level RLS (members-only for contact fields) the right next step, or overkill?",
+    F += [idea("“Public read” still exposes member contact info at the API",
+        "A <b>UI privacy wall</b> now hides sensitive info from guests (<font face='Courier' size=9>Guard.tsx</font> / "
+        "<font face='Courier' size=9>lib/privacy.ts</font>: “Sign in” chips, first-name-only, walled Posts &amp; Pay — "
+        "see Section 3). But that’s the <i>UI layer</i> only: the <font face='Courier' size=9>profiles</font> columns "
+        "(phone, Venmo/Zelle/PayPal) are still world-readable at the Supabase API, so a determined fetch still sees "
+        "them. The remaining step is server-side — column-level RLS / gated reads (members-only for contact fields), "
+        "keeping personal data out of the client bundle. Given it’s a small trusted family, is that the right next "
+        "step, or overkill?",
         "SECURITY", WINE)]
     F += [idea("Media server trusts any valid token",
         "Upload auth checks only that the bearer token is a valid Supabase user — not that they’re a member in "
@@ -568,10 +592,11 @@ def build_story():
         "CLEANUP", CAMPFIRE)]
 
     F += [sp(6), callout("The big-picture question",
-        [P("The roadmap still wants a member directory + “email everyone by name,” a committee "
-           "request→approve loop with live rosters, Google-Drive-fed announcements, and Android web-push. All are "
-           "designed as isolated backend seams. <b>If you were picking the next thing to build — for maximum payoff "
-           "to a non-technical family — what would it be?</b>", BODY)], accent=PINE)]
+        [P("The roadmap still wants <b>“email everyone by name”</b> (the member directory now exists, #75 — the "
+           "compose-and-send doesn’t), a committee request→approve loop with live rosters, Google-Drive-fed "
+           "announcements, and Android web-push. All are designed as isolated backend seams. <b>If you were picking "
+           "the next thing to build — for maximum payoff to a non-technical family — what would it be?</b>", BODY)],
+        accent=PINE)]
     F += [sp(10), Rule(BORDER, 0.8, space=6),
           P("<font color='#5b6b63'><i>Thanks for reading. Happy to walk through any part of the code — it’s all "
             "TypeScript, and the README / CLAUDE.md / NEXT-STEPS.md in the repo go deeper on each seam.</i></font>", SMALL)]
