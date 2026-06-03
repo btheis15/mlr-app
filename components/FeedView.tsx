@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { POSTS } from "@/lib/data";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 
 /**
- * The "Feed" tab — one place to catch up. A pill row switches between the
- * resort-wide Posts feed and a live chat for each committee you're in, each pill
- * with an unread badge. No committees → just Posts (no pills).
+ * The "Feed" tab — one place to catch up on everything. A pill row switches
+ * between the resort-wide **Posts** feed and a live **chat** for each committee
+ * you're in; each pill shows an unread badge (new since you last looked). With
+ * no committees you just get Posts. Committee chats render inline below the
+ * pills (CommitteeChat in `embedded` mode).
  *
- * v2 (post-incident): renders in NORMAL page flow — no fixed full-screen overlay,
- * and it does NOT render its own AnnouncementBanner (the layout already shows one;
- * a second instance opened a duplicate realtime channel that crashed iOS Safari's
- * page process for signed-in users). The committee chat sits inline in a bounded
- * box. Every realtime channel here has a distinct name.
+ * Rendered only for signed-in members (wrapped in SignInWall by the page). It's
+ * a fixed full-height column above the tab bar so the chat composer can sit at
+ * the bottom and the message list scrolls — like a real chat tab.
  */
 interface MyCommittee {
   id: string;
@@ -29,11 +30,9 @@ const POSTS_SEEN_KEY = "mlr-feed-posts-seen";
 export function FeedView() {
   const { user } = useIdentity();
   const [committees, setCommittees] = useState<MyCommittee[]>([]);
-  const [active, setActive] = useState<string>("posts");
-  const [unread, setUnread] = useState<Record<string, number>>({});
+  const [active, setActive] = useState<string>("posts"); // "posts" or a committee slug
+  const [unread, setUnread] = useState<Record<string, number>>({}); // slug -> count
   const [postsUnread, setPostsUnread] = useState(0);
-  const [chatH, setChatH] = useState<string | number>("60dvh");
-  const chatBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sb = supabase;
@@ -42,7 +41,10 @@ export function FeedView() {
     let channel: ReturnType<typeof sb.channel> | null = null;
 
     const computeUnread = async (mine: MyCommittee[], me: string) => {
-      const { data: reads } = await sb.from("committee_reads").select("committee_id, last_read_at").eq("user_id", me);
+      const { data: reads } = await sb
+        .from("committee_reads")
+        .select("committee_id, last_read_at")
+        .eq("user_id", me);
       const readMap = new Map(((reads ?? []) as { committee_id: string; last_read_at: string }[]).map((r) => [r.committee_id, r.last_read_at]));
       const counts: Record<string, number> = {};
       await Promise.all(
@@ -79,6 +81,7 @@ export function FeedView() {
       }
       if (cancelled) return;
       setCommittees(mine);
+      // Deep link from the committee page: /posts?c=<slug>
       const want = new URLSearchParams(window.location.search).get("c");
       if (want && mine.some((c) => c.slug === want)) setActive(want);
       await computeUnread(mine, me);
@@ -93,43 +96,7 @@ export function FeedView() {
       cancelled = true;
       if (channel) sb.removeChannel(channel);
     };
-    // Key on the stable email, not the whole `user` object — that reference
-    // changes on every (hourly) token refresh, which would needlessly tear down
-    // and re-subscribe the channel + re-run all the count queries.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email]);
-
-  // Size the inline committee chat to the space between the pills and the fixed
-  // TabBar, and shrink to the visible area when the iOS keyboard opens — so the
-  // composer is never stranded behind the TabBar or the keyboard. (Replaces a
-  // guessed calc() that ignored the safe-area inset.)
-  useEffect(() => {
-    if (active === "posts") return;
-    const vv = typeof window !== "undefined" ? window.visualViewport : null;
-    const measure = () => {
-      const el = chatBoxRef.current;
-      if (!el) return;
-      const top = el.getBoundingClientRect().top;
-      const innerH = window.innerHeight;
-      const visH = vv ? vv.height : innerH;
-      const keyboardOpen = innerH - visH > 120;
-      const tabBar = document.querySelector('nav[class*="fixed"]') as HTMLElement | null;
-      const tabH = keyboardOpen ? 0 : tabBar?.getBoundingClientRect().height ?? 60;
-      const bottom = vv ? vv.offsetTop + vv.height : innerH;
-      setChatH(Math.max(260, bottom - top - tabH - 6));
-    };
-    measure();
-    const t = setTimeout(measure, 60);
-    window.addEventListener("resize", measure);
-    vv?.addEventListener("resize", measure);
-    vv?.addEventListener("scroll", measure);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("resize", measure);
-      vv?.removeEventListener("resize", measure);
-      vv?.removeEventListener("scroll", measure);
-    };
-  }, [active, committees.length]);
+  }, [user]);
 
   const select = (key: string) => {
     setActive(key);
@@ -141,16 +108,23 @@ export function FeedView() {
       }
       setPostsUnread(0);
     } else {
-      setUnread((u) => ({ ...u, [key]: 0 }));
+      setUnread((u) => ({ ...u, [key]: 0 })); // CommitteeChat marks it read server-side on open
     }
   };
 
   const activeCommittee = committees.find((c) => c.slug === active);
 
   return (
-    <div className="space-y-3 pt-1">
+    <div
+      className="fixed inset-x-0 z-30 mx-auto flex max-w-md flex-col bg-background"
+      style={{ top: "env(safe-area-inset-top)", bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
+    >
+      <div className="shrink-0 px-4 pt-2">
+        <AnnouncementBanner items={[]} />
+      </div>
+
       {committees.length > 0 && (
-        <div className="sticky top-0 z-10 -mx-4 flex items-center gap-1.5 overflow-x-auto border-b border-border bg-background px-4 pb-2 pt-1">
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border px-3 pb-2 pt-1">
           <Pill label="Posts" active={active === "posts"} badge={postsUnread} onClick={() => select("posts")} />
           {committees.map((c) => (
             <Pill key={c.slug} label={c.name} emoji={c.emoji} active={active === c.slug} badge={unread[c.slug] ?? 0} onClick={() => select(c.slug)} />
@@ -158,13 +132,15 @@ export function FeedView() {
         </div>
       )}
 
-      {active !== "posts" && activeCommittee ? (
-        <div ref={chatBoxRef} style={{ height: chatH }} className="overflow-hidden rounded-2xl ring-1 ring-border">
+      <div className="min-h-0 flex-1">
+        {active !== "posts" && activeCommittee ? (
           <CommitteeChat key={activeCommittee.slug} slug={activeCommittee.slug} name={activeCommittee.name} emoji={activeCommittee.emoji} embedded />
-        </div>
-      ) : (
-        <PostsView seed={POSTS} />
-      )}
+        ) : (
+          <div className="h-full overflow-y-auto px-4 pb-4">
+            <PostsView seed={POSTS} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -175,7 +151,7 @@ function Pill({ label, emoji, active, badge, onClick }: { label: string; emoji?:
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`press flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${
+      className={`press relative flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${
         active ? "bg-primary text-white ring-primary" : "bg-card text-foreground/60 ring-border"
       }`}
     >
