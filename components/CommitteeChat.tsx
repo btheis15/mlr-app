@@ -77,6 +77,10 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Whether the list is parked at the latest message. Tracked on scroll so the
+  // re-pin logic below is timing-independent: it never has to measure *after* a
+  // drawer/banner has already changed the layout (which would misread).
+  const atBottomRef = useRef(true);
   const objectUrls = useRef<string[]>([]);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Latest isAdmin, for the realtime callbacks below — they capture loadAccess
@@ -258,21 +262,36 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
-  // When the on-screen keyboard opens or closes the visual viewport resizes;
-  // if we were already at the bottom, stay there so the latest message and what
+  // Re-pin the list to the latest message — but only the inner scroller, never
+  // the page (assigning scrollTop, not scrollIntoView, keeps the outer page
+  // still). Called whenever something would otherwise push the bottom out of view.
+  const repinIfAtBottom = () => {
+    if (!atBottomRef.current) return;
+    requestAnimationFrame(() => {
+      const sc = scrollRef.current;
+      if (sc) sc.scrollTop = sc.scrollHeight;
+    });
+  };
+
+  // When the on-screen keyboard opens or closes the visual viewport resizes; if
+  // we were already at the bottom, stay there so the latest message and what
   // you're typing never slide out of view behind the keyboard.
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
-    const onResize = () => {
-      const sc = scrollRef.current;
-      if (!sc) return;
-      const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
-      if (nearBottom) requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }));
-    };
+    const onResize = () => repinIfAtBottom();
     vv.addEventListener("resize", onResize);
     return () => vv.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Opening the reply banner, an attachment row, or the sticker/GIF drawer grows
+  // the composer and shrinks the list. Re-pin so a drawer never hides the
+  // message you were just reading (no-op if you'd scrolled up to an older one).
+  useEffect(() => {
+    repinIfAtBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending.length, showStickers, showGif, replyTo]);
 
   const msgById = useMemo(() => {
     const m = new Map<string, Msg>();
@@ -414,18 +433,13 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
     document.getElementById(`cmsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  // Start a reply: show the reply banner, focus the composer so the keyboard
-  // opens predictably, and — only if we were already pinned near the bottom —
-  // re-pin so the banner growing doesn't strand the latest message. Replying to
-  // an older message you've scrolled up to leaves your scroll position alone.
+  // Start a reply: show the reply banner and focus the composer so the keyboard
+  // opens predictably. The banner-grow re-pin (above) keeps the latest message
+  // in view if you were at the bottom, and leaves your position alone if you'd
+  // scrolled up to reply to an older message.
   const startReply = (m: Msg) => {
-    const sc = scrollRef.current;
-    const nearBottom = sc ? sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120 : true;
     setReplyTo(m);
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      if (nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
-    });
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   // Wrap content in the full-screen ChatShell, or — when embedded in the Feed
@@ -490,7 +504,14 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
 
   return wrap(`${members.length} member${members.length === 1 ? "" : "s"}`, (
     <>
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3">
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const sc = e.currentTarget;
+          atBottomRef.current = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+        }}
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
+      >
         {loaded && messages.length === 0 && (
           <p className="mt-10 text-center text-sm text-foreground/50">No messages yet — say hi to the {name} crew! 👋</p>
         )}
