@@ -55,21 +55,10 @@ export interface Post {
   likes?: number;
 }
 
-/** A comment on a feed post. */
-export interface PostComment {
-  id: string;
-  author: string;
-  text: string;
-  /** ISO timestamp. */
-  ts: string;
-}
-
 /* ── Family Fest section types ───────────────────────────────────────────────
    The Family Fest experience lives inside this app at /family-fest/*. These
    shapes back its schedule, dinners, crew/RSVP, photos, pay, and anytime
    activities. Client-only seed data for now (lib/data.ts). */
-
-export type RsvpStatus = "yes" | "maybe" | "no";
 
 /** Whoever's running an event or dinner — rendered as tap-to-call / tap-to-text
  *  links (tel:/sms:) that work on iOS and Android. */
@@ -109,26 +98,6 @@ export interface FestActivity {
   details?: string;
   /** Optional where to start / pick up materials. */
   location?: string;
-}
-
-/** A household coming (or not) to the fest. */
-export interface CrewMember {
-  id: string;
-  /** Household / family name, e.g. "The Petersons". */
-  name: string;
-  headcount: number;
-  status: RsvpStatus;
-  /** Potluck assignment — what they're bringing. */
-  bringing?: string;
-}
-
-/** A tile in the shared album. Placeholder art uses a gradient + emoji. */
-export interface Memory {
-  id: string;
-  caption: string;
-  /** Tailwind gradient utility classes for the placeholder tile. */
-  gradient: string;
-  emoji: string;
 }
 
 /** One night's dinner: the head chef of the day, the houses on crew, what's

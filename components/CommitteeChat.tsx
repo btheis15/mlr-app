@@ -7,8 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { GifPicker, type PickedGif } from "@/components/GifPicker";
-import { STICKERS, StickerArt, isSticker } from "@/components/Stickers";
-import { ComingSoonCTA } from "@/components/ComingSoonCTA";
+import { STICKERS, StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { dayKey, formatDayHeading, formatClock } from "@/lib/format";
 

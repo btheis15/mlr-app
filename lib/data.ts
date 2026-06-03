@@ -9,11 +9,9 @@
 
 import type {
   Committee,
-  CrewMember,
   Dinner,
   FestActivity,
   FestHighlight,
-  Memory,
   Payee,
   Post,
   ScheduleEvent,
@@ -353,31 +351,6 @@ export const DINNERS: Dinner[] = [
     time: "6:00 PM",
     location: "Lakeside Pavilion",
   },
-];
-
-/** Households who've responded so far. Users can add their own in the Crew tab. */
-export const CREW: CrewMember[] = [
-  { id: "grandparents", name: "Grandma & Grandpa", headcount: 2, status: "yes", bringing: "Blueberry pancakes" },
-  { id: "petersons", name: "The Petersons", headcount: 5, status: "yes", bringing: "Burgers & brats" },
-  { id: "aunt-linda", name: "Aunt Linda", headcount: 1, status: "yes", bringing: "Famous potato salad" },
-  { id: "the-js", name: "Jake & Maria", headcount: 4, status: "yes", bringing: "Corn on the cob" },
-  { id: "uncle-rob", name: "Uncle Rob's crew", headcount: 3, status: "maybe", bringing: "Cooler of drinks" },
-  { id: "the-coastals", name: "The California cousins", headcount: 4, status: "maybe" },
-  { id: "sam", name: "Cousin Sam", headcount: 2, status: "yes", bringing: "Dessert (pies!)" },
-  { id: "the-norths", name: "The Norths", headcount: 3, status: "no" },
-];
-
-/** Seed album tiles — gradient placeholders so the album looks alive without
- *  shipping image binaries. Real photos get added at runtime in the Photos view. */
-export const MEMORIES: Memory[] = [
-  { id: "m1", caption: "Sunset off the main dock", gradient: "from-amber-300 to-rose-400", emoji: "🌅" },
-  { id: "m2", caption: "First musky of the trip", gradient: "from-teal-300 to-cyan-500", emoji: "🎣" },
-  { id: "m3", caption: "Bonfire night", gradient: "from-orange-400 to-red-500", emoji: "🔥" },
-  { id: "m4", caption: "Cannonball champs", gradient: "from-sky-300 to-blue-500", emoji: "💦" },
-  { id: "m5", caption: "Pontoon parade winners", gradient: "from-fuchsia-300 to-purple-500", emoji: "🛥️" },
-  { id: "m6", caption: "Grandpa's pancakes", gradient: "from-yellow-200 to-amber-400", emoji: "🥞" },
-  { id: "m7", caption: "The whole gang", gradient: "from-lime-300 to-emerald-500", emoji: "👨‍👩‍👧‍👦" },
-  { id: "m8", caption: "Fireworks finale", gradient: "from-indigo-400 to-violet-600", emoji: "🎆" },
 ];
 
 /**

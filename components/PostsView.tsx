@@ -161,6 +161,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const createdUrls = useRef<string[]>([]);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Shared feed from the database ----
   const refetch = async () => {
@@ -265,15 +266,22 @@ export function PostsView({ seed }: { seed: Post[] }) {
     }
     sb.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
     refetch();
+    // Coalesce bursts of row events into a single refetch (the feed pulls ~6
+    // queries each time), so a flurry of posts/reactions can't storm the DB.
+    const scheduleRefetch = () => {
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(() => void refetch(), 120);
+    };
     const ch = sb
       .channel("posts-feed")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => refetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, () => refetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => refetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, () => refetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, scheduleRefetch)
       .subscribe();
     return () => {
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
       sb.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
