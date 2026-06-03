@@ -19,8 +19,6 @@ export const STICKERS: Sticker[] = [
   { id: "loon-life", label: "Loon Life" },
 ];
 
-export const isSticker = (id: string) => STICKERS.some((s) => s.id === id);
-
 const label = (text: string, fill = "#ffffff") => (
   <text
     x="100"
