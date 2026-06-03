@@ -45,6 +45,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  // Resize the layout (not just overlay) when the on-screen keyboard opens, so
+  // bottom-pinned UI like the chat composer stays above it on Android Chrome.
+  // (iOS Safari ignores this; the chat handles iOS via the visualViewport API.)
+  interactiveWidget: "resizes-content",
 };
 
 export default async function RootLayout({

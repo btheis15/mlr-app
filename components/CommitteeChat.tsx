@@ -74,8 +74,13 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Whether the list is parked at the latest message. Tracked on scroll so the
+  // re-pin logic below is timing-independent: it never has to measure *after* a
+  // drawer/banner has already changed the layout (which would misread).
+  const atBottomRef = useRef(true);
   const objectUrls = useRef<string[]>([]);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Latest isAdmin, for the realtime callbacks below — they capture loadAccess
@@ -257,6 +262,37 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
+  // Re-pin the list to the latest message — but only the inner scroller, never
+  // the page (assigning scrollTop, not scrollIntoView, keeps the outer page
+  // still). Called whenever something would otherwise push the bottom out of view.
+  const repinIfAtBottom = () => {
+    if (!atBottomRef.current) return;
+    requestAnimationFrame(() => {
+      const sc = scrollRef.current;
+      if (sc) sc.scrollTop = sc.scrollHeight;
+    });
+  };
+
+  // When the on-screen keyboard opens or closes the visual viewport resizes; if
+  // we were already at the bottom, stay there so the latest message and what
+  // you're typing never slide out of view behind the keyboard.
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const onResize = () => repinIfAtBottom();
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Opening the reply banner, an attachment row, or the sticker/GIF drawer grows
+  // the composer and shrinks the list. Re-pin so a drawer never hides the
+  // message you were just reading (no-op if you'd scrolled up to an older one).
+  useEffect(() => {
+    repinIfAtBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending.length, showStickers, showGif, replyTo]);
+
   const msgById = useMemo(() => {
     const m = new Map<string, Msg>();
     for (const x of messages) m.set(x.id, x);
@@ -397,6 +433,15 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
     document.getElementById(`cmsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Start a reply: show the reply banner and focus the composer so the keyboard
+  // opens predictably. The banner-grow re-pin (above) keeps the latest message
+  // in view if you were at the bottom, and leaves your position alone if you'd
+  // scrolled up to reply to an older message.
+  const startReply = (m: Msg) => {
+    setReplyTo(m);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   // Wrap content in the full-screen ChatShell, or — when embedded in the Feed
   // tab — a plain inline column (the Feed's pills are the nav, so no header/back).
   const wrap = (subtitle: string, body: React.ReactNode) =>
@@ -459,7 +504,14 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
 
   return wrap(`${members.length} member${members.length === 1 ? "" : "s"}`, (
     <>
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3">
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const sc = e.currentTarget;
+          atBottomRef.current = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+        }}
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
+      >
         {loaded && messages.length === 0 && (
           <p className="mt-10 text-center text-sm text-foreground/50">No messages yet — say hi to the {name} crew! 👋</p>
         )}
@@ -486,7 +538,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
                   reacting={reactingId === m.id}
                   onOpenReact={() => setReactingId((cur) => (cur === m.id ? null : m.id))}
                   onReact={(e) => react(m.id, e)}
-                  onReply={() => setReplyTo(m)}
+                  onReply={() => startReply(m)}
                   onDelete={() => deleteMessage(m.id)}
                   onOpenMember={(mm) => setMemberSheet(mm)}
                   onOpenPhoto={(u) => setLightbox(u)}
@@ -567,12 +619,16 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
           <button type="button" onClick={() => { setShowStickers((s) => !s); setShowGif(false); }} className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${showStickers ? "bg-primary/10" : ""}`} aria-label="Stickers">🦦</button>
           <button type="button" onClick={() => { setShowGif((s) => !s); setShowStickers(false); }} className={`press flex h-9 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold ${showGif ? "bg-primary/10 text-primary" : "text-foreground/55"}`} aria-label="GIFs">GIF</button>
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => onComposerChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
             placeholder={`Message ${name}…`}
             rows={1}
-            className="max-h-28 min-h-9 flex-1 resize-none rounded-2xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            enterKeyHint="send"
+            // text-base (≥16px) is required: iOS Safari auto-zooms any focused
+            // input under 16px, which lurches the whole layout when you tap to type.
+            className="max-h-28 min-h-9 flex-1 resize-none rounded-2xl bg-background px-3 py-2 text-base ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
           <button onClick={() => void send()} disabled={!canSend} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40" aria-label="Send">
             {sending ? "…" : "➤"}
@@ -597,8 +653,30 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
 // children (message list + composer) fill the rest. Covers the page so the chat
 // reads like opening a thread; the back link returns to the committee.
 function ChatShell({ slug, name, emoji, subtitle, children }: { slug: string; name: string; emoji: string; subtitle?: string; children: React.ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  // iOS Safari ignores `interactive-widget`, so the keyboard overlays the page
+  // and a `position: fixed` composer ends up stranded behind it. Track the
+  // visual viewport and size the shell to exactly the visible area (its height,
+  // shifted by its offset) so the composer always rides just above the keyboard
+  // — no page jumping. Falls back to the `h-[100dvh]` class before JS runs.
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    const el = rootRef.current;
+    if (!vv || !el) return;
+    const apply = () => {
+      el.style.height = `${vv.height}px`;
+      el.style.transform = `translateY(${vv.offsetTop}px)`;
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div ref={rootRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex h-[100dvh] max-w-md flex-col bg-background" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
         <Link href={`/committees/${slug}`} className="press -ml-1 flex h-9 w-9 items-center justify-center rounded-full text-xl text-foreground/60" aria-label="Back to committee">‹</Link>
         <span className="text-xl">{emoji}</span>
