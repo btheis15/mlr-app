@@ -3,9 +3,19 @@
 import { useEffect, useState } from "react";
 import type { Announcement } from "@/lib/types";
 import { timeAgo } from "@/lib/format";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { LOCAL_ANNOUNCEMENTS_KEY, loadLocalAnnouncements } from "@/lib/localAnnouncements";
 
 const DISMISSED_KEY = "mlr-dismissed-announcements";
+
+interface AnnouncementRow {
+  id: string;
+  title: string;
+  body: string | null;
+  severity: string;
+  created_at: string;
+  expires_at: string | null;
+}
 
 /**
  * Top-of-app notice banner. Announcements come in as props (a server component
@@ -16,6 +26,7 @@ const DISMISSED_KEY = "mlr-dismissed-announcements";
 export function AnnouncementBanner({ items }: { items: Announcement[] }) {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [local, setLocal] = useState<Announcement[]>([]);
+  const [db, setDb] = useState<Announcement[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -38,6 +49,37 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
     };
   }, []);
 
+  // Live broadcast alerts from the backend (migration 0015). Everyone sees these
+  // — an app admin or a Family Fest lead posts one and it lands here in realtime.
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb) return;
+    let cancelled = false;
+    const loadDb = async () => {
+      const { data } = await sb
+        .from("announcements")
+        .select("id, title, body, severity, created_at, expires_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (cancelled) return;
+      const now = Date.now();
+      setDb(
+        ((data ?? []) as AnnouncementRow[])
+          .filter((r) => !r.expires_at || new Date(r.expires_at).getTime() > now)
+          .map((r) => ({ id: r.id, severity: r.severity === "info" ? "info" : "alert", title: r.title, body: r.body || undefined, ts: r.created_at })),
+      );
+    };
+    loadDb();
+    const ch = sb
+      .channel("announcements-banner")
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, () => loadDb())
+      .subscribe();
+    return () => {
+      cancelled = true;
+      sb.removeChannel(ch);
+    };
+  }, []);
+
   const dismiss = (id: string) => {
     const next = [...dismissed, id];
     setDismissed(next);
@@ -46,7 +88,10 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
 
   if (!ready) return null;
 
-  const merged = [...local, ...items].sort((a, b) => b.ts.localeCompare(a.ts));
+  const seen = new Set<string>();
+  const merged = [...local, ...db, ...items]
+    .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
+    .sort((a, b) => b.ts.localeCompare(a.ts));
   const visible = merged.filter((a) => !dismissed.includes(a.id));
   if (visible.length === 0) return null;
 

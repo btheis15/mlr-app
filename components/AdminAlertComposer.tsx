@@ -1,53 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { fetchCanPostAlerts } from "@/lib/roles";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
 
 /**
- * Admin-only composer for pushing an alert to the banner. Render this only when
- * `isAdmin` is true (it's also enforced server-side once there's a backend).
- * v1 writes the alert locally; the backend version will broadcast to every
- * device and email opted-in guests.
+ * Compose an app-wide alert (banner notice). Visible to whoever **can post
+ * alerts** — app admins + Family Fest committee leads (migration 0015). When the
+ * backend is live it inserts an `announcements` row, which broadcasts to every
+ * device via Realtime (and the mini's mailer emails opted-in members if email is
+ * configured). With no backend it falls back to a device-local notice.
  */
 export function AdminAlertComposer() {
+  const [allowed, setAllowed] = useState(false);
+  const [checked, setChecked] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [severity, setSeverity] = useState<"info" | "alert">("alert");
-  const [justSent, setJustSent] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
 
-  const submit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // No backend → still let the (admin-gated) caller post a local notice.
+    if (!isSupabaseConfigured) {
+      setAllowed(true);
+      setChecked(true);
+      return;
+    }
+    fetchCanPostAlerts().then((ok) => {
+      setAllowed(ok);
+      setChecked(true);
+    });
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    pushLocalAnnouncement({
-      id: `local-${Date.now()}`,
-      severity,
-      title: title.trim(),
-      body: body.trim() || undefined,
-      ts: new Date().toISOString(),
-    });
-    setTitle("");
-    setBody("");
-    setSeverity("alert");
-    setJustSent(true);
-    setTimeout(() => setJustSent(false), 2500);
+
+    if (isSupabaseConfigured && supabase) {
+      setSending(true);
+      setStatus(null);
+      const uid = (await supabase.auth.getUser()).data.user?.id;
+      const { error } = await supabase.from("announcements").insert({
+        author_id: uid,
+        title: title.trim(),
+        body: body.trim() || null,
+        severity,
+        notify_email: notifyEmail,
+      });
+      setSending(false);
+      if (error) {
+        setStatus(`Couldn't post: ${error.message}`);
+        return;
+      }
+      setTitle(""); setBody(""); setSeverity("alert");
+      setStatus(notifyEmail ? "Posted to everyone's banner ✓ (opted-in members emailed if email is set up)" : "Posted to everyone's banner ✓");
+      window.setTimeout(() => setStatus(null), 6000);
+      return;
+    }
+
+    // Local fallback (no backend).
+    pushLocalAnnouncement({ id: `local-${Date.now()}`, severity, title: title.trim(), body: body.trim() || undefined, ts: new Date().toISOString() });
+    setTitle(""); setBody(""); setSeverity("alert");
+    setStatus("Posted to the banner (this device).");
+    window.setTimeout(() => setStatus(null), 4000);
   };
 
+  if (!checked || !allowed) return null;
+
   return (
-    <form
-      onSubmit={submit}
-      className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30"
-    >
+    <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <div className="flex items-center gap-2">
-        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
-          Admin
-        </span>
-        <h2 className="text-sm font-semibold">Push a notice</h2>
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Alerts</span>
+        <h2 className="text-sm font-semibold">Push a notice to everyone</h2>
       </div>
       <p className="text-xs text-foreground/60">
-        Shows a banner at the top of the app. It&rsquo;s <strong>in-app only — no email or
-        push is sent</strong> (reaching everyone&rsquo;s devices + emailing opted-in members
-        comes with the backend). <strong>📣 Alert</strong> = a bold, hard-to-miss banner;{" "}
-        <strong>ℹ️ Info</strong> = a quiet notice. Same delivery — only the look differs.
+        Shows a banner at the top of the app for <strong>everyone</strong>. <strong>📣 Alert</strong> = a bold,
+        hard-to-miss banner; <strong>ℹ️ Info</strong> = a quiet notice. Opted-in members can also be emailed.
       </p>
       <input
         value={title}
@@ -62,6 +93,12 @@ export function AdminAlertComposer() {
         rows={2}
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
+      {isSupabaseConfigured && (
+        <label className="flex items-center gap-2 text-xs text-foreground/70">
+          <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+          Also email members who opted in
+        </label>
+      )}
       <div className="flex items-center gap-3">
         <select
           value={severity}
@@ -71,19 +108,11 @@ export function AdminAlertComposer() {
           <option value="alert">📣 Alert — loud banner</option>
           <option value="info">ℹ️ Info — quiet notice</option>
         </select>
-        <button
-          type="submit"
-          disabled={!title.trim()}
-          className="press rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          Push
+        <button type="submit" disabled={!title.trim() || sending} className="press rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+          {sending ? "Posting…" : "Push"}
         </button>
       </div>
-      {justSent && (
-        <p className="text-xs text-accent">
-          Posted to the banner. (Email + push broadcast arrives with the backend.)
-        </p>
-      )}
+      {status && <p className="text-xs font-medium text-accent">{status}</p>}
     </form>
   );
 }
