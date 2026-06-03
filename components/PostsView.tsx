@@ -8,6 +8,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { dayKey, formatDayHeading, formatClock, toDatetimeLocal } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
+import { Collapse } from "@/components/Collapse";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -569,7 +570,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
             <button type="button" onClick={() => setTagPickerOpen((o) => !o)} className="text-xs font-medium text-primary">
               🏷️ {tagIds.length ? "Edit tags" : "Tag people"}
             </button>
-            {tagPickerOpen && (
+            <Collapse open={tagPickerOpen}>
               <div className="space-y-2 rounded-xl bg-background p-2 ring-1 ring-border">
                 <input
                   value={tagQuery}
@@ -595,7 +596,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                   {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No matching members.</p>}
                 </div>
               </div>
-            )}
+            </Collapse>
           </div>
         )}
 
@@ -790,7 +791,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <button onClick={() => shareOut(p)} className="press ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
               </div>
 
-              {pickerFor === p.id && (
+              <Collapse open={pickerFor === p.id}>
                 <div className="flex gap-1 border-t border-border px-2 py-2">
                   {REACTIONS.map((emoji) => (
                     <button key={emoji} onClick={() => react(p.id, emoji)} className={`press flex-1 rounded-xl py-2 text-2xl ring-1 ring-border ${mine === emoji ? "bg-primary/15" : "bg-background"}`} aria-label={`React ${emoji}`}>
@@ -798,7 +799,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                     </button>
                   ))}
                 </div>
-              )}
+              </Collapse>
 
               {(postComments.length > 0 || user) && (
                 <div className="space-y-2 border-t border-border px-4 py-3">

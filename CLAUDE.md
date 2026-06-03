@@ -159,6 +159,12 @@ Vercel Postgres/KV + Resend + web-push) can cover all of these.
   [`app/family-fest/layout.tsx`](app/family-fest/layout.tsx)): the wrapper
   re-declares the `--color-*` / `--font-display` variables that Tailwind's
   utilities read, so only that subtree changes. Don't hard-code hex.
+- **Motion** — GPU-only (transform/opacity) with iOS-feel curves + duration
+  tokens in [`app/globals.css`](app/globals.css) (`--ease-ios`, `--dur-*`). For
+  any expand/collapse use [`<Collapse open>`](components/Collapse.tsx) (animates
+  grid rows `0fr→1fr` so content below **slides, not jumps** — no fidget); don't
+  hand-roll `{open && …}` toggles for panels. All motion honors
+  `prefers-reduced-motion`.
 - **Formatting** — dates/numbers/currency go through
   [`lib/format.ts`](lib/format.ts). Add new formatters there.
 - **`@/*`** path alias maps to repo root (see `tsconfig.json`).

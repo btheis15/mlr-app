@@ -6,6 +6,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateLong, formatTime } from "@/lib/format";
 import { Protected } from "@/components/Guard";
+import { Collapse } from "@/components/Collapse";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
 /**
@@ -105,14 +106,13 @@ export function FestWeek({
                   ›
                 </span>
               </button>
-              {expanded && (
+              <Collapse open={expanded}>
                 <div className="space-y-2 px-4 pb-4">
-                  {dayEvents.map((e, i) => (
+                  {dayEvents.map((e) => (
                     <Link
                       key={e.id}
                       href={`/family-fest/schedule/${e.id}`}
-                      style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
-                      className="press rise flex items-center gap-3 rounded-xl bg-background/60 p-2 ring-1 ring-border/60"
+                      className="press flex items-center gap-3 rounded-xl bg-background/60 p-2 ring-1 ring-border/60"
                     >
                       <span className="text-lg">{e.emoji}</span>
                       <div className="min-w-0 flex-1">
@@ -144,7 +144,7 @@ export function FestWeek({
                     </Link>
                   )}
                 </div>
-              )}
+              </Collapse>
             </li>
           );
         })}

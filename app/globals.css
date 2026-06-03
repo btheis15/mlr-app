@@ -118,6 +118,7 @@ body {
   --ease-ios-in: cubic-bezier(0.4, 0, 1, 1);
   --dur-page: 340ms;
   --dur-sheet: 440ms;
+  --dur-collapse: 460ms;
   --dur-tap: 140ms;
 }
 
@@ -191,6 +192,29 @@ body {
 }
 .press:active { transform: scale(0.96); }
 
+/* iOS-like expand/collapse (used via <Collapse>). Animates the panel's height
+   by transitioning grid rows 0fr→1fr, so it grows/shrinks smoothly and the
+   content BELOW slides instead of jumping — no fidget. The inner wrapper hides
+   overflow during the slide and cross-fades. Slower (var(--dur-collapse)) with
+   the gentle iOS ease-out. */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-collapse) var(--ease-ios);
+}
+.collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.collapse > .collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity var(--dur-collapse) var(--ease-ios);
+}
+.collapse[data-open="true"] > .collapse-inner {
+  opacity: 1;
+}
+
 /* Honor the OS reduce-motion toggle: collapse everything to a 1ms fade. */
 @media (prefers-reduced-motion: reduce) {
   .page-enter, .sheet-panel, .sheet-close, .pop-panel, .pop-close,
@@ -198,6 +222,7 @@ body {
   .scrim-in, .scrim-out, .rise {
     animation: mlr-fade-in 1ms linear both;
   }
+  .collapse, .collapse > .collapse-inner { transition: none; }
   .press { transition: none; }
   .press:active { transform: none; }
 }
