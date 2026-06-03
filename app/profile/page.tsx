@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminMembers } from "@/components/AdminMembers";
+import { AdminCommittees } from "@/components/AdminCommittees";
 import { AdminSignins } from "@/components/AdminSignins";
 import { PreviewAs } from "@/components/PreviewAs";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -172,16 +173,24 @@ export default function ProfilePage() {
       </CollapsibleSection>
 
       {isAdmin && (
-        <CollapsibleSection
-          title="Admin"
-          icon="🛠️"
-          subtitle="Post alerts · manage members · sign-in activity · view as"
-        >
-          <AdminAlertComposer />
-          <AdminMembers />
-          <AdminSignins />
-          <PreviewAs />
-        </CollapsibleSection>
+        <>
+          <h2 className="px-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-accent">🛠️ Admin tools</h2>
+          <CollapsibleSection title="Post an alert" icon="📣" subtitle="Banner notice to everyone (+ email)">
+            <AdminAlertComposer />
+          </CollapsibleSection>
+          <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
+            <AdminCommittees />
+          </CollapsibleSection>
+          <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
+            <AdminMembers />
+          </CollapsibleSection>
+          <CollapsibleSection title="Recent sign-ins" icon="🔐" subtitle="Who logged in & from where">
+            <AdminSignins />
+          </CollapsibleSection>
+          <CollapsibleSection title="View as" icon="👁️" subtitle="Preview the app as a member or guest">
+            <PreviewAs />
+          </CollapsibleSection>
+        </>
       )}
 
       <DemoDateControl />
