@@ -105,6 +105,22 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
       setQuery("");
     }
   };
+  const leaveSelf = async () => {
+    if (!supabase || !committeeId || !meId) return;
+    const selfLead = members.find((m) => m.id === meId)?.role === "Lead";
+    const msg = selfLead
+      ? `Leave ${name}? You're a Lead — until an app admin assigns a new one this committee may have no lead. You can ask to rejoin later.`
+      : `Leave ${name}? You'll lose access to its chat (you can ask to rejoin later).`;
+    if (!window.confirm(msg)) return;
+    setBusy(meId);
+    const { error } = await supabase.rpc("leave_committee", { cid: committeeId });
+    setBusy(null);
+    if (error) { window.alert(error.message); return; }
+    // You're no longer a lead after leaving: non-admins lose manage access (the
+    // panel then hides via the canManage gate); admins keep it via the override.
+    setCanManage(isAdmin);
+    if (isAdmin) await load(committeeId);
+  };
 
   if (!canManage || !isSupabaseConfigured) return null;
 
@@ -138,12 +154,16 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                     {busy === m.id ? "…" : lead ? "Unset lead" : "Make lead"}
                   </button>
                 )}
-                {/* A lead can't remove another lead — only an app admin can. */}
-                {(isAdmin || !lead) && !isMe && (
+                {/* Leave yourself; or remove others (a lead can't remove another lead — only an app admin can). */}
+                {isMe ? (
+                  <button onClick={leaveSelf} disabled={busy === m.id} className="press rounded-full bg-background px-2.5 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50">
+                    {busy === m.id ? "…" : "Leave"}
+                  </button>
+                ) : (isAdmin || !lead) ? (
                   <button onClick={() => remove(m)} disabled={busy === m.id} className="press rounded-full bg-background px-2.5 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50">
                     Remove
                   </button>
-                )}
+                ) : null}
               </div>
             </li>
           );
