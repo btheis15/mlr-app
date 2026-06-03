@@ -41,13 +41,18 @@ export function FeedView() {
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
 
-    const computeUnread = async (mine: MyCommittee[], me: string) => {
-      const { data: reads } = await sb.from("committee_reads").select("committee_id, last_read_at").eq("user_id", me);
+    let me: string | null = null;
+    let mine: MyCommittee[] = [];
+
+    const computeUnread = async () => {
+      if (!me) return;
+      const meId = me;
+      const { data: reads } = await sb.from("committee_reads").select("committee_id, last_read_at").eq("user_id", meId);
       const readMap = new Map(((reads ?? []) as { committee_id: string; last_read_at: string }[]).map((r) => [r.committee_id, r.last_read_at]));
       const counts: Record<string, number> = {};
       await Promise.all(
         mine.map(async (c) => {
-          let q = sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", c.id).neq("author_id", me);
+          let q = sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", c.id).neq("author_id", meId);
           const since = readMap.get(c.id);
           if (since) q = q.gt("created_at", since);
           const { count } = await q;
@@ -58,7 +63,7 @@ export function FeedView() {
       setUnread(counts);
       try {
         const seen = localStorage.getItem(POSTS_SEEN_KEY);
-        let pq = sb.from("posts").select("id", { count: "exact", head: true }).neq("author_id", me);
+        let pq = sb.from("posts").select("id", { count: "exact", head: true }).neq("author_id", meId);
         if (seen) pq = pq.gt("created_at", seen);
         const { count } = await pq;
         if (!cancelled) setPostsUnread(seen ? count ?? 0 : 0);
@@ -67,25 +72,37 @@ export function FeedView() {
       }
     };
 
-    (async () => {
-      const me = (await sb.auth.getUser()).data.user?.id ?? null;
-      if (cancelled || !me) return;
+    // (Re)load the committees I'm in. Re-run on a membership change so the pills
+    // stay in sync when I join or LEAVE a committee — and if I just left the one
+    // I was viewing, fall back to Posts.
+    const loadCommittees = async () => {
+      if (!me) return;
       const { data: mem } = await sb.from("committee_members").select("committee_id").eq("user_id", me);
       const ids = ((mem ?? []) as { committee_id: string }[]).map((r) => r.committee_id);
-      let mine: MyCommittee[] = [];
+      let next: MyCommittee[] = [];
       if (ids.length) {
         const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("id", ids).order("position", { ascending: true });
-        mine = (cs ?? []) as MyCommittee[];
+        next = (cs ?? []) as MyCommittee[];
       }
       if (cancelled) return;
-      setCommittees(mine);
+      mine = next;
+      setCommittees(next);
+      setActive((prev) => (prev === "posts" || next.some((c) => c.slug === prev) ? prev : "posts"));
+      await computeUnread();
+    };
+
+    (async () => {
+      me = (await sb.auth.getUser()).data.user?.id ?? null;
+      if (cancelled || !me) return;
+      await loadCommittees();
+      if (cancelled) return;
       const want = new URLSearchParams(window.location.search).get("c");
       if (want && mine.some((c) => c.slug === want)) setActive(want);
-      await computeUnread(mine, me);
       channel = sb
         .channel("feed-unread")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeUnread(mine, me))
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, () => computeUnread(mine, me))
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeUnread())
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, () => computeUnread())
+        .on("postgres_changes", { event: "*", schema: "public", table: "committee_members", filter: `user_id=eq.${me}` }, () => loadCommittees())
         .subscribe();
     })();
 

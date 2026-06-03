@@ -72,6 +72,16 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     if (!error) setState("pending");
   };
 
+  const leaveSelf = async () => {
+    if (!supabase || !committeeId) return;
+    if (!window.confirm(`Leave ${committee.name}?`)) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("leave_committee", { cid: committeeId });
+    setBusy(false);
+    if (error) window.alert(error.message);
+    else setState("none");
+  };
+
   if (!lead) return null;
 
   return (
@@ -101,9 +111,14 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           Sign in to request to join
         </button>
       ) : state === "member" ? (
-        <p className="rounded-2xl border border-dashed border-primary/30 bg-card px-4 py-3 text-center text-sm font-medium text-primary">
-          ✓ You&rsquo;re on {committee.name} — open the chat above.
-        </p>
+        <div className="space-y-2">
+          <p className="rounded-2xl border border-dashed border-primary/30 bg-card px-4 py-3 text-center text-sm font-medium text-primary">
+            ✓ You&rsquo;re on {committee.name} — open the chat above.
+          </p>
+          <button onClick={leaveSelf} disabled={busy} className="press w-full rounded-xl bg-background py-2.5 text-xs font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50">
+            {busy ? "Leaving…" : `Leave ${committee.name}`}
+          </button>
+        </div>
       ) : state === "pending" ? (
         <p className="rounded-2xl border border-dashed border-primary/30 bg-card px-4 py-3 text-center text-sm font-medium text-primary">
           ✓ Request sent — an admin will review it.
