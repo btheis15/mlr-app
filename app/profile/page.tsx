@@ -59,11 +59,11 @@ export default function ProfilePage() {
         <ComingSoonCTA
           icon="👋"
           title="Member profiles are coming soon"
-          note="Sign-in, RSVP, chat, and shared photos land in the next update. For now, explore away."
+          note="Sign-in, RSVP, committee chat, and shared photos land in the next update. For now, explore away."
         />
         <ul className="space-y-2 text-sm text-foreground/70">
           <li className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border">
-            <span className="text-lg">💬</span> Resort chat — read along today
+            <span className="text-lg">💬</span> Committee chats — a private room per group
           </li>
           <li className="flex items-center gap-3 rounded-2xl bg-card p-3 ring-1 ring-border">
             <span className="text-lg">🎉</span> Family Fest — schedule, crew &amp; photos
@@ -89,7 +89,7 @@ export default function ProfilePage() {
         </header>
         <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
           <p className="text-sm text-foreground/70">
-            Add your name and email to post in chat, RSVP, and get alerts. Looking
+            Add your name and email to post, RSVP, and get alerts. Looking
             around stays open to everyone.
           </p>
           <button

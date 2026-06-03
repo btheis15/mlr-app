@@ -57,6 +57,24 @@ Profile → Admin → Members list works without it (names only, from the public
   `auth.audit_log_entries` (event + email + **IP**), powering Admin → Recent
   sign-ins. The app resolves each IP to an approximate city/country client-side.
 
+⚠️ **For committee chat, run [`0012`](migrations/0012_committees.sql),
+[`0013`](migrations/0013_committee_chat.sql), and
+[`0014`](migrations/0014_committee_reads.sql) in order.**
+- `0012` — makes committees real (they were seed-only): `committees` (seeded
+  from `lib/data.ts`), `committee_members`, and `committee_join_requests`, plus
+  the gated RPCs `request_to_join()`, `review_join_request()`,
+  `set_committee_member()` and the `is_committee_member()` helper. Membership
+  only moves through those RPCs; admins get a blanket override (they moderate
+  every room, and it bootstraps the first member).
+- `0013` — the private per-committee chat: `committee_messages` (+ inline
+  `reply_to_id`), `committee_message_media` (image/video/sticker/gif),
+  `committee_message_reactions`, `committee_message_mentions`. **The whole point
+  is the RLS:** read/post is allowed only if `is_committee_member()` — so a chat
+  is invisible to anyone not in that committee, enforced in the database. Realtime
+  is enabled on all four. Until it's run, the chat screen shows "coming soon".
+- `0014` — `committee_reads.last_read_at` per member, for the unread badge on
+  the committee's "Open chat" button. Each member reads/writes only their own row.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
