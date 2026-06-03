@@ -79,6 +79,11 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
   const bottomRef = useRef<HTMLDivElement>(null);
   const objectUrls = useRef<string[]>([]);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest isAdmin, for the realtime callbacks below — they capture loadAccess
+  // from an early render (when isAdmin was still resolving as false), so reading
+  // the live ref prevents transiently downgrading an admin's access.
+  const isAdminRef = useRef(isAdmin);
+  isAdminRef.current = isAdmin;
 
   const isMember = access === "member";
 
@@ -95,7 +100,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
       setAccess("guest");
       return;
     }
-    if (isAdmin) {
+    if (isAdminRef.current) {
       setAccess("member");
       return;
     }
