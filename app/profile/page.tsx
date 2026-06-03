@@ -171,13 +171,15 @@ export default function ProfilePage() {
         <ContactPaySettings />
       </CollapsibleSection>
 
+      {/* Alert composer self-gates: shows for app admins AND Family Fest leads. */}
+      <AdminAlertComposer />
+
       {isAdmin && (
         <CollapsibleSection
           title="Admin"
           icon="🛠️"
-          subtitle="Post alerts · manage members · sign-in activity · view as"
+          subtitle="Manage members · sign-in activity · view as"
         >
-          <AdminAlertComposer />
           <AdminMembers />
           <AdminSignins />
           <PreviewAs />

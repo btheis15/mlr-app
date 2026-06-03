@@ -75,6 +75,19 @@ Profile → Admin → Members list works without it (names only, from the public
 - `0014` — `committee_reads.last_read_at` per member, for the unread badge on
   the committee's "Open chat" button. Each member reads/writes only their own row.
 
+⚠️ **For role tiers + broadcast alerts, run
+[`0015`](migrations/0015_roles_and_alerts.sql).** Three member tiers:
+**App Admin** (`profiles.is_admin`, does everything) › **Committee Lead**
+(`committee_members.role = 'Lead'`) › **Member**. Leads can add/approve/remove
+members of *their* committee (the `review_join_request` / `set_committee_member`
+RPCs are now lead-aware; a lead can't remove another lead — only an app admin
+can); only app admins set leads (`set_committee_lead`). Also adds the
+`announcements` table (broadcast banner notices) — insert gated to
+`can_post_alerts()` = app admins **+ Family Fest leads** — with Realtime, and
+`alert_recipients()` (opted-in member emails, granted only to `service_role` for
+the mini's mailer). Until it's run, leads are app-admins-only and the alert
+composer just posts a device-local notice.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

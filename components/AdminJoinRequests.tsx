@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
+import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
 
 /**
- * Admins only: the pending join-request queue for one committee. Approve adds
- * the member (and lets them straight into the chat, live); reject closes the
- * request. Renders nothing for non-admins or when there's nothing pending, so
- * it's safe to drop onto the committee page for everyone. Backed by the gated
- * review_join_request() RPC (migration 0012).
+ * The pending join-request queue for one committee, shown to whoever can manage
+ * it — an **app admin** or this committee's **Lead** (migration 0015). Approve
+ * adds the member (and drops them straight into the chat, live); reject closes
+ * the request. Renders nothing for everyone else or when nothing's pending, so
+ * it's safe to drop onto the committee page. Backed by review_join_request().
  */
 interface Req {
   id: string;
@@ -23,6 +24,7 @@ interface Req {
 export function AdminJoinRequests({ slug, name }: { slug: string; name: string }) {
   const { isAdmin } = useIdentity();
   const [committeeId, setCommitteeId] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
   const [reqs, setReqs] = useState<Req[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -53,14 +55,17 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
 
   useEffect(() => {
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !isAdmin) return;
+    if (!isSupabaseConfigured || !sb) return;
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
     (async () => {
-      const { data: c } = await sb.from("committees").select("id").eq("slug", slug).maybeSingle();
-      const cid = (c as { id: string } | null)?.id;
+      const cid = await fetchCommitteeId(slug);
       if (!cid || cancelled) return;
       setCommitteeId(cid);
+      const manage = isAdmin || (await fetchMyCommitteeRole(cid)) === "Lead";
+      if (cancelled) return;
+      setCanManage(manage);
+      if (!manage) return;
       await load(cid);
       if (cancelled) return;
       channel = sb
@@ -82,7 +87,7 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
     setBusy(null);
   };
 
-  if (!isAdmin || !isSupabaseConfigured || reqs.length === 0) return null;
+  if (!canManage || !isSupabaseConfigured || reqs.length === 0) return null;
 
   return (
     <section className="space-y-2 rounded-2xl bg-accent/5 p-4 ring-1 ring-accent/20">

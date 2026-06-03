@@ -79,6 +79,23 @@ https://your-mini.your-tailnet.ts.net/health   →  {"ok":true}
 
 **7. Send me that `PUBLIC_URL`** — I'll point the app at it.
 
+## Alert emails (optional)
+
+The mini can also **email opted-in members** when an app admin or Family Fest
+lead posts a broadcast alert (`alert-mailer.js`, started by `server.js`). It's
+**off until you set** these in `.env`, then `npm install` + restart:
+
+```
+SUPABASE_SERVICE_ROLE_KEY=…   # ⚠️ powerful (bypasses RLS to read emails) — mini only, never the app
+GMAIL_USER=you@gmail.com
+GMAIL_APP_PASSWORD=…          # a Gmail *app password*: https://myaccount.google.com/apppasswords
+```
+
+It listens for new `announcements` (Supabase Realtime), pulls opted-in members'
+emails via the `alert_recipients()` RPC, and BCCs them via Gmail SMTP — stamping
+`email_sent_at` so an alert is never emailed twice. Blank vars = in-app banner
+only (no email). New deps: `@supabase/supabase-js`, `nodemailer`.
+
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
 - Photos are compressed by the app before upload; videos upload as-is (cap via `MAX_MB`).

@@ -145,3 +145,12 @@ app.listen(PORT, () => {
   console.log(`  max file   : ${MAX_MB} MB`);
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) console.warn("  ⚠ SUPABASE_URL / SUPABASE_ANON_KEY not set — uploads will be rejected.");
 });
+
+// Optional: email opted-in members when a broadcast alert is posted. No-op
+// unless the Gmail + service-role env vars are set (see alert-mailer.js).
+// Isolated in try/catch so a mailer hiccup can never take down uploads.
+try {
+  require("./alert-mailer").start().catch((e) => console.error("[mailer] start failed:", e && e.message));
+} catch (e) {
+  console.error("[mailer] not started:", e && e.message);
+}
