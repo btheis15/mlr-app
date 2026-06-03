@@ -5,11 +5,25 @@ import { type Session } from "@supabase/supabase-js";
 import type { User } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
+/**
+ * Admin "view as" preview. Device-local, UI-only: it changes what the app shows
+ * (guest privacy wall / member view), never the real Supabase session — so RLS
+ * and your actual identity are untouched. "member" keeps you signed in but hides
+ * admin tools; "guest" renders the app as a signed-out visitor.
+ */
+export type PreviewMode = "off" | "member" | "guest";
+const PREVIEW_KEY = "mlr-preview-as";
+
 interface IdentityValue {
   user: User | null;
   /** True when the signed-in user is an admin — strictly the database
-   *  `profiles.is_admin` flag (the single source of truth). */
+   *  `profiles.is_admin` flag (the single source of truth). Forced false while
+   *  previewing as a member/guest. */
   isAdmin: boolean;
+  /** Current admin "view as" preview (off unless an admin turned it on). */
+  previewMode: PreviewMode;
+  /** Switch the preview. Entering a preview is admin-only; exiting is always allowed. */
+  setPreviewMode: (mode: PreviewMode) => void;
   /** Patch the current user (display name / email-alerts) → writes `profiles`. */
   updateUser: (patch: Partial<User>) => void;
   /** Open the sign-in sheet on demand — call from any action that needs an
@@ -21,6 +35,8 @@ interface IdentityValue {
 const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
+  previewMode: "off",
+  setPreviewMode: () => {},
   updateUser: () => {},
   promptSignIn: () => {},
   signOut: () => {},
@@ -54,6 +70,17 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [adminFlag, setAdminFlag] = useState(false);
   const [prompting, setPrompting] = useState(false);
+  const [previewMode, setPreviewState] = useState<PreviewMode>("off");
+
+  // Restore a saved preview on mount (device-local, SSR-safe — read after mount).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PREVIEW_KEY);
+      if (saved === "member" || saved === "guest") setPreviewState(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     const sb = supabase;
@@ -113,15 +140,45 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (!user && isSupabaseConfigured) setPrompting(true);
   };
 
+  const setPreviewMode = (mode: PreviewMode) => {
+    // Entering a preview is admin-only; exiting ("off") is always allowed.
+    if (mode !== "off" && !adminFlag) return;
+    setPreviewState(mode);
+    try {
+      if (mode === "off") localStorage.removeItem(PREVIEW_KEY);
+      else localStorage.setItem(PREVIEW_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const signOut = async () => {
     if (supabase) await supabase.auth.signOut();
     setUser(null);
     setAdminFlag(false);
+    setPreviewState("off");
+    try {
+      localStorage.removeItem(PREVIEW_KEY);
+    } catch {
+      /* ignore */
+    }
   };
+
+  // Effective identity the app actually sees — overridden while previewing.
+  const effectiveUser = previewMode === "guest" ? null : user;
+  const effectiveAdmin = previewMode === "off" ? adminFlag : false;
 
   return (
     <IdentityContext.Provider
-      value={{ user, isAdmin: adminFlag, updateUser, promptSignIn, signOut }}
+      value={{
+        user: effectiveUser,
+        isAdmin: effectiveAdmin,
+        previewMode,
+        setPreviewMode,
+        updateUser,
+        promptSignIn,
+        signOut,
+      }}
     >
       {children}
       {prompting && !user && isSupabaseConfigured && (

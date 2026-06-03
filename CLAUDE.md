@@ -82,7 +82,11 @@ is the single source of truth for routes + labels + icons).
   [`0009`](supabase/migrations/0009_admin_remove_member.sql)), and
   `recent_signins()` (GoTrue audit log + IP, geolocated client-side —
   [`0011`](supabase/migrations/0011_admin_signin_log.sql)). Each section shows a
-  "run the migration" hint until its function exists.
+  "run the migration" hint until its function exists. Admins can also **view as**
+  a member or guest ([`PreviewAs`](components/PreviewAs.tsx) + floating
+  [`PreviewBanner`](components/PreviewBanner.tsx)) — a device-local, UI-only
+  `previewMode` override in `IdentityProvider` that re-renders the app as that
+  role (to check the privacy wall); it never touches the real Supabase session.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted local alerts), dismissible per-device.

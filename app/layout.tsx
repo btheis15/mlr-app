@@ -4,6 +4,7 @@ import "./globals.css";
 import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
 import { IdentityProvider } from "@/components/IdentityProvider";
+import { PreviewBanner } from "@/components/PreviewBanner";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
@@ -67,6 +68,7 @@ export default async function RootLayout({
             {children}
           </main>
           <TabBar />
+          <PreviewBanner />
           </IdentityProvider>
         </DemoDateProvider>
       </body>
