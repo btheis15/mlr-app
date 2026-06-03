@@ -48,7 +48,7 @@ type Pending =
   | { kind: "sticker"; id: string }
   | { kind: "gif"; gif: PickedGif };
 
-export function CommitteeChat({ slug, name, emoji }: { slug: string; name: string; emoji: string }) {
+export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: string; name: string; emoji: string; embedded?: boolean }) {
   const { user, isAdmin, promptSignIn } = useIdentity();
   const configured = isSupabaseConfigured;
 
@@ -393,10 +393,20 @@ export function CommitteeChat({ slug, name, emoji }: { slug: string; name: strin
     document.getElementById(`cmsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Wrap content in the full-screen ChatShell, or — when embedded in the Feed
+  // tab — a plain inline column (the Feed's pills are the nav, so no header/back).
+  const wrap = (subtitle: string, body: React.ReactNode) =>
+    embedded ? (
+      <div className="flex h-full min-h-0 flex-col">{body}</div>
+    ) : (
+      <ChatShell slug={slug} name={name} emoji={emoji} subtitle={subtitle}>
+        {body}
+      </ChatShell>
+    );
+
   // ── Gates (non-member states) ───────────────────────────────────────────────
   if (access !== "member") {
-    return (
-      <ChatShell slug={slug} name={name} emoji={emoji} subtitle="Committee chat">
+    return wrap("Committee chat", (
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="w-full max-w-sm space-y-4 rounded-2xl bg-card p-6 text-center ring-1 ring-border">
             <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
@@ -431,8 +441,7 @@ export function CommitteeChat({ slug, name, emoji }: { slug: string; name: strin
             )}
           </div>
         </div>
-      </ChatShell>
-    );
+    ));
   }
 
   // ── The chat ─────────────────────────────────────────────────────────────────
@@ -444,8 +453,8 @@ export function CommitteeChat({ slug, name, emoji }: { slug: string; name: strin
     else dayGroups.push({ day: k, items: [m] });
   }
 
-  return (
-    <ChatShell slug={slug} name={name} emoji={emoji} subtitle={`${members.length} member${members.length === 1 ? "" : "s"}`}>
+  return wrap(`${members.length} member${members.length === 1 ? "" : "s"}`, (
+    <>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3">
         {loaded && messages.length === 0 && (
           <p className="mt-10 text-center text-sm text-foreground/50">No messages yet — say hi to the {name} crew! 👋</p>
@@ -487,7 +496,7 @@ export function CommitteeChat({ slug, name, emoji }: { slug: string; name: strin
       </div>
 
       {/* Composer */}
-      <div className="shrink-0 border-t border-border bg-card" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="shrink-0 border-t border-border bg-card" style={embedded ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}>
         {status && <p className="px-4 pt-2 text-center text-xs font-medium text-accent">{status}</p>}
 
         {replyTo && (
@@ -576,8 +585,8 @@ export function CommitteeChat({ slug, name, emoji }: { slug: string; name: strin
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatarUrl} onClose={() => setMemberSheet(null)} />
       )}
-    </ChatShell>
-  );
+    </>
+  ));
 }
 
 // Full-screen conversation shell: a back button + committee header, then the
