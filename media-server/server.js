@@ -29,6 +29,7 @@ const cors = require("cors");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
@@ -129,12 +130,31 @@ async function requireUser(req, res, next) {
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
 app.post("/upload", requireUser, (req, res) => {
-  upload.single("file")(req, res, (err) => {
+  // Transcoding a big video is synchronous, so give the request room to finish
+  // (the response carries the final URL). Photos return effectively instantly.
+  req.setTimeout(20 * 60 * 1000);
+  upload.single("file")(req, res, async (err) => {
     if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
     if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
-    const rel = path.relative(MEDIA_DIR, req.file.path).split(path.sep).join("/");
-    console.log(`[upload] saved ${rel} (${req.file.size} bytes)`);
-    res.json({ url: `${PUBLIC_URL}/f/${rel}`, name: req.file.filename, path: rel });
+
+    // Videos → normalize to a web-friendly H.264 MP4 (≤1080p). Photos pass
+    // through untouched. Never fatal: on any hiccup we serve the original file.
+    let served = req.file.path;
+    try {
+      const r = await maybeTranscode(req.file.path, req.file.mimetype);
+      served = r.path;
+      if (r.transcoded) console.log(`[transcode] ${req.file.filename} → ${path.basename(served)}`);
+      else if (r.reason) console.log(`[transcode] kept original (${r.reason})`);
+    } catch (e) {
+      console.error(`[transcode] error, keeping original: ${e && e.message}`);
+      served = req.file.path;
+    }
+
+    const rel = path.relative(MEDIA_DIR, served).split(path.sep).join("/");
+    let size = req.file.size;
+    try { size = fs.statSync(served).size; } catch {}
+    console.log(`[upload] saved ${rel} (${size} bytes)`);
+    res.json({ url: `${PUBLIC_URL}/f/${rel}`, name: path.basename(served), path: rel });
   });
 });
 
@@ -144,6 +164,14 @@ app.listen(PORT, () => {
   console.log(`  media dir  : ${MEDIA_DIR}`);
   console.log(`  max file   : ${MAX_MB} MB`);
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) console.warn("  ⚠ SUPABASE_URL / SUPABASE_ANON_KEY not set — uploads will be rejected.");
+  if (!TRANSCODE_ENABLED) {
+    console.log("  video      : transcoding OFF (VIDEO_TRANSCODE=off)");
+  } else {
+    ffmpegAvailable().then((ok) => {
+      if (ok) console.log(`  video      : transcoding ON (H.264 MP4, ≤${MAX_LONG_EDGE}px, crf ${CRF})`);
+      else console.warn("  ⚠ video    : ffmpeg/ffprobe not found — videos stored as-is. Install with: brew install ffmpeg");
+    });
+  }
 });
 
 // Optional: email opted-in members when a broadcast alert is posted. No-op
