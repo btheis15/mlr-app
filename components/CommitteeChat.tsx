@@ -47,13 +47,16 @@ type Pending =
   | { kind: "sticker"; id: string }
   | { kind: "gif"; gif: PickedGif };
 
-export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: string; name: string; emoji: string; embedded?: boolean }) {
+export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; embedded?: boolean; knownMember?: boolean }) {
   const { user, isAdmin, promptSignIn } = useIdentity();
   const configured = isSupabaseConfigured;
 
   const [uid, setUid] = useState<string | null>(null);
   const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [access, setAccess] = useState<Access>(configured ? "loading" : "coming-soon");
+  // When the caller already knows you're a member (the Feed only lists rooms you
+  // belong to), open straight into the chat — no loading/lock flash on switch.
+  // loadAccess still runs and self-corrects in the rare case it's wrong.
+  const [access, setAccess] = useState<Access>(configured ? (knownMember ? "member" : "loading") : "coming-soon");
   const [requesting, setRequesting] = useState(false);
 
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -453,6 +456,18 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
       </ChatShell>
     );
 
+  // While access is still resolving — including the brief moment after you flip
+  // to another room — show a neutral spinner, never the lock card. (The gate
+  // below uses a 🔒 for every non-member state, so falling through to it here
+  // made a lock flash on every chat switch.)
+  if (access === "loading") {
+    return wrap("Committee chat", (
+      <div className="flex flex-1 items-center justify-center px-6 py-10">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" aria-label="Loading" />
+      </div>
+    ));
+  }
+
   // ── Gates (non-member states) ───────────────────────────────────────────────
   if (access !== "member") {
     return wrap("Committee chat", (
@@ -477,8 +492,6 @@ export function CommitteeChat({ slug, name, emoji, embedded = false }: { slug: s
                 <h2 className="text-lg font-bold">Request sent ⏳</h2>
                 <p className="text-sm text-foreground/60">An admin will approve you for the {name} chat. You&rsquo;ll drop right in once they do.</p>
               </>
-            ) : access === "loading" ? (
-              <p className="text-sm text-foreground/50">Loading…</p>
             ) : (
               <>
                 <h2 className="text-lg font-bold">Join {name} to chat</h2>

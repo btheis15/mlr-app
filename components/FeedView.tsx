@@ -32,7 +32,6 @@ export function FeedView() {
   const [active, setActive] = useState<string>("posts");
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [postsUnread, setPostsUnread] = useState(0);
-  const [chatH, setChatH] = useState<string | number>("60dvh");
   const chatBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -116,37 +115,39 @@ export function FeedView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email]);
 
-  // Size the inline committee chat to the space between the pills and the fixed
-  // TabBar, and shrink to the visible area when the iOS keyboard opens — so the
-  // composer is never stranded behind the TabBar or the keyboard. (Replaces a
-  // guessed calc() that ignored the safe-area inset.)
+  // The active committee chat is a fixed layer pinned to the *visual* viewport
+  // (see the JSX below), not an inline box in the scrolling page. iOS won't let
+  // an in-flow composer stay put when the keyboard opens — the page scrolls and
+  // the bottom-fixed TabBar strands mid-screen. Sizing this layer to the visible
+  // area (its height, shifted by its offset) keeps the composer locked just
+  // above the keyboard with no page movement; when the keyboard is closed we
+  // leave room for the TabBar so it stays reachable.
   useEffect(() => {
     if (active === "posts") return;
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
-    const measure = () => {
-      const el = chatBoxRef.current;
+    const el = chatBoxRef.current;
+    const apply = () => {
       if (!el) return;
-      const top = el.getBoundingClientRect().top;
       const innerH = window.innerHeight;
       const visH = vv ? vv.height : innerH;
       const keyboardOpen = innerH - visH > 120;
-      const tabBar = document.querySelector('nav[class*="fixed"]') as HTMLElement | null;
-      const tabH = keyboardOpen ? 0 : tabBar?.getBoundingClientRect().height ?? 60;
-      const bottom = vv ? vv.offsetTop + vv.height : innerH;
-      setChatH(Math.max(260, bottom - top - tabH - 6));
+      const tabBar = document.querySelector("nav.fixed") as HTMLElement | null;
+      const tabH = keyboardOpen ? 0 : tabBar?.getBoundingClientRect().height ?? 64;
+      el.style.height = `${visH - tabH}px`;
+      el.style.transform = `translateY(${vv ? vv.offsetTop : 0}px)`;
     };
-    measure();
-    const t = setTimeout(measure, 60);
-    window.addEventListener("resize", measure);
-    vv?.addEventListener("resize", measure);
-    vv?.addEventListener("scroll", measure);
+    apply();
+    const t = setTimeout(apply, 60);
+    window.addEventListener("resize", apply);
+    vv?.addEventListener("resize", apply);
+    vv?.addEventListener("scroll", apply);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("resize", measure);
-      vv?.removeEventListener("resize", measure);
-      vv?.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", apply);
+      vv?.removeEventListener("resize", apply);
+      vv?.removeEventListener("scroll", apply);
     };
-  }, [active, committees.length]);
+  }, [active]);
 
   const select = (key: string) => {
     setActive(key);
@@ -164,24 +165,40 @@ export function FeedView() {
 
   const activeCommittee = committees.find((c) => c.slug === active);
 
+  const pills = committees.length > 0 && (
+    <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-background px-4 pb-2 pt-1">
+      <Pill label="Posts" active={active === "posts"} badge={postsUnread} onClick={() => select("posts")} />
+      {committees.map((c) => (
+        <Pill key={c.slug} label={c.name} emoji={c.emoji} active={active === c.slug} badge={unread[c.slug] ?? 0} onClick={() => select(c.slug)} />
+      ))}
+    </div>
+  );
+
+  // Active committee chat → a fixed, visual-viewport-pinned conversation that
+  // covers the page (and the TabBar) so iOS keyboard behaviour can't shove
+  // anything around. The pills ride along as its header so you can still switch
+  // rooms or tap Posts to drop back to the feed. It renders no AnnouncementBanner
+  // and opens no extra realtime channel (the v1 overlay's duplicate banner is
+  // what crashed iOS Safari — this layer is layout-only).
+  if (active !== "posts" && activeCommittee) {
+    return (
+      <div
+        ref={chatBoxRef}
+        className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background"
+        style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}
+      >
+        {pills}
+        <div className="min-h-0 flex-1">
+          <CommitteeChat key={activeCommittee.slug} slug={activeCommittee.slug} name={activeCommittee.name} emoji={activeCommittee.emoji} embedded knownMember />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 pt-1">
-      {committees.length > 0 && (
-        <div className="sticky top-0 z-10 -mx-4 flex items-center gap-1.5 overflow-x-auto border-b border-border bg-background px-4 pb-2 pt-1">
-          <Pill label="Posts" active={active === "posts"} badge={postsUnread} onClick={() => select("posts")} />
-          {committees.map((c) => (
-            <Pill key={c.slug} label={c.name} emoji={c.emoji} active={active === c.slug} badge={unread[c.slug] ?? 0} onClick={() => select(c.slug)} />
-          ))}
-        </div>
-      )}
-
-      {active !== "posts" && activeCommittee ? (
-        <div ref={chatBoxRef} style={{ height: chatH }} className="overflow-hidden rounded-2xl ring-1 ring-border">
-          <CommitteeChat key={activeCommittee.slug} slug={activeCommittee.slug} name={activeCommittee.name} emoji={activeCommittee.emoji} embedded />
-        </div>
-      ) : (
-        <PostsView seed={POSTS} />
-      )}
+      {committees.length > 0 && <div className="sticky top-0 z-10 -mx-4">{pills}</div>}
+      <PostsView seed={POSTS} />
     </div>
   );
 }
