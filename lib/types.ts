@@ -29,12 +29,19 @@ export interface Announcement {
 
 /** The signed-in guest. Identity is name + email for now (no verification yet);
  *  a one-time-code / magic-link step is the planned next layer. */
+/** What a member wants push notifications for (per-user; see migration 0019). */
+export type PushLevel = "all" | "mentions" | "alerts" | "off";
+
 export interface User {
   name: string;
   email: string;
   /** Opt-in: email me when an admin pushes an alert. (Sending happens
    *  server-side once a mail provider is wired up.) */
   emailAlerts: boolean;
+  /** Push-notification level — what triggers a notification on this account.
+   *  The actual per-device subscription lives in `push_subscriptions`; this is
+   *  the preference the mini's push-sender filters on. Default "off". */
+  pushLevel: PushLevel;
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }

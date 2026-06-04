@@ -146,6 +146,29 @@ These are built UI-first with the swap point isolated to one module each:
 A single backend (e.g. Supabase: email OTP auth + Postgres + realtime, or
 Vercel Postgres/KV + Resend + web-push) can cover all of these.
 
+**Push notifications (shipped).** Web push for chat messages + broadcast alerts,
+on Android *and* iOS (iOS requires the app added to the Home Screen / standalone
+PWA — iOS 16.4+). Pieces: a minimal [`public/sw.js`](public/sw.js) service worker
+(push + notificationclick only, no caching), client helpers in
+[`lib/push.ts`](lib/push.ts) (permission + `pushManager.subscribe` →
+`push_subscriptions`), a per-user level in Profile → Notifications
+([`PushToggle`](components/PushToggle.tsx): all / mentions / alerts / off, stored
+as `profiles.push_level`), and the sender on the mini
+([`media-server/push-sender.js`](media-server/push-sender.js)) that listens to
+Supabase realtime and delivers via the `web-push` lib. **Env:**
+`NEXT_PUBLIC_VAPID_PUBLIC_KEY` in the app; `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`
+/ `VAPID_SUBJECT` (+ existing `SUPABASE_SERVICE_ROLE_KEY`, `APP_URL`) on the mini.
+**Data model:** migration [`0019`](supabase/migrations/0019_push_notifications.sql)
+adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
+of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
+without them.
+
+**Mac-mini media server** ([`media-server/`](media-server/)) also now
+**transcodes uploaded videos** to web-friendly ≤1080p H.264 MP4 via `ffmpeg`
+([`transcode.js`](media-server/transcode.js)) — photos are left full quality —
+and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
+[`push-sender.js`](media-server/push-sender.js) side jobs alongside uploads.
+
 ## Conventions
 
 - **Theme** — all colors are CSS variables in the `@theme` block of

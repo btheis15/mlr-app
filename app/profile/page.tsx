@@ -14,6 +14,7 @@ import { Avatar } from "@/components/Avatar";
 import { AvatarCropper } from "@/components/AvatarCropper";
 import { ContactPaySettings } from "@/components/ContactPaySettings";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { PushToggle } from "@/components/PushToggle";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -138,7 +139,13 @@ export default function ProfilePage() {
       <CollapsibleSection
         title="Notifications"
         icon="🔔"
-        subtitle={user.emailAlerts ? "Email alerts on" : "Email alerts off"}
+        subtitle={
+          user.pushLevel && user.pushLevel !== "off"
+            ? "Push on"
+            : user.emailAlerts
+              ? "Email alerts on"
+              : "Off"
+        }
       >
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
           <span className="min-w-0">
@@ -155,10 +162,7 @@ export default function ProfilePage() {
             className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
           />
         </label>
-        <p className="px-1 text-xs text-foreground/40">
-          Android push notifications can be enabled here once the backend is in
-          place; on iOS, alerts come by email.
-        </p>
+        <PushToggle />
       </CollapsibleSection>
 
       <CollapsibleSection
