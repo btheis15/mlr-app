@@ -61,7 +61,7 @@ export function PushToggle() {
       } else {
         setMsg(
           isIos() && !isStandalone()
-            ? "On iPhone, add the app to your Home Screen first, then turn this on."
+            ? "On iPhone/iPad, add the app to your Home Screen first, then turn this on."
             : "Couldn't turn on notifications — allow them when prompted (or in your browser settings).",
         );
       }
@@ -112,7 +112,7 @@ export function PushToggle() {
       {msg && <p className="px-1 text-xs text-accent">{msg}</p>}
       {needsInstall && !msg && (
         <p className="px-1 text-xs text-foreground/45">
-          On iPhone, add the app to your Home Screen (Share → Add to Home Screen) so notifications can reach you.
+          On iPhone/iPad, add the app to your Home Screen (Share → Add to Home Screen) so notifications can reach you.
         </p>
       )}
     </div>

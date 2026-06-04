@@ -24,7 +24,15 @@ export function isPushSupported(): boolean {
 
 export function isIos(): boolean {
   if (typeof navigator === "undefined") return false;
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const ua = navigator.userAgent;
+  // iPhone/iPod and pre-iPadOS-13 iPads carry a clear token. Since iPadOS 13,
+  // Safari on iPad sends a desktop "Macintosh" UA with NO "iPad" token, so also
+  // treat a Mac-looking UA that reports a touchscreen as iPadOS. (Real Macs
+  // report maxTouchPoints 0, so desktop Safari/Chrome on macOS isn't misdetected.)
+  return (
+    /iphone|ipad|ipod/i.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
 }
 
 // Installed to the Home Screen? On iOS this is required for push to work at all.

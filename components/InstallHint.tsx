@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isIos, isStandalone } from "@/lib/push";
 
 /**
  * iOS "Add to Home Screen" nudge. Shows a one-time dismissible card on mobile
@@ -12,13 +13,11 @@ export function InstallHint() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-    // `standalone` only exists on iOS Safari; true when already installed.
-    const standalone =
-      "standalone" in window.navigator &&
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    // Reuse the shared detection in lib/push so the iPadOS-13+ "Macintosh UA"
+    // case is covered here too — otherwise this banner never shows on iPad Safari
+    // and iPad users get no nudge to install (a prerequisite for push on iOS).
     const dismissed = localStorage.getItem("install-hint-dismissed") === "1";
-    if (isIos && !standalone && !dismissed) setShow(true);
+    if (isIos() && !isStandalone() && !dismissed) setShow(true);
   }, []);
 
   if (!show) return null;
