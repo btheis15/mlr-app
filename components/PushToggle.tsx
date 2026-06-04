@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
-import { enablePush, disablePush, isPushSupported, isStandalone, isIos } from "@/lib/push";
+import { enablePush, disablePush, ensureServiceWorker, isPushSupported, isStandalone, isIos } from "@/lib/push";
 import type { PushLevel } from "@/lib/types";
 
 const LEVELS: { value: PushLevel; label: string; desc: string }[] = [
@@ -31,6 +31,9 @@ export function PushToggle() {
     setSupported(isPushSupported());
     // Only nag about installing on iOS-in-browser (where push can't work yet).
     setNeedsInstall(isIos() && !isStandalone());
+    // Pre-warm the service worker so it's already active by the time the user
+    // taps — on iOS this keeps subscribe() inside the live user gesture.
+    if (isPushSupported()) void ensureServiceWorker();
     // If the account wants notifications and the browser already granted
     // permission, make sure THIS device is registered (e.g. a new device or
     // after the SW updated). Silent — no prompt, since permission exists.
@@ -62,8 +65,9 @@ export function PushToggle() {
             : "Couldn't turn on notifications — allow them when prompted (or in your browser settings).",
         );
       }
-    } catch {
-      setMsg("Couldn't turn on notifications on this device.");
+    } catch (e) {
+      const name = e instanceof Error && e.name ? ` (${e.name})` : "";
+      setMsg(`Couldn't turn on notifications on this device${name}.`);
     } finally {
       setBusy(false);
     }

@@ -51,19 +51,42 @@ async function getRegistration(): Promise<ServiceWorkerRegistration> {
 }
 
 /**
+ * Register the service worker AHEAD of the user's tap (call this on mount). On
+ * iOS this is what keeps subscribe() inside the live user gesture: by the time
+ * the user taps a level, `navigator.serviceWorker.ready` resolves instantly
+ * instead of waiting for a first-time install+activate — so the transient user
+ * activation is still valid when we call pushManager.subscribe(). Best-effort.
+ */
+export async function ensureServiceWorker(): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  try {
+    await getRegistration();
+  } catch {
+    /* best-effort pre-warm; enablePush() will register again if needed */
+  }
+}
+
+/**
  * Ask permission and subscribe THIS device, saving the subscription to Supabase.
  * Returns true if the device is now subscribed; false if permission was denied
  * or push isn't available. Throws only on unexpected failures.
  */
 export async function enablePush(): Promise<boolean> {
   if (!isPushSupported() || !supabase) return false;
+  if (Notification.permission === "denied") return false;
+
+  // iOS Safari only honors Notification.requestPermission() while the user
+  // gesture is still "live" — i.e. BEFORE any await. So ask FIRST, then do the
+  // awaited service-worker registration + subscribe. Asking after awaiting the
+  // SW registration (as we used to) made the toggle throw on iPhone: by then the
+  // gesture had expired, so the call was rejected. Android is unaffected.
+  if (Notification.permission !== "granted") {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return false;
+  }
+
   await getRegistration();
   const reg = await navigator.serviceWorker.ready;
-
-  if (Notification.permission === "denied") return false;
-  const permission =
-    Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-  if (permission !== "granted") return false;
 
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
