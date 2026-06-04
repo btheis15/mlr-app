@@ -296,6 +296,17 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending.length, showStickers, showGif, replyTo]);
 
+  // Grow the composer to fit what you type (one line up to a cap), so a line is
+  // never clipped, and snap it back to one line after sending. Re-runs when the
+  // chat first mounts so the empty box is sized right from the start.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, isMember]);
+
   const msgById = useMemo(() => {
     const m = new Map<string, Msg>();
     for (const x of messages) m.set(x.id, x);
@@ -636,12 +647,14 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
             value={text}
             onChange={(e) => onComposerChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder={`Message ${name}…`}
+            placeholder="Message…"
             rows={1}
             enterKeyHint="send"
             // text-base (≥16px) is required: iOS Safari auto-zooms any focused
             // input under 16px, which lurches the whole layout when you tap to type.
-            className="max-h-28 min-h-9 flex-1 resize-none rounded-2xl bg-background px-3 py-2 text-base ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            // Height is auto-grown to fit the content (see the effect above) so a
+            // line is never clipped; leading-snug keeps a single line tidy.
+            className="max-h-28 min-h-10 flex-1 resize-none overflow-y-auto rounded-2xl bg-background px-3 py-2 text-base leading-snug ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
           <button onClick={() => void send()} disabled={!canSend} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40" aria-label="Send">
             {sending ? "…" : "➤"}
