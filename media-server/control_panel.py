@@ -301,13 +301,16 @@ class App:
             "off" if t.returncode == 0 else "?")
         cnt = size = 0
         try:
-            for f in os.listdir(MEDIA_DIR):
-                if f.startswith("."):
-                    continue
-                fp = os.path.join(MEDIA_DIR, f)
-                if os.path.isfile(fp):
-                    cnt += 1
-                    size += os.path.getsize(fp)
+            for root, dirs, files in os.walk(MEDIA_DIR):
+                dirs[:] = [x for x in dirs if not x.startswith(".")]
+                for f in files:
+                    if f.startswith("."):
+                        continue
+                    try:
+                        size += os.path.getsize(os.path.join(root, f))
+                        cnt += 1
+                    except OSError:
+                        pass
         except OSError:
             pass
         d["media_count"] = cnt
