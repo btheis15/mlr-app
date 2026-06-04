@@ -25,6 +25,25 @@ you tidy old files away. To do that tidy on the mini (safe, no DB changes):
 MEDIA_DIR=/Users/brian/mlr-app/media-server/media bash scripts/organize-legacy.sh
 ```
 
+## Video transcoding
+
+Uploaded **videos** are normalized to a web-friendly **H.264 MP4 capped at ~1080p**
+(`transcode.js`), so iPhone HEVC/`.mov` clips play on every device and 4K clips
+don't balloon the disk or everyone's cell data. **Photos are left untouched**
+(full quality). A clip that's already H.264 MP4 within the cap is passed through
+as-is — we never needlessly re-encode an already-good video, and we never upscale.
+
+Requires **ffmpeg** on the mini:
+
+```bash
+brew install ffmpeg
+```
+
+If ffmpeg isn't installed, uploads still work — videos are just stored as-is
+(the server logs a warning at startup). Tuning knobs (`VIDEO_CRF`,
+`VIDEO_MAX_LONG_EDGE`, `VIDEO_PRESET`, `VIDEO_TRANSCODE=off`, …) are in
+`.env.example`. After pulling this update on the mini, just restart the server.
+
 Uploads are gated to signed-in family members (the Supabase token is verified
 against the cloud project). Read access is public (so anyone with the app link
 can view the photos).
