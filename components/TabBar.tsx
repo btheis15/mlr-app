@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 
@@ -18,9 +19,24 @@ export function TabBar() {
   // discoverable from anywhere in the resort app.
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
 
+  // Drop the tab bar out of the way while the on-screen keyboard is open. On iOS
+  // a `position: fixed` bottom bar gets stranded mid-screen between the field and
+  // the keyboard (it's anchored to the layout viewport, which doesn't shrink), so
+  // we slide it off-screen whenever the visual viewport reports a keyboard.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const onResize = () => setKeyboardOpen(window.innerHeight - vv.height > 120);
+    onResize();
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur"
+      aria-hidden={keyboardOpen}
+      className={`fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur transition-transform duration-200 ${keyboardOpen ? "translate-y-full" : ""}`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch justify-around">
