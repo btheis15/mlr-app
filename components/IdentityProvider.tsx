@@ -63,6 +63,7 @@ interface ProfileRow {
   display_name: string | null;
   avatar_url: string | null;
   email_alerts: boolean;
+  push_level: import("@/lib/types").PushLevel | null;
   is_admin: boolean;
 }
 
@@ -115,14 +116,14 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const email = session.user.email ?? "";
       const { data } = await sb
         .from("profiles")
-        .select("display_name, avatar_url, email_alerts, is_admin")
+        .select("display_name, avatar_url, email_alerts, push_level, is_admin")
         .eq("id", session.user.id)
         .maybeSingle();
       if (!active) return;
       const profile = data as ProfileRow | null;
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
-      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, avatarUrl: profile?.avatar_url ?? null });
+      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushLevel: profile?.push_level ?? "off", avatarUrl: profile?.avatar_url ?? null });
       setAdminFlag(Boolean(profile?.is_admin));
     };
 
@@ -147,6 +148,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.display_name = patch.name;
     if (patch.emailAlerts !== undefined) row.email_alerts = patch.emailAlerts;
+    if (patch.pushLevel !== undefined) row.push_level = patch.pushLevel;
     if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
     if (Object.keys(row).length) {
       await sb.from("profiles").update(row).eq("id", id);
@@ -203,7 +205,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     previewMode === "guest"
       ? null
       : previewMode === "member" && previewMember
-        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, avatarUrl: previewMember.avatarUrl }
+        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushLevel: user?.pushLevel ?? "off", avatarUrl: previewMember.avatarUrl }
         : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
 

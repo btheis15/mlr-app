@@ -122,7 +122,35 @@ only (no email). New deps: `@supabase/supabase-js`, `nodemailer`. Note: Supabase
 doesn't expose its own Auth SMTP for sending app email, so the mailer connects
 with the same credentials directly.
 
+## Push notifications (optional)
+
+The mini can also send **web-push notifications** for new chat messages and
+broadcast alerts (`push-sender.js`, started by `server.js`), filtered by each
+member's level in the app (Profile → Notifications: all / mentions / alerts /
+off). Works on Android, and on iPhones that have **added the app to the Home
+Screen** (iOS 16.4+).
+
+**Off until you set the VAPID keys.** Generate them once (after `npm install`):
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Then in `.env` (and restart):
+
+```
+SUPABASE_SERVICE_ROLE_KEY=…    # ⚠️ same powerful key as the mailer — mini only
+VAPID_PUBLIC_KEY=…             # ALSO set in the app as NEXT_PUBLIC_VAPID_PUBLIC_KEY (must match)
+VAPID_PRIVATE_KEY=…
+VAPID_SUBJECT=mailto:alerts@yourdomain.com
+APP_URL=https://mlr-app-omega.vercel.app   # deep links + notification icon
+```
+
+It listens for new `committee_messages` + `announcements` (Supabase Realtime),
+reads `profiles.push_level` + `push_subscriptions`, and delivers via `web-push`,
+pruning dead subscriptions. Requires migration `0019`. New dep: `web-push`.
+
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
-- Photos are compressed by the app before upload; videos upload as-is (cap via `MAX_MB`).
+- The server doesn't touch photos (the app may downscale very large ones before upload); **videos are transcoded** to ≤1080p H.264 MP4 (needs `ffmpeg`; see *Video transcoding*).
 - Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health`.

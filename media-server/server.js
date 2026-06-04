@@ -182,3 +182,12 @@ try {
 } catch (e) {
   console.error("[mailer] not started:", e && e.message);
 }
+
+// Optional: web-push notifications for chat messages + alerts. No-op unless the
+// VAPID + service-role env vars are set (see push-sender.js). Also isolated so a
+// push hiccup can never take down uploads.
+try {
+  require("./push-sender").start().catch((e) => console.error("[push] start failed:", e && e.message));
+} catch (e) {
+  console.error("[push] not started:", e && e.message);
+}
