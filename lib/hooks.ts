@@ -28,6 +28,32 @@ export function useBusyAction() {
 }
 
 /**
+ * A debounced scheduler for coalescing bursts (e.g. a flurry of realtime row
+ * events into one refetch). Returns `[schedule, cancel]`: `schedule(fn)` runs
+ * `fn` after `delay` ms, replacing any pending call; `cancel()` drops a pending
+ * call (use it in effect cleanup so a stale callback can't fire after a
+ * re-subscribe/unmount). The timer is also cleared automatically on unmount.
+ */
+export function useDebouncedCallback(delay: number): [(fn: () => void) => void, () => void] {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = useCallback(() => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+  useEffect(() => cancel, [cancel]);
+  const schedule = useCallback(
+    (fn: () => void) => {
+      cancel();
+      timer.current = setTimeout(fn, delay);
+    },
+    [cancel, delay],
+  );
+  return [schedule, cancel];
+}
+
+/**
  * Form feedback for a save/submit action: a `pending` flag plus a transient
  * `status` message that auto-dismisses (and is cleaned up on unmount, so no
  * stray timers). `show(msg, ms)` sets the message — pass `ms = 0` to make it

@@ -10,6 +10,9 @@ import { GifPicker, type PickedGif } from "@/components/GifPicker";
 import { STICKERS, StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { fetchJoinState } from "@/lib/roles";
+import { useDebouncedCallback } from "@/lib/hooks";
+import { toggleReaction, reactionCounts } from "@/lib/reactions";
+import { Lightbox } from "@/components/Lightbox";
 import { formatDayHeading, formatClock, groupByDay, plural } from "@/lib/format";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
@@ -86,7 +89,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   // drawer/banner has already changed the layout (which would misread).
   const atBottomRef = useRef(true);
   const objectUrls = useRef<string[]>([]);
-  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debounceRefetch, cancelRefetch] = useDebouncedCallback(120);
   // Latest isAdmin, for the realtime callbacks below — they capture loadAccess
   // from an early render (when isAdmin was still resolving as false), so reading
   // the live ref prevents transiently downgrading an admin's access.
@@ -138,10 +141,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
       await loadAccess(cid);
       if (cancelled) return;
 
-      const scheduleRefetch = () => {
-        if (refetchTimer.current) clearTimeout(refetchTimer.current);
-        refetchTimer.current = setTimeout(() => void refetchMessages(cid), 120);
-      };
+      const scheduleRefetch = () => debounceRefetch(() => void refetchMessages(cid));
       channel = sb
         .channel(`committee-chat-${slug}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_messages", filter: `committee_id=eq.${cid}` }, scheduleRefetch)
@@ -154,7 +154,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     })();
     return () => {
       cancelled = true;
-      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      cancelRefetch();
       if (channel) sb.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -410,14 +410,9 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
 
   const react = async (messageId: string, emoji: string) => {
     setReactingId(null);
-    const sb = supabase;
-    if (!sb || !uid) return;
+    if (!supabase || !uid) return;
     const mine = messages.find((m) => m.id === messageId)?.reactions.find((r) => r.userId === uid)?.emoji ?? null;
-    if (mine === emoji) {
-      await sb.from("committee_message_reactions").delete().eq("message_id", messageId).eq("user_id", uid);
-    } else {
-      await sb.from("committee_message_reactions").upsert({ message_id: messageId, user_id: uid, emoji }, { onConflict: "message_id,user_id" });
-    }
+    await toggleReaction({ table: "committee_message_reactions", idColumn: "message_id", itemId: messageId, userId: uid, emoji, current: mine });
     if (committeeId) await refetchMessages(committeeId);
   };
 
@@ -641,12 +636,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
         </div>
       </div>
 
-      {lightbox && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/90 p-4 scrim-in" onClick={() => setLightbox(null)} role="dialog" aria-modal="true">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightbox} alt="" className="max-h-full max-w-full object-contain pop-panel" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} z="z-[55]" />}
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatarUrl} onClose={() => setMemberSheet(null)} />
       )}
@@ -759,8 +749,7 @@ function MessageRow({
     setDx(0);
   };
 
-  const counts: Record<string, number> = {};
-  for (const r of m.reactions) counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
+  const counts = reactionCounts(m.reactions);
   const mineEmoji = m.reactions.find((r) => r.userId === uid)?.emoji ?? null;
   const onlySticker = m.media.length === 1 && (m.media[0].type === "sticker" || m.media[0].type === "gif") && !m.text;
 
@@ -823,9 +812,9 @@ function MessageRow({
           </span>
         </div>
 
-        {Object.keys(counts).length > 0 && (
+        {counts.length > 0 && (
           <div className={`mt-0.5 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
-            {Object.entries(counts).map(([e, c]) => (
+            {counts.map(([e, c]) => (
               <button key={e} onClick={() => onReact(e)} className={`rounded-full px-1.5 py-0.5 text-[11px] ring-1 ${mineEmoji === e ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}>
                 {e} {c}
               </button>

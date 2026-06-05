@@ -7,9 +7,11 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { dayKey, formatDayHeading, formatClock, toDatetimeLocal, groupByDay } from "@/lib/format";
 import { uploadToMini, compressImage } from "@/lib/media";
-import { useMediaPicker } from "@/lib/hooks";
+import { useMediaPicker, useDebouncedCallback } from "@/lib/hooks";
+import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
+import { Lightbox } from "@/components/Lightbox";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -87,10 +89,6 @@ const LS = { hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
-const reduceMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 // Member tag search: an empty query matches everyone; otherwise a substring, or
 // any word that starts with what's typed ("b" → all B names).
 function matchesName(name: string, query: string): boolean {
@@ -148,24 +146,12 @@ export function PostsView({ seed }: { seed: Post[] }) {
   // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
   const [jump, setJump] = useState("");
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
+  // The Lightbox owns its open/close animation; keying it by url remounts it
+  // cleanly when you tap from one photo straight to another.
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [lbClosing, setLbClosing] = useState(false);
-  const lbTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closeLightbox = () => {
-    if (reduceMotion()) { setLightbox(null); return; }
-    setLbClosing(true);
-    lbTimer.current = setTimeout(() => { setLightbox(null); setLbClosing(false); }, 440);
-  };
-  // Opening must cancel any in-flight close + reset the flag, or reopening
-  // within 440ms inherits the stale closing state and the orphaned timer.
-  const openLightbox = (url: string) => {
-    if (lbTimer.current) { clearTimeout(lbTimer.current); lbTimer.current = null; }
-    setLbClosing(false);
-    setLightbox(url);
-  };
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [scheduleRefetch, cancelRefetch] = useDebouncedCallback(120);
 
   // ---- Shared feed from the database ----
   const refetch = async () => {
@@ -272,20 +258,17 @@ export function PostsView({ seed }: { seed: Post[] }) {
     refetch();
     // Coalesce bursts of row events into a single refetch (the feed pulls ~6
     // queries each time), so a flurry of posts/reactions can't storm the DB.
-    const scheduleRefetch = () => {
-      if (refetchTimer.current) clearTimeout(refetchTimer.current);
-      refetchTimer.current = setTimeout(() => void refetch(), 120);
-    };
+    const fire = () => scheduleRefetch(() => void refetch());
     const ch = sb
       .channel("posts-feed")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, fire)
       .subscribe();
     return () => {
-      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      cancelRefetch();
       sb.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,15 +285,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
   useEffect(() => {
     if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
-  useEffect(() => () => { if (lbTimer.current) clearTimeout(lbTimer.current); }, []);
-
-  // Close the photo viewer with Escape.
-  useEffect(() => {
-    if (!lightbox) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [lightbox]);
 
   const toggleTag = (id: string) => setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -424,19 +398,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const toggleReactors = (postId: string, emoji: string) =>
     setReactorsFor((cur) => (cur && cur.postId === postId && cur.emoji === emoji ? null : { postId, emoji }));
   const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
-  const reactionSummary = (postId: string) => {
-    const counts: Record<string, number> = {};
-    for (const r of dbReactions[postId] ?? []) counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  };
+  const reactionSummary = (postId: string) => reactionCounts(dbReactions[postId] ?? []);
   const react = async (postId: string, emoji: string) => {
     setPickerFor(null);
     if (!supabase || !uid) { promptSignIn(); return; }
-    if (myReaction(postId) === emoji) {
-      await supabase.from("post_reactions").delete().eq("post_id", postId).eq("user_id", uid);
-    } else {
-      await supabase.from("post_reactions").upsert({ post_id: postId, user_id: uid, emoji }, { onConflict: "post_id,user_id" });
-    }
+    await toggleReaction({ table: "post_reactions", idColumn: "post_id", itemId: postId, userId: uid, emoji, current: myReaction(postId) });
     await refetch();
   };
 
@@ -729,7 +695,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} onOpenPhoto={openLightbox} />
+                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
@@ -806,24 +772,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
         ))}
       </div>
 
-      {lightbox && (
-        <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 ${lbClosing ? "scrim-out" : "scrim-in"}`}
-          onClick={closeLightbox}
-          role="dialog"
-          aria-modal="true"
-        >
-          <button
-            onClick={closeLightbox}
-            className="press absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"
-            aria-label="Close photo"
-          >
-            ×
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightbox} alt="" className={`max-h-full max-w-full object-contain ${lbClosing ? "pop-close" : "pop-panel"}`} onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} />}
 
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
