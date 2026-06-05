@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
-import { getCurrentUserId } from "@/lib/roles";
+import { getCurrentUserId, fetchProfiles, profileMap } from "@/lib/roles";
 import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
 
 /**
@@ -31,21 +31,21 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
   const load = async (cid: string) => {
     const sb = supabase;
     if (!sb) return;
-    const [{ data: mem }, { data: profs }] = await Promise.all([
+    const [{ data: mem }, profs] = await Promise.all([
       sb.from("committee_members").select("user_id, role").eq("committee_id", cid),
-      sb.from("profiles").select("id, display_name, avatar_url"),
+      fetchProfiles(),
     ]);
     setMeId(await getCurrentUserId());
-    const pm = new Map((profs ?? []).map((p) => [(p as { id: string }).id, p as { display_name: string | null; avatar_url: string | null }]));
+    const pm = profileMap(profs);
     const rows: Row[] = ((mem ?? []) as { user_id: string; role: string | null }[]).map((m) => ({
       id: m.user_id,
-      name: pm.get(m.user_id)?.display_name?.trim() || "Member",
-      avatar: pm.get(m.user_id)?.avatar_url ?? null,
+      name: pm.get(m.user_id)?.name || "Member",
+      avatar: pm.get(m.user_id)?.avatarUrl ?? null,
       role: m.role,
     }));
     rows.sort((a, b) => (a.role === "Lead" ? -1 : b.role === "Lead" ? 1 : 0) || a.name.localeCompare(b.name));
     setMembers(rows);
-    setAllProfiles(((profs ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map((p) => ({ id: p.id, name: p.display_name?.trim() || "Member", avatar: p.avatar_url, role: null })));
+    setAllProfiles(profs.map((p) => ({ id: p.id, name: p.name, avatar: p.avatarUrl, role: null })));
   };
 
   const { committeeId, canManage, setCanManage, isAdmin } = useManagedCommittee(slug, { watch: "committee_members", load });

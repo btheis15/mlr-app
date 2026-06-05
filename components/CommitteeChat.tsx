@@ -10,7 +10,7 @@ import { GifPicker, type PickedGif } from "@/components/GifPicker";
 import { STICKERS, StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { fetchJoinState } from "@/lib/roles";
-import { formatDayHeading, formatClock, groupByDay } from "@/lib/format";
+import { formatDayHeading, formatClock, groupByDay, plural } from "@/lib/format";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
@@ -505,7 +505,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   // ── The chat ─────────────────────────────────────────────────────────────────
   const dayGroups = groupByDay(messages, (m) => m.ts);
 
-  return wrap(`${members.length} member${members.length === 1 ? "" : "s"}`, (
+  return wrap(`${members.length} ${plural(members.length, "member")}`, (
     <>
       <div
         ref={scrollRef}

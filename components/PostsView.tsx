@@ -91,6 +91,15 @@ const reduceMotion = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// Member tag search: an empty query matches everyone; otherwise a substring, or
+// any word that starts with what's typed ("b" → all B names).
+function matchesName(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const n = name.toLowerCase();
+  return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+}
+
 /**
  * The shared feed — a little family social space. Posts carry multiple photos
  * and videos (swipeable carousel), tagged members, shared comments, and emoji
@@ -469,14 +478,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], tags: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
       ];
 
-  // Friendly search: empty shows everyone (including you); otherwise match a
-  // substring or any word that starts with what you've typed ("b" → all B names).
-  const tagMembers = members.filter((m) => {
-    const q = tagQuery.trim().toLowerCase();
-    if (!q) return true;
-    const n = m.name.toLowerCase();
-    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
-  });
+  const tagMembers = members.filter((m) => matchesName(m.name, tagQuery));
 
   // ---- Timeline: sort newest-first, filter by the jump selection, group by day ----
   const sortedFeed = [...feed].sort((a, b) => new Date(b.post.ts).getTime() - new Date(a.post.ts).getTime());
@@ -864,12 +866,7 @@ function EditPostPanel({
 
   const keptMedia = post.media.filter((m) => !(m.path && removed.includes(m.path)));
   const toggleTag = (id: string) => setTagIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const tagMembers = members.filter((m) => {
-    const q = tagQuery.trim().toLowerCase();
-    if (!q) return true;
-    const n = m.name.toLowerCase();
-    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
-  });
+  const tagMembers = members.filter((m) => matchesName(m.name, tagQuery));
 
   const save = async () => {
     if (!supabase) return;

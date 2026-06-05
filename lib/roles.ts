@@ -11,6 +11,37 @@ export async function getCurrentUserId(): Promise<string | null> {
   return (await sb.auth.getUser()).data.user?.id ?? null;
 }
 
+/** A public profile, name-trimmed and defaulted — the shape feeds avatars,
+ *  rosters, author lines, etc. across the social features. */
+export interface ProfileLite {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * Fetch public profiles as the app's lightweight shape. Pass `ids` to fetch
+ * just those (an empty list short-circuits to none); omit it for everyone.
+ */
+export async function fetchProfiles(ids?: string[]): Promise<ProfileLite[]> {
+  const sb = supabase;
+  if (!sb) return [];
+  if (ids && ids.length === 0) return [];
+  let q = sb.from("profiles").select("id, display_name, avatar_url");
+  if (ids) q = q.in("id", ids);
+  const { data } = await q;
+  return ((data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map((p) => ({
+    id: p.id,
+    name: p.display_name?.trim() || "Member",
+    avatarUrl: p.avatar_url ?? null,
+  }));
+}
+
+/** Index profiles by id for quick name/avatar lookups. */
+export function profileMap(profiles: ProfileLite[]): Map<string, ProfileLite> {
+  return new Map(profiles.map((p) => [p.id, p]));
+}
+
 /**
  * My standing with a committee: "member", "pending" (requested, awaiting
  * approval), or "none". Pass `userId` to skip the auth round-trip when you

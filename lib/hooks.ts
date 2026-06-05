@@ -28,6 +28,46 @@ export function useBusyAction() {
 }
 
 /**
+ * Form feedback for a save/submit action: a `pending` flag plus a transient
+ * `status` message that auto-dismisses (and is cleaned up on unmount, so no
+ * stray timers). `show(msg, ms)` sets the message — pass `ms = 0` to make it
+ * stick (e.g. a persistent error). `run(fn)` flips `pending` around `fn` and,
+ * if it returns a string, shows it.
+ */
+export function useSaveStatus(defaultDismissMs = 3000) {
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const show = useCallback(
+    (msg: string | null, ms: number = defaultDismissMs) => {
+      if (timer.current) clearTimeout(timer.current);
+      setStatus(msg);
+      if (msg && ms > 0) timer.current = setTimeout(() => setStatus(null), ms);
+    },
+    [defaultDismissMs],
+  );
+
+  const run = useCallback(
+    async (fn: () => Promise<string | null | void>, ms: number = defaultDismissMs) => {
+      setPending(true);
+      try {
+        const msg = await fn();
+        // A string shows it; null clears; `undefined` (void) leaves whatever the
+        // handler set itself (e.g. a persistent error via `show(..., 0)`).
+        if (msg !== undefined) show(msg, ms);
+      } finally {
+        setPending(false);
+      }
+    },
+    [defaultDismissMs, show],
+  );
+
+  return { pending, status, show, run };
+}
+
+/**
  * A photo/video picker for composers: holds the chosen `File`s and their
  * preview entries, mints object URLs for the previews, and revokes them all on
  * unmount. `add` handles a file <input> change; `removeAt` drops one;

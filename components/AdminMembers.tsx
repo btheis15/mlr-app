@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { MigrationHint } from "@/components/MigrationHint";
+import { plural } from "@/lib/format";
 import { useBusyAction } from "@/lib/hooks";
 
 interface MemberRow {
@@ -112,7 +114,7 @@ export function AdminMembers() {
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
         <h2 className="text-sm font-semibold">Members</h2>
         <span className="ml-auto text-xs text-foreground/45">
-          {members.length} {members.length === 1 ? "member" : "members"} · {adminCount} admin{adminCount === 1 ? "" : "s"}
+          {members.length} {plural(members.length, "member")} · {adminCount} {plural(adminCount, "admin")}
         </span>
       </div>
 
@@ -122,10 +124,9 @@ export function AdminMembers() {
       </p>
 
       {!rpcReady && !loading && (
-        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-foreground/70">
-          To show members&rsquo; emails and turn on promoting admins, run{" "}
-          <code>supabase/migrations/0008_admin_members.sql</code> in Supabase.
-        </p>
+        <MigrationHint file="0008_admin_members.sql">
+          To show members&rsquo; emails and turn on promoting admins,
+        </MigrationHint>
       )}
 
       {members.length > 5 && (

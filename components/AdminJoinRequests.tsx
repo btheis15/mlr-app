@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { fetchProfiles, profileMap } from "@/lib/roles";
 import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
 
 /**
@@ -38,13 +39,12 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
       setReqs([]);
       return;
     }
-    const { data: profs } = await sb.from("profiles").select("id, display_name, avatar_url").in("id", rows.map((r) => r.user_id));
-    const pm = new Map((profs ?? []).map((p) => [(p as { id: string }).id, p as { display_name: string | null; avatar_url: string | null }]));
+    const pm = profileMap(await fetchProfiles(rows.map((r) => r.user_id)));
     setReqs(rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
-      name: pm.get(r.user_id)?.display_name?.trim() || "Member",
-      avatar: pm.get(r.user_id)?.avatar_url ?? null,
+      name: pm.get(r.user_id)?.name || "Member",
+      avatar: pm.get(r.user_id)?.avatarUrl ?? null,
       message: r.message,
     })));
   };

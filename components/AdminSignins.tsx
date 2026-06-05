@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { MigrationHint } from "@/components/MigrationHint";
 
 /**
  * Admin-only: recent authentication events with the IP they came from, resolved
@@ -136,9 +137,7 @@ export function AdminSignins() {
       </p>
 
       {!ready && !loading && (
-        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-foreground/70">
-          To turn this on, run <code>supabase/migrations/0011_admin_signin_log.sql</code> in Supabase.
-        </p>
+        <MigrationHint file="0011_admin_signin_log.sql">To turn this on,</MigrationHint>
       )}
 
       {loading ? (

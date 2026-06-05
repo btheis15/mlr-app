@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { FAMILY_FEST } from "@/lib/data";
+import { RowLink } from "@/components/RowLink";
 
 /**
  * During fest week, surface the **Family Fest committee** right under the daily
@@ -15,20 +15,11 @@ export function FestCommitteesLink() {
   if (!season?.isLive) return null;
 
   return (
-    <Link
+    <RowLink
       href="/committees/family-fest"
-      className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border"
-    >
-      <span className="text-2xl">🎉</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">Contact the Family Fest committee</p>
-        <p className="text-xs text-foreground/60">
-          See who&rsquo;s running things — tap for names &amp; contacts.
-        </p>
-      </div>
-      <span className="shrink-0 text-foreground/30" aria-hidden>
-        ›
-      </span>
-    </Link>
+      emoji="🎉"
+      title="Contact the Family Fest committee"
+      subtitle="See who’s running things — tap for names & contacts."
+    />
   );
 }

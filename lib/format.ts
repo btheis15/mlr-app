@@ -78,6 +78,15 @@ export function formatClock(input: string | number | Date): string {
 }
 
 /**
+ * The right noun form for a count: `plural(1, "day")` → "day",
+ * `plural(2, "day")` → "days". Pass `pluralForm` for irregulars
+ * (e.g. `plural(n, "person", "people")`). Use as `{n} {plural(n, "day")}`.
+ */
+export function plural(count: number, singular: string, pluralForm?: string): string {
+  return count === 1 ? singular : pluralForm ?? `${singular}s`;
+}
+
+/**
  * Group an already-ordered list into consecutive runs that share a day key
  * (local "YYYY-MM-DD"), e.g. for day-separator headings in the feed/chat.
  * Keeps the input order; `getTs` pulls the timestamp out of each item.
