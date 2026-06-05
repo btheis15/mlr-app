@@ -11,6 +11,10 @@ export interface MemberContact {
   paypal?: string | null;
   pay_preferred?: string | null;
   contact_preferred?: string | null;
+  /** ISO date "YYYY-MM-DD" (migration 0020). Shown on the card with computed age. */
+  birthday?: string | null;
+  /** Free-text mailing address (migration 0020). Tap on the card → directions. */
+  address?: string | null;
 }
 
 export interface Action {
@@ -61,4 +65,30 @@ function mark(actions: Action[], preferred?: string | null): Action[] {
     return [p, ...actions];
   }
   return actions;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** From a "YYYY-MM-DD" birthday → the month/day label + current age. Parses the
+ *  parts directly (no Date(string), which would timezone-shift the day). */
+export function birthdayInfo(birthday?: string | null): { date: string; age: number; isToday: boolean } | null {
+  if (!birthday) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthday.trim());
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const now = new Date();
+  const curMo = now.getMonth() + 1, curD = now.getDate();
+  let age = now.getFullYear() - y;
+  if (curMo < mo || (curMo === mo && curD < d)) age -= 1;
+  return { date: `${MONTHS[mo - 1]} ${d}`, age, isToday: curMo === mo && curD === d };
+}
+
+/** A directions link to an address — Apple Maps on iOS/iPadOS, Google Maps
+ *  elsewhere (both open the native app if installed, else the web map). */
+export function mapsDirectionsHref(address: string, ios: boolean): string {
+  const q = encodeURIComponent(address.trim());
+  return ios
+    ? `https://maps.apple.com/?daddr=${q}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }

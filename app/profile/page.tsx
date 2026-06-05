@@ -140,7 +140,7 @@ export default function ProfilePage() {
         title="Notifications"
         icon="🔔"
         subtitle={
-          user.pushLevel && user.pushLevel !== "off"
+          user.pushTypes && user.pushTypes.length > 0
             ? "Push on"
             : user.emailAlerts
               ? "Email alerts on"

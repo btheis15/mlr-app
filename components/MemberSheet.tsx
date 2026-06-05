@@ -5,7 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
-import { contactActions, payActions, type Action, type MemberContact } from "@/lib/contact";
+import { contactActions, payActions, birthdayInfo, mapsDirectionsHref, type Action, type MemberContact } from "@/lib/contact";
+import { isIos } from "@/lib/push";
 
 // Tap a member's avatar/name anywhere → this bottom sheet. It slides up from the
 // bottom over a backdrop that dims as it rises, and can be flicked or dragged
@@ -52,7 +53,7 @@ export function MemberSheet({
       }
       const { data: row, error } = await supabase
         .from("profiles")
-        .select("phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred")
+        .select("phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, birthday, address")
         .eq("id", id)
         .maybeSingle();
       if (!active) return;
@@ -158,6 +159,8 @@ export function MemberSheet({
 
   const contacts = data ? contactActions(data) : [];
   const pays = data ? payActions(data) : [];
+  const bday = birthdayInfo(data?.birthday);
+  const address = (data?.address || "").trim();
   const copy = (v: string, key: string) => {
     navigator.clipboard?.writeText(v).catch(() => {});
     setCopied(key);
@@ -236,9 +239,9 @@ export function MemberSheet({
           ) : (
             <>
           {!loaded && <p className="text-center text-xs text-foreground/40">Loading…</p>}
-          {loaded && contacts.length === 0 && pays.length === 0 && (
+          {loaded && contacts.length === 0 && pays.length === 0 && !bday && !address && (
             <p className="rounded-xl bg-card p-3 text-center text-xs text-foreground/50 ring-1 ring-border">
-              No contact or pay info shared yet.
+              Nothing shared yet.
             </p>
           )}
 
@@ -256,6 +259,31 @@ export function MemberSheet({
               {pays.map((a) => (
                 <ActionRow key={a.key} a={a} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
               ))}
+            </section>
+          )}
+          {(bday || address) && (
+            <section className="space-y-1.5">
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">About</h3>
+              {bday && (
+                <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 ring-1 ring-border">
+                  <span className="shrink-0 text-base leading-none">🎂</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{bday.isToday ? "Birthday — today! 🎉" : "Birthday"}</p>
+                    <p className="text-xs text-foreground/55">{bday.date} · {bday.age} years old</p>
+                  </div>
+                </div>
+              )}
+              {address && (
+                <a href={mapsDirectionsHref(address, isIos())} target="_blank" rel="noreferrer" className="press block">
+                  <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 ring-1 ring-border active:bg-background">
+                    <span className="shrink-0 text-base leading-none">📍</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">Get directions</p>
+                      <p className="truncate text-xs text-foreground/55">{address}</p>
+                    </div>
+                  </div>
+                </a>
+              )}
             </section>
           )}
             </>

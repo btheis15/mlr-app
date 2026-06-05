@@ -5,6 +5,7 @@ import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
+import { MemberSheetHost } from "@/components/MemberSheetHost";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
@@ -73,6 +74,7 @@ export default async function RootLayout({
           </main>
           <TabBar />
           <PreviewBanner />
+          <MemberSheetHost />
           </IdentityProvider>
         </DemoDateProvider>
       </body>

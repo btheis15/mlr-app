@@ -29,8 +29,9 @@ export interface Announcement {
 
 /** The signed-in guest. Identity is name + email for now (no verification yet);
  *  a one-time-code / magic-link step is the planned next layer. */
-/** What a member wants push notifications for (per-user; see migration 0019). */
-export type PushLevel = "all" | "mentions" | "alerts" | "off";
+/** A push-notification category a member can opt into (multi-select; migration
+ *  0020). Any subset is allowed; an empty set means no push. */
+export type PushType = "chat" | "mentions" | "alerts" | "birthdays";
 
 export interface User {
   name: string;
@@ -38,10 +39,14 @@ export interface User {
   /** Opt-in: email me when an admin pushes an alert. (Sending happens
    *  server-side once a mail provider is wired up.) */
   emailAlerts: boolean;
-  /** Push-notification level — what triggers a notification on this account.
-   *  The actual per-device subscription lives in `push_subscriptions`; this is
-   *  the preference the mini's push-sender filters on. Default "off". */
-  pushLevel: PushLevel;
+  /** Which categories trigger a push on this account (multi-select). The actual
+   *  per-device subscription lives in `push_subscriptions`; this is what the
+   *  mini's push-sender filters on. Empty = no push. */
+  pushTypes: PushType[];
+  /** TESTING ONLY, gated to specific accounts (the mini's PUSH_SELF_NOTIFY_USER_IDS):
+   *  also notify me of my OWN actions so push can be tested without a second
+   *  person. Has no effect for accounts not on that list. */
+  pushSelfNotify: boolean;
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }
