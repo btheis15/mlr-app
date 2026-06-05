@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { BirthdayPicker } from "@/components/BirthdayPicker";
+import { AddressEditor } from "@/components/AddressEditor";
 
 // Profile section to set your phone + pay handles and pick your preferred
 // contact/pay methods — what the member card defaults to. Each is optional.
@@ -9,14 +11,12 @@ import { supabase } from "@/lib/supabase";
 const FIELDS: { key: string; label: string; placeholder: string; hint?: string; type?: string }[] = [
   { key: "phone", label: "Phone (call / text / Apple Cash)", placeholder: "+1 715 555 0123" },
   { key: "contact_email", label: "Email for contact", placeholder: "you@email.com", hint: "Defaults to the email you signed up with — change it to be reached somewhere else." },
-  { key: "birthday", label: "Birthday", placeholder: "", type: "date", hint: "Shown on your member card with your age, so folks can wish you a happy birthday." },
-  { key: "address", label: "Address", placeholder: "123 Lake Rd, Town, ST", hint: "Optional — members can tap it on your card for directions to your place." },
   { key: "venmo", label: "Venmo", placeholder: "username" },
   { key: "zelle", label: "Zelle", placeholder: "phone or email" },
   { key: "cashapp", label: "Cash App", placeholder: "$cashtag" },
   { key: "paypal", label: "PayPal", placeholder: "paypal.me/you or email" },
 ];
-const KEYS = [...FIELDS.map((f) => f.key), "pay_preferred", "contact_preferred"];
+const KEYS = [...FIELDS.map((f) => f.key), "pay_preferred", "contact_preferred", "birthday", "address"];
 
 export function ContactPaySettings() {
   const [v, setV] = useState<Record<string, string>>({});
@@ -106,6 +106,18 @@ export function ContactPaySettings() {
           {f.hint && <span className="mt-1 block text-[11px] text-foreground/45">{f.hint}</span>}
         </label>
       ))}
+      <div>
+        <span className="text-xs font-medium text-foreground/70">Birthday</span>
+        <BirthdayPicker value={v.birthday ?? ""} onChange={(val) => set("birthday", val)} />
+        <span className="mt-1 block text-[11px] text-foreground/45">Shown on your member card with your age, so folks can wish you a happy birthday.</span>
+      </div>
+      <div>
+        <span className="text-xs font-medium text-foreground/70">Address</span>
+        <div className="mt-1">
+          <AddressEditor value={v.address ?? ""} onChange={(val) => set("address", val)} />
+        </div>
+        <span className="mt-1 block text-[11px] text-foreground/45">Tap to enter it and verify it on the map; members can tap it on your card for directions.</span>
+      </div>
       <label className="block">
         <span className="text-xs font-medium text-foreground/70">Preferred way to be contacted</span>
         <select
