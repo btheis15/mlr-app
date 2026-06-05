@@ -6,6 +6,7 @@ import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
+import { isApple } from "@/lib/push";
 
 // Profile section to set your phone + pay handles and pick your preferred
 // contact/pay methods — what the member card defaults to. Each is optional.
@@ -25,6 +26,7 @@ export function ContactPaySettings() {
   const [loaded, setLoaded] = useState(false);
   const [available, setAvailable] = useState(true);
   const { pending: saving, status, run } = useSaveStatus();
+  const [appleCash, setAppleCash] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -39,7 +41,7 @@ export function ContactPaySettings() {
       }
       const { data, error } = await supabase
         .from("profiles")
-        .select(KEYS.join(", "))
+        .select(KEYS.join(", ") + ", apple_cash")
         .eq("id", id)
         .maybeSingle();
       if (error) {
@@ -47,10 +49,11 @@ export function ContactPaySettings() {
         setLoaded(true);
         return;
       }
-      const row = (data ?? {}) as Record<string, string | null>;
+      const row = (data ?? {}) as Record<string, unknown>;
       const init: Record<string, string> = {};
-      for (const k of KEYS) init[k] = row[k] ?? "";
+      for (const k of KEYS) init[k] = (row[k] as string | null) ?? "";
       setV(init);
+      setAppleCash(Boolean(row.apple_cash));
       setLoaded(true);
     })();
   }, []);
@@ -63,8 +66,9 @@ export function ContactPaySettings() {
       if (!sb) return;
       const id = await getCurrentUserId();
       if (!id) return;
-      const row: Record<string, string | null> = {};
+      const row: Record<string, unknown> = {};
       for (const k of KEYS) row[k] = (v[k] ?? "").trim() || null;
+      row.apple_cash = appleCash;
       const { error } = await sb.from("profiles").update(row).eq("id", id);
       return error ? "Couldn't save." : "Saved ✓";
     });
@@ -82,7 +86,7 @@ export function ContactPaySettings() {
     ([k]) => (k === "email" ? v.contact_email : v.phone),
   );
   const payOpts: [string, string][] = ([["venmo", "Venmo"], ["zelle", "Zelle"], ["applecash", "Apple Cash"], ["cashapp", "Cash App"], ["paypal", "PayPal"]] as [string, string][]).filter(
-    ([k]) => (k === "applecash" ? v.phone : v[k]),
+    ([k]) => (k === "applecash" ? isApple() && appleCash && v.phone : v[k]),
   );
 
   return (
@@ -112,6 +116,15 @@ export function ContactPaySettings() {
         </div>
         <span className="mt-1 block text-[11px] text-foreground/45">Tap to enter it and verify it on the map; members can tap it on your card for directions.</span>
       </div>
+      {isApple() && (
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-background p-3 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-xs font-medium text-foreground/70">Accept Apple Cash</span>
+            <span className="mt-0.5 block text-[11px] text-foreground/45">Sends via Messages to your phone number. Shown on your card only to other Apple users.</span>
+          </span>
+          <input type="checkbox" checked={appleCash} onChange={(e) => setAppleCash(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-primary)]" />
+        </label>
+      )}
       <label className="block">
         <span className="text-xs font-medium text-foreground/70">Preferred way to be contacted</span>
         <select

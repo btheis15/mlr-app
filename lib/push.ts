@@ -48,6 +48,13 @@ export function isStandalone(): boolean {
   );
 }
 
+// On an Apple device (iPhone/iPad/Mac)? Used to gate Apple Cash, which is P2P
+// via Messages and only works on Apple devices. (isIos already covers iPadOS.)
+export function isApple(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return isIos() || /Macintosh|Mac OS X/i.test(navigator.userAgent);
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");

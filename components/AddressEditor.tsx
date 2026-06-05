@@ -133,18 +133,6 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
         <button type="button" onClick={onClose} aria-label="Close" className="press absolute right-4 top-4 text-foreground/40 hover:text-foreground">✕</button>
         <h2 className="text-lg font-bold">Your address</h2>
 
-        <label className="block">
-          <span className="text-xs font-medium text-foreground/70">Country</span>
-          <select
-            value={p.country}
-            onChange={(e) => setCountry(e.target.value as Country)}
-            className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="US">United States</option>
-            <option value="MX">Mexico</option>
-          </select>
-        </label>
-
         {mx ? (
           <>
             <AddrField label="Street & number" ph="Calle Falsa 123" value={p.street} onChange={(v) => set("street", v)} />
@@ -166,6 +154,19 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
             <AddrField label="ZIP" ph="60046" value={p.zip} onChange={(v) => set("zip", v)} />
           </>
         )}
+
+        <label className="block">
+          <span className="text-xs font-medium text-foreground/70">Country</span>
+          <select
+            value={p.country}
+            onChange={(e) => setCountry(e.target.value as Country)}
+            className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="US">United States</option>
+            <option value="MX">Mexico</option>
+          </select>
+          <span className="mt-1 block text-[11px] text-foreground/45">Defaults to United States — changing it updates the fields above.</span>
+        </label>
 
         <button
           type="button"

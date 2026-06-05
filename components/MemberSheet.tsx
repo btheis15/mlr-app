@@ -6,6 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { contactActions, payActions, birthdayInfo, directionsLinks, type Action, type MemberContact } from "@/lib/contact";
+import { isApple } from "@/lib/push";
 
 // Tap a member's avatar/name anywhere → this bottom sheet. It slides up from the
 // bottom over a backdrop that dims as it rises, and can be flicked or dragged
@@ -53,7 +54,7 @@ export function MemberSheet({
       }
       const { data: row, error } = await supabase
         .from("profiles")
-        .select("phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, birthday, address")
+        .select("phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, birthday, address, apple_cash")
         .eq("id", id)
         .maybeSingle();
       if (!active) return;
@@ -158,7 +159,8 @@ export function MemberSheet({
   };
 
   const contacts = data ? contactActions(data) : [];
-  const pays = data ? payActions(data) : [];
+  // Apple Cash only works between Apple devices — hide it from non-Apple viewers.
+  const pays = (data ? payActions(data) : []).filter((a) => a.key !== "applecash" || isApple());
   const bday = birthdayInfo(data?.birthday);
   const address = (data?.address || "").trim();
   const copy = (v: string, key: string) => {
