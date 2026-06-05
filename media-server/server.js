@@ -58,6 +58,31 @@ app.use((req, _res, next) => {
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Address geocoding for the member-profile address editor. US Census (free, no
+// key, strong US residential coverage) for US addresses; OpenStreetMap Nominatim
+// for everywhere else. Server-side so the browser avoids CORS and we can send a
+// proper User-Agent. Returns { found, lat, lon, label }.
+app.get("/geocode", async (req, res) => {
+  const country = String(req.query.country || "US").toUpperCase();
+  const q = String(req.query.q || "").trim().slice(0, 300);
+  if (!q) return res.json({ found: false });
+  try {
+    if (country === "US") {
+      const u = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&format=json`;
+      const d = await (await fetch(u)).json();
+      const m = (d && d.result && d.result.addressMatches) || [];
+      if (m[0]) return res.json({ found: true, lat: Number(m[0].coordinates.y), lon: Number(m[0].coordinates.x), label: m[0].matchedAddress });
+      return res.json({ found: false });
+    }
+    const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`;
+    const d = await (await fetch(u, { headers: { "User-Agent": "MLR-app (resort member directory)", Accept: "application/json" } })).json();
+    if (Array.isArray(d) && d[0]) return res.json({ found: true, lat: Number(d[0].lat), lon: Number(d[0].lon), label: d[0].display_name });
+    return res.json({ found: false });
+  } catch (e) {
+    return res.json({ found: false, error: String((e && e.message) || e) });
+  }
+});
+
 // Public read of media. express.static honours HTTP Range requests, so video
 // seeking/streaming works, and sets long-lived caching (filenames are unique).
 // 1) the whole organized tree (posts/<ym>/…, chat/<slug>/<ym>/…); 2) a fallback
