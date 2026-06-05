@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatDateLong, formatTime } from "@/lib/format";
+import { formatDateLong, formatTime, plural } from "@/lib/format";
+import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { Protected } from "@/components/Guard";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
@@ -79,10 +80,8 @@ export function FestWeek({
       )}
       <ul className="space-y-2">
         {days.map((day) => {
-          const dayEvents = events
-            .filter((e) => e.day === day)
-            .sort((a, b) => a.start.localeCompare(b.start));
-          const dinner = dinners.find((d) => d.day === day);
+          const dayEvents = eventsForDay(events, day);
+          const dinner = dinnerForDay(dinners, day);
           const expanded = open === day;
           return (
             <li key={day} className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
@@ -94,7 +93,7 @@ export function FestWeek({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">{formatDateLong(day)}</p>
                   <p className="truncate text-xs text-foreground/50">
-                    {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"}
+                    {dayEvents.length} {plural(dayEvents.length, "event")}
                     {dinner ? ` · 🍽️ ${dinner.title}` : ""}
                   </p>
                 </div>

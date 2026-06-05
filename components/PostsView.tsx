@@ -5,7 +5,9 @@ import type { Post } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { dayKey, formatDayHeading, formatClock, toDatetimeLocal } from "@/lib/format";
+import { dayKey, formatDayHeading, formatClock, toDatetimeLocal, groupByDay } from "@/lib/format";
+import { uploadToMini, compressImage } from "@/lib/media";
+import { useMediaPicker } from "@/lib/hooks";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 
@@ -80,19 +82,23 @@ interface TagRow {
 
 const LS = { hidden: "posts-hidden" };
 // Legacy Supabase Storage bucket — kept only to *display* any media saved
-// there before the move to the mini. New uploads never write here.
+// there before the move to the mini. New uploads never write here. (New media
+// goes to the Mac-mini media server via lib/media's uploadToMini.)
 const BUCKET = "post-photos";
-// All post media uploads go to the Mac-mini media server (no size cap);
-// storage_path stores the full URL it returns. Defaults to the resort's mini;
-// NEXT_PUBLIC_MEDIA_URL overrides it (local dev / if the tunnel URL changes).
-const MEDIA_URL = (
-  process.env.NEXT_PUBLIC_MEDIA_URL || "https://brians-mac-mini.tail49943c.ts.net"
-).replace(/\/+$/, "");
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 const reduceMotion = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Member tag search: an empty query matches everyone; otherwise a substring, or
+// any word that starts with what's typed ("b" → all B names).
+function matchesName(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const n = name.toLowerCase();
+  return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+}
 
 /**
  * The shared feed — a little family social space. Posts carry multiple photos
@@ -116,8 +122,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const [hasOccurredAt, setHasOccurredAt] = useState(false);
 
   const [text, setText] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<Media[]>([]);
+  const { files, previews, add: pickFiles, removeAt: removePreview, reset: resetMedia } = useMediaPicker();
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
@@ -160,7 +165,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
   };
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const createdUrls = useRef<string[]>([]);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Shared feed from the database ----
@@ -298,7 +302,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
   useEffect(() => {
     if (loaded) { try { localStorage.setItem(LS.hidden, JSON.stringify(hidden)); } catch { /* ignore */ } }
   }, [hidden, loaded]);
-  useEffect(() => () => createdUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
   useEffect(() => () => { if (lbTimer.current) clearTimeout(lbTimer.current); }, []);
 
   // Close the photo viewer with Escape.
@@ -309,25 +312,6 @@ export function PostsView({ seed }: { seed: Post[] }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
 
-  const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
-    if (!list || list.length === 0) return;
-    const nf = [...files];
-    const np = [...previews];
-    for (const f of Array.from(list)) {
-      const url = URL.createObjectURL(f);
-      createdUrls.current.push(url);
-      nf.push(f);
-      np.push({ url, type: f.type.startsWith("video") ? "video" : "image" });
-    }
-    setFiles(nf);
-    setPreviews(np);
-    e.target.value = "";
-  };
-  const removePreview = (i: number) => {
-    setFiles(files.filter((_, idx) => idx !== i));
-    setPreviews(previews.filter((_, idx) => idx !== i));
-  };
   const toggleTag = (id: string) => setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const openFacebook = (caption?: string) => {
@@ -367,9 +351,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const path = await uploadToMini(MEDIA_URL, f, token, (loaded, total) => {
-            const frac = total ? loaded / total : 0;
-            setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
+          const path = await uploadToMini(f, token, {
+            onProgress: (loaded, total) => {
+              const frac = total ? loaded / total : 0;
+              setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
+            },
           });
           doneBytes += raw.size;
           uploaded.push({ path, type: isVideo ? "video" : "image" });
@@ -400,7 +386,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           if (tagErr) throw tagErr;
         }
         await refetch();
-        setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
+        setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
         setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
         setStatus("Posted — everyone can see it now ✓");
       } catch (err) {
@@ -425,7 +411,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       tags: tagIds.map((t) => ({ id: t, name: members.find((m) => m.id === t)?.name || "Member" })),
     };
     setAdded((prev) => [post, ...prev]);
-    setText(""); setFiles([]); setPreviews([]); setTagIds([]); setTagPickerOpen(false);
+    setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
     setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
     setStatus("Posted to the feed ✓");
     window.setTimeout(() => setStatus(null), 7000);
@@ -492,26 +478,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
           .map((s) => ({ post: { id: s.id, author: s.author, ts: s.ts, text: s.text, media: [], tags: [], gradient: s.gradient, emoji: s.emoji } as FeedPost, isAdded: false })),
       ];
 
-  // Friendly search: empty shows everyone (including you); otherwise match a
-  // substring or any word that starts with what you've typed ("b" → all B names).
-  const tagMembers = members.filter((m) => {
-    const q = tagQuery.trim().toLowerCase();
-    if (!q) return true;
-    const n = m.name.toLowerCase();
-    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
-  });
+  const tagMembers = members.filter((m) => matchesName(m.name, tagQuery));
 
   // ---- Timeline: sort newest-first, filter by the jump selection, group by day ----
   const sortedFeed = [...feed].sort((a, b) => new Date(b.post.ts).getTime() - new Date(a.post.ts).getTime());
   const monthsPresent = Array.from(new Set(sortedFeed.map(({ post }) => dayKey(post.ts).slice(0, 7)))); // already desc
   const filteredFeed = jump ? sortedFeed.filter(({ post }) => dayKey(post.ts).startsWith(jump)) : sortedFeed;
-  const dayGroups: { day: string; items: { post: FeedPost; isAdded: boolean }[] }[] = [];
-  for (const item of filteredFeed) {
-    const k = dayKey(item.post.ts);
-    const last = dayGroups[dayGroups.length - 1];
-    if (last && last.day === k) last.items.push(item);
-    else dayGroups.push({ day: k, items: [item] });
-  }
+  const dayGroups = groupByDay(filteredFeed, (item) => item.post.ts);
   const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   return (
@@ -883,40 +856,17 @@ function EditPostPanel({
   const [text, setText] = useState(post.text ?? "");
   const [tagIds, setTagIds] = useState<string[]>(post.tags.map((t) => t.id));
   const [removed, setRemoved] = useState<string[]>([]); // existing media storage_paths to drop
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<Media[]>([]);
+  const { files, previews, add: addFiles, removeAt: removePreview } = useMediaPicker();
   const [whenValue, setWhenValue] = useState(toDatetimeLocal(post.ts));
   const [tagOpen, setTagOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const created = useRef<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  useEffect(() => () => created.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   const keptMedia = post.media.filter((m) => !(m.path && removed.includes(m.path)));
-  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
-    if (!list?.length) return;
-    const nf = [...files];
-    const np = [...previews];
-    for (const f of Array.from(list)) {
-      const url = URL.createObjectURL(f);
-      created.current.push(url);
-      nf.push(f);
-      np.push({ url, type: f.type.startsWith("video") ? "video" : "image" });
-    }
-    setFiles(nf);
-    setPreviews(np);
-    e.target.value = "";
-  };
   const toggleTag = (id: string) => setTagIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const tagMembers = members.filter((m) => {
-    const q = tagQuery.trim().toLowerCase();
-    if (!q) return true;
-    const n = m.name.toLowerCase();
-    return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
-  });
+  const tagMembers = members.filter((m) => matchesName(m.name, tagQuery));
 
   const save = async () => {
     if (!supabase) return;
@@ -937,7 +887,7 @@ function EditPostPanel({
         for (const raw of files) {
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const url = await uploadToMini(MEDIA_URL, f, token);
+          const url = await uploadToMini(f, token);
           await supabase.from("post_media").insert({ post_id: post.id, storage_path: url, media_type: isVideo ? "video" : "image", position: pos++ });
         }
       }
@@ -983,7 +933,7 @@ function EditPostPanel({
                 <img src={m.url} alt="" className="h-full w-full object-cover" />
               )}
               <span className="absolute bottom-1 left-1 rounded bg-primary/80 px-1 py-0.5 text-[9px] font-medium text-white">new</span>
-              <button type="button" onClick={() => { setFiles(files.filter((_, idx) => idx !== i)); setPreviews(previews.filter((_, idx) => idx !== i)); }} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
+              <button type="button" onClick={() => removePreview(i)} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
             </div>
           ))}
         </div>
@@ -1087,62 +1037,4 @@ function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
       <button type="submit" className="press rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
-}
-
-// XMLHttpRequest (not fetch) so we get real upload progress for the bar.
-function uploadToMini(
-  mediaUrl: string,
-  file: File,
-  token: string,
-  onProgress?: (loaded: number, total: number) => void,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${mediaUrl}/upload`);
-    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    if (onProgress) {
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(e.loaded, e.total);
-      };
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const json = JSON.parse(xhr.responseText) as { url?: string };
-          if (!json.url) return reject(new Error("media server returned no URL"));
-          resolve(json.url);
-        } catch {
-          reject(new Error("media server returned a bad response"));
-        }
-      } else {
-        reject(new Error((xhr.responseText || "").slice(0, 160) || `media upload failed (${xhr.status})`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Couldn't reach the media server."));
-    xhr.send(fd);
-  });
-}
-
-async function compressImage(file: File): Promise<File> {
-  if (!file.type.startsWith("image")) return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.82));
-    bitmap.close();
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
-  } catch {
-    return file; // never block posting on a compression hiccup
-  }
 }

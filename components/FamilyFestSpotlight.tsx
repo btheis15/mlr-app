@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
+import { eventsForDay } from "@/lib/schedule";
 import type { ScheduleEvent } from "@/lib/types";
 
 /**
@@ -41,9 +42,7 @@ export function FamilyFestSpotlight({
   // Live week — the resort app puts Family Fest front and center, with today's
   // events (time + where) right here so you see what's on without digging.
   if (season?.isLive) {
-    const todays = schedule
-      .filter((e) => e.day === today)
-      .sort((a, b) => a.start.localeCompare(b.start));
+    const todays = eventsForDay(schedule, today);
     return (
       <Link
         href="/family-fest"
@@ -93,8 +92,7 @@ export function FamilyFestSpotlight({
         <p className="mt-2 text-xs font-medium text-campfire">Add your photos →</p>
         {season.wrapDaysLeft > 0 && (
           <p className="mt-2 text-[11px] text-foreground/45">
-            Album stays open for {season.wrapDaysLeft} more day
-            {season.wrapDaysLeft === 1 ? "" : "s"}.
+            Album stays open for {season.wrapDaysLeft} more {plural(season.wrapDaysLeft, "day")}.
           </p>
         )}
       </Link>

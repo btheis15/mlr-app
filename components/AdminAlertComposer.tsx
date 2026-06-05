@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
+import { getCurrentUserId } from "@/lib/roles";
+import { useSaveStatus } from "@/lib/hooks";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
 
 /**
@@ -18,43 +20,38 @@ export function AdminAlertComposer() {
   const [body, setBody] = useState("");
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [emailAudience, setEmailAudience] = useState<"all" | "admins">("all");
-  const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const { pending: sending, status, show, run } = useSaveStatus();
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    if (isSupabaseConfigured && supabase) {
-      setSending(true);
-      setStatus(null);
-      const uid = (await supabase.auth.getUser()).data.user?.id;
-      const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity: "alert", notify_email: notifyEmail };
-      let { error } = await supabase.from("announcements").insert({ ...base, email_audience: emailAudience });
-      if (error && /email_audience/i.test(error.message || "")) {
-        // Pre-0017 the column doesn't exist yet — post without it (emails everyone).
-        ({ error } = await supabase.from("announcements").insert(base));
-      }
-      setSending(false);
-      if (error) {
-        setStatus(`Couldn't post: ${error.message}`);
-        return;
-      }
-      setTitle(""); setBody(""); setEmailAudience("all");
-      setStatus(
-        notifyEmail
+    const sb = supabase;
+    if (isSupabaseConfigured && sb) {
+      run(async () => {
+        const uid = await getCurrentUserId();
+        const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity: "alert", notify_email: notifyEmail };
+        let { error } = await sb.from("announcements").insert({ ...base, email_audience: emailAudience });
+        if (error && /email_audience/i.test(error.message || "")) {
+          // Pre-0017 the column doesn't exist yet — post without it (emails everyone).
+          ({ error } = await sb.from("announcements").insert(base));
+        }
+        if (error) {
+          show(`Couldn't post: ${error.message}`, 0); // a real failure sticks
+          return;
+        }
+        setTitle(""); setBody(""); setEmailAudience("all");
+        return notifyEmail
           ? `Posted to everyone's banner ✓ (emailed ${emailAudience === "admins" ? "App Admins" : "opted-in members"})`
-          : "Posted to everyone's banner ✓",
-      );
-      window.setTimeout(() => setStatus(null), 6000);
+          : "Posted to everyone's banner ✓";
+      }, 6000);
       return;
     }
 
     // Local fallback (no backend).
     pushLocalAnnouncement({ id: `local-${Date.now()}`, severity: "alert", title: title.trim(), body: body.trim() || undefined, ts: new Date().toISOString() });
     setTitle(""); setBody("");
-    setStatus("Posted to the banner (this device).");
-    window.setTimeout(() => setStatus(null), 4000);
+    show("Posted to the banner (this device).", 4000);
   };
 
   // App admins only (the announcements INSERT policy enforces this server-side too).

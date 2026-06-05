@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
+import { CallTextButtons } from "@/components/CallTextButtons";
 import { SCHEDULE } from "@/lib/data";
 import { formatDateLong, formatTime } from "@/lib/format";
 
@@ -50,22 +51,7 @@ export default async function EventDetailPage({
           <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>
           <p className="mt-0.5 text-sm font-semibold"><PrivateName name={event.lead.name} /></p>
           <div className="mt-3">
-            <Protected label="Sign in to call or text">
-              <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={`tel:${event.lead.phone}`}
-                  className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-                >
-                  📞 Call
-                </a>
-                <a
-                  href={`sms:${event.lead.phone}`}
-                  className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-                >
-                  💬 Text
-                </a>
-              </div>
-            </Protected>
+            <CallTextButtons phone={event.lead.phone} />
           </div>
         </section>
       )}

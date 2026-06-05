@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { FAMILY_FEST } from "@/lib/data";
+import { RowLink } from "@/components/RowLink";
 
 /**
  * Prominent "pay your dues" CTA for the run-up to Family Fest (the planning
@@ -15,21 +15,12 @@ export function FestDuesCallout() {
   if (!season?.isPlanning) return null;
 
   return (
-    <Link
+    <RowLink
       href="/family-fest/pay"
-      className="press flex items-center gap-3 rounded-2xl bg-primary p-4 text-white shadow-sm"
-    >
-      <span className="text-2xl">💸</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">Pay your Family Fest dues</p>
-        <p className="text-xs text-white/80">
-          {FAMILY_FEST.dues.perAdult} / adult {FAMILY_FEST.dues.per} · kids{" "}
-          {FAMILY_FEST.dues.perKid}
-        </p>
-      </div>
-      <span className="shrink-0 text-white/70" aria-hidden>
-        ›
-      </span>
-    </Link>
+      tone="primary"
+      emoji="💸"
+      title="Pay your Family Fest dues"
+      subtitle={`${FAMILY_FEST.dues.perAdult} / adult ${FAMILY_FEST.dues.per} · kids ${FAMILY_FEST.dues.perKid}`}
+    />
   );
 }

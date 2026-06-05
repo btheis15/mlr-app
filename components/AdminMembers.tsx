@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { MigrationHint } from "@/components/MigrationHint";
+import { plural } from "@/lib/format";
+import { useBusyAction } from "@/lib/hooks";
 
 interface MemberRow {
   id: string;
@@ -26,7 +29,7 @@ export function AdminMembers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const { busy: busyId, run } = useBusyAction();
   // True once the admin_members RPC answers — i.e. migration 0008 is applied,
   // so emails are visible and promote/remove works.
   const [rpcReady, setRpcReady] = useState(false);
@@ -66,9 +69,7 @@ export function AdminMembers() {
     if (!sb) return;
     const name = m.display_name || m.email || "this member";
     if (!window.confirm(value ? `Make ${name} an admin?` : `Remove admin from ${name}?`)) return;
-    setBusyId(m.id);
-    const { error: e } = await sb.rpc("set_admin", { target: m.id, value });
-    setBusyId(null);
+    const { error: e } = await run(m.id, () => sb.rpc("set_admin", { target: m.id, value }));
     if (e) {
       window.alert(e.message || "Couldn't update admin.");
       return;
@@ -91,9 +92,7 @@ export function AdminMembers() {
     )
       return;
     if (!window.confirm(`Last check: remove ${name} for good?`)) return;
-    setBusyId(m.id);
-    const { error: e } = await sb.rpc("delete_member", { target: m.id });
-    setBusyId(null);
+    const { error: e } = await run(m.id, () => sb.rpc("delete_member", { target: m.id }));
     if (e) {
       window.alert(e.message || "Couldn't remove member.");
       return;
@@ -115,7 +114,7 @@ export function AdminMembers() {
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
         <h2 className="text-sm font-semibold">Members</h2>
         <span className="ml-auto text-xs text-foreground/45">
-          {members.length} {members.length === 1 ? "member" : "members"} · {adminCount} admin{adminCount === 1 ? "" : "s"}
+          {members.length} {plural(members.length, "member")} · {adminCount} {plural(adminCount, "admin")}
         </span>
       </div>
 
@@ -125,10 +124,9 @@ export function AdminMembers() {
       </p>
 
       {!rpcReady && !loading && (
-        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-foreground/70">
-          To show members&rsquo; emails and turn on promoting admins, run{" "}
-          <code>supabase/migrations/0008_admin_members.sql</code> in Supabase.
-        </p>
+        <MigrationHint file="0008_admin_members.sql">
+          To show members&rsquo; emails and turn on promoting admins,
+        </MigrationHint>
       )}
 
       {members.length > 5 && (

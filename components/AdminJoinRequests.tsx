@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
-import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
+import { fetchProfiles, profileMap } from "@/lib/roles";
+import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
 
 /**
  * The pending join-request queue for one committee, shown to whoever can manage
@@ -22,11 +22,8 @@ interface Req {
 }
 
 export function AdminJoinRequests({ slug, name }: { slug: string; name: string }) {
-  const { isAdmin } = useIdentity();
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [canManage, setCanManage] = useState(false);
   const [reqs, setReqs] = useState<Req[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busy, run } = useBusyAction();
 
   const load = async (cid: string) => {
     const sb = supabase;
@@ -42,50 +39,24 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
       setReqs([]);
       return;
     }
-    const { data: profs } = await sb.from("profiles").select("id, display_name, avatar_url").in("id", rows.map((r) => r.user_id));
-    const pm = new Map((profs ?? []).map((p) => [(p as { id: string }).id, p as { display_name: string | null; avatar_url: string | null }]));
+    const pm = profileMap(await fetchProfiles(rows.map((r) => r.user_id)));
     setReqs(rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
-      name: pm.get(r.user_id)?.display_name?.trim() || "Member",
-      avatar: pm.get(r.user_id)?.avatar_url ?? null,
+      name: pm.get(r.user_id)?.name || "Member",
+      avatar: pm.get(r.user_id)?.avatarUrl ?? null,
       message: r.message,
     })));
   };
 
-  useEffect(() => {
-    const sb = supabase;
-    if (!isSupabaseConfigured || !sb) return;
-    let cancelled = false;
-    let channel: ReturnType<typeof sb.channel> | null = null;
-    (async () => {
-      const cid = await fetchCommitteeId(slug);
-      if (!cid || cancelled) return;
-      setCommitteeId(cid);
-      const manage = isAdmin || (await fetchMyCommitteeRole(cid)) === "Lead";
-      if (cancelled) return;
-      setCanManage(manage);
-      if (!manage) return;
-      await load(cid);
-      if (cancelled) return;
-      channel = sb
-        .channel(`cjr-${slug}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "committee_join_requests", filter: `committee_id=eq.${cid}` }, () => load(cid))
-        .subscribe();
-    })();
-    return () => {
-      cancelled = true;
-      if (channel) sb.removeChannel(channel);
-    };
-  }, [slug, isAdmin]);
+  const { committeeId, canManage } = useManagedCommittee(slug, { watch: "committee_join_requests", load });
 
-  const review = async (reqId: string, approve: boolean) => {
-    if (!supabase || !committeeId) return;
-    setBusy(reqId);
-    await supabase.rpc("review_join_request", { req_id: reqId, approve });
-    await load(committeeId);
-    setBusy(null);
-  };
+  const review = (reqId: string, approve: boolean) =>
+    run(reqId, async () => {
+      if (!supabase || !committeeId) return;
+      await supabase.rpc("review_join_request", { req_id: reqId, approve });
+      await load(committeeId);
+    });
 
   if (!canManage || !isSupabaseConfigured || reqs.length === 0) return null;
 

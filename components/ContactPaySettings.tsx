@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserId } from "@/lib/roles";
+import { useSaveStatus } from "@/lib/hooks";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
 
@@ -22,8 +24,7 @@ export function ContactPaySettings() {
   const [v, setV] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [available, setAvailable] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const { pending: saving, status, run } = useSaveStatus();
 
   useEffect(() => {
     (async () => {
@@ -31,8 +32,7 @@ export function ContactPaySettings() {
         setLoaded(true);
         return;
       }
-      const { data: sess } = await supabase.auth.getSession();
-      const id = sess.session?.user.id;
+      const id = await getCurrentUserId();
       if (!id) {
         setLoaded(true);
         return;
@@ -57,23 +57,17 @@ export function ContactPaySettings() {
 
   const set = (k: string, val: string) => setV((p) => ({ ...p, [k]: val }));
 
-  const save = async () => {
-    if (!supabase) return;
-    setSaving(true);
-    setStatus(null);
-    const { data: sess } = await supabase.auth.getSession();
-    const id = sess.session?.user.id;
-    if (!id) {
-      setSaving(false);
-      return;
-    }
-    const row: Record<string, string | null> = {};
-    for (const k of KEYS) row[k] = (v[k] ?? "").trim() || null;
-    const { error } = await supabase.from("profiles").update(row).eq("id", id);
-    setSaving(false);
-    setStatus(error ? "Couldn't save." : "Saved ✓");
-    window.setTimeout(() => setStatus(null), 3000);
-  };
+  const save = () =>
+    run(async () => {
+      const sb = supabase;
+      if (!sb) return;
+      const id = await getCurrentUserId();
+      if (!id) return;
+      const row: Record<string, string | null> = {};
+      for (const k of KEYS) row[k] = (v[k] ?? "").trim() || null;
+      const { error } = await sb.from("profiles").update(row).eq("id", id);
+      return error ? "Couldn't save." : "Saved ✓";
+    });
 
   if (!loaded) return null;
   if (!available) {

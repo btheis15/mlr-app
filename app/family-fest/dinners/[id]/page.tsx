@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
+import { CallTextButtons } from "@/components/CallTextButtons";
 import { DINNERS } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
@@ -71,22 +72,7 @@ export default async function DinnerDetailPage({
         </p>
         <p className="mt-0.5 text-sm font-semibold"><PrivateName name={dinner.chef.name} /></p>
         <div className="mt-3">
-          <Protected label="Sign in to call or text">
-            <div className="grid grid-cols-2 gap-2">
-              <a
-                href={`tel:${dinner.chef.phone}`}
-                className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-              >
-                📞 Call
-              </a>
-              <a
-                href={`sms:${dinner.chef.phone}`}
-                className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-              >
-                💬 Text
-              </a>
-            </div>
-          </Protected>
+          <CallTextButtons phone={dinner.chef.phone} />
         </div>
       </section>
     </div>

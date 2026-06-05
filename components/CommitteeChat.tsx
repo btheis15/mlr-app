@@ -9,7 +9,8 @@ import { MemberSheet } from "@/components/MemberSheet";
 import { GifPicker, type PickedGif } from "@/components/GifPicker";
 import { STICKERS, StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
-import { dayKey, formatDayHeading, formatClock } from "@/lib/format";
+import { fetchJoinState } from "@/lib/roles";
+import { formatDayHeading, formatClock, groupByDay, plural } from "@/lib/format";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
@@ -100,8 +101,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     if (!sb) return;
     const cid = id ?? committeeId;
     if (!cid) return;
-    const { data: sess } = await sb.auth.getUser();
-    const me = sess.user?.id ?? null;
+    const me = (await sb.auth.getUser()).data.user?.id ?? null;
     setUid(me);
     if (!me) {
       setAccess("guest");
@@ -111,23 +111,8 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
       setAccess("member");
       return;
     }
-    const { data: mem } = await sb
-      .from("committee_members")
-      .select("user_id")
-      .eq("committee_id", cid)
-      .eq("user_id", me)
-      .maybeSingle();
-    if (mem) {
-      setAccess("member");
-      return;
-    }
-    const { data: req } = await sb
-      .from("committee_join_requests")
-      .select("status")
-      .eq("committee_id", cid)
-      .eq("user_id", me)
-      .maybeSingle();
-    setAccess(req?.status === "pending" ? "pending" : "none");
+    // "member" | "pending" | "none" are all valid Access states.
+    setAccess(await fetchJoinState(cid, me));
   };
 
   // Resolve the committee id from its slug, then load access. Realtime keeps
@@ -518,15 +503,9 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   }
 
   // ── The chat ─────────────────────────────────────────────────────────────────
-  const dayGroups: { day: string; items: Msg[] }[] = [];
-  for (const m of messages) {
-    const k = dayKey(m.ts);
-    const last = dayGroups[dayGroups.length - 1];
-    if (last && last.day === k) last.items.push(m);
-    else dayGroups.push({ day: k, items: [m] });
-  }
+  const dayGroups = groupByDay(messages, (m) => m.ts);
 
-  return wrap(`${members.length} member${members.length === 1 ? "" : "s"}`, (
+  return wrap(`${members.length} ${plural(members.length, "member")}`, (
     <>
       <div
         ref={scrollRef}

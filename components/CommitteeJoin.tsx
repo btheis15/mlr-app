@@ -5,6 +5,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Protected } from "@/components/Guard";
+import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import type { Committee } from "@/lib/types";
 
 /**
@@ -32,32 +33,20 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const smsto = lead ? `sms:${lead.phone}?&body=${encodeURIComponent(message)}` : "#";
 
   useEffect(() => {
-    const sb = supabase;
-    if (!configured || !sb || !user) {
+    if (!configured || !supabase || !user) {
       setState("none");
       return;
     }
     let cancelled = false;
     (async () => {
-      const { data: c } = await sb.from("committees").select("id").eq("slug", committee.slug).maybeSingle();
-      const cid = (c as { id: string } | null)?.id;
+      const cid = await fetchCommitteeId(committee.slug);
       if (!cid || cancelled) {
         setState("none");
         return;
       }
       setCommitteeId(cid);
-      const me = (await sb.auth.getUser()).data.user?.id;
-      if (!me) {
-        setState("none");
-        return;
-      }
-      const { data: mem } = await sb.from("committee_members").select("user_id").eq("committee_id", cid).eq("user_id", me).maybeSingle();
-      if (mem) {
-        if (!cancelled) setState("member");
-        return;
-      }
-      const { data: req } = await sb.from("committee_join_requests").select("status").eq("committee_id", cid).eq("user_id", me).maybeSingle();
-      if (!cancelled) setState((req as { status: string } | null)?.status === "pending" ? "pending" : "none");
+      const s = await fetchJoinState(cid);
+      if (!cancelled) setState(s);
     })();
     return () => {
       cancelled = true;

@@ -5,7 +5,8 @@ import { Countdown } from "@/components/Countdown";
 import { Protected, useGuest } from "@/components/Guard";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
+import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { firstName } from "@/lib/privacy";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
 
@@ -34,10 +35,8 @@ export function FestStatus({
   const { today: t } = useDemoDate();
 
   if (season?.isLive) {
-    const today = events
-      .filter((e) => e.day === t)
-      .sort((a, b) => a.start.localeCompare(b.start));
-    const dinner = dinners.find((d) => d.day === t);
+    const today = eventsForDay(events, t);
+    const dinner = dinnerForDay(dinners, t);
     return (
       <div className="space-y-3">
         <div className="rounded-2xl bg-primary/10 p-4 text-center">
@@ -75,7 +74,7 @@ export function FestStatus({
         <p className="mt-1 text-sm text-foreground/60">
           Post any photos you didn&rsquo;t get to share
           {season.wrapDaysLeft > 0
-            ? ` — the album's open ${season.wrapDaysLeft} more day${season.wrapDaysLeft === 1 ? "" : "s"}.`
+            ? ` — the album's open ${season.wrapDaysLeft} more ${plural(season.wrapDaysLeft, "day")}.`
             : "."}
         </p>
         <Link href="/posts" className="press mt-2 inline-block text-sm font-semibold text-primary">
