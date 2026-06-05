@@ -10,7 +10,11 @@
 
 import { supabase } from "@/lib/supabase";
 
-export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+// .trim(): env values (especially pasted into a dashboard) often carry a trailing
+// newline. An untrimmed key throws off the base64 padding in urlBase64ToUint8Array
+// below, making atob() throw InvalidCharacterError — so the toggle could never
+// subscribe. Trimming makes subscription robust regardless of how the key was set.
+export const VAPID_PUBLIC_KEY = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "").trim();
 
 export function isPushSupported(): boolean {
   return (
