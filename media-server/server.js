@@ -191,3 +191,12 @@ try {
 } catch (e) {
   console.error("[push] not started:", e && e.message);
 }
+
+// Optional: daily birthday notifications (see birthday-notifier.js). No-op
+// unless the VAPID + service-role env vars are set. Isolated so a hiccup here
+// can never take down uploads.
+try {
+  require("./birthday-notifier").start().catch((e) => console.error("[birthday] start failed:", e && e.message));
+} catch (e) {
+  console.error("[birthday] not started:", e && e.message);
+}

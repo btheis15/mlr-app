@@ -1,11 +1,13 @@
 // Web Push sender — runs on the Mac mini, alongside the media server + mailer.
 //
 // Delivers push notifications for new committee chat messages and broadcast
-// alerts, filtered by each member's per-user push_level (migration 0019):
-//   all      → every new committee message (not your own)        + alerts
-//   mentions → only @mentions / replies to you                   + alerts
-//   alerts   → broadcast alerts only
-//   off      → nothing
+// alerts, filtered by each member's push_types (multi-select, migration 0020):
+//   chat      → every new committee message (not your own)
+//   mentions  → @mentions / replies to you
+//   alerts    → broadcast alerts
+//   birthdays → handled by birthday-notifier.js (a separate daily job)
+// A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
+// also receives pushes for their OWN messages, to test without a second person.
 //
 // DORMANT unless these env vars are set (so nothing happens until you opt in):
 //   SUPABASE_URL                (already set for uploads)
@@ -36,6 +38,9 @@ async function start() {
   const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || "";
   const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
   const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:alerts@muskellungelakeresort.com";
+  // Testing only: accounts allowed to receive pushes for their OWN actions
+  // (paired with the per-account push_self_notify flag). Comma-separated user ids.
+  const SELF_NOTIFY_IDS = new Set((process.env.PUSH_SELF_NOTIFY_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
   if (!SUPABASE_URL || !SERVICE_KEY || !VAPID_PUBLIC || !VAPID_PRIVATE) {
     console.log("[push] dormant (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY + SUPABASE_SERVICE_ROLE_KEY to enable)");
@@ -114,17 +119,22 @@ async function start() {
       replyTargetAuthor = rt?.author_id || null;
     }
 
-    const recipients = (rosterRes.data || []).map((r) => r.user_id).filter((id) => id !== msg.author_id);
-    if (!recipients.length) return;
+    const rosterIds = (rosterRes.data || []).map((r) => r.user_id);
+    const others = rosterIds.filter((id) => id !== msg.author_id);
+    const authorEligible = SELF_NOTIFY_IDS.has(msg.author_id);
+    if (!others.length && !authorEligible) return;
 
+    const profileIds = Array.from(new Set([...rosterIds, msg.author_id]));
     const { data: profs } = await sb
       .from("profiles")
-      .select("id, display_name, push_level")
-      .in("id", [...recipients, msg.author_id]);
-    const levelById = new Map();
+      .select("id, display_name, push_types, push_self_notify")
+      .in("id", profileIds);
+    const typesById = new Map();
+    const selfNotify = new Map();
     let authorName = "Someone";
     for (const p of profs || []) {
-      levelById.set(p.id, p.push_level || "off");
+      typesById.set(p.id, p.push_types || []);
+      selfNotify.set(p.id, Boolean(p.push_self_notify));
       if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
     }
 
@@ -140,10 +150,14 @@ async function start() {
       url: `${APP_URL}/posts?c=${committee.slug}`,
     };
 
+    // Notify the committee (minus the author) — plus the author themselves if
+    // they're an allow-listed self-notify tester who opted in.
+    const targets = others.slice();
+    if (authorEligible && selfNotify.get(msg.author_id)) targets.push(msg.author_id);
     let sent = 0;
-    for (const uid of recipients) {
-      const lvl = levelById.get(uid) || "off";
-      const wants = lvl === "all" || (lvl === "mentions" && (mentioned.has(uid) || replyTargetAuthor === uid));
+    for (const uid of targets) {
+      const types = typesById.get(uid) || [];
+      const wants = types.includes("chat") || (types.includes("mentions") && (mentioned.has(uid) || replyTargetAuthor === uid));
       if (wants) { await sendToUser(uid, payload); sent++; }
     }
     if (sent) console.log(`[push] chat ${committee.slug}: notified ${sent}`);
@@ -153,8 +167,8 @@ async function start() {
     if (!once(`a:${alertId}`)) return;
     const { data: a } = await sb.from("announcements").select("id, title, body").eq("id", alertId).maybeSingle();
     if (!a) return;
-    // Everyone who hasn't turned notifications off (all/mentions/alerts).
-    const { data: profs } = await sb.from("profiles").select("id").neq("push_level", "off");
+    // Everyone who opted into broadcast alerts (push_types contains 'alerts').
+    const { data: profs } = await sb.from("profiles").select("id").contains("push_types", ["alerts"]);
     const payload = {
       title: a.title ? `📣 ${a.title}` : "📣 Muskellunge Lake Resort",
       body: (a.body || "").slice(0, 180),
