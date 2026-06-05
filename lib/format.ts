@@ -76,3 +76,19 @@ export function formatClock(input: string | number | Date): string {
   const d = input instanceof Date ? input : new Date(input);
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
+
+/**
+ * Group an already-ordered list into consecutive runs that share a day key
+ * (local "YYYY-MM-DD"), e.g. for day-separator headings in the feed/chat.
+ * Keeps the input order; `getTs` pulls the timestamp out of each item.
+ */
+export function groupByDay<T>(items: T[], getTs: (item: T) => string | number | Date): { day: string; items: T[] }[] {
+  const groups: { day: string; items: T[] }[] = [];
+  for (const item of items) {
+    const k = dayKey(getTs(item));
+    const last = groups[groups.length - 1];
+    if (last && last.day === k) last.items.push(item);
+    else groups.push({ day: k, items: [item] });
+  }
+  return groups;
+}

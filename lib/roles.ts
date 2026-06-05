@@ -4,6 +4,42 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
+/** The signed-in user's id, or null (no backend / signed out). */
+export async function getCurrentUserId(): Promise<string | null> {
+  const sb = supabase;
+  if (!sb) return null;
+  return (await sb.auth.getUser()).data.user?.id ?? null;
+}
+
+/**
+ * My standing with a committee: "member", "pending" (requested, awaiting
+ * approval), or "none". Pass `userId` to skip the auth round-trip when you
+ * already know it.
+ */
+export async function fetchJoinState(
+  committeeId: string,
+  userId?: string | null,
+): Promise<"member" | "pending" | "none"> {
+  const sb = supabase;
+  if (!sb) return "none";
+  const me = userId ?? (await getCurrentUserId());
+  if (!me) return "none";
+  const { data: mem } = await sb
+    .from("committee_members")
+    .select("user_id")
+    .eq("committee_id", committeeId)
+    .eq("user_id", me)
+    .maybeSingle();
+  if (mem) return "member";
+  const { data: req } = await sb
+    .from("committee_join_requests")
+    .select("status")
+    .eq("committee_id", committeeId)
+    .eq("user_id", me)
+    .maybeSingle();
+  return (req as { status: string } | null)?.status === "pending" ? "pending" : "none";
+}
+
 /** Resolve a committee's id from its slug (null if no backend / not found). */
 export async function fetchCommitteeId(slug: string): Promise<string | null> {
   const sb = supabase;

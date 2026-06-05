@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { useBusyAction } from "@/lib/hooks";
 
 interface MemberRow {
   id: string;
@@ -26,7 +27,7 @@ export function AdminMembers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const { busy: busyId, run } = useBusyAction();
   // True once the admin_members RPC answers — i.e. migration 0008 is applied,
   // so emails are visible and promote/remove works.
   const [rpcReady, setRpcReady] = useState(false);
@@ -66,9 +67,7 @@ export function AdminMembers() {
     if (!sb) return;
     const name = m.display_name || m.email || "this member";
     if (!window.confirm(value ? `Make ${name} an admin?` : `Remove admin from ${name}?`)) return;
-    setBusyId(m.id);
-    const { error: e } = await sb.rpc("set_admin", { target: m.id, value });
-    setBusyId(null);
+    const { error: e } = await run(m.id, () => sb.rpc("set_admin", { target: m.id, value }));
     if (e) {
       window.alert(e.message || "Couldn't update admin.");
       return;
@@ -91,9 +90,7 @@ export function AdminMembers() {
     )
       return;
     if (!window.confirm(`Last check: remove ${name} for good?`)) return;
-    setBusyId(m.id);
-    const { error: e } = await sb.rpc("delete_member", { target: m.id });
-    setBusyId(null);
+    const { error: e } = await run(m.id, () => sb.rpc("delete_member", { target: m.id }));
     if (e) {
       window.alert(e.message || "Couldn't remove member.");
       return;

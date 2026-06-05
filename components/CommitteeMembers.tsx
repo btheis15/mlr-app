@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
-import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
+import { getCurrentUserId } from "@/lib/roles";
+import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
 
 /**
  * Manage a committee's roster — shown to its **Lead** or an **app admin**
@@ -21,12 +21,9 @@ interface Row {
 }
 
 export function CommitteeMembers({ slug, name }: { slug: string; name: string }) {
-  const { isAdmin } = useIdentity();
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [canManage, setCanManage] = useState(false);
   const [members, setMembers] = useState<Row[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busy, run } = useBusyAction();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [allProfiles, setAllProfiles] = useState<Row[]>([]);
@@ -38,6 +35,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
       sb.from("committee_members").select("user_id, role").eq("committee_id", cid),
       sb.from("profiles").select("id, display_name, avatar_url"),
     ]);
+    setMeId(await getCurrentUserId());
     const pm = new Map((profs ?? []).map((p) => [(p as { id: string }).id, p as { display_name: string | null; avatar_url: string | null }]));
     const rows: Row[] = ((mem ?? []) as { user_id: string; role: string | null }[]).map((m) => ({
       id: m.user_id,
@@ -50,76 +48,53 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
     setAllProfiles(((profs ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map((p) => ({ id: p.id, name: p.display_name?.trim() || "Member", avatar: p.avatar_url, role: null })));
   };
 
-  useEffect(() => {
-    const sb = supabase;
-    if (!isSupabaseConfigured || !sb) return;
-    let cancelled = false;
-    let channel: ReturnType<typeof sb.channel> | null = null;
-    (async () => {
-      const cid = await fetchCommitteeId(slug);
-      if (!cid || cancelled) return;
-      setCommitteeId(cid);
-      setMeId((await sb.auth.getUser()).data.user?.id ?? null);
-      const manage = isAdmin || (await fetchMyCommitteeRole(cid)) === "Lead";
-      if (cancelled) return;
-      setCanManage(manage);
-      if (!manage) return;
-      await load(cid);
-      if (cancelled) return;
-      channel = sb
-        .channel(`cmembers-${slug}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "committee_members", filter: `committee_id=eq.${cid}` }, () => load(cid))
-        .subscribe();
-    })();
-    return () => {
-      cancelled = true;
-      if (channel) sb.removeChannel(channel);
-    };
-  }, [slug, isAdmin]);
+  const { committeeId, canManage, setCanManage, isAdmin } = useManagedCommittee(slug, { watch: "committee_members", load });
 
-  const remove = async (m: Row) => {
-    if (!supabase || !committeeId) return;
+  // Run a roster-changing RPC, then reload (or alert on failure). Shared by the
+  // remove / set-lead / add controls below.
+  const rpcThenReload = (id: string, rpc: () => PromiseLike<{ error: { message: string } | null }>, after?: () => void) =>
+    run(id, async () => {
+      if (!committeeId) return;
+      const { error } = await rpc();
+      if (error) window.alert(error.message);
+      else {
+        await load(committeeId);
+        after?.();
+      }
+    });
+
+  const remove = (m: Row) => {
+    const sb = supabase;
+    if (!sb || !committeeId) return;
     if (!window.confirm(`Remove ${m.name} from ${name}?`)) return;
-    setBusy(m.id);
-    const { error } = await supabase.rpc("set_committee_member", { cid: committeeId, target: m.id, is_member: false });
-    setBusy(null);
-    if (error) window.alert(error.message);
-    else if (committeeId) await load(committeeId);
+    rpcThenReload(m.id, () => sb.rpc("set_committee_member", { cid: committeeId, target: m.id, is_member: false }));
   };
-  const setLead = async (m: Row, makeLead: boolean) => {
-    if (!supabase || !committeeId) return;
-    setBusy(m.id);
-    const { error } = await supabase.rpc("set_committee_lead", { cid: committeeId, target: m.id, is_lead: makeLead });
-    setBusy(null);
-    if (error) window.alert(error.message);
-    else if (committeeId) await load(committeeId);
+  const setLead = (m: Row, makeLead: boolean) => {
+    const sb = supabase;
+    if (!sb || !committeeId) return;
+    rpcThenReload(m.id, () => sb.rpc("set_committee_lead", { cid: committeeId, target: m.id, is_lead: makeLead }));
   };
-  const add = async (p: Row) => {
-    if (!supabase || !committeeId) return;
-    setBusy(p.id);
-    const { error } = await supabase.rpc("set_committee_member", { cid: committeeId, target: p.id, is_member: true });
-    setBusy(null);
-    if (error) window.alert(error.message);
-    else if (committeeId) {
-      await load(committeeId);
-      setQuery("");
-    }
+  const add = (p: Row) => {
+    const sb = supabase;
+    if (!sb || !committeeId) return;
+    rpcThenReload(p.id, () => sb.rpc("set_committee_member", { cid: committeeId, target: p.id, is_member: true }), () => setQuery(""));
   };
-  const leaveSelf = async () => {
-    if (!supabase || !committeeId || !meId) return;
+  const leaveSelf = () => {
+    const sb = supabase;
+    if (!sb || !committeeId || !meId) return;
     const selfLead = members.find((m) => m.id === meId)?.role === "Lead";
     const msg = selfLead
       ? `Leave ${name}? You're a Lead — until an app admin assigns a new one this committee may have no lead. You can ask to rejoin later.`
       : `Leave ${name}? You'll lose access to its chat (you can ask to rejoin later).`;
     if (!window.confirm(msg)) return;
-    setBusy(meId);
-    const { error } = await supabase.rpc("leave_committee", { cid: committeeId });
-    setBusy(null);
-    if (error) { window.alert(error.message); return; }
-    // You're no longer a lead after leaving: non-admins lose manage access (the
-    // panel then hides via the canManage gate); admins keep it via the override.
-    setCanManage(isAdmin);
-    if (isAdmin) await load(committeeId);
+    run(meId, async () => {
+      const { error } = await sb.rpc("leave_committee", { cid: committeeId });
+      if (error) { window.alert(error.message); return; }
+      // You're no longer a lead after leaving: non-admins lose manage access (the
+      // panel then hides via the canManage gate); admins keep it via the override.
+      setCanManage(isAdmin);
+      if (isAdmin) await load(committeeId);
+    });
   };
 
   if (!canManage || !isSupabaseConfigured) return null;
