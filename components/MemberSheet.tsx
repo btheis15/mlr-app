@@ -5,8 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
-import { contactActions, payActions, birthdayInfo, mapsDirectionsHref, type Action, type MemberContact } from "@/lib/contact";
-import { isIos } from "@/lib/push";
+import { contactActions, payActions, birthdayInfo, directionsLinks, type Action, type MemberContact } from "@/lib/contact";
 
 // Tap a member's avatar/name anywhere → this bottom sheet. It slides up from the
 // bottom over a backdrop that dims as it rises, and can be flicked or dragged
@@ -29,6 +28,7 @@ export function MemberSheet({
   const [data, setData] = useState<MemberContact | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [showDir, setShowDir] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [y, setY] = useState(0); // current translateY (px); 0 = resting
@@ -274,15 +274,34 @@ export function MemberSheet({
                 </div>
               )}
               {address && (
-                <a href={mapsDirectionsHref(address, isIos())} target="_blank" rel="noreferrer" className="press block">
-                  <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 ring-1 ring-border active:bg-background">
-                    <span className="shrink-0 text-base leading-none">📍</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">Get directions</p>
-                      <p className="truncate text-xs text-foreground/55">{address}</p>
+                <div className="space-y-1.5">
+                  <button type="button" onClick={() => setShowDir((s) => !s)} className="press block w-full text-left">
+                    <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 ring-1 ring-border active:bg-background">
+                      <span className="shrink-0 text-base leading-none">📍</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">Get directions</p>
+                        <p className="truncate text-xs text-foreground/55">{address}</p>
+                      </div>
+                      <span aria-hidden className="shrink-0 text-xs text-foreground/40">{showDir ? "▲" : "▼"}</span>
                     </div>
-                  </div>
-                </a>
+                  </button>
+                  {showDir && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {directionsLinks(address).map((d) => (
+                        <a
+                          key={d.key}
+                          href={d.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="press flex flex-col items-center gap-1 rounded-xl bg-card px-2 py-3 text-center ring-1 ring-border active:bg-background"
+                        >
+                          <span className="text-lg leading-none">{d.emoji}</span>
+                          <span className="text-[11px] font-medium leading-tight">{d.label}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </section>
           )}

@@ -84,11 +84,14 @@ export function birthdayInfo(birthday?: string | null): { date: string; age: num
   return { date: `${MONTHS[mo - 1]} ${d}`, age, isToday: curMo === mo && curD === d };
 }
 
-/** A directions link to an address — Apple Maps on iOS/iPadOS, Google Maps
- *  elsewhere (both open the native app if installed, else the web map). */
-export function mapsDirectionsHref(address: string, ios: boolean): string {
+/** Directions to an address in each major map app — let the member pick which to
+ *  use. Apple Maps + Google Maps work on every platform (open the native app if
+ *  installed, else the web map); Waze opens the Waze app or its web fallback. */
+export function directionsLinks(address: string): { key: string; label: string; emoji: string; href: string }[] {
   const q = encodeURIComponent(address.trim());
-  return ios
-    ? `https://maps.apple.com/?daddr=${q}`
-    : `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+  return [
+    { key: "apple", label: "Apple Maps", emoji: "🗺️", href: `https://maps.apple.com/?daddr=${q}` },
+    { key: "google", label: "Google Maps", emoji: "📍", href: `https://www.google.com/maps/dir/?api=1&destination=${q}` },
+    { key: "waze", label: "Waze", emoji: "🚗", href: `https://waze.com/ul?q=${q}&navigate=yes` },
+  ];
 }
