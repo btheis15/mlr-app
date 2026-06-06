@@ -50,6 +50,23 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
 | `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
+
+**Posts feed** ([`PostsView`](components/PostsView.tsx)) supports `@mentions` in
+**comments** as well as the existing post tagging — the comment box has inline
+`@name` autocomplete over the whole member list, mentions persist in
+`post_comment_mentions` (migration [`0022`](supabase/migrations/0022_post_comment_mentions.sql),
+public-read like comments), and `@name` renders highlighted (shared
+`MentionText` helper, mirrors the chat).
+
+**Committee chat** ([`CommitteeChat`](components/CommitteeChat.tsx)) `@mentions`
+are scoped to **that committee's roster only** — you can only tag people who can
+see the room (Beautification members can tag Beautification members, etc.).
+Messages can also be **edited or deleted within 24h** by their author (admins
+anytime); delete is a **soft delete** — it stamps `committee_messages.deleted_at`
+and the bubble (and any reply that quotes it) becomes a **"message deleted"**
+tombstone for everyone, regardless of who removed it; edits stamp `edited_at` and
+show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
+not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, admin alert composer, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 
