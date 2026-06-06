@@ -62,11 +62,9 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
         .order("created_at", { ascending: false })
         .limit(20);
       if (cancelled) return;
-      const now = Date.now();
       setDb(
         ((data ?? []) as AnnouncementRow[])
-          .filter((r) => !r.expires_at || new Date(r.expires_at).getTime() > now)
-          .map((r) => ({ id: r.id, severity: r.severity === "info" ? "info" : "alert", title: r.title, body: r.body || undefined, ts: r.created_at })),
+          .map((r) => ({ id: r.id, severity: r.severity === "info" ? "info" : "alert", title: r.title, body: r.body || undefined, ts: r.created_at, expiresAt: r.expires_at || undefined })),
       );
     };
     loadDb();
@@ -88,11 +86,16 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
 
   if (!ready) return null;
 
+  const now = Date.now();
   const seen = new Set<string>();
   const merged = [...local, ...db, ...items]
     .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
     .sort((a, b) => b.ts.localeCompare(a.ts));
-  const visible = merged.filter((a) => !dismissed.includes(a.id));
+  // Drop anything past its expiry (admin alerts auto-hide after their window)
+  // or already dismissed on this device.
+  const visible = merged.filter(
+    (a) => !dismissed.includes(a.id) && (!a.expiresAt || new Date(a.expiresAt).getTime() > now),
+  );
   if (visible.length === 0) return null;
 
   return (

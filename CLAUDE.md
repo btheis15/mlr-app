@@ -89,7 +89,15 @@ is the single source of truth for routes + labels + icons).
   role (to check the privacy wall); it never touches the real Supabase session.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
-  admin-posted local alerts), dismissible per-device.
+  admin-posted alerts), dismissible per-device. Admin alerts also **auto-expire**
+  so they don't sit at the top forever: the composer
+  ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)) picks a window
+  (default **6h**, up to **30 days**) → stamped onto `Announcement.expiresAt` /
+  `announcements.expires_at`, and the banner hides any notice past its expiry
+  (people can still dismiss sooner with ✕; expired local alerts are pruned from
+  `localStorage` on load). Migration
+  [`0022`](supabase/migrations/0022_announcement_default_expiry.sql) gives the
+  column a server-side 6h default; seed/legacy rows with no expiry never auto-hide.
 - **Privacy wall (guests vs members)** — the app is still browsable, but sensitive
   info is gated behind sign-in via [`components/Guard.tsx`](components/Guard.tsx) +
   [`lib/privacy.ts`](lib/privacy.ts): `SignInWall` (whole-screen gate — wraps
