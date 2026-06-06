@@ -1,9 +1,11 @@
 // Web Push sender — runs on the Mac mini, alongside the media server + mailer.
 //
-// Delivers push notifications for new committee chat messages and broadcast
-// alerts, filtered by each member's push_types (multi-select, migration 0020):
+// Delivers push notifications for new committee chat messages, broadcast
+// alerts, and @mentions in posts-feed comments, filtered by each member's
+// push_types (multi-select, migration 0020):
 //   chat      → every new committee message (not your own)
-//   mentions  → @mentions / replies to you
+//   mentions  → @mentions / replies in committee chat, AND @mentions in
+//               posts-feed comments (post_comment_mentions, migration 0022)
 //   alerts    → broadcast alerts
 //   birthdays → handled by birthday-notifier.js (a separate daily job)
 // A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
@@ -182,6 +184,56 @@ async function start() {
     if (sent) console.log(`[push] alert: notified ${sent}`);
   };
 
+  // Posts-feed comment @mentions. Each tagged person is its own
+  // post_comment_mentions row, so we get one INSERT per (comment, user) and
+  // notify that user directly. Posts/comments are public-read, so there's no
+  // committee roster to gate on here — only the recipient's 'mentions' opt-in.
+  const handleCommentMention = async (commentId, mentionedUserId) => {
+    if (!commentId || !mentionedUserId) return;
+    if (!once(`cm:${commentId}:${mentionedUserId}`)) return;
+
+    const { data: comment } = await sb
+      .from("post_comments")
+      .select("id, author_id, text")
+      .eq("id", commentId)
+      .maybeSingle();
+    if (!comment) return;
+
+    // Don't ping someone for mentioning themselves — unless they're an
+    // allow-listed self-notify tester who opted in (mirrors chat behavior).
+    const isSelf = mentionedUserId === comment.author_id;
+    if (isSelf && !SELF_NOTIFY_IDS.has(mentionedUserId)) return;
+
+    const { data: profs } = await sb
+      .from("profiles")
+      .select("id, display_name, push_types, push_self_notify")
+      .in("id", Array.from(new Set([comment.author_id, mentionedUserId])));
+    let commenterName = "Someone";
+    let wantsMentions = false;
+    let selfOptIn = false;
+    for (const p of profs || []) {
+      if (p.id === comment.author_id) commenterName = (p.display_name || "Someone").trim();
+      if (p.id === mentionedUserId) {
+        wantsMentions = (p.push_types || []).includes("mentions");
+        selfOptIn = Boolean(p.push_self_notify);
+      }
+    }
+    if (isSelf && !selfOptIn) return;
+    if (!wantsMentions) return;
+
+    const text = (comment.text || "").trim();
+    const payload = {
+      title: `💬 ${commenterName} mentioned you`,
+      body: text ? text.slice(0, 160) : `${commenterName} mentioned you in a comment`,
+      icon: ICON,
+      badge: ICON,
+      tag: `comment-${commentId}`,
+      url: `${APP_URL}/posts`,
+    };
+    await sendToUser(mentionedUserId, payload);
+    console.log("[push] comment mention: notified 1");
+  };
+
   sb.channel("push-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
       handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
@@ -189,8 +241,13 @@ async function start() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
       handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
     )
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comment_mentions" }, (e) =>
+      handleCommentMention(e.new.comment_id, e.new.mentioned_user_id).catch((err) =>
+        console.error("[push] comment mention error:", err && err.message),
+      ),
+    )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions)");
     });
 }
 
