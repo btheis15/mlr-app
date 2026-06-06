@@ -52,7 +52,7 @@ type Pending =
   | { kind: "gif"; gif: PickedGif };
 
 export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; embedded?: boolean; knownMember?: boolean }) {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
   const configured = isSupabaseConfigured;
 
   const [uid, setUid] = useState<string | null>(null);
@@ -104,7 +104,8 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     if (!sb) return;
     const cid = id ?? committeeId;
     if (!cid) return;
-    const me = (await sb.auth.getUser()).data.user?.id ?? null;
+    // While previewing as a member, gate access as THEY would see it.
+    const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
     setUid(me);
     if (!me) {
       setAccess("guest");
@@ -158,7 +159,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
       if (channel) sb.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [slug, previewAsId]);
 
   // Re-check access if admin status resolves after mount.
   useEffect(() => {

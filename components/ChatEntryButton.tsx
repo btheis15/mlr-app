@@ -12,7 +12,7 @@ import { useIdentity } from "@/components/IdentityProvider";
  * (committee_reads, migration 0014).
  */
 export function ChatEntryButton({ slug, name }: { slug: string; name: string }) {
-  const { user, isAdmin } = useIdentity();
+  const { user, isAdmin, previewAsId } = useIdentity();
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
       const { data: c } = await sb.from("committees").select("id").eq("slug", slug).maybeSingle();
       const cid = (c as { id: string } | null)?.id;
       if (!cid) return;
-      const me = (await sb.auth.getUser()).data.user?.id;
+      const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id;
       if (!me) return;
       let member = isAdmin;
       if (!member) {
@@ -41,7 +41,7 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
     return () => {
       cancelled = true;
     };
-  }, [slug, user, isAdmin]);
+  }, [slug, user, isAdmin, previewAsId]);
 
   return (
     <Link

@@ -27,7 +27,7 @@ interface MyCommittee {
 const POSTS_SEEN_KEY = "mlr-feed-posts-seen";
 
 export function FeedView() {
-  const { user } = useIdentity();
+  const { user, previewAsId } = useIdentity();
   const [committees, setCommittees] = useState<MyCommittee[]>([]);
   const [active, setActive] = useState<string>("posts");
   const [unread, setUnread] = useState<Record<string, number>>({});
@@ -91,7 +91,8 @@ export function FeedView() {
     };
 
     (async () => {
-      me = (await sb.auth.getUser()).data.user?.id ?? null;
+      // While previewing as a member, scope the room list to THEIR committees.
+      me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
       if (cancelled || !me) return;
       await loadCommittees();
       if (cancelled) return;
@@ -113,7 +114,7 @@ export function FeedView() {
     // changes on every (hourly) token refresh, which would needlessly tear down
     // and re-subscribe the channel + re-run all the count queries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email]);
+  }, [user?.email, previewAsId]);
 
   // The active committee chat is a fixed layer pinned to the *visual* viewport
   // (see the JSX below), not an inline box in the scrolling page. iOS won't let

@@ -30,6 +30,10 @@ interface IdentityValue {
   previewMode: PreviewMode;
   /** When previewing as a specific member, who it is (UI-only); null otherwise. */
   previewMember: PreviewMember | null;
+  /** The id whose experience to show: the previewed member's id while previewing
+   *  as a member, else null (use your real session). UI scoping only — the
+   *  database still governs what you can actually read. */
+  previewAsId: string | null;
   /** Switch the preview. Entering a preview is admin-only; exiting is always allowed. */
   setPreviewMode: (mode: PreviewMode) => void;
   /** Preview as a specific member (admin-only); pass null to clear. */
@@ -47,6 +51,7 @@ const IdentityContext = createContext<IdentityValue>({
   isAdmin: false,
   previewMode: "off",
   previewMember: null,
+  previewAsId: null,
   setPreviewMode: () => {},
   setPreviewMember: () => {},
   updateUser: () => {},
@@ -218,6 +223,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         isAdmin: effectiveAdmin,
         previewMode,
         previewMember,
+        previewAsId: previewMode === "member" && previewMember ? previewMember.id : null,
         setPreviewMode,
         setPreviewMember,
         updateUser,
