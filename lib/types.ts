@@ -25,6 +25,13 @@ export interface Announcement {
   body?: string;
   /** ISO timestamp. */
   ts: string;
+  /**
+   * ISO timestamp. Once past, the notice auto-hides from the banner (so admin
+   * alerts don't sit at the top forever). Admin-posted alerts default to 6h;
+   * the composer can stretch it up to 30 days. Undefined = never auto-expires
+   * (e.g. the seed welcome notice).
+   */
+  expiresAt?: string;
 }
 
 /** The signed-in guest. Identity is name + email for now (no verification yet);

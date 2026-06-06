@@ -8,6 +8,22 @@ import { useSaveStatus } from "@/lib/hooks";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
 
 /**
+ * How long an alert sits in everyone's banner before it auto-hides (people can
+ * still dismiss it sooner with the ✕). Default 6h so notices don't linger; an
+ * admin can stretch it up to 30 days for something that needs to stay put.
+ */
+const EXPIRY_OPTIONS: { label: string; hours: number }[] = [
+  { label: "1 hour", hours: 1 },
+  { label: "6 hours", hours: 6 },
+  { label: "12 hours", hours: 12 },
+  { label: "1 day", hours: 24 },
+  { label: "3 days", hours: 24 * 3 },
+  { label: "1 week", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+];
+const DEFAULT_EXPIRY_HOURS = 6;
+
+/**
  * Compose an app-wide alert (banner notice). **App Admins only** (migration
  * 0016). When the backend is live it inserts an `announcements` row, which
  * broadcasts to every device via Realtime (and the mini's mailer emails opted-in
@@ -20,17 +36,20 @@ export function AdminAlertComposer() {
   const [body, setBody] = useState("");
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [emailAudience, setEmailAudience] = useState<"all" | "admins">("all");
+  const [expiryHours, setExpiryHours] = useState(DEFAULT_EXPIRY_HOURS);
   const { pending: sending, status, show, run } = useSaveStatus();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
+    const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
+
     const sb = supabase;
     if (isSupabaseConfigured && sb) {
       run(async () => {
         const uid = await getCurrentUserId();
-        const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity: "alert", notify_email: notifyEmail };
+        const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity: "alert", notify_email: notifyEmail, expires_at: expiresAt };
         let { error } = await sb.from("announcements").insert({ ...base, email_audience: emailAudience });
         if (error && /email_audience/i.test(error.message || "")) {
           // Pre-0017 the column doesn't exist yet — post without it (emails everyone).
@@ -40,7 +59,7 @@ export function AdminAlertComposer() {
           show(`Couldn't post: ${error.message}`, 0); // a real failure sticks
           return;
         }
-        setTitle(""); setBody(""); setEmailAudience("all");
+        setTitle(""); setBody(""); setEmailAudience("all"); setExpiryHours(DEFAULT_EXPIRY_HOURS);
         return notifyEmail
           ? `Posted to everyone's banner ✓ (emailed ${emailAudience === "admins" ? "App Admins" : "opted-in members"})`
           : "Posted to everyone's banner ✓";
@@ -49,8 +68,8 @@ export function AdminAlertComposer() {
     }
 
     // Local fallback (no backend).
-    pushLocalAnnouncement({ id: `local-${Date.now()}`, severity: "alert", title: title.trim(), body: body.trim() || undefined, ts: new Date().toISOString() });
-    setTitle(""); setBody("");
+    pushLocalAnnouncement({ id: `local-${Date.now()}`, severity: "alert", title: title.trim(), body: body.trim() || undefined, ts: new Date().toISOString(), expiresAt });
+    setTitle(""); setBody(""); setExpiryHours(DEFAULT_EXPIRY_HOURS);
     show("Posted to the banner (this device).", 4000);
   };
 
@@ -63,7 +82,7 @@ export function AdminAlertComposer() {
         <h2 className="text-sm font-semibold">📣 Post a notification</h2>
       </div>
       <p className="text-xs text-foreground/60">
-        Shows a 📣 banner at the top of the app for <strong>everyone</strong>. Opted-in members can also be emailed (below).
+        Shows a 📣 banner at the top of the app for <strong>everyone</strong>. It auto-hides after the window below (people can dismiss it sooner with ✕). Opted-in members can also be emailed (below).
       </p>
       <input
         value={title}
@@ -78,6 +97,18 @@ export function AdminAlertComposer() {
         rows={2}
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
+      <label className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
+        <span>Hide from the banner after</span>
+        <select
+          value={expiryHours}
+          onChange={(e) => setExpiryHours(Number(e.target.value))}
+          className="rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+        >
+          {EXPIRY_OPTIONS.map((o) => (
+            <option key={o.hours} value={o.hours}>{o.label}</option>
+          ))}
+        </select>
+      </label>
       {isSupabaseConfigured && (
         <div className="space-y-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
           <label className="flex items-center gap-2 text-xs text-foreground/70">
