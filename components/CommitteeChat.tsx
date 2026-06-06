@@ -38,11 +38,17 @@ interface Msg {
   text?: string;
   ts: string;
   editedAt?: string | null;
+  deletedAt?: string | null;
   replyToId?: string | null;
   media: ChatMedia[];
   reactions: { userId: string; emoji: string }[];
   mentions: string[]; // user ids
 }
+
+// Authors can edit / delete their own message for this long after sending;
+// admins are never limited (handled separately). Mirrors the DB policy in 0023.
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const within24h = (ts: string) => Date.now() - new Date(ts).getTime() < EDIT_WINDOW_MS;
 
 // One pending attachment in the composer: an uploaded-on-send file, a sticker
 // id, or a hotlinked GIF. Only one "special" (sticker/gif) at a time.
@@ -72,6 +78,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   const [pending, setPending] = useState<Pending[]>([]);
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  const [editing, setEditing] = useState<Msg | null>(null);
   const [showGif, setShowGif] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [reactingId, setReactingId] = useState<string | null>(null);
@@ -178,13 +185,22 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   const refetchMessages = async (cid: string) => {
     const sb = supabase;
     if (!sb) return;
-    const { data: msgRows } = await sb
+    // Prefer the soft-delete column (migration 0023). If it isn't there yet the
+    // select errors — fall back to the older columns so the chat still loads.
+    const withDel = await sb
       .from("committee_messages")
-      .select("id, author_id, text, reply_to_id, created_at, edited_at")
+      .select("id, author_id, text, reply_to_id, created_at, edited_at, deleted_at")
       .eq("committee_id", cid)
       .order("created_at", { ascending: true });
+    const msgRows = withDel.error
+      ? (await sb
+          .from("committee_messages")
+          .select("id, author_id, text, reply_to_id, created_at, edited_at")
+          .eq("committee_id", cid)
+          .order("created_at", { ascending: true })).data
+      : withDel.data;
     const rows = (msgRows ?? []) as {
-      id: string; author_id: string; text: string | null; reply_to_id: string | null; created_at: string; edited_at: string | null;
+      id: string; author_id: string; text: string | null; reply_to_id: string | null; created_at: string; edited_at: string | null; deleted_at?: string | null;
     }[];
     const ids = rows.map((r) => r.id);
 
@@ -234,6 +250,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
         text: r.text || undefined,
         ts: r.created_at,
         editedAt: r.edited_at,
+        deletedAt: r.deleted_at,
         replyToId: r.reply_to_id,
         media: mediaByMsg[r.id] ?? [],
         reactions: reactByMsg[r.id] ?? [],
@@ -280,7 +297,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
   useEffect(() => {
     repinIfAtBottom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending.length, showStickers, showGif, replyTo]);
+  }, [pending.length, showStickers, showGif, replyTo, editing]);
 
   // Grow the composer to fit what you type (one line up to a cap), so a line is
   // never clipped, and snap it back to one line after sending. Re-runs when the
@@ -356,7 +373,11 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     setMentionIds((ids) => (ids.includes(m.id) ? ids : [...ids, m.id]));
   };
 
-  const canSend = (text.trim().length > 0 || pending.length > 0) && !sending && isMember;
+  // Editing changes text (+ its @mentions) only — media stays as it was — so a
+  // non-empty text, or a message that still has its media, is enough to save.
+  const canSend = editing
+    ? (text.trim().length > 0 || editing.media.length > 0) && !sending && isMember
+    : (text.trim().length > 0 || pending.length > 0) && !sending && isMember;
 
   const send = async () => {
     const sb = supabase;
@@ -364,6 +385,23 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     setSending(true);
     setStatus(null);
     try {
+      // ── Editing an existing message: update its text + @mentions in place. ──
+      if (editing) {
+        const { error: updErr } = await sb
+          .from("committee_messages")
+          .update({ text: text.trim() || null, edited_at: new Date().toISOString() })
+          .eq("id", editing.id);
+        if (updErr) throw updErr;
+        // Re-sync mentions to match the edited text (delete all, re-insert).
+        await sb.from("committee_message_mentions").delete().eq("message_id", editing.id);
+        if (mentionIds.length) {
+          await sb.from("committee_message_mentions").insert(mentionIds.map((id) => ({ message_id: editing.id, mentioned_user_id: id })));
+        }
+        setText(""); setMentionIds([]); setEditing(null);
+        await refetchMessages(committeeId);
+        return;
+      }
+
       // Upload any photo/video files first so a failure never leaves an empty
       // message.
       const uploaded: ChatMedia[] = [];
@@ -417,11 +455,33 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     if (committeeId) await refetchMessages(committeeId);
   };
 
+  // Soft delete: stamp deleted_at so the bubble becomes a "message deleted"
+  // tombstone for everyone (the row stays so replies that quote it still resolve).
+  // The DB policy (0023) enforces who may do this — author within 24h, admin
+  // anytime. If you were editing this message, drop out of edit mode.
   const deleteMessage = async (id: string) => {
     if (!supabase || !committeeId) return;
-    if (!window.confirm("Delete this message?")) return;
-    await supabase.from("committee_messages").delete().eq("id", id);
+    if (!window.confirm("Delete this message? It'll show as “message deleted”.")) return;
+    if (editing?.id === id) cancelEdit();
+    await supabase.from("committee_messages").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     await refetchMessages(committeeId);
+  };
+
+  // Load a message into the composer to edit its text. Clears any reply/pending
+  // so the composer is unambiguous, seeds the existing @mentions, and focuses.
+  const startEdit = (m: Msg) => {
+    setReactingId(null);
+    setReplyTo(null);
+    setPending([]);
+    setEditing(m);
+    setText(m.text ?? "");
+    setMentionIds(m.mentions);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+  const cancelEdit = () => {
+    setEditing(null);
+    setText("");
+    setMentionIds([]);
   };
 
   const scrollToMessage = (id: string) => {
@@ -531,13 +591,15 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
                   mine={m.authorId === uid}
                   grouped={!!grouped}
                   uid={uid}
-                  canDelete={m.authorId === uid || isAdmin}
+                  canDelete={!m.deletedAt && ((m.authorId === uid && within24h(m.ts)) || isAdmin)}
+                  canEdit={!m.deletedAt && m.authorId === uid && within24h(m.ts)}
                   reply={msgById.get(m.replyToId ?? "")}
                   members={members}
                   reacting={reactingId === m.id}
                   onOpenReact={() => setReactingId((cur) => (cur === m.id ? null : m.id))}
                   onReact={(e) => react(m.id, e)}
                   onReply={() => startReply(m)}
+                  onEdit={() => startEdit(m)}
                   onDelete={() => deleteMessage(m.id)}
                   onOpenMember={(mm) => setMemberSheet(mm)}
                   onOpenPhoto={(u) => setLightbox(u)}
@@ -554,7 +616,18 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
       <div className="shrink-0 border-t border-border bg-card" style={embedded ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}>
         {status && <p className="px-4 pt-2 text-center text-xs font-medium text-accent">{status}</p>}
 
-        {replyTo && (
+        {editing && (
+          <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+            <span className="h-8 w-0.5 rounded-full bg-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-primary">Editing message</p>
+              <p className="truncate text-foreground/55">{editing.text || replyPreview(editing)}</p>
+            </div>
+            <button onClick={cancelEdit} className="press shrink-0 text-foreground/40" aria-label="Cancel edit">✕</button>
+          </div>
+        )}
+
+        {replyTo && !editing && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
             <span className="h-8 w-0.5 rounded-full bg-primary" />
             <div className="min-w-0 flex-1">
@@ -613,16 +686,22 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
         )}
 
         <div className="flex items-end gap-1.5 px-2 py-2">
-          <button type="button" onClick={() => fileRef.current?.click()} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg" aria-label="Add photo or video">📷</button>
-          <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
-          <button type="button" onClick={() => { setShowStickers((s) => !s); setShowGif(false); }} className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${showStickers ? "bg-primary/10" : ""}`} aria-label="Stickers">🦦</button>
-          <button type="button" onClick={() => { setShowGif((s) => !s); setShowStickers(false); }} className={`press flex h-9 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold ${showGif ? "bg-primary/10 text-primary" : "text-foreground/55"}`} aria-label="GIFs">GIF</button>
+          {/* Editing changes text only — hide the attachment buttons so it's clear
+              media isn't part of an edit (and to leave more room for the text). */}
+          {!editing && (
+            <>
+              <button type="button" onClick={() => fileRef.current?.click()} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg" aria-label="Add photo or video">📷</button>
+              <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
+              <button type="button" onClick={() => { setShowStickers((s) => !s); setShowGif(false); }} className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${showStickers ? "bg-primary/10" : ""}`} aria-label="Stickers">🦦</button>
+              <button type="button" onClick={() => { setShowGif((s) => !s); setShowStickers(false); }} className={`press flex h-9 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold ${showGif ? "bg-primary/10 text-primary" : "text-foreground/55"}`} aria-label="GIFs">GIF</button>
+            </>
+          )}
           <textarea
             ref={textareaRef}
             value={text}
             onChange={(e) => onComposerChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder="Message…"
+            placeholder={editing ? "Edit message…" : "Message…"}
             rows={1}
             enterKeyHint="send"
             // text-base (≥16px) is required: iOS Safari auto-zooms any focused
@@ -631,8 +710,8 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
             // line is never clipped; leading-snug keeps a single line tidy.
             className="max-h-28 min-h-10 flex-1 resize-none overflow-y-auto rounded-2xl bg-background px-3 py-2 text-base leading-snug ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
-          <button onClick={() => void send()} disabled={!canSend} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40" aria-label="Send">
-            {sending ? "…" : "➤"}
+          <button onClick={() => void send()} disabled={!canSend} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40" aria-label={editing ? "Save edit" : "Send"}>
+            {sending ? "…" : editing ? "✓" : "➤"}
           </button>
         </div>
       </div>
@@ -687,6 +766,7 @@ function ChatShell({ slug, name, emoji, subtitle, children }: { slug: string; na
 }
 
 function replyPreview(m: Msg): string {
+  if (m.deletedAt) return "message deleted";
   if (m.text) return m.text;
   const med = m.media[0];
   if (!med) return "Message";
@@ -715,12 +795,12 @@ function MessageText({ text, mentions, members }: { text: string; mentions: stri
 // One message: bubble + media + reactions, with swipe-right-to-reply and
 // long-press-to-react (the iOS feel) handled by lightweight pointer gestures.
 function MessageRow({
-  m, mine, grouped, uid, canDelete, reply, members, reacting,
-  onOpenReact, onReact, onReply, onDelete, onOpenMember, onOpenPhoto, onJumpToReply,
+  m, mine, grouped, uid, canDelete, canEdit, reply, members, reacting,
+  onOpenReact, onReact, onReply, onEdit, onDelete, onOpenMember, onOpenPhoto, onJumpToReply,
 }: {
-  m: Msg; mine: boolean; grouped: boolean; uid: string | null; canDelete: boolean;
+  m: Msg; mine: boolean; grouped: boolean; uid: string | null; canDelete: boolean; canEdit: boolean;
   reply?: Msg; members: Member[]; reacting: boolean;
-  onOpenReact: () => void; onReact: (emoji: string) => void; onReply: () => void; onDelete: () => void;
+  onOpenReact: () => void; onReact: (emoji: string) => void; onReply: () => void; onEdit: () => void; onDelete: () => void;
   onOpenMember: (m: Member) => void; onOpenPhoto: (url: string) => void; onJumpToReply: (id: string) => void;
 }) {
   const [dx, setDx] = useState(0);
@@ -753,6 +833,20 @@ function MessageRow({
   const counts = reactionCounts(m.reactions);
   const mineEmoji = m.reactions.find((r) => r.userId === uid)?.emoji ?? null;
   const onlySticker = m.media.length === 1 && (m.media[0].type === "sticker" || m.media[0].type === "gif") && !m.text;
+
+  // Soft-deleted → a plain "message deleted" tombstone: no media, text,
+  // reactions, or gestures, for everyone (the same whether an author or admin
+  // removed it). The row stays so replies that quote it still resolve.
+  if (m.deletedAt) {
+    return (
+      <div id={`cmsg-${m.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
+        {!mine && <div className="mr-1.5 w-7 shrink-0" aria-hidden />}
+        <div className="max-w-[78%] rounded-2xl bg-card px-3 py-2 text-sm italic text-foreground/40 ring-1 ring-border">
+          🚫 message deleted
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id={`cmsg-${m.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
@@ -829,6 +923,7 @@ function MessageRow({
               <button key={e} onClick={() => onReact(e)} className="press rounded-full px-1 text-lg">{e}</button>
             ))}
             <button onClick={onReply} className="press rounded-full px-1 text-base" aria-label="Reply">↩︎</button>
+            {canEdit && <button onClick={onEdit} className="press rounded-full px-1 text-base" aria-label="Edit">✏️</button>}
             {canDelete && <button onClick={onDelete} className="press rounded-full px-1 text-base" aria-label="Delete">🗑️</button>}
           </div>
         )}

@@ -49,6 +49,7 @@ interface CommentItem {
   authorId: string;
   text: string;
   ts: string;
+  mentions: string[]; // tagged user ids
 }
 
 interface PostRow {
@@ -80,6 +81,10 @@ interface ReactionRow {
 interface TagRow {
   post_id: string;
   tagged_user_id: string;
+}
+interface CommentMentionRow {
+  comment_id: string;
+  mentioned_user_id: string;
 }
 
 const LS = { hidden: "posts-hidden" };
@@ -162,6 +167,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
+      sb.from("post_comment_mentions").select("comment_id, mentioned_user_id"),
       sb.from("profiles").select("id, display_name, avatar_url"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
@@ -182,7 +188,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
       setHasOccurredAt(true);
     }
-    const [mediaRes, commentsRes, reactionsRes, tagsRes, profilesRes] = await others;
+    const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, profilesRes] = await others;
 
     const names = new Map<string, string>();
     const avatars = new Map<string, string | null>();
@@ -235,9 +241,14 @@ export function PostsView({ seed }: { seed: Post[] }) {
       }),
     );
 
+    const mentionsByComment: Record<string, string[]> = {};
+    for (const m of (commentMentionsRes.data ?? []) as unknown as CommentMentionRow[]) {
+      (mentionsByComment[m.comment_id] ||= []).push(m.mentioned_user_id);
+    }
+
     const byPost: Record<string, CommentItem[]> = {};
     for (const c of (commentsRes.data ?? []) as unknown as CommentRow[]) {
-      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorAvatar: avatarOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at });
+      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorAvatar: avatarOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at, mentions: mentionsByComment[c.id] ?? [] });
     }
     setDbComments(byPost);
 
@@ -264,6 +275,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comment_mentions" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, fire)
       .subscribe();
@@ -406,11 +418,16 @@ export function PostsView({ seed }: { seed: Post[] }) {
     await refetch();
   };
 
-  const addComment = async (postId: string, body: string) => {
+  const addComment = async (postId: string, body: string, mentionIds: string[] = []) => {
     const t = body.trim();
     if (!t) return;
     if (!supabase || !uid) { promptSignIn(); return; }
-    await supabase.from("post_comments").insert({ post_id: postId, author_id: uid, text: t });
+    const { data, error } = await supabase.from("post_comments").insert({ post_id: postId, author_id: uid, text: t }).select("id").single();
+    if (error) return;
+    const commentId = (data as { id: string } | null)?.id;
+    if (commentId && mentionIds.length) {
+      await supabase.from("post_comment_mentions").insert(mentionIds.map((id) => ({ comment_id: commentId, mentioned_user_id: id })));
+    }
     await refetch();
   };
   const removeComment = async (commentId: string) => {
@@ -755,13 +772,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
                         <Avatar name={c.author} url={c.authorAvatar} size={22} />
                         <span className="font-semibold">{c.author}</span>
                       </button>
-                      <span className="min-w-0 flex-1 text-foreground/75">{c.text}</span>
+                      <span className="min-w-0 flex-1 text-foreground/75"><MentionText text={c.text} mentions={c.mentions} members={members} /></span>
                       {(isAdmin || (!!uid && c.authorId === uid)) && (
                         <button onClick={() => removeComment(c.id)} className="press shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
                       )}
                     </div>
                   ))}
-                  <CommentBox onAdd={(t) => addComment(p.id, t)} />
+                  <CommentBox members={members} uid={uid} onAdd={(t, ids) => addComment(p.id, t, ids)} />
                 </div>
               )}
             </li>
@@ -978,11 +995,80 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
   );
 }
 
-function CommentBox({ onAdd }: { onAdd: (text: string) => void }) {
+// Render comment text with @mentions of tagged members highlighted — mirrors
+// CommitteeChat's MessageText so a tag reads the same in a comment as in chat.
+function MentionText({ text, mentions, members }: { text: string; mentions: string[]; members: Member[] }) {
+  const names = mentions.map((id) => members.find((m) => m.id === id)?.name).filter((n): n is string => !!n);
+  if (!names.length) return <>{text}</>;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`@(${names.sort((a, b) => b.length - a.length).map(esc).join("|")})`, "g");
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(<span key={key++} className="font-semibold text-primary">@{m[1]}</span>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
+
+// Comment composer with inline @mention autocomplete — type "@" then a name to
+// tag anyone in the family (same member list as post tagging). The chosen ids
+// flow back through onAdd so addComment can write them to post_comment_mentions.
+function CommentBox({ members, uid, onAdd }: { members: Member[]; uid: string | null; onAdd: (text: string, mentionIds: string[]) => void }) {
   const [v, setV] = useState("");
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
+
+  // Keep only mentions whose "@Name" is still present in the text.
+  const liveMentions = (val: string) =>
+    mentionIds.filter((id) => {
+      const n = members.find((m) => m.id === id)?.name;
+      return n ? val.includes(`@${n}`) : false;
+    });
+
+  const onChange = (val: string) => {
+    setV(val);
+    if (mentionIds.length) setMentionIds(liveMentions(val));
+  };
+
+  // A trailing "@token" opens the picker.
+  const mentionQuery = (() => {
+    const m = /(?:^|\s)@(\S*)$/.exec(v);
+    return m ? m[1].toLowerCase() : null;
+  })();
+  const candidates = mentionQuery !== null
+    ? members.filter((m) => m.id !== uid && matchesName(m.name, mentionQuery)).slice(0, 6)
+    : [];
+  const choose = (m: Member) => {
+    const at = v.lastIndexOf("@");
+    setV(v.slice(0, at) + `@${m.name} `);
+    setMentionIds((ids) => (ids.includes(m.id) ? ids : [...ids, m.id]));
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = v.trim();
+    if (!text) return;
+    onAdd(text, liveMentions(v));
+    setV(""); setMentionIds([]);
+  };
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onAdd(v); setV(""); }} className="flex gap-2">
-      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="Add a comment…" className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+    <form onSubmit={submit} className="relative flex gap-2">
+      {candidates.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 mb-1 max-h-40 overflow-y-auto rounded-xl bg-card p-1 shadow-lg ring-1 ring-border">
+          {candidates.map((m) => (
+            <button key={m.id} type="button" onClick={() => choose(m)} className="press flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-background">
+              <Avatar name={m.name} url={m.avatarUrl} size={22} />
+              <span className="font-medium">{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <input value={v} onChange={(e) => onChange(e.target.value)} placeholder="Add a comment… (@ to tag)" className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
       <button type="submit" className="press rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
     </form>
   );
