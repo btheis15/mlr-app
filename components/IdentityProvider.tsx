@@ -240,9 +240,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Two-step passwordless sign-in: email → 6-digit code. Keeps the member in the
- * app (no browser hop), which matters for an installed PWA. The signup trigger
- * seeds `profiles.display_name` from the name entered here.
+ * Two-step passwordless sign-in: email → one-time code (6–8 digits, set by the
+ * Supabase "Email OTP Length" setting). We verify the code in-app, so the email
+ * must send the code itself ({{ .Token }}), not a magic link — see
+ * supabase/README.md "Send a numeric code, not a magic link". Keeps the member
+ * in the app (no browser hop), which matters for an installed PWA. The signup
+ * trigger seeds `profiles.display_name` from the name entered here.
  */
 function SignInGate({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<"email" | "code">("email");

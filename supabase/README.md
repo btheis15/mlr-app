@@ -106,3 +106,27 @@ which committees they lead — roles are additive.
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
 rate-limited, so plug in free SMTP (Resend free tier or Gmail) under
 Authentication → Email before real use.
+
+### Send a numeric code, not a magic link
+
+The app calls `signInWithOtp` + `verifyOtp({ type: "email" })` — it only ever
+wants the **code**, never a clickable link. But by default Supabase's email
+sends a magic-link URL, so users get a link instead of (or alongside) the code.
+That's a dashboard setting, not an app change:
+
+1. **Authentication → Emails → "Magic Link" template** — replace the body with
+   the **token**, e.g.
+
+   ```html
+   <h2>Your sign-in code</h2>
+   <p>Enter this code in the app:</p>
+   <p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+   <p>It expires shortly. If you didn't request it, ignore this email.</p>
+   ```
+
+   Using `{{ .Token }}` (not `{{ .ConfirmationURL }}`) is what makes the email a
+   code-only email. `signInWithOtp` uses this template, so this one change
+   covers both new sign-ups and returning sign-ins.
+2. **Authentication → Sign In / Providers → Email → "Email OTP Length"** — set
+   to **8** (the sign-in sheet already accepts a 6–8 digit code).
+3. Optionally shorten "Email OTP Expiration" to taste.
