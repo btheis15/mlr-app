@@ -14,17 +14,19 @@ import { MigrationHint } from "@/components/MigrationHint";
  *   • Joins come from `profiles.created_at` (a profile row is auto-created the
  *     moment someone signs up — migration 0001's `handle_new_user` trigger),
  *     read through the admin-gated `admin_members()` RPC (migration 0008) so we
- *     also get their email. This is the reliable signal that a new member like
- *     Meher just joined — it doesn't depend on the audit log.
+ *     also get their email. This is the reliable signal that a new member just
+ *     joined — it doesn't depend on the audit log.
  *   • Sign-ins come from `recent_signins()` — a SECURITY DEFINER function gated
  *     to admins that reads GoTrue's audit log (migration 0011). These carry an
- *     IP, resolved client-side to an approximate city/country via ipwho.is
- *     (free, no key, HTTPS). GoTrue's audit log can be empty/pruned, which is
- *     why joins are surfaced independently rather than relying on it.
+ *     IP. The sign-up event in that log lets us attach the IP a member joined
+ *     from to their "Joined" row.
  *
- * IP geolocation is approximate by nature: it lands near the right city / ISP
- * region, not a street address — precise location would need the device's GPS
- * (and consent).
+ * Tap any row to expand its IP + geolocation. IP → location is resolved
+ * **on demand** (when a row is opened) via ipwho.is (free, no key, HTTPS). It's
+ * approximate by nature: it lands near the right city / ISP region, not a
+ * street address — precise location would need the device's GPS (and consent).
+ * A join only has an IP if GoTrue recorded one at sign-up; otherwise the row
+ * says so (the profile-creation timestamp itself carries no IP).
  */
 
 const HOME_COUNTRY = "US"; // members are US-based; anything else gets flagged.
@@ -45,7 +47,7 @@ interface MemberRow {
 
 // A unified activity entry: either a member join or an auth sign-in event.
 type Activity =
-  | { kind: "join"; created_at: string; email: string | null; name: string | null }
+  | { kind: "join"; created_at: string; email: string | null; name: string | null; ip_address: string | null }
   | {
       kind: "signin";
       created_at: string;
@@ -94,6 +96,7 @@ export function AdminSignins() {
   const [joins, setJoins] = useState<MemberRow[]>([]);
   const [signins, setSignins] = useState<SigninRow[]>([]);
   const [geo, setGeo] = useState<Record<string, Geo>>({});
+  const [open, setOpen] = useState<string | null>(null); // key of the expanded row
   const [loading, setLoading] = useState(true);
   // True once the GoTrue audit-log function answers (migration 0011 applied).
   const [signinsReady, setSigninsReady] = useState(false);
@@ -117,82 +120,138 @@ export function AdminSignins() {
       if (!members.error && members.data) {
         setJoins(members.data as MemberRow[]);
       }
-
-      let list: SigninRow[] = [];
       if (!audit.error && audit.data) {
-        list = audit.data as SigninRow[];
-        setSignins(list);
+        setSignins(audit.data as SigninRow[]);
         setSigninsReady(true);
       } else {
         setSigninsReady(false);
       }
       setLoading(false);
-
-      // Resolve each unique IP to an approximate location (one lookup per IP).
-      const ips = Array.from(
-        new Set(list.map((r) => r.ip_address).filter(Boolean) as string[]),
-      );
-      for (const ip of ips) {
-        try {
-          const res = await fetch(`https://ipwho.is/${ip}`);
-          const j = await res.json();
-          if (!active) return;
-          setGeo((prev) => ({
-            ...prev,
-            [ip]: j?.success
-              ? {
-                  ok: true,
-                  city: j.city,
-                  region: j.region,
-                  country: j.country,
-                  country_code: j.country_code,
-                  flag: j.flag?.emoji,
-                  isp: j.connection?.isp || j.connection?.org,
-                  lat: j.latitude,
-                  lon: j.longitude,
-                }
-              : { ok: false },
-          }));
-        } catch {
-          if (!active) return;
-          setGeo((prev) => ({ ...prev, [ip]: { ok: false } }));
-        }
-      }
     })();
     return () => {
       active = false;
     };
   }, []);
 
-  // Merge joins + sign-ins into one newest-first list. A join is already
-  // represented by GoTrue's "New sign-up" audit event when that exists, so drop
-  // the duplicate (keep the audit row — it carries the IP/location).
-  const signupEmails = new Set(
-    signins
-      .filter((r) => r.action === "user_signedup" && r.email)
-      .map((r) => (r.email as string).toLowerCase()),
-  );
+  // Resolve one IP to an approximate location, on demand (when its row opens).
+  // Cached in `geo` so re-opening a row doesn't look it up again.
+  const lookupGeo = async (ip: string) => {
+    if (geo[ip]) return;
+    setGeo((prev) => ({ ...prev, [ip]: { ok: false } })); // optimistic placeholder
+    try {
+      const res = await fetch(`https://ipwho.is/${ip}`);
+      const j = await res.json();
+      setGeo((prev) => ({
+        ...prev,
+        [ip]: j?.success
+          ? {
+              ok: true,
+              city: j.city,
+              region: j.region,
+              country: j.country,
+              country_code: j.country_code,
+              flag: j.flag?.emoji,
+              isp: j.connection?.isp || j.connection?.org,
+              lat: j.latitude,
+              lon: j.longitude,
+            }
+          : { ok: false },
+      }));
+    } catch {
+      setGeo((prev) => ({ ...prev, [ip]: { ok: false } }));
+    }
+  };
+
+  const toggle = (key: string, ip: string | null) => {
+    const next = open === key ? null : key;
+    setOpen(next);
+    if (next && ip) lookupGeo(ip);
+  };
+
+  // The IP each member joined from, pulled from GoTrue's "New sign-up" audit
+  // event (when it recorded one), keyed by email so we can attach it to joins.
+  const signupIpByEmail = new Map<string, string>();
+  for (const r of signins) {
+    if (r.action === "user_signedup" && r.email && r.ip_address) {
+      signupIpByEmail.set(r.email.toLowerCase(), r.ip_address);
+    }
+  }
+
+  // Merge joins + sign-ins into one newest-first list. Sign-up audit events are
+  // dropped — the "Joined" row already represents them (and now carries the
+  // sign-up IP), so we keep the join's friendlier name + email.
   const activity: Activity[] = [
     ...joins
-      .filter((m) => m.created_at && !(m.email && signupEmails.has(m.email.toLowerCase())))
+      .filter((m) => m.created_at)
       .map(
         (m): Activity => ({
           kind: "join",
           created_at: m.created_at as string,
           email: m.email,
           name: m.display_name,
+          ip_address: m.email ? signupIpByEmail.get(m.email.toLowerCase()) ?? null : null,
         }),
       ),
-    ...signins.map(
-      (r): Activity => ({
-        kind: "signin",
-        created_at: r.created_at,
-        email: r.email,
-        action: r.action,
-        ip_address: r.ip_address,
-      }),
-    ),
+    ...signins
+      .filter((r) => r.action !== "user_signedup")
+      .map(
+        (r): Activity => ({
+          kind: "signin",
+          created_at: r.created_at,
+          email: r.email,
+          action: r.action,
+          ip_address: r.ip_address,
+        }),
+      ),
   ].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+
+  // The IP + location detail shown when a row is expanded.
+  const detail = (ip: string | null) => {
+    if (!ip) {
+      return (
+        <p className="mt-2 rounded-lg bg-card px-2.5 py-2 text-foreground/55">
+          No sign-in IP on record — a location will show once this member signs in.
+        </p>
+      );
+    }
+    const g = geo[ip];
+    const place = g?.ok ? [g.city, g.region, g.country].filter(Boolean).join(", ") : null;
+    return (
+      <div className="mt-2 space-y-1 rounded-lg bg-card px-2.5 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-foreground/45">IP</span>
+          <span className="font-mono text-[11px] text-foreground/70">{ip}</span>
+        </div>
+        {!g ? (
+          <p className="text-foreground/45">Looking up location…</p>
+        ) : g.ok ? (
+          <>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-foreground/65">
+              {place && (
+                <span>
+                  {g.flag ? `${g.flag} ` : ""}
+                  {place}
+                </span>
+              )}
+              {g.isp && <span className="text-foreground/40">· {g.isp}</span>}
+            </div>
+            {g.lat != null && g.lon != null && (
+              <a
+                href={`https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=11/${g.lat}/${g.lon}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-primary underline"
+              >
+                View on map ↗
+              </a>
+            )}
+          </>
+        ) : (
+          <p className="text-foreground/45">Location unavailable for this IP.</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
@@ -202,9 +261,9 @@ export function AdminSignins() {
       </div>
 
       <p className="text-xs text-foreground/60">
-        New members and recent sign-ins. Sign-in locations are{" "}
-        <strong>approximate</strong> (city / ISP region) — useful to spot access from far away,
-        not a precise spot. Anything outside the US is flagged.
+        New members and recent sign-ins. <strong>Tap a row</strong> to see the IP and an{" "}
+        <strong>approximate</strong> location (city / ISP region) — useful to spot access from far
+        away, not a precise spot. Anything outside the US is flagged.
       </p>
 
       {!signinsReady && !loading && (
@@ -220,71 +279,54 @@ export function AdminSignins() {
       ) : (
         <ul className="space-y-1.5">
           {activity.map((a, i) => {
-            if (a.kind === "join") {
-              const name = a.name?.trim() || a.email || "New member";
-              return (
-                <li
-                  key={`join-${a.created_at}-${i}`}
-                  className="rounded-xl bg-background p-2.5 text-xs ring-1 ring-primary/30"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">Joined</span>
-                    <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                      New member
-                    </span>
-                    <span className="ml-auto text-foreground/45">{whenFor(a.created_at)}</span>
-                  </div>
-                  <p className="truncate text-foreground/70">{name}</p>
-                  {a.email && a.email !== name && (
-                    <p className="truncate text-foreground/55">{a.email}</p>
-                  )}
-                </li>
-              );
-            }
-
+            const key = `${a.kind}-${a.created_at}-${i}`;
+            const isOpen = open === key;
             const g = a.ip_address ? geo[a.ip_address] : undefined;
             const foreign = g?.ok && g.country_code && g.country_code !== HOME_COUNTRY;
-            const place = g?.ok
-              ? [g.city, g.region, g.country].filter(Boolean).join(", ")
-              : null;
+            const isJoin = a.kind === "join";
+            const name = isJoin ? a.name?.trim() || a.email || "New member" : null;
             return (
               <li
-                key={`signin-${a.created_at}-${i}`}
-                className={`rounded-xl bg-background p-2.5 text-xs ring-1 ${
-                  foreign ? "ring-accent/50" : "ring-border"
+                key={key}
+                className={`overflow-hidden rounded-xl bg-background text-xs ring-1 ${
+                  foreign ? "ring-accent/50" : isJoin ? "ring-primary/30" : "ring-border"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{labelFor(a.action)}</span>
-                  {foreign && (
-                    <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                      Outside US
+                <button
+                  type="button"
+                  onClick={() => toggle(key, a.ip_address)}
+                  aria-expanded={isOpen}
+                  className="press flex w-full flex-col items-stretch gap-0.5 p-2.5 text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{isJoin ? "Joined" : labelFor(a.action)}</span>
+                    {isJoin && (
+                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        New member
+                      </span>
+                    )}
+                    {foreign && (
+                      <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                        Outside US
+                      </span>
+                    )}
+                    <span className="ml-auto flex items-center gap-1.5 text-foreground/45">
+                      {whenFor(a.created_at)}
+                      <span className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>⌄</span>
                     </span>
+                  </div>
+                  {isJoin ? (
+                    <>
+                      <span className="truncate text-foreground/70">{name}</span>
+                      {a.email && a.email !== name && (
+                        <span className="truncate text-foreground/55">{a.email}</span>
+                      )}
+                    </>
+                  ) : (
+                    a.email && <span className="truncate text-foreground/70">{a.email}</span>
                   )}
-                  <span className="ml-auto text-foreground/45">{whenFor(a.created_at)}</span>
-                </div>
-                {a.email && <p className="truncate text-foreground/70">{a.email}</p>}
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-foreground/55">
-                  <span className="font-mono text-[11px]">{a.ip_address}</span>
-                  {place && (
-                    <span>
-                      {g?.flag ? `${g.flag} ` : ""}
-                      {place}
-                    </span>
-                  )}
-                  {g?.isp && <span className="text-foreground/40">· {g.isp}</span>}
-                  {g?.ok && g.lat != null && g.lon != null && (
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=11/${g.lat}/${g.lon}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary underline"
-                    >
-                      map
-                    </a>
-                  )}
-                  {a.ip_address && g && !g.ok && <span className="text-foreground/40">· location unknown</span>}
-                </div>
+                </button>
+                {isOpen && <div className="px-2.5 pb-2.5">{detail(a.ip_address)}</div>}
               </li>
             );
           })}
