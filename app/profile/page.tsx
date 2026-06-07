@@ -188,7 +188,7 @@ export default function ProfilePage() {
           <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
             <AdminMembers />
           </CollapsibleSection>
-          <CollapsibleSection title="Recent sign-ins" icon="🔐" subtitle="Who logged in & from where">
+          <CollapsibleSection title="Recent activity" icon="🔐" subtitle="Who joined & recent sign-ins">
             <AdminSignins />
           </CollapsibleSection>
           <CollapsibleSection title="View as" icon="👁️" subtitle="Preview the app as a member or guest">
