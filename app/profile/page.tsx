@@ -19,6 +19,8 @@ import { ContactPaySettings } from "@/components/ContactPaySettings";
 import { ChangeEmail } from "@/components/ChangeEmail";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PushToggle } from "@/components/PushToggle";
+import { NotifPrefs } from "@/components/NotifPrefs";
+import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -169,6 +171,9 @@ export default function ProfilePage() {
           />
         </label>
         <PushToggle />
+        <div className="mt-2 border-t border-border pt-3">
+          <NotifPrefs />
+        </div>
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -187,6 +192,9 @@ export default function ProfilePage() {
           <h2 className="px-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-accent">🛠️ Admin tools</h2>
           <CollapsibleSection title="Post an alert" icon="📣" subtitle="Banner notice to everyone (+ email)">
             <AdminAlertComposer />
+          </CollapsibleSection>
+          <CollapsibleSection title="Send a notification" icon="🔔" subtitle="To everyone, beta testers, or admins · their Activity tab">
+            <AdminNotificationComposer />
           </CollapsibleSection>
           <CollapsibleSection title="Email members" icon="✉️" subtitle="Everyone, a committee, or pick people">
             <AdminEmailMembers />

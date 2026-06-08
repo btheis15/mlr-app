@@ -5,11 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
+import { useUnreadNotifications } from "@/lib/hooks";
 
 const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/posts", label: "Feed", icon: "📣" },
   { href: "/family-fest", label: "Family Fest", icon: "🎉" },
+  // The Notifications feed — everything that happened involving you. Sits just
+  // left of Profile. Labelled "Activity" so it fits the bar (the page itself is
+  // titled "Notifications").
+  { href: "/notifications", label: "Activity", icon: "🔔" },
   { href: "/profile", label: "Profile", icon: "👤" },
 ] as const;
 
@@ -18,6 +23,8 @@ export function TabBar() {
   // During the event week, mark the Family Fest tab "live" so the takeover is
   // discoverable from anywhere in the resort app.
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  // Unread (unseen, unexpired) notification count → red badge on the bell.
+  const unread = useUnreadNotifications();
 
   // Drop the tab bar out of the way while the on-screen keyboard is open. On iOS
   // a `position: fixed` bottom bar gets stranded mid-screen between the field and
@@ -45,6 +52,7 @@ export function TabBar() {
             tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           const isFest = tab.href === "/family-fest";
           const live = isFest && (season?.isLive || season?.isWrap);
+          const isNotif = tab.href === "/notifications";
           // The Family Fest tab wears the fest's heraldic wine so it reads as
           // its own theme; the rest use the resort's forest green.
           const color = isFest
@@ -71,6 +79,14 @@ export function TabBar() {
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#8b2e2e]/70" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-[#8b2e2e]" />
+                    </span>
+                  )}
+                  {isNotif && unread > 0 && (
+                    <span
+                      aria-label={`${unread} new`}
+                      className="absolute -right-2.5 -top-1 flex min-w-[1.05rem] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-[1.05rem] text-white ring-2 ring-card"
+                    >
+                      {unread > 99 ? "99+" : unread}
                     </span>
                   )}
                 </span>
