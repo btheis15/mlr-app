@@ -68,7 +68,7 @@ tombstone for everyone, regardless of who removed it; edits stamp `edited_at` an
 show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
 not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
 | `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon, left of Profile) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), **email members** ([`EmailMembers`](components/EmailMembers.tsx) — open to all: custom list / your committees / everyone-if-involved), admin alert + notification composers, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array

@@ -9,16 +9,15 @@ import { EmailMembersComposer } from "@/components/EmailMembersComposer";
 import { fetchCommitteeRecipients } from "@/lib/emailBlast";
 
 /**
- * "Email these members" on a committee page — shown to that committee's **Lead**
- * or an **app admin** (same gate as CommitteeMembers / migration 0015). They can
- * email the whole committee or pick specific people from it; emailing *all* app
- * members stays an app-admin tool (Profile → Admin tools). The
- * committee_member_recipients RPC re-checks the lead/admin gate server-side.
+ * "Email these members" on a committee page — shown to **any member of that
+ * committee** (and app admins), per migration 0031 (was Lead/admin only). They
+ * can email the whole committee or pick specific people from it. The
+ * committee_member_recipients RPC re-checks the member gate server-side.
  */
 export function CommitteeEmailMembers({ slug, name }: { slug: string; name: string }) {
   const { isAdmin } = useIdentity();
   const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [canManage, setCanManage] = useState(false);
+  const [canEmail, setCanEmail] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -27,15 +26,16 @@ export function CommitteeEmailMembers({ slug, name }: { slug: string; name: stri
       const cid = await fetchCommitteeId(slug);
       if (!cid || cancelled) return;
       setCommitteeId(cid);
-      const manage = isAdmin || (await fetchMyCommitteeRole(cid)) === "Lead";
-      if (!cancelled) setCanManage(manage);
+      // Any member of this committee (fetchMyCommitteeRole != null) or an admin.
+      const ok = isAdmin || (await fetchMyCommitteeRole(cid)) !== null;
+      if (!cancelled) setCanEmail(ok);
     })();
     return () => {
       cancelled = true;
     };
   }, [slug, isAdmin]);
 
-  if (!isSupabaseConfigured || !canManage || !committeeId) return null;
+  if (!isSupabaseConfigured || !canEmail || !committeeId) return null;
 
   return (
     <CollapsibleSection title="Email these members" icon="✉️" subtitle={`Email ${name} — everyone or pick people`}>

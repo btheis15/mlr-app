@@ -39,7 +39,17 @@ function toResult(data: unknown, error: { code?: string; message?: string } | nu
   return { recipients, needsMigration: false, error: null };
 }
 
-/** Every member (app admins only — the RPC enforces it). */
+/** The whole member directory — any signed-in member, to hand-pick a custom
+ *  list (migration 0031). The RPC enforces the signed-in check. */
+export async function fetchDirectoryRecipients(): Promise<RecipientResult> {
+  const sb = supabase;
+  if (!sb) return { recipients: [], needsMigration: false, error: null };
+  const { data, error } = await sb.rpc("directory_recipients");
+  return toResult(data, error);
+}
+
+/** Every member — app admin OR anyone in any committee (migration 0031 widened
+ *  the gate from admin-only; the RPC enforces it). */
 export async function fetchAllRecipients(): Promise<RecipientResult> {
   const sb = supabase;
   if (!sb) return { recipients: [], needsMigration: false, error: null };
@@ -47,7 +57,8 @@ export async function fetchAllRecipients(): Promise<RecipientResult> {
   return toResult(data, error);
 }
 
-/** One committee's roster (its Lead or an app admin — the RPC enforces it). */
+/** One committee's roster — any member of that committee, or an app admin
+ *  (migration 0031 opened it from Lead-only; the RPC enforces it). */
 export async function fetchCommitteeRecipients(committeeId: string): Promise<RecipientResult> {
   const sb = supabase;
   if (!sb) return { recipients: [], needsMigration: false, error: null };
