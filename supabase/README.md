@@ -108,8 +108,16 @@ when an admin must change it *for* someone: `request_admin_override()` (each
 admin votes; two distinct admins within 30 min open a **24h unlock**),
 `admin_override_status()`, `cancel_admin_override()`, and `is_override_unlocked()`
 (granted to `service_role` — the Mac mini re-checks it before writing). Until
-it's run, the "Edit a member's email" panel shows a migration hint and the
+it's run, the "Edit a member's information" panel shows a migration hint and the
 self-serve change still works.
+
+⚠️ **Then run [`0027`](migrations/0027_admin_set_member_profile.sql)** — extends
+the same two-admin unlock to a member's **profile** info (name, household, phone,
+contact/pay handles, birthday, address, bio). Adds `admin_set_member_profile(target, patch)`:
+SECURITY DEFINER, allow-listed columns only (never `is_admin`/`id`/push prefs),
+re-checks the unlock window itself. The login email still goes through the mini's
+`/admin/set-email`. Until it's run, the "Edit info" form's profile save errors
+(the email part still works).
 
 ⚠️ **For "new member joined" admin push, run
 [`0026`](migrations/0026_new_member_notify.sql).** Adds

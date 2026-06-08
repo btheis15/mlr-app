@@ -12,12 +12,14 @@ interface OverrideStatus {
 }
 
 /**
- * Admin-only "break glass" for editing a member's email FOR them (the backup
- * when a member can't change their own). Because it rewrites someone's login,
- * it takes TWO different admins to vote, which unlocks email editing in the
- * Members panel for 24h; after that it re-locks. State lives in migration 0025
- * (request_admin_override / admin_override_status / cancel_admin_override); the
- * mini enforces the window again server-side before any write.
+ * Admin-only "break glass" for editing a member's information FOR them (the
+ * backup when a member can't change their own — name, contact, pay, and login
+ * email). Because it can rewrite someone's login, it takes TWO different admins
+ * to vote, which unlocks member editing in the Members panel for 24h; after that
+ * it re-locks. State lives in migration 0025 (request_admin_override /
+ * admin_override_status / cancel_admin_override). The server re-checks the window
+ * before any write: the profile RPC admin_set_member_profile (0027) and the
+ * mini's /admin/set-email for the auth email.
  */
 export function AdminProfileOverride() {
   const [status, setStatus] = useState<OverrideStatus | null>(null);
@@ -72,19 +74,19 @@ export function AdminProfileOverride() {
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
-        <h2 className="text-sm font-semibold">Edit a member&rsquo;s email</h2>
+        <h2 className="text-sm font-semibold">Edit a member&rsquo;s information</h2>
       </div>
 
       <p className="text-xs text-foreground/60">
-        Members change their own email under their profile. This is the backup for
-        when someone can&rsquo;t. Changing another person&rsquo;s login needs{" "}
-        <strong>two admins</strong> to unlock it — then any admin can edit emails in{" "}
+        Members manage their own profile. This is the backup for when someone
+        can&rsquo;t. Editing another member&rsquo;s details (name, contact, pay, email)
+        needs <strong>two admins</strong> to unlock it — then any admin can edit them in{" "}
         <strong>Members</strong> for 24 hours.
       </p>
 
       {!ready && !loading ? (
         <MigrationHint file="0025_admin_profile_override.sql">
-          To turn on the two-admin email-edit unlock,
+          To turn on the two-admin member-edit unlock,
         </MigrationHint>
       ) : loading ? (
         <p className="py-3 text-center text-xs text-foreground/45">Loading…</p>
@@ -93,8 +95,8 @@ export function AdminProfileOverride() {
           <div className="flex items-center gap-2 rounded-xl bg-primary/10 p-3 text-xs ring-1 ring-primary/30">
             <span className="text-base">🔓</span>
             <span className="font-medium text-foreground/80">
-              Unlocked — email editing is on for about {hoursLeft}h. Go to{" "}
-              <strong>Members</strong> to set someone&rsquo;s email.
+              Unlocked — member editing is on for about {hoursLeft}h. Go to{" "}
+              <strong>Members</strong> and tap <strong>Edit info</strong> on someone.
             </span>
           </div>
           <button
@@ -118,7 +120,7 @@ export function AdminProfileOverride() {
           </div>
           <p className="text-xs text-foreground/50">
             Tap to add your approval. Once a second admin approves (within 30 min),
-            email editing unlocks for 24 hours.
+            member editing unlocks for 24 hours.
           </p>
           <button
             type="button"

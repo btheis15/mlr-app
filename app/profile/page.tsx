@@ -196,7 +196,7 @@ export default function ProfilePage() {
           <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
             <AdminMembers />
           </CollapsibleSection>
-          <CollapsibleSection title="Edit a member's email" icon="✉️" subtitle="Two-admin unlock · backup for members">
+          <CollapsibleSection title="Edit a member's information" icon="✏️" subtitle="Two-admin unlock · backup for members">
             <AdminProfileOverride />
           </CollapsibleSection>
           <CollapsibleSection title="Recent activity" icon="🔐" subtitle="Who joined & recent sign-ins">
