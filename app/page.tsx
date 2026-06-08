@@ -52,19 +52,22 @@ export default function HomePage() {
       {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
       <HomePreFestCards />
 
-      {/* Book a tee time at the local course (Inshalla CC) — hands off to their
-          foreUP booking, same flow as the stock-game app. Year-round. */}
+      {/* Local Places — the nearby favorites: tee times at Inshalla (handed off
+          to our in-app booking) plus the bars & grills we order from. Year-round. */}
       <Link
-        href="/tee-times"
+        href="/local-places"
         className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
       >
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-2xl">
-          ⛳
+        <span
+          aria-hidden
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-lake/12 text-2xl"
+        >
+          📍
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Book a Tee Time</h3>
+          <h3 className="text-sm font-semibold">Local Places</h3>
           <p className="mt-0.5 text-xs text-foreground/60">
-            Inshalla Country Club · Tomahawk, WI
+            Book a tee time, order pizza, and more nearby.
           </p>
         </div>
         <span className="ml-1 text-lg leading-none text-foreground/30">›</span>

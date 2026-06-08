@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BackLink } from "@/components/BackLink";
 
 const COURSE_ID = 19715;
 const SCHEDULE_ID = 2251;
@@ -72,7 +73,8 @@ export function TeeTimesView() {
   useEffect(() => setNow(new Date()), []);
 
   return (
-    <div className="space-y-6 pt-6">
+    <div className="space-y-6 pt-2">
+      <BackLink href="/local-places" label="Local Places" />
       <header className="space-y-0.5">
         <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/50">
           Tee Times

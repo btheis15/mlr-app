@@ -52,5 +52,8 @@ public/         manifest.webmanifest, icon.svg
   utility automatically.
 - **Navigation** — the `TABS` array in [`components/TabBar.tsx`](components/TabBar.tsx).
 - **A tab's content** — its `app/<tab>/page.tsx`.
+- **Local Places** — the nearby-businesses list at `/local-places` (linked from
+  Home); add or edit spots in [`lib/places.ts`](lib/places.ts) and the page
+  renders them. Inshalla hands off to the in-app `/tee-times` screen.
 
 See [CLAUDE.md](./CLAUDE.md) for the operating manual for AI sessions.

@@ -70,6 +70,7 @@ not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_e
 | `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon, left of Profile) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), **email members** ([`EmailMembers`](components/EmailMembers.tsx) — open to all: custom list / your committees / everyone-if-involved), admin alert + notification composers, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
+| `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons).
