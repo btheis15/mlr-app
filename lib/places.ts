@@ -57,12 +57,17 @@ export const PLACES: LocalPlace[] = [
     name: "Inshalla Country Club",
     category: "Golf · Country Club",
     locality: "Tomahawk, WI",
-    blurb: "Reserve a tee time right here in the app — the pro-shop number is on the booking screen if you'd rather call.",
+    blurb: "Public 18-hole course with a pro shop, driving range, and bar & grill. Book your tee time right here in the app.",
     emoji: "⛳",
     accent: "primary",
     group: "golf",
+    // Primary action stays an in-app hand-off to our /tee-times booking screen;
+    // Call + Website are offered alongside it (no Menu/Order for golf).
     internalHref: "/tee-times",
-    internalCta: "Book a tee time",
+    internalCta: "Book Tee Time",
+    website: "https://inshallacc.com",
+    phoneDisplay: "(715) 453-3130",
+    phoneTel: "+17154533130",
   },
   {
     slug: "billy-bobs",
