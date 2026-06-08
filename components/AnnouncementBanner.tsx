@@ -87,12 +87,19 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
   if (!ready) return null;
 
   const now = Date.now();
+  // Broadcast alerts (admin-posted: `local` on the poster's device + `db` for
+  // everyone) MUST carry an expiry and vanish for everyone once it passes — a
+  // missing/blank expiry is treated as already-expired, so a stray never-expiring
+  // row can't get stuck for new users (the bug this guards against). Only the
+  // static seed (`items`, e.g. the welcome note) may persist without an expiry,
+  // so first-timers still see it until they dismiss it.
+  const live = (a: Announcement) => a.expiresAt != null && new Date(a.expiresAt).getTime() > now;
   const seen = new Set<string>();
-  const merged = [...local, ...db, ...items]
+  const merged = [...local.filter(live), ...db.filter(live), ...items]
     .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
     .sort((a, b) => b.ts.localeCompare(a.ts));
-  // Drop anything past its expiry (admin alerts auto-hide after their window)
-  // or already dismissed on this device.
+  // Then drop anything dismissed on this device; seed items still honor an
+  // expiry if they happen to carry one.
   const visible = merged.filter(
     (a) => !dismissed.includes(a.id) && (!a.expiresAt || new Date(a.expiresAt).getTime() > now),
   );
