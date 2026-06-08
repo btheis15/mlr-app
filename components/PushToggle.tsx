@@ -26,7 +26,7 @@ const SELF_NOTIFY_EMAILS = new Set(["brian.theis15@gmail.com"]);
  * the app is on the Home Screen, so we surface that hint.
  */
 export function PushToggle() {
-  const { user, updateUser } = useIdentity();
+  const { user, isAdmin, updateUser } = useIdentity();
   const [supported, setSupported] = useState(true);
   const [needsInstall, setNeedsInstall] = useState(false);
   const [busy, setBusy] = useState<PushType | null>(null);
@@ -136,6 +136,23 @@ export function PushToggle() {
         <p className="px-1 text-xs text-foreground/45">
           On iPhone/iPad, add the app to your Home Screen (Share → Add to Home Screen) so notifications can reach you.
         </p>
+      )}
+
+      {isAdmin && (
+        <label className="mt-1 flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
+          <span className="min-w-0">
+            <span className="text-sm font-medium">🆕 New member joins</span>
+            <span className="block text-xs text-foreground/50">
+              Admins only: get a push when someone new joins, so you know who and when. Keep a category above turned on so push can reach this device.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={user.notifyNewMembers}
+            onChange={(e) => updateUser({ notifyNewMembers: e.target.checked })}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
       )}
 
       {selfNotifyEligible && (
