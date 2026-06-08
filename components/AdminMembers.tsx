@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
@@ -48,18 +48,27 @@ export function AdminMembers() {
   const getToken = async () =>
     (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
 
+  // Re-read whether admin email-editing is unlocked (migration 0025). The unlock
+  // is opened in the sibling AdminProfileOverride panel, so this component has to
+  // poll for it rather than learn from a shared state — we refresh on mount, on
+  // tab focus, and on a light interval so the ✉️ Email button appears once two
+  // admins unlock (and disappears when the 24h window lapses) without a reload.
+  // Best-effort: if 0025 isn't applied the RPC errors and the action stays off.
+  const refreshUnlock = useCallback(async () => {
+    const sb = supabase;
+    if (!sb) return;
+    const { data } = await sb.rpc("admin_override_status");
+    const until = (data as { unlocked_until?: string | null } | null)?.unlocked_until;
+    setEmailUnlocked(!!until && new Date(until).getTime() > Date.now());
+  }, []);
+
   const load = async () => {
     const sb = supabase;
     if (!sb) return;
     setLoading(true);
     setError(null);
     sb.auth.getUser().then(({ data }) => setMeId(data.user?.id ?? null));
-    // Is admin email-editing currently unlocked? (Best-effort; ignore if 0025
-    // isn't applied — the action just won't be offered.)
-    sb.rpc("admin_override_status").then(({ data }) => {
-      const until = (data as { unlocked_until?: string | null } | null)?.unlocked_until;
-      setEmailUnlocked(!!until && new Date(until).getTime() > Date.now());
-    });
+    refreshUnlock();
 
     const viaRpc = await sb.rpc("admin_members");
     if (!viaRpc.error && viaRpc.data) {
@@ -117,6 +126,20 @@ export function AdminMembers() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the unlock gate fresh: the window is opened/closed in a sibling panel,
+  // so re-check on tab focus and every 30s while this panel is mounted.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") refreshUnlock(); };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    const id = setInterval(refreshUnlock, 30_000);
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(id);
+    };
+  }, [refreshUnlock]);
 
   const setAdmin = async (m: MemberRow, value: boolean) => {
     const sb = supabase;

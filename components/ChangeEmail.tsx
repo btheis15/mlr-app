@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useSaveStatus } from "@/lib/hooks";
 
@@ -11,15 +11,22 @@ import { useSaveStatus } from "@/lib/hooks";
  * hop inside the installed PWA. On success `user.email` refreshes on its own.
  */
 export function ChangeEmail() {
-  const { user, startEmailChange, confirmEmailChange } = useIdentity();
+  const { user, previewMode, startEmailChange, confirmEmailChange } = useIdentity();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"email" | "code">("email");
   const [newEmail, setNewEmail] = useState("");
   const [code, setCode] = useState("");
   const { pending, status, show, run } = useSaveStatus();
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
-  const emailValid = /\S+@\S+\.\S+/.test(newEmail) &&
-    newEmail.trim().toLowerCase() !== (user?.email ?? "").toLowerCase();
+  const currentEmail = (user?.email ?? "").trim().toLowerCase();
+  // Require a real current email and a different new one. During an admin
+  // "preview as member" the displayed user has no email and the action would
+  // hit the admin's own real session — so the form is hidden then (below).
+  const emailValid = !!currentEmail &&
+    /\S+@\S+\.\S+/.test(newEmail) &&
+    newEmail.trim().toLowerCase() !== currentEmail;
 
   const reset = () => {
     setOpen(false);
@@ -41,9 +48,18 @@ export function ChangeEmail() {
     run(async () => {
       const { error } = await confirmEmailChange(newEmail, code);
       if (error) return error;
-      reset();
+      // Keep the panel up briefly so the confirmation is actually seen, then
+      // auto-close (user.email refreshes on its own via onAuthStateChange).
+      setStep("email");
+      setNewEmail("");
+      setCode("");
+      closeTimer.current = setTimeout(() => setOpen(false), 2500);
       return "Email updated.";
     }, 0);
+
+  // Self-serve change is tied to the real session; meaningless/misleading while
+  // previewing as someone else, so don't offer it then.
+  if (previewMode !== "off") return null;
 
   if (!open) {
     return (
