@@ -144,6 +144,17 @@ plus the `mark_notifications_seen()` / `mark_notification_read(id)` /
 Activity tab shows a migration hint and the badge stays empty. This is in-app
 only — it does **not** touch the mini's push-sender.
 
+⚠️ **To open the "Email members" tool to all members, run
+[`0031`](migrations/0031_email_open_to_members.sql).** Adds
+`directory_recipients()` (any signed-in member → the whole directory, to
+hand-pick a custom list) and **widens** the gates on the existing functions:
+`all_member_recipients()` now allows **App Admin OR anyone in any committee**
+(was admin-only), and `committee_member_recipients(cid)` now allows **any member
+of that committee** (was its Lead/admin). Same contact_email→login-email rule as
+0028. Privacy: the directory exposes each member's best email to every signed-in
+member (consistent with the member card). Until it's run, the member-facing
+"Email members" picker shows a migration hint.
+
 ⚠️ **For "Request a Cabin Stay", run
 [`0032`](migrations/0032_cabin_bookings.sql).** Adds `cabins` (seeded: Cabin 1 =
 3 rooms, Red & White House = 4) and `cabin_bookings`, plus the RPCs

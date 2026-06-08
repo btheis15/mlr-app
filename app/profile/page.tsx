@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
-import { AdminEmailMembers } from "@/components/AdminEmailMembers";
+import { EmailMembers } from "@/components/EmailMembers";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
 import { AdminCommittees } from "@/components/AdminCommittees";
@@ -187,6 +187,14 @@ export default function ProfilePage() {
         <ContactPaySettings />
       </CollapsibleSection>
 
+      <CollapsibleSection
+        title="Email members"
+        icon="✉️"
+        subtitle="A custom list, your committees, or everyone"
+      >
+        <EmailMembers />
+      </CollapsibleSection>
+
       {isAdmin && (
         <>
           <h2 className="px-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-accent">🛠️ Admin tools</h2>
@@ -195,9 +203,6 @@ export default function ProfilePage() {
           </CollapsibleSection>
           <CollapsibleSection title="Send a notification" icon="🔔" subtitle="To everyone, beta testers, or admins · their Activity tab">
             <AdminNotificationComposer />
-          </CollapsibleSection>
-          <CollapsibleSection title="Email members" icon="✉️" subtitle="Everyone, a committee, or pick people">
-            <AdminEmailMembers />
           </CollapsibleSection>
           <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
             <AdminCommittees />
