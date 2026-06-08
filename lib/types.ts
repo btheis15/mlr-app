@@ -177,3 +177,46 @@ export interface Payee {
   /** Zelle handle — an email or phone registered with Zelle. */
   zelle?: string;
 }
+
+/* ── Cabin stays (lodging requests) ──────────────────────────────────────────
+   "Request a Cabin Stay": members request a room in one of the resort's two
+   houses for a date range; admins approve/deny. Capacity is counted per house
+   (room_count) — one room per request. Backed by Supabase (migration 0032). */
+
+/** A bookable house. Capacity is just a room count for now; individual rooms
+ *  can be named later without reworking this shape. */
+export interface Cabin {
+  id: string;
+  slug: string;
+  name: string;
+  roomCount: number;
+  sortOrder: number;
+}
+
+/** Rooms still bookable for the WHOLE requested range, per cabin. */
+export interface CabinAvailability {
+  cabinId: string;
+  slug: string;
+  name: string;
+  roomCount: number;
+  available: number;
+}
+
+export type CabinBookingStatus = "pending" | "approved" | "denied" | "cancelled";
+
+/** One stay request. `checkOut` is the departure date (exclusive): a stay
+ *  occupies the nights [checkIn, checkOut). `userId`/`cabinName` are filled in
+ *  for the admin queue. */
+export interface CabinBooking {
+  id: string;
+  cabinId: string;
+  cabinName?: string;
+  userId?: string;
+  checkIn: string; // ISO date YYYY-MM-DD
+  checkOut: string; // ISO date YYYY-MM-DD (departure, exclusive)
+  guests: number;
+  notes: string | null;
+  status: CabinBookingStatus;
+  reviewNote: string | null;
+  createdAt: string;
+}
