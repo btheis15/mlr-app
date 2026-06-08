@@ -21,7 +21,7 @@ export default function FamilyFestPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/family-fest-2026.jpg"
-            alt="Family Fest 2026 — Renaissance / Fantasy"
+            alt="Ye Olde Family Feste — Family Fest 2026"
             className="block w-full"
           />
         </div>
