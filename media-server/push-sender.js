@@ -34,6 +34,16 @@ function mediaLabel(m) {
   }
 }
 
+// "Jul 27" from a date-only string. Forced to UTC so a date never drifts a day
+// when the mini's clock is in a negative-offset zone (the dates are date-only).
+function fmtDay(d) {
+  if (!d) return "";
+  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+function fmtStay(checkIn, checkOut) {
+  return `${fmtDay(checkIn)} → ${fmtDay(checkOut)}`;
+}
+
 async function start() {
   const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -271,6 +281,66 @@ async function start() {
     if (sent) console.log(`[push] new member ${name}: notified ${sent} admin(s)`);
   };
 
+  // A new cabin stay request was submitted (cabin_bookings INSERT) — tell every
+  // admin so they can review it, minus the requester themselves. Operational, so
+  // it isn't gated on push_types (admins always want to see the queue grow).
+  const handleCabinRequest = async (id) => {
+    if (!id) return;
+    if (!once(`cbreq:${id}`)) return;
+    const { data: b } = await sb
+      .from("cabin_bookings")
+      .select("id, cabin_id, user_id, check_in, check_out, status")
+      .eq("id", id)
+      .maybeSingle();
+    if (!b || b.status !== "pending") return;
+
+    const [cabinRes, reqRes, adminRes] = await Promise.all([
+      sb.from("cabins").select("name").eq("id", b.cabin_id).maybeSingle(),
+      sb.from("profiles").select("display_name").eq("id", b.user_id).maybeSingle(),
+      sb.from("profiles").select("id").eq("is_admin", true),
+    ]);
+    const cabin = cabinRes.data ? cabinRes.data.name : "a cabin";
+    const name = ((reqRes.data && reqRes.data.display_name) || "").trim() || "A member";
+    const targets = (adminRes.data || []).map((a) => a.id).filter((aid) => aid !== b.user_id);
+    if (!targets.length) return;
+
+    const payload = {
+      title: "🏡 New cabin stay request",
+      body: `${name} · ${cabin} · ${fmtStay(b.check_in, b.check_out)}`,
+      icon: ICON,
+      badge: ICON,
+      tag: `cabin-req-${b.id}`,
+      url: `${APP_URL}/profile`,
+    };
+    let sent = 0;
+    for (const uid of targets) { await sendToUser(uid, payload); sent++; }
+    if (sent) console.log(`[push] cabin request from ${name}: notified ${sent} admin(s)`);
+  };
+
+  // An admin approved or denied a request (cabin_bookings UPDATE) — tell the
+  // requester. It's the result of their own action, so it's sent regardless of
+  // push_types (like an order confirmation). Only on the pending → decision
+  // transition; REPLICA IDENTITY FULL (migration 0032) gives us the old row, and
+  // once() backstops if it isn't available.
+  const handleCabinDecision = async (row, oldRow) => {
+    if (!row || (row.status !== "approved" && row.status !== "denied")) return;
+    if (oldRow && oldRow.status && oldRow.status !== "pending") return;
+    if (!once(`cbdec:${row.id}:${row.status}`)) return;
+
+    const { data: cabinRow } = await sb.from("cabins").select("name").eq("id", row.cabin_id).maybeSingle();
+    const cabin = cabinRow ? cabinRow.name : "your cabin";
+    const stay = fmtStay(row.check_in, row.check_out);
+    const payload = row.status === "approved"
+      ? { title: "🏡 Cabin stay approved ✓", body: `${cabin} · ${stay} — see you at the lake!` }
+      : { title: "🏡 Cabin stay update", body: `Your request for ${cabin} · ${stay} wasn't approved this time.` };
+    payload.icon = ICON;
+    payload.badge = ICON;
+    payload.tag = `cabin-dec-${row.id}`;
+    payload.url = `${APP_URL}/request-stay`;
+    await sendToUser(row.user_id, payload);
+    console.log(`[push] cabin ${row.status}: notified requester`);
+  };
+
   sb.channel("push-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
       handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
@@ -288,8 +358,14 @@ async function start() {
         console.error("[push] new member error:", err && err.message),
       ),
     )
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
+      handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
+    )
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cabin_bookings" }, (e) =>
+      handleCabinDecision(e.new, e.old).catch((err) => console.error("[push] cabin decision error:", err && err.message)),
+    )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions + new members)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions + new members + cabin stays)");
     });
 }
 

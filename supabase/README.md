@@ -126,6 +126,20 @@ in the Realtime publication so the mini's push-sender hears the signup INSERT
 and pushes every opted-in admin who joined and when. The admin-only toggle lives
 in Profile → Notifications. Until it's run, the toggle just has no effect.
 
+⚠️ **For "Request a Cabin Stay", run
+[`0032`](migrations/0032_cabin_bookings.sql).** Adds `cabins` (seeded: Cabin 1 =
+3 rooms, Red & White House = 4) and `cabin_bookings`, plus the RPCs
+`request_cabin_stay()`, `review_cabin_stay()` (admin-only, with a per-night
+capacity guard), `cancel_cabin_stay()`, `cabin_availability()` (any member, for
+the "X of Y rooms left" view), and `cabin_booking_notification()` (`service_role`
+only — the mini reads it to push + email a decision). It also puts
+`cabin_bookings` in the Realtime publication (with `REPLICA IDENTITY FULL`) so
+the mini's **push-sender** notifies admins of new requests + the requester of a
+decision, and the **alert-mailer** emails the requester a confirmation. After
+running it, restart the mini (`com.mlr.media-server`) so both pick up the new
+listeners. No new env vars — reuses the existing VAPID + SMTP config. Until it's
+run, the Request a Cabin Stay page shows a "coming soon".
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

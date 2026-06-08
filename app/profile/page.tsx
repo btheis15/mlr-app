@@ -6,6 +6,7 @@ import { AdminEmailMembers } from "@/components/AdminEmailMembers";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
 import { AdminCommittees } from "@/components/AdminCommittees";
+import { AdminCabinBookings } from "@/components/AdminCabinBookings";
 import { AdminSignins } from "@/components/AdminSignins";
 import { PreviewAs } from "@/components/PreviewAs";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -192,6 +193,9 @@ export default function ProfilePage() {
           </CollapsibleSection>
           <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
             <AdminCommittees />
+          </CollapsibleSection>
+          <CollapsibleSection title="Cabin Stays" icon="🏡" subtitle="Approve room requests">
+            <AdminCabinBookings />
           </CollapsibleSection>
           <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
             <AdminMembers />
