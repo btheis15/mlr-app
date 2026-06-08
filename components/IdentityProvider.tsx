@@ -79,6 +79,7 @@ interface ProfileRow {
   email_alerts: boolean;
   push_types: string[] | null;
   push_self_notify: boolean | null;
+  notify_new_members: boolean | null;
   is_admin: boolean;
 }
 
@@ -131,14 +132,14 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const email = session.user.email ?? "";
       const { data } = await sb
         .from("profiles")
-        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, is_admin")
+        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, is_admin")
         .eq("id", session.user.id)
         .maybeSingle();
       if (!active) return;
       const profile = data as ProfileRow | null;
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
-      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as import("@/lib/types").PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, avatarUrl: profile?.avatar_url ?? null });
+      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as import("@/lib/types").PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, avatarUrl: profile?.avatar_url ?? null });
       setAdminFlag(Boolean(profile?.is_admin));
     };
 
@@ -165,6 +166,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (patch.emailAlerts !== undefined) row.email_alerts = patch.emailAlerts;
     if (patch.pushTypes !== undefined) row.push_types = patch.pushTypes;
     if (patch.pushSelfNotify !== undefined) row.push_self_notify = patch.pushSelfNotify;
+    if (patch.notifyNewMembers !== undefined) row.notify_new_members = patch.notifyNewMembers;
     if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
     if (Object.keys(row).length) {
       await sb.from("profiles").update(row).eq("id", id);
@@ -244,7 +246,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     previewMode === "guest"
       ? null
       : previewMode === "member" && previewMember
-        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, avatarUrl: previewMember.avatarUrl }
+        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, avatarUrl: previewMember.avatarUrl }
         : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
 

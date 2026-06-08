@@ -234,6 +234,43 @@ async function start() {
     console.log("[push] comment mention: notified 1");
   };
 
+  // A new member just signed up (handle_new_user inserts their profile row — for
+  // both self sign-ups and admin invites). Tell every admin who hasn't opted out
+  // (notify_new_members, default on, migration 0026) who joined and when. Email
+  // comes from the GoTrue admin API (service_role); the row carries the name.
+  const handleNewMember = async (id, nameFromRow) => {
+    if (!id) return;
+    if (!once(`nm:${id}`)) return;
+
+    const { data: admins } = await sb
+      .from("profiles")
+      .select("id")
+      .eq("is_admin", true)
+      .eq("notify_new_members", true);
+    const targets = (admins || []).map((a) => a.id).filter((aid) => aid !== id);
+    if (!targets.length) return;
+
+    let name = (nameFromRow || "").trim();
+    let email = "";
+    try {
+      const { data: u } = await sb.auth.admin.getUserById(id);
+      email = (u && u.user && u.user.email) || "";
+    } catch { /* email is best-effort */ }
+    if (!name) name = email ? email.split("@")[0] : "A new member";
+
+    const payload = {
+      title: "👋 New member joined",
+      body: email ? `${name} (${email}) just joined` : `${name} just joined`,
+      icon: ICON,
+      badge: ICON,
+      tag: `new-member-${id}`,
+      url: `${APP_URL}/profile`,
+    };
+    let sent = 0;
+    for (const uid of targets) { await sendToUser(uid, payload); sent++; }
+    if (sent) console.log(`[push] new member ${name}: notified ${sent} admin(s)`);
+  };
+
   sb.channel("push-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
       handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
@@ -246,8 +283,13 @@ async function start() {
         console.error("[push] comment mention error:", err && err.message),
       ),
     )
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) =>
+      handleNewMember(e.new.id, e.new.display_name).catch((err) =>
+        console.error("[push] new member error:", err && err.message),
+      ),
+    )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions + new members)");
     });
 }
 

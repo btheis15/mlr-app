@@ -54,6 +54,9 @@ export interface User {
    *  also notify me of my OWN actions so push can be tested without a second
    *  person. Has no effect for accounts not on that list. */
   pushSelfNotify: boolean;
+  /** Admin-only (default on): push me when a new member joins. Only honored for
+   *  admins (the mini's push-sender notifies admins); harmless on other accounts. */
+  notifyNewMembers: boolean;
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }

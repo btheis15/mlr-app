@@ -111,6 +111,13 @@ admin votes; two distinct admins within 30 min open a **24h unlock**),
 it's run, the "Edit a member's email" panel shows a migration hint and the
 self-serve change still works.
 
+⚠️ **For "new member joined" admin push, run
+[`0026`](migrations/0026_new_member_notify.sql).** Adds
+`profiles.notify_new_members` (admin opt-out, default on) and puts `profiles`
+in the Realtime publication so the mini's push-sender hears the signup INSERT
+and pushes every opted-in admin who joined and when. The admin-only toggle lives
+in Profile → Notifications. Until it's run, the toggle just has no effect.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
