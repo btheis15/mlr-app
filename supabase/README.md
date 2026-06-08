@@ -101,8 +101,49 @@ App Admin send an alert whose **email goes only to other App Admins** (the banne
 is still seen by everyone). Recipients with App Admin access get it regardless of
 which committees they lead — roles are additive.
 
+⚠️ **For admin-edited member emails, run
+[`0025`](migrations/0025_admin_profile_override.sql).** Members change their own
+email in-app (no migration needed). This adds the **two-admin "break glass"** for
+when an admin must change it *for* someone: `request_admin_override()` (each
+admin votes; two distinct admins within 30 min open a **24h unlock**),
+`admin_override_status()`, `cancel_admin_override()`, and `is_override_unlocked()`
+(granted to `service_role` — the Mac mini re-checks it before writing). Until
+it's run, the "Edit a member's email" panel shows a migration hint and the
+self-serve change still works.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
 rate-limited, so plug in free SMTP (Resend free tier or Gmail) under
 Authentication → Email before real use.
+
+### Auth emails: send a code, not a link (every template)
+
+The app verifies one-time **codes** in-app (`verifyOtp`) and never opens a magic
+link — that's deliberate, so it works inside the installed PWA. Supabase, by
+default, emails magic-link URLs instead, and it uses a **different template per
+situation**, so editing only one leaves the others sending links (and a member
+getting two confusing emails). In **Authentication → Emails**, set the body of
+**every** template the app triggers to use `{{ .Token }}` (not
+`{{ .ConfirmationURL }}`):
+
+| Template | When it's sent |
+|---|---|
+| **Confirm signup** | a brand-new email signs in / is invited |
+| **Magic Link** | a returning member signs in |
+| **Change Email Address** | a member changes their email (self-serve) |
+| **Invite user** | only if `inviteUserByEmail` is used directly |
+
+Sample body:
+
+```html
+<h2>Your code</h2>
+<p>Enter this code in the app:</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+<p>It expires shortly. If you didn't request it, ignore this email.</p>
+```
+
+Also: **Sign In / Providers → Email → "Email OTP Length"** → **8** (the app
+accepts 6–8). Keep **"Secure email change" ON** — a self-serve email change then
+confirms via a code to the new address (with a heads-up to the old one), which
+the app verifies with `verifyOtp({ type: "email_change" })`.
