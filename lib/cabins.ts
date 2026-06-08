@@ -100,16 +100,19 @@ export async function requestStay(input: {
   return { id: data as string };
 }
 
-/** The signed-in member's own requests, newest first. */
-export async function fetchMyBookings(): Promise<CabinBooking[]> {
+/** A member's own requests, newest first. Pass `asUserId` to read another
+ *  member's requests — used by the admin “View as” preview so it shows that
+ *  member's requests, not the real signed-in admin's (an admin can read any
+ *  member's rows under RLS). Omit it for the signed-in user. */
+export async function fetchMyBookings(asUserId?: string): Promise<CabinBooking[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
-  const me = (await sb.auth.getUser()).data.user?.id;
-  if (!me) return [];
+  const uid = asUserId ?? (await sb.auth.getUser()).data.user?.id;
+  if (!uid) return [];
   const { data } = await sb
     .from("cabin_bookings")
     .select("id, cabin_id, check_in, check_out, guests, notes, status, review_note, created_at, cabins(name)")
-    .eq("user_id", me)
+    .eq("user_id", uid)
     .order("created_at", { ascending: false });
   return (data ?? []).map(mapBookingRow);
 }

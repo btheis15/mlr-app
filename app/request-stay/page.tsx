@@ -30,7 +30,7 @@ const PREVIEW_CABINS = [
 ];
 
 export default function RequestStayPage() {
-  const { user, promptSignIn } = useIdentity();
+  const { user, previewAsId, promptSignIn } = useIdentity();
   const [cabins, setCabins] = useState<Cabin[]>([]);
   const [avail, setAvail] = useState<CabinAvailability[]>([]);
   const [myBookings, setMyBookings] = useState<CabinBooking[]>([]);
@@ -41,13 +41,14 @@ export default function RequestStayPage() {
     const [c, a, b] = await Promise.all([
       fetchCabins(),
       fetchAvailability(FF_CHECK_IN, FF_CHECK_OUT),
-      fetchMyBookings(),
+      // While an admin is previewing as a member, show THAT member's requests.
+      fetchMyBookings(previewAsId ?? undefined),
     ]);
     setCabins(c);
     setAvail(a);
     setMyBookings(b);
     setLoading(false);
-  }, []);
+  }, [previewAsId]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -60,14 +61,15 @@ export default function RequestStayPage() {
     let channel: ReturnType<typeof sb.channel> | null = null;
     (async () => {
       await load();
-      const me = (await sb.auth.getUser()).data.user?.id;
-      if (cancelled || !me) return;
-      // Keep "Your requests" live when an admin approves/denies one of mine.
+      const watch = previewAsId ?? (await sb.auth.getUser()).data.user?.id;
+      if (cancelled || !watch) return;
+      // Keep "Your requests" live when an admin approves/denies one (scoped to
+      // whoever's requests are shown — the previewed member while previewing).
       channel = sb
-        .channel("my-cabin-bookings")
+        .channel(`my-cabin-bookings-${watch}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "cabin_bookings", filter: `user_id=eq.${me}` },
+          { event: "*", schema: "public", table: "cabin_bookings", filter: `user_id=eq.${watch}` },
           () => load(),
         )
         .subscribe();
@@ -76,7 +78,7 @@ export default function RequestStayPage() {
       cancelled = true;
       if (channel) sb.removeChannel(channel);
     };
-  }, [load, user?.email]);
+  }, [load, user?.email, previewAsId]);
 
   const availFor = (cabinId: string) => avail.find((a) => a.cabinId === cabinId)?.available ?? null;
 

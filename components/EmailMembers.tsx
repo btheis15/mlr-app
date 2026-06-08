@@ -26,7 +26,7 @@ const PICK = "__pick"; // sentinel pool value for "Pick specific people"
  * sent from the app — it builds a `mailto:` and hands off to your mail app.
  */
 export function EmailMembers() {
-  const { user, isAdmin } = useIdentity();
+  const { user, isAdmin, previewAsId } = useIdentity();
   const [committees, setCommittees] = useState<CommitteeOpt[]>([]);
   const [canEveryone, setCanEveryone] = useState(false);
   const [pool, setPool] = useState<string>(PICK);
@@ -37,7 +37,11 @@ export function EmailMembers() {
     if (!isSupabaseConfigured || !sb || !user) return;
     let cancelled = false;
     (async () => {
-      const myId = (await sb.auth.getUser()).data.user?.id ?? "";
+      const realId = (await sb.auth.getUser()).data.user?.id ?? "";
+      // While an admin previews as a member, scope the committee options to THAT
+      // member (isAdmin is already off in preview), so the preview only offers
+      // the committees that member is actually in.
+      const scopeId = previewAsId ?? realId;
       let opts: CommitteeOpt[] = [];
       let everyone = false;
       if (isAdmin) {
@@ -50,7 +54,7 @@ export function EmailMembers() {
         const { data } = await sb
           .from("committee_members")
           .select("committees(id, name, emoji, position)")
-          .eq("user_id", myId);
+          .eq("user_id", scopeId);
         // PostgREST returns the embedded committee as a to-one object, though
         // supabase-js types it as an array — normalize both shapes.
         const rows = (data ?? []) as unknown as { committees: CommitteeOpt | CommitteeOpt[] | null }[];
@@ -70,7 +74,7 @@ export function EmailMembers() {
     return () => {
       cancelled = true;
     };
-  }, [user, isAdmin]);
+  }, [user, isAdmin, previewAsId]);
 
   if (!isSupabaseConfigured || !user || !ready) return null;
 
