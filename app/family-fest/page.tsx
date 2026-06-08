@@ -4,6 +4,7 @@ import { FestWeek } from "@/components/FestWeek";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { TshirtCallout } from "@/components/TshirtCallout";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
+import { FestCover } from "@/components/FestCover";
 import { FAMILY_FEST, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
@@ -17,14 +18,7 @@ export default function FamilyFestPage() {
   return (
     <div className="space-y-6 pt-1">
       <header className="space-y-3 text-center">
-        <div className="overflow-hidden rounded-2xl ring-1 ring-border shadow-sm">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/family-fest-2026.jpg"
-            alt="Family Fest 2026 — Renaissance / Fantasy"
-            className="block w-full"
-          />
-        </div>
+        <FestCover alt="Ye Olde Family Feste — Family Fest 2026" />
         <h1 className="text-2xl font-bold tracking-tight">{FAMILY_FEST.name}</h1>
         <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
           ⚜ {FAMILY_FEST.theme} ⚜

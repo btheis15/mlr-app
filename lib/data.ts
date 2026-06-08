@@ -113,9 +113,8 @@ export const FAMILY_FEST = {
   name: "Family Fest 2026",
   shortName: "Family Fest",
   tagline: "One week. The whole clan. The lake.",
-  /** 2026 theme (from the poster); official title still TBD. */
-  theme: "Renaissance · Fantasy",
-  themeNote: "Official title coming soon",
+  /** 2026 theme — official title, Renaissance / fantasy flavored. */
+  theme: "Ye Olde Family Feste",
   startDate: "2026-07-27",
   endDate: "2026-07-31",
   location: "Muskellunge Lake Resort",
