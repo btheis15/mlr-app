@@ -106,3 +106,38 @@ which committees they lead — roles are additive.
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is
 rate-limited, so plug in free SMTP (Resend free tier or Gmail) under
 Authentication → Email before real use.
+
+### Send a numeric code, not a magic link (and only ONE email)
+
+The app calls `signInWithOtp` + `verifyOtp({ type: "email" })` — it only ever
+wants the **code**, never a clickable link. By default Supabase sends a
+magic-link URL instead, which is the "weird link" email.
+
+**Why people get two emails (a link, then a code):** Supabase picks the email
+template by whether the address is new or returning, and they are **separate
+templates**:
+
+- A **brand-new** address (first sign-up) → the **"Confirm signup"** template.
+- A **returning** address (later sign-ins) → the **"Magic Link"** template.
+
+If you only edit one template, the other still sends the default link — so a new
+member gets a link on sign-up and a code on their next sign-in. To get a single
+code-only email every time, **edit both templates the same way.** This is a
+dashboard change, not an app change:
+
+1. **Authentication → Emails** — open **both** the **"Confirm signup"** and the
+   **"Magic Link"** templates and replace each body with the **token**, e.g.
+
+   ```html
+   <h2>Your sign-in code</h2>
+   <p>Enter this code in the app:</p>
+   <p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+   <p>It expires shortly. If you didn't request it, ignore this email.</p>
+   ```
+
+   Using `{{ .Token }}` (not `{{ .ConfirmationURL }}`) is what makes each email a
+   code-only email. Both templates must use it, or the un-edited one keeps
+   sending a link.
+2. **Authentication → Sign In / Providers → Email → "Email OTP Length"** — set
+   to **8** (the sign-in sheet already accepts a 6–8 digit code).
+3. Optionally shorten "Email OTP Expiration" to taste.
