@@ -765,7 +765,7 @@ function ChatShell({ slug, name, emoji, subtitle, children }: { slug: string; na
   return (
     <div ref={rootRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex h-[100dvh] max-w-md flex-col bg-background" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
-        <Link href={`/committees/${slug}`} className="press -ml-1 flex h-9 w-9 items-center justify-center rounded-full text-xl text-foreground/60" aria-label="Back to committee">‹</Link>
+        <Link href={`/committees/${slug}`} className="press -ml-1 flex h-11 w-11 items-center justify-center rounded-full text-xl text-foreground/60" aria-label="Back to committee">‹</Link>
         <span className="text-xl">{emoji}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{name}</p>
