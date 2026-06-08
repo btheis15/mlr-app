@@ -169,6 +169,15 @@ running it, restart the mini (`com.mlr.media-server`) so both pick up the new
 listeners. No new env vars — reuses the existing VAPID + SMTP config. Until it's
 run, the Request a Cabin Stay page shows a "coming soon".
 
+⚠️ **For cabin requests as toggleable notifications, run
+[`0033`](migrations/0033_cabin_notifications.sql)** (after 0032), **then pull +
+restart the mini** (`com.mlr.media-server`) for the push-sender change. Adds
+`cabin_request` (new request → admins) and `cabin_decision` (approve/deny →
+requester) to `profiles.notif_types` (default + backfill, ON), and AFTER triggers
+on `cabin_bookings` that fan out into the in-app feed via `_notify()`. The mini's
+push-sender now checks the same `notif_types` before pushing cabin events, so the
+Profile → Notifications toggle turns feed **and** push on/off per type.
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

@@ -192,7 +192,11 @@ without them.
 **In-app Notifications (the Activity tab).** A durable, Facebook-style feed of
 everything that happened involving you — comments & reactions on your posts,
 @mentions in posts/comments, @mentions in committee chat, new Feed posts,
-committee approve/decline, and admin broadcasts. **Independent of push** (it
+committee approve/decline, **cabin-stay requests (admins) & decisions
+(requester)**, and admin broadcasts. Every kind has its own on/off toggle in
+Profile → Notifications (`profiles.notif_types`); the mini's push-sender checks
+the same `notif_types` for cabin pushes, so one switch controls feed + push.
+**Independent of push** (it
 works even if the mini is down; the chat firehose stays out — only chat
 @mentions land here). Pieces: the [`/notifications`](app/notifications/page.tsx)
 route → [`NotificationsView`](components/NotificationsView.tsx); the bell tab +

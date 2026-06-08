@@ -20,6 +20,8 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   new_post: "📸",
   chat_mention: "💬",
   committee_join: "👥",
+  cabin_request: "🏡",
+  cabin_decision: "🏡",
   broadcast: "📣",
 };
 
