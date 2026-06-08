@@ -6,7 +6,8 @@ import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
 import { plural } from "@/lib/format";
 import { useBusyAction, useSaveStatus } from "@/lib/hooks";
-import { inviteMember, setMemberEmail } from "@/lib/admin";
+import { inviteMember } from "@/lib/admin";
+import { AdminEditMember } from "@/components/AdminEditMember";
 
 interface MemberRow {
   id: string;
@@ -35,23 +36,21 @@ export function AdminMembers() {
   // so emails are visible and promote/remove works.
   const [rpcReady, setRpcReady] = useState(false);
   // Whether the two-admin override window is open (migration 0025) — gates the
-  // per-member "Edit email" action. The mini re-checks this server-side too.
-  const [emailUnlocked, setEmailUnlocked] = useState(false);
-  // Invite form + the in-progress email edit (member id → draft email).
+  // per-member "Edit info" action. The server (RPC + mini) re-checks it too.
+  const [editUnlocked, setEditUnlocked] = useState(false);
+  // Invite form + which member's "Edit info" panel is open.
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const invite = useSaveStatus();
   const [editId, setEditId] = useState<string | null>(null);
-  const [editEmail, setEditEmail] = useState("");
-  const edit = useSaveStatus();
 
   const getToken = async () =>
     (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
 
-  // Re-read whether admin email-editing is unlocked (migration 0025). The unlock
+  // Re-read whether admin member-editing is unlocked (migration 0025). The unlock
   // is opened in the sibling AdminProfileOverride panel, so this component has to
   // poll for it rather than learn from a shared state — we refresh on mount, on
-  // tab focus, and on a light interval so the ✉️ Email button appears once two
+  // tab focus, and on a light interval so the "Edit info" button appears once two
   // admins unlock (and disappears when the 24h window lapses) without a reload.
   // Best-effort: if 0025 isn't applied the RPC errors and the action stays off.
   const refreshUnlock = useCallback(async () => {
@@ -59,7 +58,7 @@ export function AdminMembers() {
     if (!sb) return;
     const { data } = await sb.rpc("admin_override_status");
     const until = (data as { unlocked_until?: string | null } | null)?.unlocked_until;
-    setEmailUnlocked(!!until && new Date(until).getTime() > Date.now());
+    setEditUnlocked(!!until && new Date(until).getTime() > Date.now());
   }, []);
 
   const load = async () => {
@@ -103,23 +102,6 @@ export function AdminMembers() {
       setInviteEmail("");
       load();
       return `Invited ${email} — they'll get a code to join.`;
-    }, 0);
-
-  const saveEmail = (m: MemberRow) =>
-    edit.run(async () => {
-      const next = editEmail.trim().toLowerCase();
-      if (!/\S+@\S+\.\S+/.test(next)) return "Enter a valid email.";
-      const token = await getToken();
-      if (!token) return "Sign in again to edit.";
-      try {
-        await setMemberEmail(m.id, next, token);
-      } catch (err) {
-        return err instanceof Error ? err.message : "Couldn't update the email.";
-      }
-      setEditId(null);
-      setEditEmail("");
-      setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, email: next } : x)));
-      return "Email updated.";
     }, 0);
 
   useEffect(() => {
@@ -273,14 +255,14 @@ export function AdminMembers() {
                   </div>
                   {rpcReady && !isMe && (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {emailUnlocked && (
+                      {editUnlocked && (
                         <button
-                          onClick={() => { setEditId(editId === m.id ? null : m.id); setEditEmail(m.email ?? ""); edit.show(null); }}
-                          aria-label={`Edit ${name}'s email`}
-                          title="Set this member's email"
+                          onClick={() => setEditId(editId === m.id ? null : m.id)}
+                          aria-label={`Edit ${name}'s information`}
+                          title="Edit this member's information"
                           className="press shrink-0 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/40"
                         >
-                          ✉️ Email
+                          ✏️ Edit info
                         </button>
                       )}
                       <button
@@ -309,40 +291,26 @@ export function AdminMembers() {
                   )}
                 </div>
 
-                {editId === m.id && (
-                  <div className="space-y-2 rounded-lg bg-card p-2.5 ring-1 ring-primary/30">
-                    <p className="text-xs text-foreground/60">
-                      Set a new login email for <strong>{name}</strong>. They&rsquo;ll use it next time they sign in.
-                    </p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={editEmail}
-                        onChange={(e) => setEditEmail(e.target.value)}
-                        placeholder="new@email.com"
-                        type="email"
-                        autoComplete="off"
-                        className="w-full rounded-lg bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary sm:flex-1"
-                      />
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => { setEditId(null); edit.show(null); }}
-                          className="press rounded-lg bg-background px-3 py-2 text-xs font-semibold text-foreground/60 ring-1 ring-border"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => saveEmail(m)}
-                          disabled={edit.pending || !editEmail.trim()}
-                          className="press rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                        >
-                          {edit.pending ? "Saving…" : "Save email"}
-                        </button>
-                      </div>
-                    </div>
-                    {edit.status && <p className="text-xs text-foreground/60">{edit.status}</p>}
-                  </div>
+                {editId === m.id && editUnlocked && (
+                  <AdminEditMember
+                    memberId={m.id}
+                    memberEmail={m.email ?? null}
+                    memberName={name}
+                    onClose={() => setEditId(null)}
+                    onSaved={(patch) =>
+                      setMembers((prev) =>
+                        prev.map((x) =>
+                          x.id === m.id
+                            ? {
+                                ...x,
+                                email: patch.email ?? x.email,
+                                display_name: patch.display_name ?? x.display_name,
+                              }
+                            : x,
+                        ),
+                      )
+                    }
+                  />
                 )}
               </li>
             );
