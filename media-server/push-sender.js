@@ -282,8 +282,9 @@ async function start() {
   };
 
   // A new cabin stay request was submitted (cabin_bookings INSERT) — tell every
-  // admin so they can review it, minus the requester themselves. Operational, so
-  // it isn't gated on push_types (admins always want to see the queue grow).
+  // admin so they can review it, minus the requester themselves. Gated on the
+  // in-app notification pref `notif_types` containing 'cabin_request' (the same
+  // per-type toggle in Profile → Notifications), so an admin can turn it off.
   const handleCabinRequest = async (id) => {
     if (!id) return;
     if (!once(`cbreq:${id}`)) return;
@@ -297,11 +298,13 @@ async function start() {
     const [cabinRes, reqRes, adminRes] = await Promise.all([
       sb.from("cabins").select("name").eq("id", b.cabin_id).maybeSingle(),
       sb.from("profiles").select("display_name").eq("id", b.user_id).maybeSingle(),
-      sb.from("profiles").select("id").eq("is_admin", true),
+      sb.from("profiles").select("id, notif_types").eq("is_admin", true),
     ]);
     const cabin = cabinRes.data ? cabinRes.data.name : "a cabin";
     const name = ((reqRes.data && reqRes.data.display_name) || "").trim() || "A member";
-    const targets = (adminRes.data || []).map((a) => a.id).filter((aid) => aid !== b.user_id);
+    const targets = (adminRes.data || [])
+      .filter((a) => a.id !== b.user_id && (a.notif_types || []).includes("cabin_request"))
+      .map((a) => a.id);
     if (!targets.length) return;
 
     const payload = {
@@ -318,14 +321,17 @@ async function start() {
   };
 
   // An admin approved or denied a request (cabin_bookings UPDATE) — tell the
-  // requester. It's the result of their own action, so it's sent regardless of
-  // push_types (like an order confirmation). Only on the pending → decision
+  // requester. Gated on their `notif_types` containing 'cabin_decision' (the
+  // per-type toggle in Profile → Notifications). Only on the pending → decision
   // transition; REPLICA IDENTITY FULL (migration 0032) gives us the old row, and
   // once() backstops if it isn't available.
   const handleCabinDecision = async (row, oldRow) => {
     if (!row || (row.status !== "approved" && row.status !== "denied")) return;
     if (oldRow && oldRow.status && oldRow.status !== "pending") return;
     if (!once(`cbdec:${row.id}:${row.status}`)) return;
+
+    const { data: reqProf } = await sb.from("profiles").select("notif_types").eq("id", row.user_id).maybeSingle();
+    if (!((reqProf && reqProf.notif_types) || []).includes("cabin_decision")) return;
 
     const { data: cabinRow } = await sb.from("cabins").select("name").eq("id", row.cabin_id).maybeSingle();
     const cabin = cabinRow ? cabinRow.name : "your cabin";

@@ -3,7 +3,7 @@
 import { useIdentity } from "@/components/IdentityProvider";
 import type { NotifPrefType } from "@/lib/types";
 
-const TYPES: { value: NotifPrefType; label: string; desc: string }[] = [
+const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: boolean }[] = [
   { value: "post_comment", label: "Comments on my posts", desc: "When someone comments on a post you made" },
   { value: "post_reply", label: "Replies on posts I'm in", desc: "When someone else comments on a post you commented on" },
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
@@ -12,6 +12,8 @@ const TYPES: { value: NotifPrefType; label: string; desc: string }[] = [
   { value: "new_post", label: "New posts in the Feed", desc: "When anyone shares a new post" },
   { value: "chat_mention", label: "Tagged in committee chat", desc: "When you're @mentioned in a committee chat" },
   { value: "committee_join", label: "Committee decisions", desc: "When your request to join a committee is approved or declined" },
+  { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
+  { value: "cabin_request", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
 ];
 
 /**
@@ -21,7 +23,7 @@ const TYPES: { value: NotifPrefType; label: string; desc: string }[] = [
  * phone). Admin announcements always come through regardless of these.
  */
 export function NotifPrefs() {
-  const { user, updateUser } = useIdentity();
+  const { user, isAdmin, updateUser } = useIdentity();
   if (!user) return null;
 
   const types = user.notifTypes ?? [];
@@ -30,6 +32,9 @@ export function NotifPrefs() {
     const next = has(t) ? types.filter((x) => x !== t) : [...types, t];
     updateUser({ notifTypes: next });
   };
+  // Admin-only kinds (e.g. "new cabin request") only fire for admins, so only
+  // they see the toggle.
+  const shown = TYPES.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div className="space-y-2">
@@ -38,7 +43,7 @@ export function NotifPrefs() {
         What shows in your Activity tab. Admin announcements always come through.
       </p>
       <div className="overflow-hidden rounded-2xl ring-1 ring-border">
-        {TYPES.map((l, i) => {
+        {shown.map((l, i) => {
           const on = has(l.value);
           return (
             <button

@@ -53,6 +53,8 @@ export type NotifType =
   | "new_post"
   | "chat_mention"
   | "committee_join"
+  | "cabin_request"
+  | "cabin_decision"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -71,6 +73,8 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "new_post",
   "chat_mention",
   "committee_join",
+  "cabin_request",
+  "cabin_decision",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
