@@ -154,3 +154,4 @@ pruning dead subscriptions. Requires migration `0019`. New dep: `web-push`.
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
 - The server doesn't touch photos (the app may downscale very large ones before upload); **videos are transcoded** to ≤1080p H.264 MP4 (needs `ffmpeg`; see *Video transcoding*).
 - Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health`.
+- Admin endpoints (need `SUPABASE_SERVICE_ROLE_KEY`; caller must be an app admin, else 503/403): `POST /admin/invite` `{ name, email }` — create a named account + email a sign-in code; `POST /admin/set-email` `{ userId, newEmail }` — set a member's email, allowed only while the two-admin override window is open (re-checked via `is_override_unlocked()`, migration 0025).

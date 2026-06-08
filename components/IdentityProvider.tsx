@@ -40,6 +40,13 @@ interface IdentityValue {
   setPreviewMember: (m: PreviewMember | null) => void;
   /** Patch the current user (display name / email-alerts) → writes `profiles`. */
   updateUser: (patch: Partial<User>) => void;
+  /** Start a self-serve email change: Supabase emails a confirmation code to the
+   *  new address (and a heads-up to the old one — "Secure email change" stays on).
+   *  Resolves `{ error }` (null on success); finish with `confirmEmailChange`. */
+  startEmailChange: (newEmail: string) => Promise<{ error: string | null }>;
+  /** Finish the change by verifying the code sent to the new address. On success
+   *  the session's email updates and `user.email` refreshes via onAuthStateChange. */
+  confirmEmailChange: (newEmail: string, code: string) => Promise<{ error: string | null }>;
   /** Open the sign-in sheet on demand — call from any action that needs an
    *  identity (post, RSVP, …). No-op if already signed in or backend absent. */
   promptSignIn: () => void;
@@ -55,6 +62,8 @@ const IdentityContext = createContext<IdentityValue>({
   setPreviewMode: () => {},
   setPreviewMember: () => {},
   updateUser: () => {},
+  startEmailChange: async () => ({ error: "Sign-in isn't available." }),
+  confirmEmailChange: async () => ({ error: "Sign-in isn't available." }),
   promptSignIn: () => {},
   signOut: () => {},
 });
@@ -162,6 +171,29 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Self-serve email change. Supabase's secure flow emails a code to the new
+  // address (and notifies the old one); we verify it in-app, mirroring sign-in,
+  // so no browser hop is needed inside the installed PWA. `profiles` stores no
+  // email (it lives in auth.users), so there's nothing else to sync — the
+  // session's email updates on verify and flows through loadFromSession.
+  const startEmailChange = async (newEmail: string) => {
+    const sb = supabase;
+    if (!sb) return { error: "Sign-in isn't available." };
+    const { error } = await sb.auth.updateUser({ email: newEmail.trim().toLowerCase() });
+    return { error: error?.message ?? null };
+  };
+
+  const confirmEmailChange = async (newEmail: string, code: string) => {
+    const sb = supabase;
+    if (!sb) return { error: "Sign-in isn't available." };
+    const { error } = await sb.auth.verifyOtp({
+      email: newEmail.trim().toLowerCase(),
+      token: code.trim(),
+      type: "email_change",
+    });
+    return { error: error?.message ?? null };
+  };
+
   const promptSignIn = () => {
     if (!user && isSupabaseConfigured) setPrompting(true);
   };
@@ -227,6 +259,8 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         setPreviewMode,
         setPreviewMember,
         updateUser,
+        startEmailChange,
+        confirmEmailChange,
         promptSignIn,
         signOut,
       }}

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminMembers } from "@/components/AdminMembers";
+import { AdminProfileOverride } from "@/components/AdminProfileOverride";
 import { AdminCommittees } from "@/components/AdminCommittees";
 import { AdminSignins } from "@/components/AdminSignins";
 import { PreviewAs } from "@/components/PreviewAs";
@@ -13,6 +14,7 @@ import { DemoDateControl } from "@/components/DemoDateControl";
 import { Avatar } from "@/components/Avatar";
 import { AvatarCropper } from "@/components/AvatarCropper";
 import { ContactPaySettings } from "@/components/ContactPaySettings";
+import { ChangeEmail } from "@/components/ChangeEmail";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PushToggle } from "@/components/PushToggle";
 
@@ -136,6 +138,8 @@ export default function ProfilePage() {
         </div>
       </header>
 
+      <ChangeEmail />
+
       <CollapsibleSection
         title="Notifications"
         icon="🔔"
@@ -187,6 +191,9 @@ export default function ProfilePage() {
           </CollapsibleSection>
           <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
             <AdminMembers />
+          </CollapsibleSection>
+          <CollapsibleSection title="Edit a member's email" icon="✉️" subtitle="Two-admin unlock · backup for members">
+            <AdminProfileOverride />
           </CollapsibleSection>
           <CollapsibleSection title="Recent activity" icon="🔐" subtitle="Who joined & recent sign-ins">
             <AdminSignins />

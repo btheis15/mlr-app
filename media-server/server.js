@@ -35,6 +35,7 @@ const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ""; // ⚠️ powerful — admin endpoints only
 const ALLOWED = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
 const MAX_MB = Number(process.env.MAX_MB || 1024); // per-file cap (MB); your disk is the real limit
 const MEDIA_DIR = process.env.MEDIA_DIR || path.join(__dirname, "media");
@@ -150,6 +151,92 @@ async function requireUser(req, res, next) {
     return res.status(503).json({ error: "Couldn't reach the auth service." });
   }
 }
+
+// Service-role Supabase client — bypasses RLS and reaches the GoTrue admin API
+// (create user, change another user's email). Powerful, so it's used ONLY by the
+// admin endpoints below. Null (→ 503) when the key isn't configured. Same key
+// the alert mailer uses.
+let _admin = null;
+function adminClient() {
+  if (!SERVICE_KEY || !SUPABASE_URL) return null;
+  if (!_admin) {
+    const { createClient } = require("@supabase/supabase-js");
+    _admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  }
+  return _admin;
+}
+
+// Like requireUser, but also confirms the caller is an admin (profiles.is_admin,
+// the single source of truth) using the service-role client. Sets req.adminId.
+async function requireAdmin(req, res, next) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
+  if (!m || !SUPABASE_URL || !SUPABASE_ANON_KEY) return res.status(401).json({ error: "Sign in required." });
+  const sb = adminClient();
+  if (!sb) return res.status(503).json({ error: "Admin actions aren't configured on the server." });
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${m[1]}` },
+    });
+    if (!r.ok) { console.warn(`[admin] token rejected by Supabase: ${r.status}`); return res.status(401).json({ error: "Invalid or expired session." }); }
+    const user = await r.json();
+    const { data, error } = await sb.from("profiles").select("is_admin").eq("id", user.id).single();
+    if (error || !data || !data.is_admin) return res.status(403).json({ error: "Admins only." });
+    req.adminId = user.id;
+    next();
+  } catch (e) {
+    console.error(`[admin] auth check failed: ${e && e.message}`);
+    return res.status(503).json({ error: "Couldn't reach the auth service." });
+  }
+}
+
+// Admin: invite a member. Pre-creates a named account (so they show in Members
+// straight away) and emails the standard one-time CODE — never a magic link, so
+// it works inside the installed PWA. Idempotent if the email already exists.
+app.post("/admin/invite", express.json(), requireAdmin, async (req, res) => {
+  const email = String((req.body && req.body.email) || "").trim().toLowerCase();
+  const name = String((req.body && req.body.name) || "").trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "A valid email is required." });
+  const sb = adminClient();
+  try {
+    // Create the account; seed display_name so the signup trigger fills the
+    // profile. Tolerate "already registered" so re-inviting just re-sends a code.
+    const { error: createErr } = await sb.auth.admin.createUser({
+      email,
+      email_confirm: false,
+      user_metadata: name ? { display_name: name } : {},
+    });
+    if (createErr && !/already|registered|exists/i.test(createErr.message || "")) throw createErr;
+
+    const { error: otpErr } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    if (otpErr) throw otpErr;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(`[admin/invite] ${e && e.message}`);
+    res.status(400).json({ error: (e && e.message) || "Couldn't send the invite." });
+  }
+});
+
+// Admin: set a member's email FOR them (the "I can't do it myself" backup). Only
+// allowed while the two-admin override window is open — re-checked here against
+// the database (is_override_unlocked), so the UI gate alone can't authorize it.
+app.post("/admin/set-email", express.json(), requireAdmin, async (req, res) => {
+  const userId = String((req.body && req.body.userId) || "").trim();
+  const newEmail = String((req.body && req.body.newEmail) || "").trim().toLowerCase();
+  if (!userId || !/^\S+@\S+\.\S+$/.test(newEmail)) return res.status(400).json({ error: "A user and a valid email are required." });
+  const sb = adminClient();
+  try {
+    const { data: unlocked, error: lockErr } = await sb.rpc("is_override_unlocked");
+    if (lockErr) throw lockErr;
+    if (!unlocked) return res.status(403).json({ error: "Admin email editing is locked. Two admins must unlock it first." });
+
+    const { error } = await sb.auth.admin.updateUserById(userId, { email: newEmail, email_confirm: true });
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(`[admin/set-email] ${e && e.message}`);
+    res.status(400).json({ error: (e && e.message) || "Couldn't update the email." });
+  }
+});
 
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
