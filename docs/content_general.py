@@ -4,9 +4,9 @@
 Same engine and look as content.py, but written for a sharp non-engineer who
 will be one of the app's admins — what the app does and how it feels to use,
 illustrated with a screenshot beside nearly every part. Includes a day-by-day
-walkthrough of how the app reshapes itself across the Family Fest week, and a
-light Renaissance-fair flavor. Returns a flat list of flowables. Built by
-build_general_pdf.py."""
+walkthrough of how the app reshapes itself across the Family Fest week, a
+plain-English look at privacy, and a short list of common questions. Returns a
+flat list of flowables. Built by build_general_pdf.py."""
 
 import os
 from reportlab.platypus import (
@@ -100,6 +100,15 @@ def idea(title, body, tag, tagcolor):
                               ("ALIGN",(1,0),(1,0),"RIGHT")]))
     return KeepTogether([head, sp(2), P(body, BODY), sp(8)])
 
+def qa(q, a):
+    """One plain-English question + answer, kept together."""
+    return KeepTogether([
+        P(f"<b>{q}</b>", style("QAQ", fontName="Helvetica-Bold", fontSize=10.5, leading=14, textColor=INK)),
+        sp(1),
+        P(a, BODY),
+        sp(8),
+    ])
+
 
 def build_story():
     F = []
@@ -112,12 +121,12 @@ def build_story():
         Spacer(1, 10),
         Paragraph("The family’s private app — a guided tour", COVER_SUB),
         Spacer(1, 6),
-        Paragraph('<font color="#9fc4b1">What it does · who it’s for · how it’s built · where it’s headed</font>',
+        Paragraph('<font color="#9fc4b1">What it does · who it’s for · who can see what · how it’s built</font>',
                   style("CoverNote", fontName="Helvetica", fontSize=11, leading=15, textColor=colors.white)),
         Spacer(1, 1.6*inch),
         Paragraph('<font color="#cfe0d6">EST. 1987  ·  Tomahawk, Wisconsin  ·  A private app for the family &amp; resort community</font>',
                   style("CoverFoot", fontName="Helvetica-Bold", fontSize=10, leading=14, textColor=colors.white)),
-        Paragraph('<font color="#bcd2c6">Written for the non-engineer — the ideas in plain English, with a screenshot of nearly every part. No code required.</font>',
+        Paragraph('<font color="#bcd2c6">Written in plain English — the ideas with a screenshot of nearly every part. No technical background needed.</font>',
                   style("CoverFoot2", fontName="Helvetica-Oblique", fontSize=9, leading=13, textColor=colors.white)),
         NextPageTemplate("body"),
         PageBreak(),
@@ -126,18 +135,22 @@ def build_story():
     # ───────────────────────────── TOC ─────────────────────────────
     F += [Paragraph("Contents", H1), Rule(PINE, 1.4, space=8), sp(6)]
     toc = [
-        ("1", "What it is &amp; who it’s for", "The app in one page"),
-        ("2", "A walk through the app", "The rooms, and how you move around"),
-        ("3", "Getting in", "Look freely; a verified email lets you take part"),
-        ("4", "The family feed", "A shared album that stays in sync"),
-        ("5", "Reaching &amp; paying each other", "Tap a name to call, text, or pay"),
-        ("6", "Announcements", "A notice board that never nags"),
-        ("7", "Family Fest — the festival colors", "When the app changes its garb for the reunion"),
-        ("8", "The week, day by day", "How the app reshapes itself as the day changes"),
-        ("9", "How it’s built, in plain terms", "The moving parts, without the jargon"),
-        ("10", "What you can do as an admin", "The keys you’ll hold"),
-        ("11", "Where everything lives", "The cloud, the home server, and what it costs"),
-        ("12", "Honest trade-offs &amp; open questions", "Where I’d most value your read"),
+        ("1",  "What it is &amp; who it’s for", "The app in one page"),
+        ("2",  "A walk through the app", "The rooms, and how you move around"),
+        ("3",  "Getting in", "Look freely; a verified email lets you take part"),
+        ("4",  "The family feed", "A shared album that stays in sync"),
+        ("5",  "Reaching, paying &amp; emailing each other", "Tap a name to call, text, or pay"),
+        ("6",  "Announcements", "A notice board that never nags"),
+        ("7",  "Notifications", "Your own “what happened” list — exactly as much as you want"),
+        ("8",  "Booking a cabin", "Ask for a room; an organizer says yes"),
+        ("9",  "Family Fest — the festival colors", "When the app changes its garb for the reunion"),
+        ("10", "The week, day by day", "How the app reshapes itself as the day changes"),
+        ("11", "Is it private?", "Who can see what, in plain terms"),
+        ("12", "How it’s built, in plain terms", "The moving parts, without the jargon"),
+        ("13", "What you can do as an organizer", "The keys you’ll hold"),
+        ("14", "Where everything lives", "The cloud, the home server, and what it costs"),
+        ("15", "Common questions", "Quick answers to the things people ask first"),
+        ("16", "Honest trade-offs &amp; open questions", "The judgment calls"),
     ]
     rows = []
     for n, t, sub in toc:
@@ -153,9 +166,10 @@ def build_story():
     F += [tb]
     F += [sp(12), callout("How to read this",
           [P("This is the non-technical companion to a more engineering-focused version, illustrated with a "
-             "screenshot of nearly every part — all captured from the app itself. Sections 1–8 are what the app "
-             "does and how it feels (including how it transforms across the festival week); 9–11 are how it’s "
-             "built, what you’ll do as an admin, and where it lives; 12 is a short list of open questions.", BODY)],
+             "screenshot of nearly every part — all captured from the app itself. Sections 1–11 are what the app "
+             "does and how it feels (including how it transforms across the festival week, and who can see what); "
+             "12–14 are how it’s built, what you’d do as an organizer, and where it lives; 15 answers the questions "
+             "people ask first; 16 is a short list of open questions.", BODY)],
           accent=CAMPFIRE, bg=colors.HexColor("#fbf0e8"))]
     F += [sp(14)]
 
@@ -171,35 +185,37 @@ def build_story():
     ], "home.png", side="right", caption="The home screen")]
     F += [figrow([
         P("It does <b>double duty</b>. Most of the year it’s the year-round resort companion — the volunteer "
-          "committees, the season work-weekends, and tee-time booking. Once a year it becomes the home base for "
-          "<b>Family Fest</b>, a week-long reunion, which lives <i>inside</i> the same app as a themed section rather "
-          "than off in a separate place."),
+          "committees, the season work-weekends, booking a cabin, and tee-time booking. Once a year it becomes the "
+          "home base for <b>Family Fest</b>, a week-long reunion, which lives <i>inside</i> the same app as a themed "
+          "section rather than off in a separate place."),
     ], "fest.png", side="left", caption="The Family Fest section")]
     F += [sp(4), Paragraph("The two halves, one app", H3)]
     F += [data_table(
         ["", "Year-round resort", "Family Fest week"],
         [
             [("Feel", "b"), "Forest-green Northwoods heritage", "Renaissance-fair parchment &amp; heraldry"],
-            [("What’s there", "b"), "Committees, tee times, work weekends", "Schedule, the feast nights, dues, the gathering itself"],
+            [("What’s there", "b"), "Committees, tee times, work weekends, cabins", "Schedule, the feast nights, dues, the gathering itself"],
             [("Mood", "b"), "Calm and evergreen", "Festive and a little ceremonial"],
         ],
         [0.18, 0.40, 0.42])]
     F += [sp(8), callout("The one idea that ties it together",
         [P("Rather than build two apps, Family Fest is treated as a <b>“season” of the resort</b> that rises and "
            "fades across the calendar — quiet most of the year, then a gradual build-up, the full festival week, and "
-           "a gentle wind-down. The app quietly reshapes itself to match the time of year (Section 8).", BODY)],
+           "a gentle wind-down. The app quietly reshapes itself to match the time of year (Section 10).", BODY)],
         accent=PINE)]
     F += [PageBreak()]
 
     # ───────────────── SECTION 2 — THE MAP ─────────────────
     F += section("2", "A walk through the app",
-                 "Four tabs along the bottom carry the whole app; a few Home cards reach the year-round extras. Nothing is ever more than a tap from home.")
-    F += [P("The bottom row has four tabs — <b>Home</b> (the front porch), <b>Posts</b> (the family feed, Section 4), "
-            "<b>Family Fest</b> (the reunion, Sections 7–8), and <b>Profile</b> (you, Section 3). A handful of "
-            "year-round extras are reached from the Home porch rather than getting their own tab:")]
+                 "Five tabs along the bottom carry the whole app; a few Home cards reach the year-round extras. Nothing is ever more than a tap from home.")
+    F += [P("The bottom row has five tabs — <b>Home</b> (the front porch), <b>Feed</b> (the family photo feed, "
+            "Section 4), <b>Family Fest</b> (the reunion, Sections 9–10), <b>Activity</b> (your notifications, "
+            "Section 7), and <b>Profile</b> (you and your settings, Section 3). A handful of year-round extras are "
+            "reached from the Home porch rather than getting their own tab:")]
     F += [sp(2), figrow([
         P("<b>Committees</b> — the volunteer groups that keep the resort running (Maintenance, Beautification, and "
-          "the Family Fest crew). Tap one to see who’s on it and what they do."),
+          "the Family Fest crew). Tap one to see who’s on it and what they do, and — if you’re a member — to open its "
+          "own private group chat."),
     ], "committees.png", side="right", caption="Committees")]
     F += [figrow([
         P("<b>Tee Times</b> — a friendly hand-off into the local club’s real booking page, pre-set to the day you "
@@ -241,22 +257,22 @@ def build_story():
     F += section("4", "The family feed",
                  "The social heart of the app — a shared album that behaves like a small, private Instagram for the family.")
     F += [figrow([
-        P("Open the <b>Posts</b> tab and you get a living scrapbook: photos and video, several to a post in a "
+        P("Open the <b>Feed</b> tab and you get a living scrapbook: photos and video, several to a post in a "
           "swipeable gallery (tap any one for full screen), with comments and a handful of emoji reactions. You can "
           "<b>tag people</b>, and a “tagged me” filter gathers every post you appear in."),
         sp(2),
         P("It <b>stays in sync on its own</b>: post from one phone and it appears on everyone else’s within "
           "moments — no refreshing. And because names and faces are looked up live, changing your nickname or photo "
           "updates everywhere you appear, even on years-old posts."),
-    ], "posts.png", side="right", text_frac=0.58, caption="The Posts feed")]
+    ], "posts.png", side="right", text_frac=0.58, caption="The family Feed")]
     F += [sp(2), Paragraph("A faithful record", H3)]
     F += [P("Posts arrange themselves by day (“Today,” “Yesterday,” a date). And if you post a photo weeks late, you "
             "can date it to <i>when it actually happened</i>, so the family’s record stays in true chronological "
             "order rather than bunching at the day you got around to it.")]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 5 — CONTACT & PAY ─────────────────
-    F += section("5", "Reaching &amp; paying each other",
+    # ───────────────── SECTION 5 — CONTACT, PAY & EMAIL ─────────────────
+    F += section("5", "Reaching, paying &amp; emailing each other",
                  "Tap anyone’s name or photo, anywhere in the app, to reach or pay them — with their own preferred method first.")
     F += [figrow([
         P("Every name and face in the app is tappable, opening a small <b>contact card</b> that turns whatever that "
@@ -268,6 +284,13 @@ def build_story():
           "simply hand off to the person’s own Venmo or Messages, the way tapping a phone number opens your dialer. "
           "The same pattern powers the committee rosters (shown here) and each feast night’s head chef."),
     ], "committee_detail.png", side="left", text_frac=0.58, caption="Call / Text / Email, per person")]
+    F += [sp(4), Paragraph("Emailing a group, without a mailing list", H3)]
+    F += [P("When you need a real email rather than a quick text, there’s a built-in <b>Email members</b> tool in "
+            "your Profile. Pick the exact people you want, or a whole committee you’re part of, and it opens your "
+            "normal email app with everyone already in the “To” line — you write and send it yourself. The names "
+            "come straight from the app, so you’re never working off a stale address book, and <b>nothing is ever "
+            "sent on your behalf</b>. Emailing the <i>entire</i> family in one go is reserved for organizers and "
+            "anyone active on a committee, so that big a send stays with people who are involved.")]
     F += [PageBreak()]
 
     # ───────────────── SECTION 6 — ANNOUNCEMENTS ─────────────────
@@ -277,13 +300,50 @@ def build_story():
             "for an FYI. It appears as a banner across the top of the app for everyone:")]
     F += [sp(4)] + fig("banner.png", w=AVAIL, caption="The notice banner, as it appears atop every screen")
     F += [sp(6), P("Each person can <b>dismiss</b> a notice once they’ve read it, and it won’t come back — the app "
-            "says its piece once and then lets it go, rather than pestering people who’ve already seen it. The next "
-            "step already designed for this: the same post will also <b>email the members who’ve opted in</b>, so a "
-            "last-minute change (“dinner moved to 6:30”) reaches the people who aren’t in the app that day.")]
+            "says its piece once and then lets it go, rather than pestering people who’ve already seen it. A notice "
+            "can also <b>email the members who’ve opted in</b>, so a last-minute change (“dinner moved to 6:30”) "
+            "reaches the people who aren’t in the app that day.")]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 7 — FAMILY FEST LOOK ─────────────────
-    F += section("7", "Family Fest — when the app puts on its festival colors",
+    # ───────────────── SECTION 7 — NOTIFICATIONS ─────────────────
+    F += section("7", "Notifications — your “what happened” list",
+                 "A running list of everything that involves you, with a switch for each kind so it’s exactly as quiet or as chatty as you want.")
+    F += [figrow([
+        P("The <b>Activity</b> tab is your own running list of <b>everything that happened that involves you</b> — "
+          "much like the little bell on a social app. A small number on the bell tells you how many are new; open the "
+          "tab and the count clears, while the list itself stays, so you can always look back."),
+        sp(2),
+        P("It gathers the things you’d actually want to know: someone <b>comments on or reacts to your photo</b>, "
+          "<b>tags or @mentions you</b>, posts a <b>new photo to the family feed</b>, an organizer sends an "
+          "<b>announcement</b>, or your <b>cabin request gets an answer</b>. Tap any one to jump straight to it."),
+    ], "notifications.png", side="right", text_frac=0.58, caption="The Activity tab")]
+    F += [sp(2), Paragraph("You decide what reaches you", H3)]
+    F += [P("Every kind of notification has its <b>own on/off switch</b> in your Profile — comments on your posts, "
+            "tags, new feed photos, group-chat mentions, cabin updates, and so on. Turn off what you don’t care about "
+            "and keep the rest; it’s as fine-grained as you like. A busy group chat won’t bury you, either — you only "
+            "hear about a committee conversation when someone actually <b>tags you</b> in it.")]
+    F += [sp(4), callout("One set of switches, inside the app and on your phone",
+        [P("If you also turn on phone notifications, that <b>same</b> set of switches decides what’s allowed to buzz "
+           "your phone — so you set your preferences once and they apply both inside the app and on your lock "
+           "screen. Nothing is on that you didn’t leave on.", BODY)], accent=PINE)]
+    F += [PageBreak()]
+
+    # ───────────────── SECTION 8 — CABINS ─────────────────
+    F += section("8", "Booking a cabin",
+                 "Ask for a room in one of the two houses for the dates you want; an organizer approves it, and the app keeps the count honest.")
+    F += [figrow([
+        P("The resort has two houses to stay in — <b>Cabin 1</b> and the <b>Red &amp; White House</b>. From "
+          "<b>Request a Cabin Stay</b>, a member picks a house and their dates (it suggests Family Fest week) and "
+          "sends a request; an <b>organizer approves or declines</b> it, and the requester is notified of the answer."),
+        sp(2),
+        P("The app keeps the count honest: it shows <b>how many rooms are still open</b> for the nights you want and "
+          "won’t let a house be overbooked. One room per request, so a family needing two rooms simply asks twice. "
+          "You see <b>only your own requests</b>; organizers see the whole queue."),
+    ], "cabin.png", side="right", text_frac=0.58, caption="Request a Cabin Stay")]
+    F += [PageBreak()]
+
+    # ───────────────── SECTION 9 — FAMILY FEST LOOK ─────────────────
+    F += section("9", "Family Fest — when the app puts on its festival colors",
                  "The reunion gets its own look and feel inside the same app: a Renaissance-fair world of feasts and heraldry.")
     F += [figrow([
         P("Where the year-round resort is forest-green and woodsy, the <b>Family Fest</b> section turns to "
@@ -300,8 +360,8 @@ def build_story():
     ], "fest_pay.png", side="left", caption="Family Fest dues")]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 8 — DAY BY DAY ─────────────────
-    F += section("8", "The week, day by day",
+    # ───────────────── SECTION 10 — DAY BY DAY ─────────────────
+    F += section("10", "The week, day by day",
                  "Here’s the part people love: the app doesn’t just describe the week — it reshapes itself around it, on its own, as the calendar turns.")
     F += [P("A single, quiet rule maps <b>today’s date</b> to a <b>phase</b>, and the whole app follows along — "
             "nobody flips a switch. As the day rolls over, the home screen, the tab bar, and the Family Fest page "
@@ -339,8 +399,42 @@ def build_story():
         accent=CAMPFIRE, bg=colors.HexColor("#fbf0e8"))]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 9 — HOW IT'S BUILT ─────────────────
-    F += section("9", "How it’s built, in plain terms",
+    # ───────────────── SECTION 11 — PRIVACY ─────────────────
+    F += section("11", "Is it private?",
+                 "Private by design, not a public website — open to look around, but anything personal takes a verified sign-in. Here’s exactly who can see what.")
+    F += [P("Because this is a family space, it’s worth being clear about how it handles privacy. The short version: "
+            "<b>it’s private by design, not a public website</b>, and the personal parts are behind a verified "
+            "sign-in.")]
+    F += [sp(2), bullets([
+        "<b>Not out on the open web.</b> It isn’t in any app store and isn’t meant to turn up in a web search — you "
+        "reach it through a link shared within the family. The general resort info is browsable; the personal things "
+        "are gated.",
+        "<b>You sign in to do anything personal.</b> Posting a photo, commenting, signing up for a meal, requesting a "
+        "cabin, and seeing the member directory all require a <b>verified email</b>, proven by a one-time code, so "
+        "it’s really you (Section 3).",
+        "<b>Private group chats stay private.</b> Each committee’s chat can be read only by that committee’s "
+        "members — that’s enforced by the system itself, not merely hidden from a menu.",
+        "<b>Your photos stay in the family’s hands.</b> The actual pictures and videos live on a computer <b>at the "
+        "house</b> — not a big tech company’s cloud — reached over a secure private connection (Section 14). The "
+        "family keeps custody of its own album.",
+        "<b>You share only what you choose.</b> Your phone number, address, and payment handles are optional and "
+        "shown only to other signed-in members. <b>No banking details are ever stored</b> — pay buttons simply open "
+        "Venmo, Zelle, and the like.",
+        "<b>There’s always a person who can tidy up.</b> A few trusted family members (organizers) can edit or "
+        "remove any post and remove a member if needed — so a mistake or a problem can be handled. And there’s no "
+        "stranger-comment problem, because there are no strangers: everyone is a known, signed-in member.",
+    ])]
+    F += [sp(4), callout("Honest about what it is",
+        [P("This is built for a <b>trusted family circle</b>, and its security is sized to match — good-neighbor, "
+           "not a bank vault. There are no passwords to be stolen, personal actions need a verified email, and "
+           "organizers can remove anyone; but it deliberately trades maximum lock-down for being <b>gentle and "
+           "welcoming</b> to relatives of every comfort level with technology. If a part of it ever needs to be "
+           "truly locked down, that’s an easy conversation to have.", BODY)],
+        accent=CAMPFIRE, bg=colors.HexColor("#fbf0e8"))]
+    F += [PageBreak()]
+
+    # ───────────────── SECTION 12 — HOW IT'S BUILT ─────────────────
+    F += section("12", "How it’s built, in plain terms",
                  "Enough to picture how it works and why it’s sturdy — without the jargon.")
     F += [P("It’s a <b>web app that installs to a phone’s home screen</b> like a normal app, so there’s nothing to "
             "download from an app store and updates are instant for everyone. (For the curious: it’s built on modern, "
@@ -362,28 +456,32 @@ def build_story():
     F += [twoshots_block()]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 10 — AS AN ADMIN ─────────────────
-    F += section("10", "What you can do as an admin",
+    # ───────────────── SECTION 13 — AS AN ORGANIZER ─────────────────
+    F += section("13", "What you can do as an organizer",
                  "You’ll be one of the app’s organizers — here’s what that adds beyond a normal member.")
     F += [P("Most people use the app as members: browse, post, react, sign up. A few trusted family members are "
-            "marked as <b>organizers (admins)</b> — and you’ll be one. Admin status is set in the system itself, not "
-            "granted from inside the app, so it can’t be self-assigned. What it adds:")]
+            "marked as <b>organizers (admins)</b> — and you’ll be one. Organizer status is set in the system itself, "
+            "not granted from inside the app, so it can’t be self-assigned. What it adds:")]
     F += [bullets([
         "<b>Post announcements</b> to the banner at the top of everyone’s app — an alert or a quiet note (Section 6).",
-        "<b>Manage the member list</b> — see everyone who’s registered, and grant or remove organizer access for "
-        "others. (You can’t remove your own, so you can’t accidentally lock yourself out.)",
+        "<b>Send a notification</b> straight to people’s Activity tab — to everyone, or first to a small "
+        "<b>“beta testers”</b> group you can appoint, so you can try something out before the whole family sees it.",
+        "<b>Approve or decline cabin requests</b>, with the app guarding against overbooking (Section 8).",
+        "<b>Email any group</b> by name — the whole family, a committee, or a hand-picked set (Section 5).",
+        "<b>Manage the member list</b> — see everyone who’s registered, and grant or remove organizer (or "
+        "beta-tester) status. You can’t remove your own organizer access, so you can’t accidentally lock yourself out.",
         "<b>Edit or take down any post</b>, not just your own — handy for tidying a duplicate or fixing a caption.",
         "<b>See the directory</b> — members’ emails are kept tucked away from ordinary view and surfaced only to "
         "organizers, so you can reach anyone when you need to.",
     ])]
     F += [sp(2), callout("In short",
-        [P("Members see and share the family’s world; as an admin you also <b>steward</b> it — the announcements, "
-           "the roster, and the occasional cleanup. Nothing here is heavy or technical; it’s all a tap or two from "
-           "your Profile screen.", BODY)], accent=PINE)]
+        [P("Members see and share the family’s world; as an organizer you also <b>steward</b> it — the "
+           "announcements, the roster, cabin approvals, and the occasional cleanup. Nothing here is heavy or "
+           "technical; it’s all a tap or two from your Profile screen.", BODY)], accent=PINE)]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 11 — WHERE IT LIVES ─────────────────
-    F += section("11", "Where everything lives — and what it costs",
+    # ───────────────── SECTION 14 — WHERE IT LIVES ─────────────────
+    F += section("14", "Where everything lives — and what it costs",
                  "A frugal mix of free services plus one small computer at the house — and a deliberate choice about custody.")
     F += [P("The app is split across a few places, each chosen on purpose: <b>what you see</b> (the screens) is "
             "delivered by free, fast, professional hosting; <b>accounts, profiles, and the words of posts</b> live in "
@@ -413,9 +511,47 @@ def build_story():
            "every few days to keep it awake — so the app is ready the moment the family is.", BODY)], accent=PINE)]
     F += [PageBreak()]
 
-    # ───────────────── SECTION 12 — TRADE-OFFS ─────────────────
-    F += section("12", "Honest trade-offs &amp; open questions",
-                 "The rough edges and the judgment calls — the parts where I’d most value your read. None are emergencies; all are real.")
+    # ───────────────── SECTION 15 — COMMON QUESTIONS ─────────────────
+    F += section("15", "Common questions",
+                 "Quick, plain answers to the things people ask first.")
+    F += [
+        qa("Do I have to download anything?",
+           "No. It opens in your phone’s web browser, and you can “add it to your home screen” so it sits next to "
+           "your other apps and opens full-screen. There’s no app store to deal with, and updates appear on their "
+           "own — everyone’s always on the latest version."),
+        qa("Is there a password to remember?",
+           "No. You type your email, the app sends a one-time code, you enter it — done. It then remembers you on "
+           "that phone, so you’d only enter a code again on a new device."),
+        qa("Who can see my photos and posts?",
+           "Only signed-in members of this family app. Posts aren’t public, and the photo files themselves live on a "
+           "computer at the house rather than a public cloud (Section 11)."),
+        qa("Is it safe for the whole family to use?",
+           "It’s a closed, invitation-style circle — everyone is a known, signed-in member, there’s no commenting "
+           "from outsiders, and organizers can edit or remove anything and remove a member if needed."),
+        qa("Will it flood me with notifications?",
+           "Only if you let it. Every kind has its own on/off switch in your Profile, and a busy group chat only "
+           "reaches you when someone tags you (Section 7)."),
+        qa("Does it cost anything to use?",
+           "No. It runs on free services plus the family’s own computer for photo storage; the only ongoing cost is "
+           "that computer’s electricity (Section 14)."),
+        qa("What if I’m not very comfortable with technology?",
+           "That’s exactly who it’s built for. Most things are a tap or two, there’s no jargon, and it leans on the "
+           "simplest possible sign-in. If you can use a photos app and send a text, you can use this."),
+        qa("I got a new phone — what do I do?",
+           "Open the app, enter your email, and type the code it sends. Your name, photo, and history are all still "
+           "there — they’re tied to you, not the device."),
+        qa("Who runs it, and who do I ask for help?",
+           "A few family members are organizers. They post announcements, keep the member list, approve cabin "
+           "requests, and can help with anything that’s stuck."),
+        qa("What happens to all the photos over the years?",
+           "They’re kept on the family’s computer and stay in the feed in true date order. (One honest caveat about "
+           "backing them up is in Section 16.)"),
+    ]
+    F += [PageBreak()]
+
+    # ───────────────── SECTION 16 — TRADE-OFFS ─────────────────
+    F += section("16", "Honest trade-offs &amp; open questions",
+                 "The rough edges and the judgment calls — the parts worth a second look. None are emergencies; all are real.")
     F += [idea("The photos live on one machine",
         "Keeping the family’s pictures on a single home computer is a lovely cost-and-custody choice — but it’s also "
         "a single point of failure. If that machine fails, loses power, or its address changes, older photo links "
@@ -433,20 +569,22 @@ def build_story():
         "anyone using the app — but tidying them lowers the chance of a confusing slip-up down the road.",
         "UPKEEP", AZURE)]
 
-    F += [sp(6), callout("The big-picture question",
-        [P("The next things on the list are: letting anyone <b>email the whole family by name</b> (so nobody’s "
-           "working off a stale address book), a <b>request-and-approve flow</b> for joining committees, pulling "
-           "<b>announcements from a shared document</b>, and <b>phone push-notifications</b>. If you were choosing "
-           "what to build next for the most payoff to a non-technical family, what would it be?", BODY)], accent=PINE)]
+    F += [sp(6), callout("What’s already arrived — and what’s next",
+        [P("Several things that were once on the wish-list are now live: <b>emailing the family by name</b>, "
+           "<b>requesting and approving</b> committee membership and cabin stays, an in-app <b>notifications</b> "
+           "center with a switch for every kind, and optional <b>phone push-notifications</b>. The most worthwhile "
+           "thing still open is a simple <b>off-site backup of the photos</b> (see above) — the one place the current "
+           "setup trades a little safety for cost. If you were choosing what to firm up next, would it be that?", BODY)],
+        accent=PINE)]
     F += [sp(10), Rule(BORDER, 0.8, space=6),
           P("<font color='#5b6b63'><i>Thanks for reading. I’d be glad to walk through any of this in person — and "
-            "to hear which of the open questions above you’d tackle first.</i></font>", SMALL)]
+            "to answer anything this didn’t cover.</i></font>", SMALL)]
 
     return F
 
 
 def twoshots_block():
-    """Two small screenshots side by side, captioned — the theme comparison (§9)."""
+    """Two small screenshots side by side, captioned — the theme comparison (§12)."""
     w = 1.42*inch
     t = Table([[fig("home.png", w, "Year-round resort"), fig("fest.png", w, "Family Fest")]],
               colWidths=[AVAIL/2, AVAIL/2])
