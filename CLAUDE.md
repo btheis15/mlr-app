@@ -67,7 +67,8 @@ and the bubble (and any reply that quotes it) becomes a **"message deleted"**
 tombstone for everyone, regardless of who removed it; edits stamp `edited_at` and
 show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
 not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, admin alert composer, sign out |
+| `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon, left of Profile) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
@@ -187,6 +188,30 @@ Supabase realtime and delivers via the `web-push` lib. **Env:**
 adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
 of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
 without them.
+
+**In-app Notifications (the Activity tab).** A durable, Facebook-style feed of
+everything that happened involving you — comments & reactions on your posts,
+@mentions in posts/comments, @mentions in committee chat, new Feed posts,
+committee approve/decline, and admin broadcasts. **Independent of push** (it
+works even if the mini is down; the chat firehose stays out — only chat
+@mentions land here). Pieces: the [`/notifications`](app/notifications/page.tsx)
+route → [`NotificationsView`](components/NotificationsView.tsx); the bell tab +
+live unread **badge** in [`TabBar`](components/TabBar.tsx) via
+[`useUnreadNotifications`](lib/hooks.ts); per-member kind prefs
+([`NotifPrefs`](components/NotifPrefs.tsx) → `profiles.notif_types`); and an admin
+sender ([`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) →
+`send_broadcast_notification`) that targets **Everyone / Beta testers / Admins**
+(with an optional banner mirror for Everyone). **Read model:** `seen_at` drives
+the badge (opening the tab clears it), `read_at` drives per-item bold, `expires_at`
+drops an item from the badge while keeping it in the list. **Beta Tester** is a new
+admin-assigned role (`profiles.beta_tester`, toggled in
+[`AdminMembers`](components/AdminMembers.tsx)) used to dry-run notifications.
+**Data model:** [`0029`](supabase/migrations/0029_beta_tester_and_notif_prefs.sql)
+(`beta_tester`, `notif_types`, `set_beta_tester`) +
+[`0030`](supabase/migrations/0030_notifications_feed.sql) (the `notifications`
+table, fan-out triggers on the source tables, and the `mark_*` /
+`send_broadcast_notification` RPCs). Rows are written **only** by SECURITY DEFINER
+triggers/RPCs (no client insert); members can read/dismiss their own.
 
 **Mac-mini media server** ([`media-server/`](media-server/)) also now
 **transcodes uploaded videos** to web-friendly ≤1080p H.264 MP4 via `ffmpeg`

@@ -488,6 +488,18 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     document.getElementById(`cmsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Deep-link from the Notifications tab (…/chat?m=<id>): once messages have
+  // loaded, jump to the mentioned message (slightly after the initial
+  // scroll-to-bottom so this wins). Reads the query in-effect (client-only).
+  useEffect(() => {
+    if (!loaded || typeof window === "undefined") return;
+    const focus = new URLSearchParams(window.location.search).get("m");
+    if (!focus) return;
+    const t = setTimeout(() => scrollToMessage(focus), 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
   // Start a reply: show the reply banner and focus the composer so the keyboard
   // opens predictably. The banner-grow re-pin (above) keeps the latest message
   // in view if you were at the bottom, and leaves your position alone if you'd

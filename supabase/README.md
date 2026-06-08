@@ -126,6 +126,24 @@ in the Realtime publication so the mini's push-sender hears the signup INSERT
 and pushes every opted-in admin who joined and when. The admin-only toggle lives
 in Profile → Notifications. Until it's run, the toggle just has no effect.
 
+⚠️ **For the Notifications tab + Beta Tester role, run
+[`0029`](migrations/0029_beta_tester_and_notif_prefs.sql) then
+[`0030`](migrations/0030_notifications_feed.sql) (in that order).**
+`0029` adds `profiles.beta_tester` (admin-assigned, never client-writable — set
+via `set_beta_tester()`) and `profiles.notif_types` (the member's in-app
+notification kinds, all on by default), and widens `admin_members()` to return
+`beta_tester`. `0030` adds the `notifications` table (RLS: read/dismiss your own;
+no client insert), puts it in the Realtime publication, and installs SECURITY
+DEFINER **triggers** that fan out a notification per recipient on each source
+event (post comments/replies, post & comment @mentions, post tags, post
+reactions, new posts, committee-chat @mentions, committee join approve/decline),
+plus the `mark_notifications_seen()` / `mark_notification_read(id)` /
+`mark_all_notifications_read()` read-state RPCs and the admin
+`send_broadcast_notification(title, body, url, audience, expires_at)` (audience ∈
+`everyone` / `beta` / `admins`; bypasses `notif_types`). Until they're run the
+Activity tab shows a migration hint and the badge stays empty. This is in-app
+only — it does **not** touch the mini's push-sender.
+
 ⚠️ **For "Request a Cabin Stay", run
 [`0032`](migrations/0032_cabin_bookings.sql).** Adds `cabins` (seeded: Cabin 1 =
 3 rooms, Red & White House = 4) and `cabin_bookings`, plus the RPCs

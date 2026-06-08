@@ -139,6 +139,68 @@ export function useMediaPicker() {
  * Returns the resolved id, the manage gate (with a setter for the leave-self
  * case that drops a non-admin's access), and the viewer's admin flag.
  */
+/**
+ * Live unread-notifications count for the Notifications tab badge (migration
+ * 0030). Counts the signed-in member's notifications that are unseen AND not
+ * expired — so opening the tab (which stamps seen_at via mark_notifications_seen)
+ * or an item expiring both drop the count, while the items themselves stay in
+ * the list. Keeps itself fresh with a Realtime subscription on the member's own
+ * rows (debounced), and re-runs when sign-in state flips. Always reads the REAL
+ * session id (not an admin "view as" preview) — the badge is your own account's.
+ */
+export function useUnreadNotifications(): number {
+  const { user } = useIdentity();
+  const signedIn = !!user;
+  const [count, setCount] = useState(0);
+  const [schedule] = useDebouncedCallback(250);
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !signedIn) {
+      setCount(0);
+      return;
+    }
+    let cancelled = false;
+    let channel: ReturnType<typeof sb.channel> | null = null;
+
+    const refresh = async (uid: string) => {
+      const nowIso = new Date().toISOString();
+      const { count: c } = await sb
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", uid)
+        .is("seen_at", null)
+        .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
+      if (!cancelled) setCount(c ?? 0);
+    };
+
+    (async () => {
+      const { data } = await sb.auth.getUser();
+      const uid = data.user?.id;
+      if (!uid || cancelled) {
+        if (!cancelled) setCount(0);
+        return;
+      }
+      await refresh(uid);
+      channel = sb
+        .channel(`notif-badge-${uid}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${uid}` },
+          () => schedule(() => refresh(uid)),
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) sb.removeChannel(channel);
+    };
+  }, [signedIn, schedule]);
+
+  return count;
+}
+
 export function useManagedCommittee(
   slug: string,
   opts: { watch: string; load: (committeeId: string) => Promise<void> | void },

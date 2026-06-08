@@ -40,6 +40,63 @@ export interface Announcement {
  *  0020). Any subset is allowed; an empty set means no push. */
 export type PushType = "chat" | "mentions" | "alerts" | "birthdays";
 
+/** A kind of in-app notification shown in the Notifications tab (migration
+ *  0030). Each kind is fanned out by a DB trigger on its source event; members
+ *  choose which kinds they receive via `notif_types` (migration 0029) — all
+ *  EXCEPT `broadcast`, which an admin sends deliberately and always delivers. */
+export type NotifType =
+  | "post_comment"
+  | "post_reply"
+  | "post_mention"
+  | "post_tag"
+  | "post_reaction"
+  | "new_post"
+  | "chat_mention"
+  | "committee_join"
+  | "broadcast";
+
+/** The member-selectable notification kinds (everything but `broadcast`), so
+ *  the settings UI and the User.notifTypes preference stay in sync. */
+export type NotifPrefType = Exclude<NotifType, "broadcast">;
+
+/** Default = all member-selectable kinds on. Mirrors the DB column default in
+ *  migration 0029; used as the client fallback before the row loads / if the
+ *  migration hasn't run yet. */
+export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
+  "post_comment",
+  "post_reply",
+  "post_mention",
+  "post_tag",
+  "post_reaction",
+  "new_post",
+  "chat_mention",
+  "committee_join",
+];
+
+/** One row in a member's Notifications feed. The `title`/`body` are denormalized
+ *  at write time (e.g. "Jane commented on your post"); `actorName`/`actorAvatarUrl`
+ *  are joined from the actor's profile when the feed loads. */
+export interface AppNotification {
+  id: string;
+  type: NotifType;
+  actorId: string | null;
+  actorName: string | null;
+  actorAvatarUrl: string | null;
+  title: string;
+  body: string | null;
+  /** In-app deep-link target, e.g. "/posts?post=…" or "/committees/slug/chat?m=…". */
+  url: string | null;
+  /** ISO timestamps. */
+  createdAt: string;
+  /** When the member last opened the tab after this arrived (drives the badge). */
+  seenAt: string | null;
+  /** When the member tapped this item (drives bold/unread styling). */
+  readAt: string | null;
+  /** Optional: past this, the item stays in the list but stops counting toward
+   *  the badge (mainly admin broadcasts). */
+  expiresAt: string | null;
+}
+
 export interface User {
   name: string;
   email: string;
@@ -57,6 +114,10 @@ export interface User {
   /** Admin-only (default on): push me when a new member joins. Only honored for
    *  admins (the mini's push-sender notifies admins); harmless on other accounts. */
   notifyNewMembers: boolean;
+  /** Which in-app notification kinds land in this member's Notifications tab
+   *  (migration 0029). Never includes "broadcast" — admin broadcasts always
+   *  deliver regardless of this list. */
+  notifTypes: NotifPrefType[];
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }

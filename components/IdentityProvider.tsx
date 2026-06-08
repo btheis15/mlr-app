@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { type Session } from "@supabase/supabase-js";
-import type { User } from "@/lib/types";
+import type { User, NotifPrefType, PushType } from "@/lib/types";
+import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
@@ -26,6 +27,10 @@ interface IdentityValue {
    *  `profiles.is_admin` flag (the single source of truth). Forced false while
    *  previewing as a member/guest. */
   isAdmin: boolean;
+  /** True when the signed-in user has the Beta Tester role (`profiles.beta_tester`,
+   *  migration 0029) — used to gate things being trialed. Forced false while
+   *  previewing, like isAdmin. */
+  isBetaTester: boolean;
   /** Current admin "view as" preview (off unless an admin turned it on). */
   previewMode: PreviewMode;
   /** When previewing as a specific member, who it is (UI-only); null otherwise. */
@@ -56,6 +61,7 @@ interface IdentityValue {
 const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
+  isBetaTester: false,
   previewMode: "off",
   previewMember: null,
   previewAsId: null,
@@ -80,7 +86,9 @@ interface ProfileRow {
   push_types: string[] | null;
   push_self_notify: boolean | null;
   notify_new_members: boolean | null;
+  notif_types: string[] | null;
   is_admin: boolean;
+  beta_tester: boolean | null;
 }
 
 /**
@@ -98,6 +106,7 @@ interface ProfileRow {
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [adminFlag, setAdminFlag] = useState(false);
+  const [betaFlag, setBetaFlag] = useState(false);
   const [prompting, setPrompting] = useState(false);
   const [previewMode, setPreviewState] = useState<PreviewMode>("off");
   const [previewMember, setPreviewMemberState] = useState<PreviewMember | null>(null);
@@ -126,21 +135,23 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         if (active) {
           setUser(null);
           setAdminFlag(false);
+          setBetaFlag(false);
         }
         return;
       }
       const email = session.user.email ?? "";
       const { data } = await sb
         .from("profiles")
-        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, is_admin")
+        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, notif_types, is_admin, beta_tester")
         .eq("id", session.user.id)
         .maybeSingle();
       if (!active) return;
       const profile = data as ProfileRow | null;
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
-      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as import("@/lib/types").PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, avatarUrl: profile?.avatar_url ?? null });
+      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, avatarUrl: profile?.avatar_url ?? null });
       setAdminFlag(Boolean(profile?.is_admin));
+      setBetaFlag(Boolean(profile?.beta_tester));
     };
 
     sb.auth.getSession().then(({ data }) => loadFromSession(data.session));
@@ -167,6 +178,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (patch.pushTypes !== undefined) row.push_types = patch.pushTypes;
     if (patch.pushSelfNotify !== undefined) row.push_self_notify = patch.pushSelfNotify;
     if (patch.notifyNewMembers !== undefined) row.notify_new_members = patch.notifyNewMembers;
+    if (patch.notifTypes !== undefined) row.notif_types = patch.notifTypes;
     if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
     if (Object.keys(row).length) {
       await sb.from("profiles").update(row).eq("id", id);
@@ -232,6 +244,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (supabase) await supabase.auth.signOut();
     setUser(null);
     setAdminFlag(false);
+    setBetaFlag(false);
     setPreviewState("off");
     setPreviewMemberState(null);
     try {
@@ -246,15 +259,17 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     previewMode === "guest"
       ? null
       : previewMode === "member" && previewMember
-        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, avatarUrl: previewMember.avatarUrl }
+        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, notifTypes: DEFAULT_NOTIF_TYPES, avatarUrl: previewMember.avatarUrl }
         : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
+  const effectiveBeta = previewMode === "off" ? betaFlag : false;
 
   return (
     <IdentityContext.Provider
       value={{
         user: effectiveUser,
         isAdmin: effectiveAdmin,
+        isBetaTester: effectiveBeta,
         previewMode,
         previewMember,
         previewAsId: previewMode === "member" && previewMember ? previewMember.id : null,

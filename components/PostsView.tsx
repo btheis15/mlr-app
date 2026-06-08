@@ -154,9 +154,26 @@ export function PostsView({ seed }: { seed: Post[] }) {
   // The Lightbox owns its open/close animation; keying it by url remounts it
   // cleanly when you tap from one photo straight to another.
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Deep-link from the Notifications tab (/posts?post=<id>): once the feed has
+  // loaded, scroll that post into view and flash a ring around it. Reads the
+  // query off window.location in-effect (client-only) to avoid pulling in
+  // useSearchParams, which would force a Suspense boundary under static export.
+  const [flashId, setFlashId] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [scheduleRefetch, cancelRefetch] = useDebouncedCallback(120);
+
+  useEffect(() => {
+    if (!loaded || typeof window === "undefined") return;
+    const focus = new URLSearchParams(window.location.search).get("post");
+    if (!focus) return;
+    const el = document.getElementById(`post-${focus}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashId(focus);
+    const t = setTimeout(() => setFlashId(null), 2200);
+    return () => clearTimeout(t);
+  }, [loaded]);
 
   // ---- Shared feed from the database ----
   const refetch = async () => {
@@ -674,7 +691,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           const mine = myReaction(p.id);
           const postComments = dbComments[p.id] ?? [];
           return (
-            <li key={p.id} style={{ "--i": Math.min(i, 8) } as React.CSSProperties} className="rise overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+            <li key={p.id} id={`post-${p.id}`} style={{ "--i": Math.min(i, 8) } as React.CSSProperties} className={`rise overflow-hidden rounded-2xl bg-card transition-shadow ${flashId === p.id ? "ring-2 ring-primary" : "ring-1 ring-border"}`}>
               <div className="flex items-center gap-2 px-4 pt-3">
                 <button type="button" onClick={() => openMember(p.authorId, p.author, p.authorAvatar)} className="press flex min-w-0 flex-1 items-center gap-2 text-left">
                   <Avatar name={p.author} url={p.authorAvatar} size={32} />
