@@ -52,7 +52,7 @@ export function DemoDateControl() {
             type="date"
             value={demoDate ?? today ?? ""}
             onChange={(e) => setDemoDate(e.target.value || null)}
-            className="mt-1 w-full rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            className="mt-1 block w-full min-w-0 max-w-full box-border appearance-none rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
         </label>
 
