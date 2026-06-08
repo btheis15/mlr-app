@@ -4,6 +4,7 @@ import { CommitteeJoin } from "@/components/CommitteeJoin";
 import { ChatEntryButton } from "@/components/ChatEntryButton";
 import { AdminJoinRequests } from "@/components/AdminJoinRequests";
 import { CommitteeMembers } from "@/components/CommitteeMembers";
+import { CommitteeEmailMembers } from "@/components/CommitteeEmailMembers";
 import { Protected, PrivateName } from "@/components/Guard";
 import { COMMITTEES } from "@/lib/data";
 
@@ -38,6 +39,8 @@ export default async function CommitteePage({
       <AdminJoinRequests slug={committee.slug} name={committee.name} />
 
       <CommitteeMembers slug={committee.slug} name={committee.name} />
+
+      <CommitteeEmailMembers slug={committee.slug} name={committee.name} />
 
       <CommitteeJoin committee={committee} />
 
