@@ -5,8 +5,9 @@ import type { LocalPlace, PlaceAccent } from "@/lib/places";
  * A Local Places card: an accent-tinted icon chip + name/category/blurb, then a
  * row of quick actions. Two shapes:
  *
- *  - In-app hand-off (`place.internalHref`, e.g. Inshalla → /tee-times): a single
- *    prominent primary CTA that keeps the user in the app's booking flow.
+ *  - In-app hand-off (`place.internalHref`, e.g. Inshalla → /tee-times): a
+ *    prominent primary CTA that keeps the user in the app's booking flow, with
+ *    any Call / Website pills shown beneath it.
  *  - External business: a cluster of equal icon+label pills — Menu, Order, Call,
  *    Website — showing only the ones that place actually has.
  *
@@ -42,27 +43,39 @@ export function LocalPlaceCard({ place }: { place: LocalPlace }) {
         </div>
       </div>
 
-      {place.internalHref ? (
-        <Link
-          href={place.internalHref}
-          className="press mt-3 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white"
-        >
-          <span aria-hidden>⛳</span>
-          {place.internalCta ?? "Open"}
-          <span aria-hidden className="text-base leading-none">
-            ›
-          </span>
-        </Link>
-      ) : (
-        <PlaceActions place={place} />
-      )}
+      <PlaceActions place={place} />
     </div>
   );
 }
 
+/**
+ * One side-by-side row of equal icon+label pills, showing only the actions a
+ * place has. For an in-app spot (Inshalla) the booking hand-off is the first
+ * pill — filled green to read as the primary action — sitting alongside Call /
+ * Website, exactly like Menu/Call/Website on the other cards.
+ */
 function PlaceActions({ place }: { place: LocalPlace }) {
+  const hasAny = Boolean(
+    place.internalHref ||
+      place.menuUrl ||
+      place.orderUrl ||
+      place.phoneTel ||
+      place.website,
+  );
+  if (!hasAny) return null;
   return (
     <div className="mt-3 flex gap-2">
+      {place.internalHref && (
+        <ActionPill
+          href={place.internalHref}
+          internal
+          primary
+          label={place.internalCta ?? "Open"}
+          ariaLabel={`${place.internalCta ?? "Open"} at ${place.name}`}
+          iconClass="text-white"
+          icon={<FlagIcon />}
+        />
+      )}
       {place.menuUrl && (
         <ActionPill
           href={place.menuUrl}
@@ -113,6 +126,8 @@ function ActionPill({
   icon,
   iconClass,
   external,
+  internal,
+  primary,
 }: {
   href: string;
   label: string;
@@ -120,21 +135,60 @@ function ActionPill({
   icon: React.ReactNode;
   iconClass: string;
   external?: boolean;
+  /** Render an in-app Link (no new tab) instead of an external anchor. */
+  internal?: boolean;
+  /** Filled forest-green pill — the primary action (e.g. Book Tee Time). */
+  primary?: boolean;
 }) {
+  const className = `press flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2.5 ${
+    primary ? "bg-primary" : "bg-background ring-1 ring-border active:bg-card"
+  }`;
+  const inner = (
+    <>
+      <span className={primary ? "text-white" : iconClass}>{icon}</span>
+      <span
+        className={`text-center text-xs font-semibold leading-tight ${
+          primary ? "text-white" : "text-foreground/70"
+        }`}
+      >
+        {label}
+      </span>
+    </>
+  );
+  if (internal) {
+    return (
+      <Link href={href} aria-label={ariaLabel} className={className}>
+        {inner}
+      </Link>
+    );
+  }
   return (
     <a
       href={href}
       aria-label={ariaLabel}
       {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="press flex flex-1 flex-col items-center justify-center gap-1 rounded-xl bg-background py-2.5 ring-1 ring-border active:bg-card"
+      className={className}
     >
-      <span className={iconClass}>{icon}</span>
-      <span className="text-xs font-semibold text-foreground/70">{label}</span>
+      {inner}
     </a>
   );
 }
 
 // ── Icons: 24×24 line icons, matching the app's existing PhoneIcon style ──
+
+function FlagIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
+      <path
+        d="M6 21V3l11 3.5L6 10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function PhoneIcon() {
   return (
