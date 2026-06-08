@@ -80,16 +80,18 @@ export async function fetchCommitteeId(slug: string): Promise<string | null> {
 }
 
 /** My role in a committee: "Lead", "member", or null (not a member / signed out). */
-export async function fetchMyCommitteeRole(committeeId: string): Promise<"Lead" | "member" | null> {
+export async function fetchMyCommitteeRole(committeeId: string, userId?: string): Promise<"Lead" | "member" | null> {
   const sb = supabase;
   if (!sb) return null;
-  const me = (await sb.auth.getUser()).data.user?.id;
-  if (!me) return null;
+  // `userId` lets the admin "View as" preview ask about the previewed member's
+  // role rather than the real signed-in admin's; omit it for the signed-in user.
+  const uid = userId ?? (await sb.auth.getUser()).data.user?.id;
+  if (!uid) return null;
   const { data } = await sb
     .from("committee_members")
     .select("role")
     .eq("committee_id", committeeId)
-    .eq("user_id", me)
+    .eq("user_id", uid)
     .maybeSingle();
   if (!data) return null;
   return (data as { role: string | null }).role === "Lead" ? "Lead" : "member";

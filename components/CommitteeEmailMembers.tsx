@@ -15,7 +15,7 @@ import { fetchCommitteeRecipients } from "@/lib/emailBlast";
  * committee_member_recipients RPC re-checks the member gate server-side.
  */
 export function CommitteeEmailMembers({ slug, name }: { slug: string; name: string }) {
-  const { isAdmin } = useIdentity();
+  const { isAdmin, previewAsId } = useIdentity();
   const [committeeId, setCommitteeId] = useState<string | null>(null);
   const [canEmail, setCanEmail] = useState(false);
 
@@ -27,13 +27,15 @@ export function CommitteeEmailMembers({ slug, name }: { slug: string; name: stri
       if (!cid || cancelled) return;
       setCommitteeId(cid);
       // Any member of this committee (fetchMyCommitteeRole != null) or an admin.
-      const ok = isAdmin || (await fetchMyCommitteeRole(cid)) !== null;
+      // While previewing as a member, judge by THAT member's membership (isAdmin
+      // is already off in preview), so a non-member preview can't email it.
+      const ok = isAdmin || (await fetchMyCommitteeRole(cid, previewAsId ?? undefined)) !== null;
       if (!cancelled) setCanEmail(ok);
     })();
     return () => {
       cancelled = true;
     };
-  }, [slug, isAdmin]);
+  }, [slug, isAdmin, previewAsId]);
 
   if (!isSupabaseConfigured || !canEmail || !committeeId) return null;
 

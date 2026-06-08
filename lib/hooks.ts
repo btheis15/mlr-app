@@ -205,7 +205,7 @@ export function useManagedCommittee(
   slug: string,
   opts: { watch: string; load: (committeeId: string) => Promise<void> | void },
 ) {
-  const { isAdmin } = useIdentity();
+  const { isAdmin, previewAsId } = useIdentity();
   const [committeeId, setCommitteeId] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   // Always call the latest `load` without making it a dependency (it's a fresh
@@ -222,7 +222,9 @@ export function useManagedCommittee(
       const cid = await fetchCommitteeId(slug);
       if (!cid || cancelled) return;
       setCommitteeId(cid);
-      const manage = isAdmin || (await fetchMyCommitteeRole(cid)) === "Lead";
+      // While previewing as a member, judge "can manage" by THAT member's role
+      // (isAdmin is already forced off in preview), so the preview is faithful.
+      const manage = isAdmin || (await fetchMyCommitteeRole(cid, previewAsId ?? undefined)) === "Lead";
       if (cancelled) return;
       setCanManage(manage);
       if (!manage) return;
@@ -242,7 +244,7 @@ export function useManagedCommittee(
       if (channel) sb.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, isAdmin]);
+  }, [slug, isAdmin, previewAsId]);
 
   return { committeeId, canManage, setCanManage, isAdmin };
 }
