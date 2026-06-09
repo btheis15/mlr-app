@@ -10,12 +10,21 @@
 //   BIRTHDAY_HOUR   local hour to send (0–23; default 8)
 //   BIRTHDAY_TZ     IANA timezone for "today" + the hour (default America/Chicago)
 //
-// Scheduling: checks hourly and fires once per local day after BIRTHDAY_HOUR
-// (also catches up on startup). Re-sends on a same-day restart are coalesced on
-// the device by a per-person/year notification tag, so duplicates are harmless.
+// Scheduling: checks hourly and fires once per local day after BIRTHDAY_HOUR.
+// The "already sent today" marker is PERSISTED to disk (.birthday-state), so a
+// same-day restart of the media-server does NOT re-send — without that, every
+// deploy/restart re-fired the day's birthday pushes (the in-memory marker reset
+// and the startup catch-up ran again). If the mini was genuinely down at the
+// send hour, the catch-up still delivers once when it comes back, because the
+// marker won't yet hold today's date.
+
+const fs = require("fs");
+const path = require("path");
 
 const APP_URL = (process.env.APP_URL || "https://mlr-app-omega.vercel.app").replace(/\/+$/, "");
 const ICON = `${APP_URL}/icon-192.png`;
+// Survives restarts (sits next to this file on the mini, gitignored).
+const STATE_FILE = path.join(__dirname, ".birthday-state");
 const TZ = process.env.BIRTHDAY_TZ || "America/Chicago";
 const SEND_HOUR = Math.max(0, Math.min(23, Number(process.env.BIRTHDAY_HOUR || 8)));
 
@@ -111,13 +120,20 @@ async function start() {
     }
   };
 
-  let lastSent = null; // local YYYY-MM-DD we last ran for (in-memory)
+  // local YYYY-MM-DD we last ran for — restored from disk so a same-day restart
+  // doesn't re-send (best-effort: a missing/unreadable file just means "never").
+  let lastSent = null;
+  try { lastSent = (fs.readFileSync(STATE_FILE, "utf8").trim() || null); } catch { /* none yet */ }
+
   const tick = async () => {
     try {
       const now = tzParts(new Date());
       const today = `${now.y}-${String(now.m).padStart(2, "0")}-${String(now.d).padStart(2, "0")}`;
       if (now.hour >= SEND_HOUR && lastSent !== today) {
+        // Persist BEFORE sending so a crash/restart mid-send can't re-trigger the
+        // whole batch on startup.
         lastSent = today;
+        try { fs.writeFileSync(STATE_FILE, today); } catch (e) { console.error("[birthday] state write failed:", e && e.message); }
         await run(now);
       }
     } catch (e) {
