@@ -46,7 +46,7 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), one Dining link (the only non-tab destination — no cards that duplicate the tabs), front-desk call, one-line heritage |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), the nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), resort cards ([`HomePreFestCards`](components/HomePreFestCards.tsx) — Events / Work Weekends / Committees / Cabin), front-desk call, one-line heritage |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
 | `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
@@ -71,6 +71,7 @@ not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_e
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), **email members** ([`EmailMembers`](components/EmailMembers.tsx) — open to all: custom list / your committees / everyone-if-involved), admin alert + notification composers, sign out |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 | `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
+| `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons).
@@ -158,6 +159,40 @@ not a separate app — no backend needed:
 - The §0b full code merge is unchanged/deferred; this is the lighter-touch
   "feels like one app" layer that ships before the backend.
 
+## Resort events & attendance
+
+The resort calendar + a Facebook-style RSVP, backed by Supabase (migrations
+[`0034`](supabase/migrations/0034_events.sql) `events` + admin RPCs,
+[`0035`](supabase/migrations/0035_event_attendance.sql) `event_attendance` +
+upsert RPC). Both tables are **public-read**; all writes go through
+`security definer` RPCs (admins manage the calendar; a member writes only their
+own RSVP) — the same shape as the cabin feature.
+
+- **Events** are admin-managed DB rows merged with an in-code **seed**
+  ([`RESORT_EVENTS`](lib/data.ts)) so the calendar has content out of the box.
+  **Family Fest is deliberately NOT a DB row** — it's synthesized from
+  `FAMILY_FEST` so its dates have one source of truth and stay tied to the season
+  model. Merge + helpers live in [`lib/events.ts`](lib/events.ts); the shared data
+  flow (load, realtime, optimistic RSVP, per-event summaries) is the `useEvents`
+  hook in [`lib/hooks.ts`](lib/hooks.ts).
+- **Attendance** keys on a **stable string event id** (the DB uuid, or a seed
+  slug like `family-fest-2026`) — *not* a FK — so synthesized events carry RSVPs
+  just like DB ones. `delete_event()` cleans up their rows by id.
+- **Per-day drill-down:** multi-day events with `day_rsvp` (Family Fest) get an
+  optional Mon–Fri picker; the `days` JSON map rolls up to the overall status —
+  going at least one day reads as **Going** (`effectiveStatus()`).
+- **Surfaces:** [`UpcomingEvents`](components/UpcomingEvents.tsx) spotlights the
+  nearest event on Home (skips Family Fest while its own takeover spotlight is
+  showing); [`/events`](app/events/page.tsx) is the full calendar.
+  [`AttendanceControl`](components/AttendanceControl.tsx) /
+  [`EventCard`](components/EventCard.tsx) /
+  [`EventSheet`](components/EventSheet.tsx) /
+  [`EventComposer`](components/EventComposer.tsx) reuse the existing sheet motion,
+  Guard privacy wall (`PrivateName` masks guest names), and theme tokens.
+- **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders
+  (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
+  Google-Calendar ICS feed (see Backend seams).
+
 ## Backend seams (planned, not yet wired)
 
 These are built UI-first with the swap point isolated to one module each:
@@ -165,6 +200,7 @@ These are built UI-first with the swap point isolated to one module each:
 | Feature | Seam today | Becomes |
 |---|---|---|
 | Google-Drive-fed announcements | [`lib/announcements.ts`](lib/announcements.ts) `getAnnouncements()` | server route reading a Drive file (API or published CSV/JSON), revalidated / webhook-pushed |
+| Google-Calendar events feed | [`lib/events.ts`](lib/events.ts) `fetchGcalEvents()` (returns `[]`) | fetch + parse a **published Google Calendar ICS** (`NEXT_PUBLIC_GOOGLE_CALENDAR_ICS_URL`, no OAuth) → `ResortEvent[]` (`source: "gcal"`), merged in `fetchEvents()` |
 | Email OTP / magic link | `IdentityProvider` sign-in | verify email before `setUser` |
 | Shared chat | [`components/ChatView.tsx`](components/ChatView.tsx) (localStorage) | shared DB + realtime/poll |
 | Admin alerts → broadcast | [`lib/localAnnouncements.ts`](lib/localAnnouncements.ts) | server validates admin, broadcasts, **emails opted-in guests**, web-push for Android |

@@ -14,6 +14,7 @@ import type {
   FestHighlight,
   Payee,
   Post,
+  ResortEvent,
   ScheduleEvent,
 } from "./types";
 
@@ -139,6 +140,49 @@ export const FAMILY_FEST = {
     { id: "fireworks", day: "2026-07-31", start: "21:30", title: "Fireworks over the lake", emoji: "🎆" },
   ] as FestHighlight[],
 };
+
+/**
+ * Seed resort events that live in CODE rather than the database: Family Fest
+ * (synthesized from the FAMILY_FEST window above so its dates have one source of
+ * truth and stay tied to the season model) and the 4th of July. Admin-created
+ * events (Work Weekends, custom) come from Supabase and merge on top of these in
+ * lib/events.ts (deduped by slug). `persisted: false` ⇒ not editable in-app —
+ * Family Fest's dates change here; holidays are fixed-date.
+ *
+ * Attendance still works for these: it keys on the stable string `id` (migration
+ * 0035), so members can RSVP to Family Fest exactly like a DB event.
+ */
+export const RESORT_EVENTS: ResortEvent[] = [
+  {
+    id: "family-fest-2026",
+    slug: "family-fest-2026",
+    kind: "family_fest",
+    title: FAMILY_FEST.name,
+    emoji: "🎪",
+    description: FAMILY_FEST.tagline,
+    location: FAMILY_FEST.location,
+    startDate: FAMILY_FEST.startDate,
+    endDate: FAMILY_FEST.endDate,
+    dayRsvp: true,
+    source: "admin",
+    persisted: false,
+  },
+  {
+    id: "july-4th-2026",
+    slug: "july-4th-2026",
+    kind: "holiday",
+    title: "4th of July",
+    emoji: "🎆",
+    description:
+      "Fireworks over the lake, cookouts, and a day on the water. Let everyone know if you'll be up at the resort.",
+    location: "Muskellunge Lake Resort",
+    startDate: "2026-07-04",
+    endDate: null,
+    dayRsvp: false,
+    source: "admin",
+    persisted: false,
+  },
+];
 
 /** The week's timed agenda, in chronological order. Each event has time,
  *  location, a `lead` (who's in charge, tap-to-call/text) + a `bring` note. */
