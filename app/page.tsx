@@ -6,6 +6,7 @@ import { TshirtCallout } from "@/components/TshirtCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
+import { UpcomingEvents } from "@/components/UpcomingEvents";
 
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
@@ -42,6 +43,11 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
+
+      {/* Resort events + attendance: the nearest gathering up top with an inline
+          RSVP, the next couple below, and a link to the full /events calendar.
+          Renders nothing when there's nothing upcoming (keeps Home lean). */}
+      <UpcomingEvents />
 
       {/* Pay-your-dues CTA, prominent during the run-up. */}
       <FestDuesCallout />

@@ -53,6 +53,7 @@ Built with **Next.js 16 (App Router) + React 19 + Tailwind v4**, mobile-first PW
 - [ ] Real content: rosters, chef phones, Venmo/Zelle handles, FB group URL. *(Dates + admin allow-list set.)* [§2]
 - [x] **Self-hosted media on the Mac mini** + a **"MLR Media Server" control panel** app. *(new)*
 - [x] **Tee times** — Home card → `/tee-times` (Inshalla CC / foreUP), ported from `stock-game`. *(new)*
+- [x] **Events & attendance** — the resort calendar at `/events` (admin-created in Supabase, migrations `0034`/`0035`) + a Facebook-style **Going / Maybe / Can't make** RSVP, with the nearest event spotlighted on Home (`UpcomingEvents`) and an optional per-day picker for Family Fest. *Apply 0034/0035 in the SQL editor, then create the Work Weekend + (optional) other events.* **Deferred:** new-event notifications + reminders (reuse the `_notify`/push system), and the Google-Calendar ICS feed (`fetchGcalEvents` stub). *(new)*
 
 ## Decisions locked (don't relitigate)
 

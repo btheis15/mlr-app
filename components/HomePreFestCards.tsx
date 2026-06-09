@@ -26,6 +26,13 @@ export function HomePreFestCards() {
   if (!season) return null;
 
   const cards: CardProps[] = [
+    {
+      href: "/events",
+      emoji: "📅",
+      title: "Events",
+      body: "The calendar — RSVP to what's coming.",
+      chip: "bg-sun/12 text-sun",
+    },
     ...(!season.isLive
       ? [{
           href: "/work-weekends",

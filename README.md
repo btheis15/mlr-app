@@ -55,5 +55,14 @@ public/         manifest.webmanifest, icon.svg
 - **Local Places** — the nearby-businesses list at `/local-places` (linked from
   Home); add or edit spots in [`lib/places.ts`](lib/places.ts) and the page
   renders them. Inshalla hands off to the in-app `/tee-times` screen.
+- **Events & attendance** — the resort calendar + RSVP at `/events`, with the
+  nearest event spotlighted on Home. Admins create events; members tap
+  Going / Maybe / Can't make (Family Fest has an optional per-day picker). Data
+  flow is [`lib/events.ts`](lib/events.ts) + the `useEvents` hook in
+  [`lib/hooks.ts`](lib/hooks.ts); backed by Supabase migrations
+  [`0034_events.sql`](supabase/migrations/0034_events.sql) +
+  [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
+  (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
+  attendance**.
 
 See [CLAUDE.md](./CLAUDE.md) for the operating manual for AI sessions.

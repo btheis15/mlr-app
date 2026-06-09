@@ -4,10 +4,23 @@
 // components stay focused on their UI (the same spirit as lib/format.ts for
 // formatting).
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
+import {
+  fetchAttendance,
+  fetchEvents,
+  fetchMyAttendance,
+  setAttendance,
+  summarize,
+} from "@/lib/events";
+import type {
+  AttendanceStatus,
+  AttendanceSummary,
+  EventAttendance,
+  ResortEvent,
+} from "@/lib/types";
 
 /**
  * Track a single in-flight action by id (the row/button being acted on) so a
@@ -247,4 +260,118 @@ export function useManagedCommittee(
   }, [slug, isAdmin, previewAsId]);
 
   return { committeeId, canManage, setCanManage, isAdmin };
+}
+
+export interface UseEvents {
+  events: ResortEvent[];
+  /** Roster + counts per event id. */
+  summaries: Record<string, AttendanceSummary>;
+  /** The viewer's own RSVP per event id (the previewed member's, while previewing). */
+  mine: Record<string, EventAttendance>;
+  loading: boolean;
+  /** True when RSVPs can actually be written (a backend exists). */
+  canRsvp: boolean;
+  /** Set the viewer's RSVP for an event (optimistic). Prompts sign-in for guests;
+   *  no-op while an admin is previewing as someone else. */
+  setStatus: (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => Promise<void>;
+  reload: () => Promise<void>;
+}
+
+/**
+ * Loads the resort calendar (events ∪ seed) + attendance and the viewer's own
+ * RSVPs, exposes per-event summaries, and writes RSVPs optimistically. Centralizes
+ * the events feature's data flow so Home (`UpcomingEvents`) and the `/events` page
+ * share one implementation (the spirit of `useManagedCommittee`). Pass
+ * `{ realtime: true }` on the full page to keep counts live; Home loads once.
+ */
+export function useEvents(opts?: { realtime?: boolean }): UseEvents {
+  const { user, previewAsId, promptSignIn } = useIdentity();
+  const [events, setEvents] = useState<ResortEvent[]>([]);
+  const [rows, setRows] = useState<EventAttendance[]>([]);
+  const [mine, setMine] = useState<Record<string, EventAttendance>>({});
+  const [loading, setLoading] = useState(true);
+  const [schedule] = useDebouncedCallback(250);
+  const realtime = opts?.realtime ?? false;
+
+  const reload = useCallback(async () => {
+    try {
+      const [ev, at, my] = await Promise.all([
+        fetchEvents(),
+        fetchAttendance(),
+        fetchMyAttendance(previewAsId ?? undefined),
+      ]);
+      setEvents(ev);
+      setRows(at);
+      setMine(my);
+    } finally {
+      // A flaky/misconfigured backend must never leave the UI stuck "loading".
+      setLoading(false);
+    }
+  }, [previewAsId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void reload();
+    const sb = supabase;
+    if (!realtime || !isSupabaseConfigured || !sb) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const channel = sb
+      .channel("events-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "events" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_attendance" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      cancelled = true;
+      sb.removeChannel(channel);
+    };
+  }, [reload, realtime, schedule]);
+
+  const summaries = useMemo(() => {
+    const byEvent: Record<string, EventAttendance[]> = {};
+    for (const r of rows) (byEvent[r.eventId] ??= []).push(r);
+    const out: Record<string, AttendanceSummary> = {};
+    for (const e of events) out[e.id] = summarize(byEvent[e.id] ?? []);
+    return out;
+  }, [rows, events]);
+
+  const setStatus = useCallback(
+    async (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => {
+      // Guests get the sign-in sheet; no backend ⇒ nothing to write; while
+      // previewing as a member, writes are disabled (they'd act as the real admin).
+      if (!isSupabaseConfigured) return;
+      if (!user) {
+        promptSignIn();
+        return;
+      }
+      if (previewAsId) return;
+      // Optimistic: reflect the choice immediately, then reconcile with the server.
+      setMine((m) => ({
+        ...m,
+        [eventId]: {
+          eventId,
+          userId: m[eventId]?.userId ?? "",
+          name: m[eventId]?.name ?? user.name,
+          avatarUrl: m[eventId]?.avatarUrl ?? user.avatarUrl ?? null,
+          status,
+          days: days ?? null,
+        },
+      }));
+      await setAttendance(eventId, status, days);
+      await reload();
+    },
+    [user, previewAsId, promptSignIn, reload],
+  );
+
+  return {
+    events,
+    summaries,
+    mine,
+    loading,
+    canRsvp: isSupabaseConfigured && !previewAsId,
+    setStatus,
+    reload,
+  };
 }

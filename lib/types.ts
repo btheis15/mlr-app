@@ -314,3 +314,60 @@ export interface CabinBooking {
   reviewNote: string | null;
   createdAt: string;
 }
+
+/* ── Resort events & attendance ──────────────────────────────────────────────
+   The resort calendar (Family Fest, Work Weekends, holiday weekends like the 4th
+   of July, and custom admin events) + a Facebook-style Going / Maybe / Can't-make
+   RSVP per member. Events are admin-managed in Supabase (migration 0034); Family
+   Fest is synthesized from FAMILY_FEST (lib/data.ts) so its dates stay tied to the
+   season model. Attendance (migration 0035) keys on a stable string event id, with
+   an optional per-day breakdown for multi-day events. See lib/events.ts. */
+
+export type EventKind = "family_fest" | "work_weekend" | "holiday" | "custom";
+
+/** One event on the resort calendar. `id` is a STABLE string — the DB uuid for
+ *  admin-created events, or a slug for synthesized seed events (e.g.
+ *  "family-fest-2026"). Single-day events have `endDate` null/absent. */
+export interface ResortEvent {
+  id: string;
+  /** Stable slug for the seed↔DB merge (e.g. "family-fest-2026"). */
+  slug?: string;
+  kind: EventKind;
+  title: string;
+  emoji?: string;
+  description?: string;
+  location?: string;
+  /** ISO "YYYY-MM-DD". */
+  startDate: string;
+  /** ISO "YYYY-MM-DD"; null/absent ⇒ single-day. */
+  endDate?: string | null;
+  /** Multi-day events can offer a per-day RSVP drill-down (Family Fest). */
+  dayRsvp: boolean;
+  /** "admin" = a native event (seed or DB row); "gcal" = a future Google-Calendar
+   *  feed (the deferred seam in lib/events.ts). */
+  source: "admin" | "gcal";
+  /** True when this is a real, editable DB row (vs a synthesized seed event). */
+  persisted: boolean;
+}
+
+export type AttendanceStatus = "going" | "maybe" | "not_going";
+
+/** One member's RSVP to one event. `days` is an optional per-day map for multi-day
+ *  events with the drill-down on (keys are ISO dates). `name`/`avatarUrl` are
+ *  joined from the member's profile when the roster loads. */
+export interface EventAttendance {
+  eventId: string;
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  status: AttendanceStatus;
+  days?: Record<string, AttendanceStatus> | null;
+}
+
+/** An event's roster, grouped by (effective) status, plus counts. */
+export interface AttendanceSummary {
+  going: EventAttendance[];
+  maybe: EventAttendance[];
+  notGoing: EventAttendance[];
+  counts: { going: number; maybe: number; notGoing: number };
+}
