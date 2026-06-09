@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FestStatus } from "@/components/FestStatus";
+import { FestRsvp } from "@/components/FestRsvp";
 import { FestWeek } from "@/components/FestWeek";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { TshirtCallout } from "@/components/TshirtCallout";
@@ -28,12 +29,7 @@ export default function FamilyFestPage() {
         </p>
       </header>
 
-      {/* Pay-your-dues CTA, prominent during the run-up. */}
-      <FestDuesCallout />
-
-      {/* Order T-Shirts — right under dues (placeholder until designs land). */}
-      <TshirtCallout />
-
+      {/* Countdown (and the day-of summary once the week is live). */}
       <FestStatus
         startDate={FAMILY_FEST.startDate}
         endDate={FAMILY_FEST.endDate}
@@ -42,7 +38,16 @@ export default function FamilyFestPage() {
         volunteerContact={FAMILY_FEST.organizer}
       />
 
-      {/* During the week, committees stay reachable under the daily summary. */}
+      {/* Attendance — are you coming? (Going / Maybe / Can't make + day picker.) */}
+      <FestRsvp />
+
+      {/* Pay-your-dues CTA, prominent during the run-up. */}
+      <FestDuesCallout />
+
+      {/* Order T-Shirts — right under dues (placeholder until designs land). */}
+      <TshirtCallout />
+
+      {/* Committees stay reachable from the hub. */}
       <FestCommitteesLink />
 
       <FestWeek
