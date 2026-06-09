@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { CabinRequestSheet } from "@/components/CabinRequestSheet";
+import { SkeletonList } from "@/components/Skeleton";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
@@ -144,7 +145,7 @@ export default function RequestStayPage() {
           </section>
         </>
       ) : loading ? (
-        <p className="py-8 text-center text-sm text-foreground/40">Loading…</p>
+        <SkeletonList count={2} />
       ) : cabins.length === 0 ? (
         <ComingSoonCTA
           icon="🏡"

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
+import { SkeletonList } from "@/components/Skeleton";
 import { EventCard } from "@/components/EventCard";
 import { EventSheet } from "@/components/EventSheet";
 import { EventComposer } from "@/components/EventComposer";
@@ -65,7 +66,7 @@ export default function EventsPage() {
       )}
 
       {loading ? (
-        <p className="py-8 text-center text-sm text-foreground/40">Loading…</p>
+        <SkeletonList />
       ) : up.length === 0 && past.length === 0 ? (
         <ComingSoonCTA
           icon="🌲"

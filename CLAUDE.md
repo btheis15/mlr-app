@@ -268,6 +268,8 @@ and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
   components; add or edit a token. Palette: `--color-primary` = forest green
   (`#15503a`, the logo), `--color-accent` = vintage chestnut, on a near-white
   page. The resort wordmark uses `.font-script` (Yellowtail, via next/font).
+  `--color-fest` is the Family Fest heraldic wine for fest-branded accents
+  *outside* `.ff-section` (e.g. the TabBar's Family Fest tab + live dot).
   - ⚠️ **LIGHT MODE ONLY — never add a dark theme.** And **never** use a dark
     translucent surface tint (`bg-black/NN`, `bg-zinc-*/NN`) as a card/panel bg —
     it goes muddy grey on light (a recurring issue across the author's apps).
@@ -282,10 +284,22 @@ and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
   [`app/family-fest/layout.tsx`](app/family-fest/layout.tsx)): the wrapper
   re-declares the `--color-*` / `--font-display` variables that Tailwind's
   utilities read, so only that subtree changes. Don't hard-code hex.
+- **Sheets/overlays** — build on [`components/Sheet.tsx`](components/Sheet.tsx)
+  (scrim + slide-up panel + grab handle + close button + safe-area footer; also
+  exports `SectionLabel` and the `FIELD` input class) paired with
+  `useSheetDismiss` in [`lib/hooks.ts`](lib/hooks.ts) (close animation + Escape
+  + reduce-motion). `EventSheet` / `CabinRequestSheet` / `EventComposer` are the
+  reference consumers; `Lightbox` / `AvatarCropper` use just the hook
+  (`MemberSheet` keeps its own drag-to-dismiss physics).
+- **Loading states** — async pages show pulsing card placeholders
+  ([`components/Skeleton.tsx`](components/Skeleton.tsx) `SkeletonList`), not a
+  bare "Loading…" line.
 - **Formatting** — dates/numbers/currency go through
   [`lib/format.ts`](lib/format.ts). Add new formatters there.
 - **`@/*`** path alias maps to repo root (see `tsconfig.json`).
 - **`npm install`** relies on `.npmrc` (`legacy-peer-deps=true`).
+- **`npm run typecheck`** (`tsc --noEmit`) is the static check — there's no
+  ESLint setup (`next lint` was removed in Next 16).
 - Client components (`TabBar`, `InstallHint`) carry `"use client"`.
 
 ## Keep this current

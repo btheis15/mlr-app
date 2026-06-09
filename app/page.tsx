@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
+import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { TshirtCallout } from "@/components/TshirtCallout";
@@ -60,45 +60,23 @@ export default function HomePage() {
 
       {/* People — the member directory: everyone with an account, with quick
           Text / Call / pay-preference links and a tap-through to full profiles. */}
-      <Link
+      <RowLink
         href="/people"
-        className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
-      >
-        <span
-          aria-hidden
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-2xl"
-        >
-          👥
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">People</h3>
-          <p className="mt-0.5 text-xs text-foreground/60">
-            Find any member — text, call, or pay them in a tap.
-          </p>
-        </div>
-        <span className="ml-1 text-lg leading-none text-foreground/30">›</span>
-      </Link>
+        emoji="👥"
+        tile="bg-primary/12"
+        title="People"
+        subtitle="Find any member — text, call, or pay them in a tap."
+      />
 
       {/* Local Places — the nearby favorites: tee times at Inshalla (handed off
           to our in-app booking) plus the bars & grills we order from. Year-round. */}
-      <Link
+      <RowLink
         href="/local-places"
-        className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
-      >
-        <span
-          aria-hidden
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-lake/12 text-2xl"
-        >
-          📍
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Local Places</h3>
-          <p className="mt-0.5 text-xs text-foreground/60">
-            Book a tee time, order pizza, and more nearby.
-          </p>
-        </div>
-        <span className="ml-1 text-lg leading-none text-foreground/30">›</span>
-      </Link>
+        emoji="📍"
+        tile="bg-lake/12"
+        title="Local Places"
+        subtitle="Book a tee time, order pizza, and more nearby."
+      />
 
       {/* Heritage, condensed to a single line. */}
       <p className="text-center text-[11px] italic text-foreground/40">

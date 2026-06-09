@@ -23,6 +23,51 @@ import type {
 } from "@/lib/types";
 
 /**
+ * The dismiss pattern shared by every sheet/overlay: flip `closing` so the
+ * panel plays its -close animation, then call `onClose` once it finishes;
+ * Escape closes too. Honors the OS reduce-motion toggle by closing
+ * immediately. `dismissThen(fn)` is for overlays with more than one exit
+ * (e.g. a cropper's cancel vs save) — it runs `fn` instead of `onClose`.
+ */
+export function useSheetDismiss(onClose: () => void, ms = 440) {
+  const [closing, setClosing] = useState(false);
+  const timer = useRef<number | null>(null);
+  const done = useRef(false);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  const dismissThen = useCallback(
+    (fn?: () => void) => {
+      if (done.current) return;
+      done.current = true;
+      const finish = () => (fn ?? closeRef.current)();
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        finish();
+        return;
+      }
+      setClosing(true);
+      timer.current = window.setTimeout(finish, ms);
+    },
+    [ms],
+  );
+  // Stable zero-arg close — safe to pass straight to onClick (drops the event).
+  const close = useCallback(() => dismissThen(), [dismissThen]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, [close]);
+
+  return { closing, close, dismissThen };
+}
+
+/**
  * Track a single in-flight action by id (the row/button being acted on) so a
  * list can disable just that control and show a spinner. `run(id, fn)` sets
  * `busy = id` for the duration of `fn`, then clears it — even if `fn` throws.

@@ -142,7 +142,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
       <button type="button" onClick={onOpen} className="press flex w-full items-center gap-3 text-left">
         <Avatar name={name} url={person.avatar_url} size={40} />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</span>
-        <span aria-hidden className="shrink-0 text-base leading-none text-foreground/30">›</span>
+        <span aria-hidden className="shrink-0 text-base leading-none text-foreground/40">›</span>
       </button>
 
       {/* Horizontal quick-action bar: Text, Call, and their pay preference. */}

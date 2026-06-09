@@ -121,7 +121,7 @@ export default function ProfilePage() {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="press absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs text-white ring-2 ring-background disabled:opacity-50"
+            className="press absolute -bottom-1.5 -right-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm text-white ring-2 ring-background disabled:opacity-50"
             aria-label="Change profile photo"
           >
             {uploading ? "…" : "📷"}

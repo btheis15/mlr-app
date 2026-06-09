@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSheetDismiss } from "@/lib/hooks";
 
 // Drag to position + zoom a picked photo inside a circular frame, then export
 // a square 512×512 JPEG. The square's inscribed circle is exactly what shows
@@ -23,17 +24,8 @@ export function AvatarCropper({
   const [ty, setTy] = useState(0);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const urlRef = useRef("");
-  const [closing, setClosing] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const reduceMotion = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const finish = (fn: () => void) => {
-    if (reduceMotion()) return fn();
-    setClosing(true);
-    timer.current = setTimeout(fn, 440);
-  };
+  const { closing, dismissThen } = useSheetDismiss(onCancel);
+  const finish = (fn: () => void) => dismissThen(fn);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);

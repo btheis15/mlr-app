@@ -32,6 +32,10 @@
   --color-campfire: #c2410c; /* burnt orange */
   --color-sun: #b45309; /* golden amber */
   --color-dusk: #6d28d9; /* evening violet */
+  /* Family Fest heraldic wine — the fest's brand color OUTSIDE .ff-section
+     (e.g. the Family Fest tab in the TabBar). Inside .ff-section it's the
+     re-declared --color-primary below. */
+  --color-fest: #8b2e2e;
   /* Brush script for the resort wordmark (echoes the logo); via next/font. */
   --font-script: var(--font-yellowtail), "Brush Script MT", cursive;
 }

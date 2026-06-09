@@ -57,8 +57,8 @@ export function TabBar() {
           // its own theme; the rest use the resort's forest green.
           const color = isFest
             ? active
-              ? "font-semibold text-[#8b2e2e]"
-              : "text-[#8b2e2e]/60"
+              ? "font-semibold text-fest"
+              : "text-fest/60"
             : active
               ? "font-semibold text-primary"
               : "text-foreground/50";
@@ -77,8 +77,8 @@ export function TabBar() {
                   {tab.icon}
                   {live && (
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#8b2e2e]/70" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-[#8b2e2e]" />
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fest/70" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-fest" />
                     </span>
                   )}
                   {isNotif && unread > 0 && (
