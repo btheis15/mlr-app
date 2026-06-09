@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSheetDismiss } from "@/lib/hooks";
 
 // Drag to position + zoom a picked photo inside a circular frame, then export
 // a square 512×512 JPEG. The square's inscribed circle is exactly what shows
@@ -23,17 +24,7 @@ export function AvatarCropper({
   const [ty, setTy] = useState(0);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const urlRef = useRef("");
-  const [closing, setClosing] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const reduceMotion = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const finish = (fn: () => void) => {
-    if (reduceMotion()) return fn();
-    setClosing(true);
-    timer.current = setTimeout(fn, 440);
-  };
+  const { closing, close, dismissThen } = useSheetDismiss(onCancel);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -92,7 +83,7 @@ export function AvatarCropper({
     const sSize = VIEW / k; // source px shown across the viewport
     ctx.drawImage(img, -tx / k, -ty / k, sSize, sSize, 0, 0, OUT, OUT);
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
-    if (blob) finish(() => onSave(new File([blob], "avatar.jpg", { type: "image/jpeg" })));
+    if (blob) dismissThen(() => onSave(new File([blob], "avatar.jpg", { type: "image/jpeg" })));
   };
 
   return (
@@ -124,7 +115,7 @@ export function AvatarCropper({
           <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="flex-1 accent-[var(--color-primary)]" />
         </label>
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => finish(onCancel)} className="press rounded-full px-4 py-2 text-sm font-medium text-foreground/55">Cancel</button>
+          <button type="button" onClick={close} className="press rounded-full px-4 py-2 text-sm font-medium text-foreground/55">Cancel</button>
           <button type="button" onClick={save} className="press rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white">Use photo</button>
         </div>
       </div>

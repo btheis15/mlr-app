@@ -93,7 +93,7 @@ export function EventCard({
             {total > 0 && ` · ${summary.counts.going} going`}
           </span>
         </span>
-        <span className="ml-1 text-lg leading-none text-foreground/30" aria-hidden>
+        <span className="ml-1 text-lg leading-none text-foreground/40" aria-hidden>
           ›
         </span>
       </button>
@@ -122,7 +122,7 @@ export function EventCard({
             {when && <span className="font-medium text-accent"> · {when}</span>}
           </span>
         </span>
-        <span className="ml-1 text-lg leading-none text-foreground/30" aria-hidden>
+        <span className="ml-1 text-lg leading-none text-foreground/40" aria-hidden>
           ›
         </span>
       </button>

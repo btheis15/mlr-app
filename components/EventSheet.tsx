@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent } from "@/lib/types";
 import { formatDate, formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import { deleteEvent, effectiveStatus, eventDays, isOngoing } from "@/lib/events";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
+import { Sheet, SectionLabel } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 
 // The event detail sheet: dates, location, description, the RSVP control, an
 // optional per-day drill-down (Family Fest), and who's coming. Admins can edit or
-// delete a real (DB) event. Slides up over a dimmed backdrop with a desktop pop
-// variant, exiting via the closing-state pattern — copied from CabinRequestSheet.
-const SHEET_MS = 440; // keep in sync with --dur-sheet in globals.css
+// delete a real (DB) event. Scaffolding + dismiss motion come from Sheet /
+// useSheetDismiss.
 
 export function EventSheet({
   event,
@@ -39,31 +40,12 @@ export function EventSheet({
   /** Reload the parent after a delete. */
   onChanged?: () => void;
 }) {
-  const [closing, setClosing] = useState(false);
+  const { closing, close } = useSheetDismiss(onClose);
   const [deleting, setDeleting] = useState(false);
   const days = eventDays(event.startDate, event.endDate);
   const showDayPicker = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
   const [pickDays, setPickDays] = useState(Boolean(mine?.days && Object.keys(mine.days).length));
-  const closeTimer = useRef<number | null>(null);
-
-  const close = () => {
-    if (closing) return;
-    setClosing(true);
-    closeTimer.current = window.setTimeout(onClose, SHEET_MS);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // The displayed status for one day: an explicit choice, else inherited from a
   // top-level "Going" (so marking the whole event Going lights every day).
@@ -94,31 +76,12 @@ export function EventSheet({
   const when = isOngoing(event, today) ? "Happening now" : relativeDays(today, event.startDate);
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="event-sheet-title"
-      onClick={close}
-    >
-      <div className={`absolute inset-0 bg-black/50 ${closing ? "scrim-out" : "scrim-in"}`} aria-hidden />
-
-      <div
-        className={`relative flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-3xl bg-background ring-1 ring-border sm:max-w-sm sm:rounded-3xl ${
-          closing ? "sheet-close sm:pop-close" : "sheet-panel sm:pop-panel"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="shrink-0 px-5 pt-3">
-          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-foreground/20 sm:hidden" aria-hidden />
-          <button
-            onClick={close}
-            aria-label="Close"
-            className="press absolute right-4 top-4 text-foreground/40 hover:text-foreground"
-          >
-            ✕
-          </button>
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="event-sheet-title"
+      header={
+        <>
           <h2 id="event-sheet-title" className="flex items-center gap-2 text-lg font-bold">
             <span aria-hidden>{event.emoji ?? "📅"}</span>
             {event.title}
@@ -127,11 +90,33 @@ export function EventSheet({
             {formatDateRange(event.startDate, event.endDate)}
             {when && <span className="font-medium text-accent"> · {when}</span>}
           </p>
-        </div>
-
-        {/* Body */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-2 pt-4">
-          {(event.endDate && event.endDate !== event.startDate) && (
+        </>
+      }
+      footer={
+        isAdmin && event.persisted ? (
+          <div className="flex items-center gap-2">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="press flex-1 rounded-xl bg-card py-2.5 text-sm font-semibold text-foreground ring-1 ring-border"
+              >
+                Edit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={remove}
+              disabled={deleting}
+              className="press flex-1 rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent ring-1 ring-accent/20 disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        ) : undefined
+      }
+    >
+      {(event.endDate && event.endDate !== event.startDate) && (
             <p className="text-xs text-foreground/55">{formatDateLong(event.startDate)} → {formatDateLong(event.endDate)}</p>
           )}
 
@@ -145,7 +130,7 @@ export function EventSheet({
 
           {/* RSVP */}
           <div className="space-y-2">
-            <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">Are you coming?</p>
+            <SectionLabel>Are you coming?</SectionLabel>
             <AttendanceControl value={myEffective} onChange={(s) => onSetStatus(s, null)} />
 
             {showDayPicker && (
@@ -179,7 +164,7 @@ export function EventSheet({
 
           {/* Who's coming */}
           <div className="space-y-2">
-            <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">Who&rsquo;s coming</p>
+            <SectionLabel>Who&rsquo;s coming</SectionLabel>
             {summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
               <p className="text-sm text-foreground/45">No RSVPs yet.</p>
             ) : (
@@ -190,35 +175,7 @@ export function EventSheet({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Footer — admin actions on real (DB) events. */}
-        {isAdmin && event.persisted && (
-          <div
-            className="flex shrink-0 items-center gap-2 border-t border-border px-5 pt-3"
-            style={{ paddingBottom: "max(0.85rem, env(safe-area-inset-bottom))" }}
-          >
-            {onEdit && (
-              <button
-                type="button"
-                onClick={onEdit}
-                className="press flex-1 rounded-xl bg-card py-2.5 text-sm font-semibold text-foreground ring-1 ring-border"
-              >
-                Edit
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={remove}
-              disabled={deleting}
-              className="press flex-1 rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent ring-1 ring-accent/20 disabled:opacity-50"
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Sheet>
   );
 }
 

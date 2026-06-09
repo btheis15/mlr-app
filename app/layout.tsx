@@ -66,8 +66,14 @@ export default async function RootLayout({
             <InstallHint />
             <PushPrompt />
           <main
-            className="mx-auto w-full max-w-md px-4 pb-24 pt-2"
-            style={{ paddingTop: "env(safe-area-inset-top)" }}
+            className="mx-auto w-full max-w-md px-4 pt-2"
+            style={{
+              paddingTop: "env(safe-area-inset-top)",
+              // Clear the fixed TabBar, which grows by the home-indicator inset
+              // on notched iPhones — without the inset the last card hides
+              // behind the bar.
+              paddingBottom: "calc(6rem + env(safe-area-inset-bottom))",
+            }}
           >
             <div className="pt-2">
               <AnnouncementBanner items={announcements} />

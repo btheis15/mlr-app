@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
-const reduceMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+import { useSheetDismiss } from "@/lib/hooks";
 
 /**
  * Full-screen photo viewer — tap a photo to see the whole, uncropped image.
@@ -19,29 +15,7 @@ const reduceMotion = () =>
  * full-screen chat shell passes "z-[55]").
  */
 export function Lightbox({ url, onClose, z = "z-50" }: { url: string; onClose: () => void; z?: string }) {
-  const [closing, setClosing] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const close = () => {
-    if (reduceMotion()) {
-      onClose();
-      return;
-    }
-    setClosing(true);
-    timer.current = setTimeout(onClose, 440);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      if (timer.current) clearTimeout(timer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { closing, close } = useSheetDismiss(onClose);
 
   return (
     <div

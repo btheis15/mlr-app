@@ -524,7 +524,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
                 <button
                   type="button"
                   onClick={() => removePreview(i)}
-                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white"
+                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white"
                   aria-label="Remove"
                 >
                   ×
@@ -903,7 +903,7 @@ function EditPostPanel({
                 <img src={m.url} alt="" className="h-full w-full object-cover" />
               )}
               {m.path && (
-                <button type="button" onClick={() => setRemoved((r) => [...r, m.path!])} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
+                <button type="button" onClick={() => setRemoved((r) => [...r, m.path!])} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white" aria-label="Remove">×</button>
               )}
             </div>
           ))}
@@ -916,7 +916,7 @@ function EditPostPanel({
                 <img src={m.url} alt="" className="h-full w-full object-cover" />
               )}
               <span className="absolute bottom-1 left-1 rounded bg-primary/80 px-1 py-0.5 text-[9px] font-medium text-white">new</span>
-              <button type="button" onClick={() => removePreview(i)} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-base leading-none text-white" aria-label="Remove">×</button>
+              <button type="button" onClick={() => removePreview(i)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white" aria-label="Remove">×</button>
             </div>
           ))}
         </div>

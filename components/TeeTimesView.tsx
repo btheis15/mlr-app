@@ -140,7 +140,7 @@ export function TeeTimesView() {
               Discounted Inshalla tee times via Sagacity Golf
             </div>
           </div>
-          <div className="ml-3 text-[18px] leading-none text-foreground/30">↗</div>
+          <div className="ml-3 text-[18px] leading-none text-foreground/40">↗</div>
         </a>
       </section>
 
@@ -179,7 +179,7 @@ function DayLink({ date, label }: { date: Date; label: string }) {
         <div className="text-[15px] font-semibold text-foreground">{label}</div>
         <div className="text-[11px] text-foreground/50">{fullDate}</div>
       </div>
-      <div className="ml-3 text-[18px] leading-none text-foreground/30">↗</div>
+      <div className="ml-3 text-[18px] leading-none text-foreground/40">↗</div>
     </a>
   );
 }

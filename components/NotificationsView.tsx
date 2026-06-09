@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
+import { SkeletonList } from "@/components/Skeleton";
 import { useDebouncedCallback } from "@/lib/hooks";
 import { timeAgo, formatDayHeading, groupByDay } from "@/lib/format";
 import type { AppNotification, NotifType } from "@/lib/types";
@@ -171,7 +172,7 @@ export function NotificationsView() {
       {needsMigration ? (
         <MigrationHint file="0030_notifications_feed.sql">To turn on the Notifications feed,</MigrationHint>
       ) : loading ? (
-        <p className="py-10 text-center text-sm text-foreground/45">Loading…</p>
+        <SkeletonList />
       ) : items.length === 0 ? (
         <div className="rounded-2xl bg-card p-8 text-center ring-1 ring-border">
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-3xl">🔔</div>

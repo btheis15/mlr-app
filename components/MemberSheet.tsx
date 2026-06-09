@@ -197,7 +197,7 @@ export function MemberSheet({
         <button
           onClick={close}
           aria-label="Close"
-          className="press absolute right-4 top-4 z-10 text-foreground/40 hover:text-foreground"
+          className="press absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
         >
           ✕
         </button>
