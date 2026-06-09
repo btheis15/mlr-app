@@ -447,7 +447,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <p className="text-sm text-foreground/60">
             {step === "email"
               ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you. No password to create or remember."
-              : `We emailed a 6-digit code to ${normEmail} — enter it below.`}
+              : `We emailed an 8-digit code to ${normEmail} — enter it below.`}
           </p>
         </div>
 
@@ -494,12 +494,15 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <>
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="123456"
+              // Supabase emails an 8-digit OTP for this project (the email-OTP
+              // length is a project setting). Accept up to 8; verify enables at
+              // 6 so it still works if that setting is ever lowered.
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              placeholder="12345678"
               inputMode="numeric"
               autoComplete="one-time-code"
-              aria-label="6-digit code from your email"
-              className="w-full rounded-xl bg-card px-3 py-3 text-center text-2xl font-semibold tracking-[0.3em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Code from your email"
+              className="w-full rounded-xl bg-card px-3 py-3 text-center text-xl font-semibold tracking-[0.25em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="submit"
