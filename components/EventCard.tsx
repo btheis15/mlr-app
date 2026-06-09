@@ -23,9 +23,9 @@ function whenLabel(event: ResortEvent, today: string): string {
   return relativeDays(today, event.startDate) ?? "";
 }
 
-/** "● 12 going · 3 maybe", with colored dots; a quiet hint when empty. */
+/** "● 12 going · 3 maybe · 2 can't make", with colored dots; a quiet hint when empty. */
 function CountChips({ counts }: { counts: AttendanceSummary["counts"] }) {
-  if (counts.going === 0 && counts.maybe === 0) {
+  if (counts.going === 0 && counts.maybe === 0 && counts.notGoing === 0) {
     return <span className="text-xs text-foreground/40">No RSVPs yet — be the first</span>;
   }
   return (
@@ -40,6 +40,12 @@ function CountChips({ counts }: { counts: AttendanceSummary["counts"] }) {
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-sun" aria-hidden />
           {counts.maybe} maybe
+        </span>
+      )}
+      {counts.notGoing > 0 && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-foreground/30" aria-hidden />
+          {counts.notGoing} can&rsquo;t make
         </span>
       )}
     </span>

@@ -180,12 +180,13 @@ export function EventSheet({
           {/* Who's coming */}
           <div className="space-y-2">
             <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">Who&rsquo;s coming</p>
-            {summary.counts.going === 0 && summary.counts.maybe === 0 ? (
+            {summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
               <p className="text-sm text-foreground/45">No RSVPs yet.</p>
             ) : (
               <div className="space-y-3">
                 <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
                 <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />
+                <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
               </div>
             )}
           </div>
