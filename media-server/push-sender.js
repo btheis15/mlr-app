@@ -1,13 +1,18 @@
 // Web Push sender — runs on the Mac mini, alongside the media server + mailer.
 //
-// Delivers push notifications for new committee chat messages, broadcast
-// alerts, and @mentions in posts-feed comments, filtered by each member's
-// push_types (multi-select, migration 0020):
-//   chat      → every new committee message (not your own)
-//   mentions  → @mentions / replies in committee chat, AND @mentions in
-//               posts-feed comments (post_comment_mentions, migration 0022)
-//   alerts    → broadcast alerts
+// Delivers push notifications filtered by each member's push_types — the single
+// unified push list (multi-select, migration 0020 → 0034). Three categories ride
+// their own senders:
+//   chat      → every new committee message (not your own)  [committee_messages]
+//   alerts    → broadcast alerts                            [announcements]
 //   birthdays → handled by birthday-notifier.js (a separate daily job)
+// The remaining five mirror an in-app `notifications` row (migration 0030/0033)
+// of the matching type to a phone push, gated on the recipient's push_types:
+//   committee_join · cabin_decision · post_tag · post_mention · post_reply
+// (The feed already fanned out + denormalized title/body/url per recipient, so
+// we just relay it.) Other notification types — post_comment, post_reaction,
+// new_post, chat_mention, cabin_request (admin), broadcast — are intentionally
+// NOT in push_types, so they stay in-app only / use their own admin paths.
 // A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
 // also receives pushes for their OWN messages, to test without a second person.
 //
@@ -115,21 +120,13 @@ async function start() {
       .maybeSingle();
     if (!msg) return;
 
-    const [committeeRes, rosterRes, mentionRes, mediaRes] = await Promise.all([
+    const [committeeRes, rosterRes, mediaRes] = await Promise.all([
       sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle(),
       sb.from("committee_members").select("user_id").eq("committee_id", msg.committee_id),
-      sb.from("committee_message_mentions").select("mentioned_user_id").eq("message_id", mid),
       sb.from("committee_message_media").select("media_type").eq("message_id", mid),
     ]);
     const committee = committeeRes.data;
     if (!committee) return;
-
-    const mentioned = new Set((mentionRes.data || []).map((m) => m.mentioned_user_id));
-    let replyTargetAuthor = null;
-    if (msg.reply_to_id) {
-      const { data: rt } = await sb.from("committee_messages").select("author_id").eq("id", msg.reply_to_id).maybeSingle();
-      replyTargetAuthor = rt?.author_id || null;
-    }
 
     const rosterIds = (rosterRes.data || []).map((r) => r.user_id);
     const others = rosterIds.filter((id) => id !== msg.author_id);
@@ -169,8 +166,10 @@ async function start() {
     let sent = 0;
     for (const uid of targets) {
       const types = typesById.get(uid) || [];
-      const wants = types.includes("chat") || (types.includes("mentions") && (mentioned.has(uid) || replyTargetAuthor === uid));
-      if (wants) { await sendToUser(uid, payload); sent++; }
+      // 'chat' is the firehose category — it covers every new committee message,
+      // @mentions and replies included (chat @mentions also land in the in-app
+      // feed via chat_mention, which is in-app only by design).
+      if (types.includes("chat")) { await sendToUser(uid, payload); sent++; }
     }
     if (sent) console.log(`[push] chat ${committee.slug}: notified ${sent}`);
   };
@@ -194,54 +193,37 @@ async function start() {
     if (sent) console.log(`[push] alert: notified ${sent}`);
   };
 
-  // Posts-feed comment @mentions. Each tagged person is its own
-  // post_comment_mentions row, so we get one INSERT per (comment, user) and
-  // notify that user directly. Posts/comments are public-read, so there's no
-  // committee roster to gate on here — only the recipient's 'mentions' opt-in.
-  const handleCommentMention = async (commentId, mentionedUserId) => {
-    if (!commentId || !mentionedUserId) return;
-    if (!once(`cm:${commentId}:${mentionedUserId}`)) return;
+  // Feed-backed push. The in-app Notifications feed (migration 0030/0033) has
+  // already fanned out one row PER RECIPIENT and denormalized a ready-to-show
+  // title/body/url, gated on the recipient's notif_types. We mirror a row to a
+  // phone push when its type is one of the push categories AND the recipient
+  // turned that category on in push_types. The actor is never the recipient
+  // (the feed's _notify skips self), so there's no self-ping to guard here.
+  const PUSHABLE_FEED_TYPES = new Set([
+    "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
+  ]);
+  const handleFeedNotification = async (n) => {
+    if (!n || !n.id || !n.recipient_id) return;
+    if (!PUSHABLE_FEED_TYPES.has(n.type)) return;
+    if (!once(`notif:${n.id}`)) return;
 
-    const { data: comment } = await sb
-      .from("post_comments")
-      .select("id, author_id, text")
-      .eq("id", commentId)
-      .maybeSingle();
-    if (!comment) return;
-
-    // Don't ping someone for mentioning themselves — unless they're an
-    // allow-listed self-notify tester who opted in (mirrors chat behavior).
-    const isSelf = mentionedUserId === comment.author_id;
-    if (isSelf && !SELF_NOTIFY_IDS.has(mentionedUserId)) return;
-
-    const { data: profs } = await sb
+    const { data: prof } = await sb
       .from("profiles")
-      .select("id, display_name, push_types, push_self_notify")
-      .in("id", Array.from(new Set([comment.author_id, mentionedUserId])));
-    let commenterName = "Someone";
-    let wantsMentions = false;
-    let selfOptIn = false;
-    for (const p of profs || []) {
-      if (p.id === comment.author_id) commenterName = (p.display_name || "Someone").trim();
-      if (p.id === mentionedUserId) {
-        wantsMentions = (p.push_types || []).includes("mentions");
-        selfOptIn = Boolean(p.push_self_notify);
-      }
-    }
-    if (isSelf && !selfOptIn) return;
-    if (!wantsMentions) return;
+      .select("push_types")
+      .eq("id", n.recipient_id)
+      .maybeSingle();
+    if (!((prof && prof.push_types) || []).includes(n.type)) return;
 
-    const text = (comment.text || "").trim();
     const payload = {
-      title: `💬 ${commenterName} mentioned you`,
-      body: text ? text.slice(0, 160) : `${commenterName} mentioned you in a comment`,
+      title: n.title || "Muskellunge Lake Resort",
+      body: n.body ? String(n.body).slice(0, 180) : null,
       icon: ICON,
       badge: ICON,
-      tag: `comment-${commentId}`,
-      url: `${APP_URL}/posts`,
+      tag: `notif-${n.id}`,
+      url: n.url ? `${APP_URL}${n.url}` : `${APP_URL}/`,
     };
-    await sendToUser(mentionedUserId, payload);
-    console.log("[push] comment mention: notified 1");
+    await sendToUser(n.recipient_id, payload);
+    console.log(`[push] ${n.type}: notified recipient`);
   };
 
   // A new member just signed up (handle_new_user inserts their profile row — for
@@ -320,32 +302,11 @@ async function start() {
     if (sent) console.log(`[push] cabin request from ${name}: notified ${sent} admin(s)`);
   };
 
-  // An admin approved or denied a request (cabin_bookings UPDATE) — tell the
-  // requester. Gated on their `notif_types` containing 'cabin_decision' (the
-  // per-type toggle in Profile → Notifications). Only on the pending → decision
-  // transition; REPLICA IDENTITY FULL (migration 0032) gives us the old row, and
-  // once() backstops if it isn't available.
-  const handleCabinDecision = async (row, oldRow) => {
-    if (!row || (row.status !== "approved" && row.status !== "denied")) return;
-    if (oldRow && oldRow.status && oldRow.status !== "pending") return;
-    if (!once(`cbdec:${row.id}:${row.status}`)) return;
-
-    const { data: reqProf } = await sb.from("profiles").select("notif_types").eq("id", row.user_id).maybeSingle();
-    if (!((reqProf && reqProf.notif_types) || []).includes("cabin_decision")) return;
-
-    const { data: cabinRow } = await sb.from("cabins").select("name").eq("id", row.cabin_id).maybeSingle();
-    const cabin = cabinRow ? cabinRow.name : "your cabin";
-    const stay = fmtStay(row.check_in, row.check_out);
-    const payload = row.status === "approved"
-      ? { title: "🏡 Cabin stay approved ✓", body: `${cabin} · ${stay} — see you at the lake!` }
-      : { title: "🏡 Cabin stay update", body: `Your request for ${cabin} · ${stay} wasn't approved this time.` };
-    payload.icon = ICON;
-    payload.badge = ICON;
-    payload.tag = `cabin-dec-${row.id}`;
-    payload.url = `${APP_URL}/request-stay`;
-    await sendToUser(row.user_id, payload);
-    console.log(`[push] cabin ${row.status}: notified requester`);
-  };
+  // NOTE: post-comment @mentions and cabin-stay decisions used to have their own
+  // bespoke handlers here. They're now delivered by handleFeedNotification above,
+  // which mirrors the corresponding in-app notification row (post_mention /
+  // cabin_decision) to a push — so there's a single, consistent path and we don't
+  // double-send. (Cabin REQUESTS to admins stay separate, see handleCabinRequest.)
 
   sb.channel("push-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
@@ -354,9 +315,9 @@ async function start() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
       handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
     )
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comment_mentions" }, (e) =>
-      handleCommentMention(e.new.comment_id, e.new.mentioned_user_id).catch((err) =>
-        console.error("[push] comment mention error:", err && err.message),
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (e) =>
+      handleFeedNotification(e.new).catch((err) =>
+        console.error("[push] feed notification error:", err && err.message),
       ),
     )
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) =>
@@ -367,11 +328,8 @@ async function start() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
       handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
     )
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cabin_bookings" }, (e) =>
-      handleCabinDecision(e.new, e.old).catch((err) => console.error("[push] cabin decision error:", err && err.message)),
-    )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat messages + alerts + comment mentions + new members + cabin stays)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (chat + alerts + feed notifications + new members + cabin requests)");
     });
 }
 

@@ -5,11 +5,18 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { enablePush, disablePush, ensureServiceWorker, isPushSupported, isStandalone, isIos } from "@/lib/push";
 import type { PushType } from "@/lib/types";
 
+// The unified push list (migration 0034) — one row per category, in the order
+// shown to members. Each is independent; toggling any of them on subscribes this
+// device (asking permission), and turning the last one off unsubscribes it.
 const TYPES: { value: PushType; label: string; desc: string }[] = [
-  { value: "chat", label: "New chat messages", desc: "Every new message in your committees" },
-  { value: "mentions", label: "Mentions & replies", desc: "When you're @mentioned or replied to" },
   { value: "alerts", label: "Broadcast alerts", desc: "Admin & Family Fest alerts" },
   { value: "birthdays", label: "Birthdays", desc: "When it's a member's birthday — tap to text or call them" },
+  { value: "committee_join", label: "Committee decisions", desc: "When your request to join a committee is approved or declined" },
+  { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
+  { value: "post_tag", label: "Tagged in a post", desc: "When someone tags you in a post" },
+  { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
+  { value: "post_reply", label: "Replies on posts", desc: "When someone replies on a post you're on" },
+  { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 
 // TEMP / testing only: the self-notify switch is exposed in the UI ONLY to this
