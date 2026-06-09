@@ -124,11 +124,15 @@ with the same credentials directly.
 
 ## Push notifications (optional)
 
-The mini can also send **web-push notifications** for new chat messages and
-broadcast alerts (`push-sender.js`, started by `server.js`), filtered by each
-member's level in the app (Profile → Notifications: all / mentions / alerts /
-off). Works on Android, and on iPhones that have **added the app to the Home
-Screen** (iOS 16.4+).
+The mini can also send **web-push notifications** (`push-sender.js`, started by
+`server.js`), filtered by each member's unified push list (Profile →
+Notifications, `profiles.push_types`, migration 0034). Categories: broadcast
+alerts, birthdays, committee decisions, cabin-stay decisions, post tags, comment
+mentions, post replies, and new committee messages. The five feed-backed
+categories are delivered by mirroring the matching in-app `notifications` row
+(migration 0030/0033) to a push; chat / alerts / birthdays ride their own
+senders. New members opt in via a one-time first-run prompt. Works on Android,
+and on iPhones that have **added the app to the Home Screen** (iOS 16.4+).
 
 **Off until you set the VAPID keys.** Generate them once (after `npm install`):
 
@@ -146,9 +150,10 @@ VAPID_SUBJECT=mailto:alerts@yourdomain.com
 APP_URL=https://mlr-app-omega.vercel.app   # deep links + notification icon
 ```
 
-It listens for new `committee_messages` + `announcements` (Supabase Realtime),
-reads `profiles.push_level` + `push_subscriptions`, and delivers via `web-push`,
-pruning dead subscriptions. Requires migration `0019`. New dep: `web-push`.
+It listens for new `committee_messages`, `announcements`, `notifications`,
+`profiles`, and `cabin_bookings` (Supabase Realtime), reads `profiles.push_types`
++ `push_subscriptions`, and delivers via `web-push`, pruning dead subscriptions.
+Requires migrations through `0034`. Dep: `web-push`.
 
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.

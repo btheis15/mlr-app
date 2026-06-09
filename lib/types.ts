@@ -37,8 +37,33 @@ export interface Announcement {
 /** The signed-in guest. Identity is name + email for now (no verification yet);
  *  a one-time-code / magic-link step is the planned next layer. */
 /** A push-notification category a member can opt into (multi-select; migration
- *  0020). Any subset is allowed; an empty set means no push. */
-export type PushType = "chat" | "mentions" | "alerts" | "birthdays";
+ *  0020, unified in 0034). Any subset is allowed; an empty set means no push.
+ *  Three categories ride their own senders (chat firehose, broadcast alerts,
+ *  the daily birthdays job); the other five mirror an in-app `notifications`
+ *  row of the matching type (see the mini's push-sender). */
+export type PushType =
+  | "chat"
+  | "alerts"
+  | "birthdays"
+  | "committee_join"
+  | "cabin_decision"
+  | "post_tag"
+  | "post_mention"
+  | "post_reply";
+
+/** Every push category, on. Set when a member accepts the first-run push prompt
+ *  (the backfill from migration 0034). New signups start with push OFF ('{}')
+ *  until they accept the prompt. */
+export const DEFAULT_PUSH_TYPES: PushType[] = [
+  "alerts",
+  "birthdays",
+  "committee_join",
+  "cabin_decision",
+  "post_tag",
+  "post_mention",
+  "post_reply",
+  "chat",
+];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
  *  0030). Each kind is fanned out by a DB trigger on its source event; members
@@ -122,6 +147,10 @@ export interface User {
    *  (migration 0029). Never includes "broadcast" — admin broadcasts always
    *  deliver regardless of this list. */
   notifTypes: NotifPrefType[];
+  /** Whether this member has already seen the one-time first-run push prompt
+   *  (migration 0034). False = show "Turn on notifications?" the next time they
+   *  open the app; set true once they accept or dismiss it. */
+  pushPrompted: boolean;
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }
