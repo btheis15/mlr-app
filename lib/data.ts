@@ -144,13 +144,15 @@ export const FAMILY_FEST = {
 /**
  * Seed resort events that live in CODE rather than the database: Family Fest
  * (synthesized from the FAMILY_FEST window above so its dates have one source of
- * truth and stay tied to the season model) and the 4th of July. Admin-created
- * events (Work Weekends, custom) come from Supabase and merge on top of these in
- * lib/events.ts (deduped by slug). `persisted: false` ⇒ not editable in-app —
- * Family Fest's dates change here; holidays are fixed-date.
+ * truth and stay tied to the season model) and the 4th of July weekend.
+ * Admin-created events (Work Weekends, custom) come from Supabase and merge on
+ * top of these in lib/events.ts (deduped by slug). `persisted: false` ⇒ not
+ * editable in-app — Family Fest's dates change here; holiday dates are set here.
  *
- * Attendance still works for these: it keys on the stable string `id` (migration
- * 0035), so members can RSVP to Family Fest exactly like a DB event.
+ * Family Fest stays the app's headline (its own season takeover on Home); the 4th
+ * weekend is just the soonest event people RSVP to. Attendance works for both: it
+ * keys on the stable string `id` (migration 0035), so members can RSVP to these
+ * exactly like a DB event.
  */
 export const RESORT_EVENTS: ResortEvent[] = [
   {
@@ -168,16 +170,17 @@ export const RESORT_EVENTS: ResortEvent[] = [
     persisted: false,
   },
   {
-    id: "july-4th-2026",
-    slug: "july-4th-2026",
+    id: "up-north-4th-2026",
+    slug: "up-north-4th-2026",
     kind: "holiday",
-    title: "4th of July",
+    title: "Up North for the 4th",
     emoji: "🎆",
     description:
-      "Fireworks over the lake, cookouts, and a day on the water. Let everyone know if you'll be up at the resort.",
+      "The 4th of July weekend at the lake — fireworks, cookouts, and time on the water. Let everyone know if you're heading up.",
     location: "Muskellunge Lake Resort",
-    startDate: "2026-07-04",
-    endDate: null,
+    // Independence Day 2026 falls on a Saturday — the long weekend runs Fri–Sun.
+    startDate: "2026-07-03",
+    endDate: "2026-07-05",
     dayRsvp: false,
     source: "admin",
     persisted: false,
