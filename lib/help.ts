@@ -8,6 +8,6 @@
 //    the Help page quietly falls back to the email link instead.
 export const HELP_CONTACT = {
   name: "Brian",
-  phone: "", // e.g. "+17155551234" — E.164; powers tap-to-text / tap-to-call
+  phone: "+12248005389", // E.164; powers tap-to-text / tap-to-call
   email: "brian.theis15@gmail.com",
 } as const;
