@@ -548,7 +548,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
             ) : access === "guest" ? (
               <>
                 <h2 className="text-lg font-bold">{name} chat is for members</h2>
-                <p className="text-sm text-foreground/60">Sign in, then ask to join this committee to see and post in its chat.</p>
+                <p className="text-sm text-foreground/65">Sign in — just your name &amp; email, no password — then ask to join this committee to see and post in its chat.</p>
                 <button onClick={promptSignIn} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white">Sign in</button>
               </>
             ) : access === "pending" ? (

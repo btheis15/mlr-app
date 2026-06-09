@@ -96,9 +96,14 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           note={`Soon you'll tap to request, an admin approves you, and you're in the ${committee.name} chat.`}
         />
       ) : !user ? (
-        <button onClick={promptSignIn} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white">
-          Sign in to request to join
-        </button>
+        <div className="space-y-2">
+          <button onClick={promptSignIn} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white">
+            Sign in to request to join
+          </button>
+          <p className="text-center text-xs text-foreground/55">
+            Just your name &amp; email — no password.
+          </p>
+        </div>
       ) : state === "member" ? (
         <div className="space-y-2">
           <p className="rounded-2xl border border-dashed border-primary/30 bg-card px-4 py-3 text-center text-sm font-medium text-primary">
