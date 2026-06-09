@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
-import { EmailMembers } from "@/components/EmailMembers";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
 import { AdminCommittees } from "@/components/AdminCommittees";
@@ -185,14 +184,6 @@ export default function ProfilePage() {
           Optional — this is what shows when someone taps your name to contact or pay you.
         </p>
         <ContactPaySettings />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Email members"
-        icon="✉️"
-        subtitle="A custom list, your committees, or everyone"
-      >
-        <EmailMembers />
       </CollapsibleSection>
 
       {isAdmin && (

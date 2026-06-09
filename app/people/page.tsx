@@ -1,5 +1,6 @@
 import { BackLink } from "@/components/BackLink";
 import { PeopleDirectory } from "@/components/PeopleDirectory";
+import { EmailMembersSection } from "@/components/EmailMembersSection";
 
 export const metadata = {
   title: "People — Muskellunge Lake Resort",
@@ -23,6 +24,11 @@ export default function PeoplePage() {
           the quick links to text, call, or pay them.
         </p>
       </header>
+
+      {/* Email members — moved here from Profile settings; it reads more
+          naturally alongside the directory. Hidden from guests; collapsed by
+          default so the directory stays the focus. */}
+      <EmailMembersSection />
 
       <PeopleDirectory />
     </div>
