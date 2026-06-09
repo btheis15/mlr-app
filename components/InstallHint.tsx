@@ -11,13 +11,15 @@ import { isIos, isStandalone } from "@/lib/push";
  * tap including the easy-to-miss "View More" step Apple hides the
  * "Add to Home Screen" row behind.
  *
- * Deliberately hard to dismiss by accident (the whole point — folks kept
- * tapping away and never finding it again):
- *   - tapping the scrim does NOT close it
- *   - there's no tiny ✕; you must tap a clear, labelled button
- *   - "Maybe later" only hides it for this visit and it returns next launch,
- *     so an accidental dismissal is self-healing. Only "Got it — done!"
- *     remembers the dismissal for good.
+ * It keeps coming back until the app is actually installed — that's the point.
+ * The ONLY thing that makes it go away for good is installing: once the app is
+ * launched from the home-screen icon, `isStandalone()` is true and this never
+ * renders again. Until then, every fresh Safari load shows it. There's no
+ * persisted "dismissed" flag — "Maybe later" just hides it for the current
+ * visit so the user can get into the app, and it returns on the next load.
+ *
+ * Deliberately hard to dismiss by accident: tapping the scrim does nothing and
+ * there's no tiny ✕ — you must tap a clear, labelled button.
  */
 export function InstallHint() {
   const [show, setShow] = useState(false);
@@ -26,19 +28,14 @@ export function InstallHint() {
     // Reuse the shared detection in lib/push so the iPadOS-13+ "Macintosh UA"
     // case is covered here too — otherwise this banner never shows on iPad Safari
     // and iPad users get no nudge to install (a prerequisite for push on iOS).
-    const dismissed = localStorage.getItem("install-hint-dismissed") === "1";
-    if (isIos() && !isStandalone() && !dismissed) setShow(true);
+    // Shown on every load while in the browser; hidden once installed.
+    if (isIos() && !isStandalone()) setShow(true);
   }, []);
 
   if (!show) return null;
 
-  // Permanent: they told us they finished.
-  const dismissForGood = () => {
-    localStorage.setItem("install-hint-dismissed", "1");
-    setShow(false);
-  };
-  // Temporary: hide for now, but show again next launch (accidental-tap proof).
-  const remindLater = () => setShow(false);
+  // Hide for this visit only — it returns next load until the app is installed.
+  const dismiss = () => setShow(false);
 
   return (
     <div
@@ -120,17 +117,14 @@ export function InstallHint() {
         {/* Sticky footer so the buttons are always reachable. */}
         <div className="border-t border-border bg-card px-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
           <button
-            onClick={dismissForGood}
+            onClick={dismiss}
             className="press w-full rounded-2xl bg-primary py-3.5 text-base font-semibold text-white shadow-sm"
           >
-            Got it — done!
+            Got it
           </button>
-          <button
-            onClick={remindLater}
-            className="press mt-2 w-full rounded-2xl py-2.5 text-sm font-medium text-foreground/60"
-          >
-            Maybe later
-          </button>
+          <p className="mt-2 text-center text-xs text-foreground/50">
+            This reminder stays until MLR is added to your home screen.
+          </p>
         </div>
       </div>
 
