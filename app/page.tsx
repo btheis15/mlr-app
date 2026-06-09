@@ -6,6 +6,8 @@ import { TshirtCallout } from "@/components/TshirtCallout";
 import { HomePreFestCards } from "@/components/HomePreFestCards";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
+import { InstallButton } from "@/components/InstallButton";
+import { WelcomeCard } from "@/components/WelcomeCard";
 import { UpcomingEvents } from "@/components/UpcomingEvents";
 
 /**
@@ -27,8 +29,16 @@ export default function HomePage() {
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
 
+      {/* First visit only: orient newcomers to browse-first + no-password sign-in. */}
+      <WelcomeCard />
+
       {/* Guests only: a front-page nudge to sign in (no need to find Profile). */}
       <HomeSignInCTA />
+
+      {/* Add-to-home-screen — visible to everyone until the app is installed
+          (then it hides itself). The way back for anyone who dismissed the
+          first-run nag, and the only install entry point Android users get. */}
+      <InstallButton />
 
       {/* Easy, visible way for anyone to share the app with family. */}
       <ShareApp />

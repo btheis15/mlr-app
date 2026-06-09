@@ -57,13 +57,24 @@ html {
   min-height: 100%;
 }
 
+html {
+  /* Slightly larger base so the whole app (rem-based text + spacing) reads
+     bigger and roomier — easier for everyone, especially older eyes. This is the
+     rem root; the in-app "Text size" control (TextSizeControl) overrides it
+     inline to 19px / 21px, scaling the whole app proportionally. */
+  font-size: 17px;
+}
+
+/* Body inherits the rem root above (1rem), so the Text-size control's override
+   on <html> flows through the whole app. Don't re-pin a px size here. */
+body {
+  font-size: 1rem;
+}
+
 html,
 body {
   color: var(--color-foreground);
   color-scheme: light; /* form controls, scrollbars render light */
-  /* Slightly larger base so the whole app (rem-based text + spacing) reads
-     bigger and roomier — easier for everyone, especially older eyes. */
-  font-size: 17px;
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

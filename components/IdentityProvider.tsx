@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { type Session } from "@supabase/supabase-js";
 import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
@@ -293,6 +294,32 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Turn a raw Supabase auth error into something a non-technical member can act
+ * on. We match on the substrings Supabase actually returns and fall back to the
+ * original text (trimmed) so we never hide a genuinely novel error.
+ */
+function friendlyAuthError(raw: string | undefined | null): string {
+  const m = (raw ?? "").toLowerCase();
+  if (!m) return "Something went wrong. Please try again.";
+  if (m.includes("token has expired") || m.includes("expired"))
+    return "That code has expired. Tap “Resend code” to get a fresh one.";
+  if (m.includes("invalid") && (m.includes("token") || m.includes("otp") || m.includes("code")))
+    return "That code didn’t match. Double-check it, or tap “Resend code.”";
+  if (m.includes("rate") || m.includes("too many") || m.includes("limit"))
+    return "Too many tries just now. Wait a minute, then try again.";
+  if (m.includes("network") || m.includes("fetch") || m.includes("failed to"))
+    return "Can’t reach the network. Check your connection and try again.";
+  if (m.includes("email") && m.includes("invalid"))
+    return "That doesn’t look like a valid email. Please check it.";
+  // Unknown — show the real message but capitalized, so nothing is swallowed.
+  return raw!.charAt(0).toUpperCase() + raw!.slice(1);
+}
+
+// How long (seconds) to make someone wait before they can request another code,
+// so a frustrated tap-tap-tap doesn't trip Supabase's own rate limit.
+const RESEND_COOLDOWN = 30;
+
+/**
  * Two-step passwordless sign-in: email → 6-digit code. Keeps the member in the
  * app (no browser hop), which matters for an installed PWA. The signup trigger
  * seeds `profiles.display_name` from the name entered here.
@@ -306,8 +333,18 @@ function SignInGate({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  // Resend throttle: seconds left before "Resend code" re-enables, and a flash
+  // confirmation after a successful resend.
+  const [cooldown, setCooldown] = useState(0);
+  const [resent, setResent] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // Tick the resend cooldown down to zero once a code has been sent.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
   const reduceMotion = () =>
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -332,10 +369,33 @@ function SignInGate({ onClose }: { onClose: () => void }) {
     });
     setBusy(false);
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       return;
     }
+    setCooldown(RESEND_COOLDOWN);
     setStep("code");
+  };
+
+  // Re-send a fresh code without making the user retype their email. Same call
+  // as sendCode; throttled by the cooldown so rapid taps can't hit Supabase's
+  // rate limit and lock them out.
+  const resend = async () => {
+    if (!supabase || busy || cooldown > 0) return;
+    setBusy(true);
+    setError(null);
+    setResent(false);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normEmail,
+      options: { shouldCreateUser: true, data: { display_name: name.trim() } },
+    });
+    setBusy(false);
+    if (error) {
+      setError(friendlyAuthError(error.message));
+      return;
+    }
+    setCode("");
+    setResent(true);
+    setCooldown(RESEND_COOLDOWN);
   };
 
   const verify = async (e: React.FormEvent) => {
@@ -351,7 +411,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
     });
     if (error) {
       setBusy(false);
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       return;
     }
     // Save the email-alerts choice (display_name is set by the signup trigger).
@@ -386,8 +446,8 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           </h1>
           <p className="text-sm text-foreground/60">
             {step === "email"
-              ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you."
-              : `We emailed a code to ${normEmail} — enter it below.`}
+              ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you. No password to create or remember."
+              : `We emailed a 6-digit code to ${normEmail} — enter it below.`}
           </p>
         </div>
 
@@ -434,11 +494,12 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <>
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
-              placeholder="12345678"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="123456"
               inputMode="numeric"
               autoComplete="one-time-code"
-              className="w-full rounded-xl bg-card px-3 py-3 text-center text-lg font-semibold tracking-[0.3em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              aria-label="6-digit code from your email"
+              className="w-full rounded-xl bg-card px-3 py-3 text-center text-2xl font-semibold tracking-[0.3em] ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="submit"
@@ -447,14 +508,43 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             >
               {busy ? "Verifying…" : "Verify & sign in"}
             </button>
+
+            {/* The #1 reason a code seems "not to arrive." Say it plainly. */}
+            <p className="text-center text-xs text-foreground/60">
+              The email lands in a few seconds.{" "}
+              <b className="font-semibold text-foreground/75">
+                Don&rsquo;t see it? Check your spam or junk folder.
+              </b>
+            </p>
+
+            <div className="flex items-center justify-center gap-1 text-xs">
+              <span className="text-foreground/55">Still nothing?</span>
+              <button
+                type="button"
+                onClick={resend}
+                disabled={busy || cooldown > 0}
+                className="press font-semibold text-primary disabled:text-foreground/40"
+              >
+                {cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
+              </button>
+            </div>
+
+            {resent && (
+              <p className="text-center text-xs font-medium text-primary">
+                ✓ New code sent — check your inbox (and spam).
+              </p>
+            )}
+
             <button
               type="button"
               onClick={() => {
                 setStep("email");
                 setCode("");
                 setError(null);
+                setResent(false);
+                setCooldown(0);
               }}
-              className="press w-full text-center text-xs text-foreground/50"
+              className="press w-full text-center text-xs text-foreground/60"
             >
               ← Use a different email
             </button>
@@ -466,6 +556,15 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             {error}
           </p>
         )}
+
+        {/* Human escape hatch — always one tap from the sign-in sheet. */}
+        <Link
+          href="/help"
+          onClick={dismiss}
+          className="press block text-center text-xs text-foreground/55 underline-offset-2 hover:underline"
+        >
+          Need help signing in?
+        </Link>
       </form>
     </div>
   );

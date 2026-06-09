@@ -80,8 +80,8 @@ export function SignInWall({
           🔒
         </div>
         <h1 className="text-xl font-bold">{title} is for members</h1>
-        <p className="text-sm text-foreground/60">
-          {note ?? "Add your name & email to see this. The rest of the app stays open to browse."}
+        <p className="text-sm text-foreground/65">
+          {note ?? "Add your name & email to see this — no password, just a code we email you. The rest of the app stays open to browse."}
         </p>
         <button
           onClick={promptSignIn}

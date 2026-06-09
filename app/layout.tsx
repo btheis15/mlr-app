@@ -44,8 +44,12 @@ export const viewport: Viewport = {
   themeColor: "#f5f6f3",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Allow pinch-to-zoom (accessibility). Pinning maximumScale:1 /
+  // userScalable:false blocks zoom for low-vision users — a real barrier for the
+  // older family members this app is for. The app already scales well; let them
+  // zoom on top of that and the in-app Text-size control.
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: "cover",
   // Resize the layout (not just overlay) when the on-screen keyboard opens, so
   // bottom-pinned UI like the chat composer stays above it on Android Chrome.
@@ -60,6 +64,16 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`h-full ${yellowtail.variable}`}>
+      <head>
+        {/* Apply the saved "Text size" choice before first paint so there's no
+            flash of small text. Keep the size map in sync with TextSizeControl. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var v=localStorage.getItem('mlr-text-scale');var m={normal:17,large:19,largest:21};if(v&&m[v]){document.documentElement.style.fontSize=m[v]+'px';}}catch(e){}",
+          }}
+        />
+      </head>
       <body className="min-h-full text-foreground antialiased">
         <DemoDateProvider>
           <IdentityProvider>

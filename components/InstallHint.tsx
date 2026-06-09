@@ -1,41 +1,99 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isIos, isStandalone } from "@/lib/push";
+import { INSTALL_EVENT } from "@/lib/install";
+
+/** The Chrome/Android `beforeinstallprompt` event (not in the standard lib types). */
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
 
 /**
- * iOS "Add to Home Screen" walkthrough. Mobile Safari has no
- * `beforeinstallprompt` event, so we can't trigger the install — we can only
- * teach. This shows a near-full-screen, scrim-backed takeover the FIRST time a
- * non-savvy visitor opens the site in Safari, walking them through every real
- * tap including the easy-to-miss "View More" step Apple hides the
- * "Add to Home Screen" row behind.
+ * The single install authority for the app. Two jobs:
  *
- * It keeps coming back until the app is actually installed — that's the point.
- * The ONLY thing that makes it go away for good is installing: once the app is
- * launched from the home-screen icon, `isStandalone()` is true and this never
- * renders again. Until then, every fresh Safari load shows it. There's no
- * persisted "dismissed" flag — "Maybe later" just hides it for the current
- * visit so the user can get into the app, and it returns on the next load.
+ * 1. **Auto-nag on iOS.** Mobile Safari has no `beforeinstallprompt`, so we
+ *    can't trigger the install — we can only teach. The FIRST time a non-savvy
+ *    visitor opens the site in Safari we show a scrim-backed walkthrough of
+ *    every real tap, including the easy-to-miss "View More" step Apple hides the
+ *    "Add to Home Screen" row behind. It returns every load until the app is
+ *    actually installed (`isStandalone()` → true), then never again. "Maybe
+ *    later" only hides it for this visit; there's no persisted dismiss flag.
+ *
+ * 2. **On-demand install** from anywhere via `requestInstall()` (Profile, Help,
+ *    Home). On Android / desktop Chrome we capture the native
+ *    `beforeinstallprompt` and fire it directly — one tap, real install, no
+ *    sheet. On iOS (and other browsers with no native prompt) we open the
+ *    walkthrough instead. This is what gives the many people who tapped "Maybe
+ *    later", and every Android user, a way back to installing.
  *
  * Deliberately hard to dismiss by accident: tapping the scrim does nothing and
  * there's no tiny ✕ — you must tap a clear, labelled button.
  */
 export function InstallHint() {
   const [show, setShow] = useState(false);
+  // "auto" = the iOS first-run nag; "forced" = the user asked via a button.
+  const [mode, setMode] = useState<"auto" | "forced">("auto");
+  // The captured Android/Chrome native prompt, if this browser supports one.
+  const deferred = useRef<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
+    // Capture Chrome/Android's native install prompt so a button can fire it.
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      deferred.current = e as BeforeInstallPromptEvent;
+    };
+    // Once installed, never nag again and drop the stale prompt.
+    const onInstalled = () => {
+      deferred.current = null;
+      setShow(false);
+    };
+    // A button (Profile / Help / Home) asked to install.
+    const onRequest = () => {
+      if (isStandalone()) return; // already installed — nothing to do
+      const native = deferred.current;
+      if (native) {
+        // Android / desktop Chrome: one real tap, no walkthrough needed.
+        native.prompt();
+        native.userChoice.finally(() => {
+          deferred.current = null;
+        });
+        return;
+      }
+      // iOS Safari (or any browser with no native prompt): teach the steps.
+      setMode("forced");
+      setShow(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    window.addEventListener(INSTALL_EVENT, onRequest);
+
     // Reuse the shared detection in lib/push so the iPadOS-13+ "Macintosh UA"
-    // case is covered here too — otherwise this banner never shows on iPad Safari
-    // and iPad users get no nudge to install (a prerequisite for push on iOS).
-    // Shown on every load while in the browser; hidden once installed.
-    if (isIos() && !isStandalone()) setShow(true);
+    // case is covered too — otherwise iPad Safari users get no nudge to install
+    // (a prerequisite for push on iOS). Auto-nag shown every load until installed.
+    if (isIos() && !isStandalone()) {
+      setMode("auto");
+      setShow(true);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+      window.removeEventListener(INSTALL_EVENT, onRequest);
+    };
   }, []);
 
   if (!show) return null;
 
-  // Hide for this visit only — it returns next load until the app is installed.
+  // Hide for this visit. The auto iOS nag returns next load until installed; a
+  // forced (button-triggered) open just closes.
   const dismiss = () => setShow(false);
+
+  // iOS needs the manual Safari walkthrough; everyone else who reaches the sheet
+  // (no native prompt was available) gets generic browser-menu guidance.
+  const ios = isIos();
 
   return (
     <div
@@ -82,36 +140,59 @@ export function InstallHint() {
             Here&apos;s how — it takes a few seconds:
           </p>
 
-          <ol className="mt-3 space-y-4">
-            <Step n="1">
-              Tap the <b>Share</b> button{" "}
-              <Chip>
-                <ShareGlyph />
-              </Chip>{" "}
-              at the bottom of Safari.
-            </Step>
+          {ios ? (
+            <ol className="mt-3 space-y-4">
+              <Step n="1">
+                Tap the <b>Share</b> button{" "}
+                <Chip>
+                  <ShareGlyph />
+                </Chip>{" "}
+                at the bottom of Safari.
+              </Step>
 
-            <Step n="2">
-              Don&apos;t see <b>Add to Home Screen</b>? Tap{" "}
-              <Chip>
-                View More <span className="text-base leading-none">⌄</span>
-              </Chip>{" "}
-              to reveal the full list.
-            </Step>
+              <Step n="2">
+                Don&apos;t see <b>Add to Home Screen</b>? Tap{" "}
+                <Chip>
+                  View More <span className="text-base leading-none">⌄</span>
+                </Chip>{" "}
+                to reveal the full list.
+              </Step>
 
-            <Step n="3">
-              Tap{" "}
-              <Chip>
-                <span className="text-base leading-none">⊕</span> Add to Home
-                Screen
-              </Chip>
-            </Step>
+              <Step n="3">
+                Tap{" "}
+                <Chip>
+                  <span className="text-base leading-none">⊕</span> Add to Home
+                  Screen
+                </Chip>
+              </Step>
 
-            <Step n="4">
-              Tap the blue <b>Add</b>{" "}button in the top-right corner.
-              That&apos;s it — look for the <b>MLR</b> icon on your home screen!
-            </Step>
-          </ol>
+              <Step n="4">
+                Tap the blue <b>Add</b>{" "}button in the top-right corner.
+                That&apos;s it — look for the <b>MLR</b> icon on your home screen!
+              </Step>
+            </ol>
+          ) : (
+            // Reached only when there's no native install prompt to fire (e.g.
+            // desktop Safari/Firefox). Chrome/Android never get here — their
+            // button fires the real prompt instead of opening this sheet.
+            <ol className="mt-3 space-y-4">
+              <Step n="1">
+                Open your browser&apos;s menu{" "}
+                <Chip>
+                  <span className="text-base leading-none">⋮</span>
+                </Chip>{" "}
+                (top-right corner).
+              </Step>
+              <Step n="2">
+                Choose{" "}
+                <Chip>Add to Home screen</Chip> or{" "}
+                <Chip>Install app</Chip>.
+              </Step>
+              <Step n="3">
+                Confirm — look for the <b>MLR</b> icon on your home screen!
+              </Step>
+            </ol>
+          )}
         </div>
 
         {/* Sticky footer so the buttons are always reachable. */}
@@ -120,11 +201,13 @@ export function InstallHint() {
             onClick={dismiss}
             className="press w-full rounded-2xl bg-primary py-3.5 text-base font-semibold text-white shadow-sm"
           >
-            Got it
+            {mode === "auto" ? "Got it" : "Close"}
           </button>
-          <p className="mt-2 text-center text-xs text-foreground/50">
-            This reminder stays until MLR is added to your home screen.
-          </p>
+          {mode === "auto" && (
+            <p className="mt-2 text-center text-xs text-foreground/55">
+              This reminder stays until MLR is added to your home screen.
+            </p>
+          )}
         </div>
       </div>
 

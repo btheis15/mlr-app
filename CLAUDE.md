@@ -72,9 +72,21 @@ not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_e
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 | `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 | `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
+| `/help` | [`app/help/page.tsx`](app/help/page.tsx) | **Help & how-to** — non-technical onboarding: what the app is, browse-vs-sign-in, "I didn't get my code" troubleshooting, add-to-home-screen ([`InstallButton`](components/InstallButton.tsx)), and a **text-size control** ([`TextSizeControl`](components/TextSizeControl.tsx)). Leads with a human escape hatch (text/email `HELP_CONTACT` in [`lib/help.ts`](lib/help.ts)). Linked from Profile + the sign-in sheet. Not a tab |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons).
+
+## Non-technical / accessibility UX
+
+Built for a family of mixed ages, so the rough edges that stop the least
+technical members are smoothed:
+
+- **Sign-in (`SignInGate` in [`IdentityProvider`](components/IdentityProvider.tsx))** — passwordless email-OTP with a **"check your spam"** hint, a **Resend code** button (30s cooldown so taps can't trip Supabase's rate limit), plain-language error mapping (`friendlyAuthError`), and a "Need help signing in?" link to `/help`. Code input is 6 digits (matches Supabase's default).
+- **Install** — [`InstallHint`](components/InstallHint.tsx) is the single install authority: the iOS first-run nag **plus** on-demand install via `requestInstall()` ([`lib/install.ts`](lib/install.ts)). On Android/desktop Chrome it fires the captured native `beforeinstallprompt`; on iOS it opens the Safari walkthrough. [`InstallButton`](components/InstallButton.tsx) (Home, Profile, Help) is the re-entry point — it self-hides once installed.
+- **Welcome** — [`WelcomeCard`](components/WelcomeCard.tsx) shows once per device on Home, orienting newcomers to browse-first + no-password sign-in.
+- **Text size + zoom** — [`TextSizeControl`](components/TextSizeControl.tsx) overrides the `<html>` rem root (17/19/21px); a boot script in [`layout.tsx`](app/layout.tsx) re-applies the saved choice before paint. Pinch-zoom is now allowed (viewport `userScalable: true`, was disabled). `body` uses `font-size: 1rem` so the override scales the whole app — **don't re-pin a px font-size on `body`/`html`** or you break it.
+- **Sign-in walls** ([`Guard`](components/Guard.tsx), `CommitteeJoin`, `CommitteeChat`) carry a "just your name & email, no password" reassurance.
 
 ## Identity, admins & alerts
 
