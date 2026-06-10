@@ -30,7 +30,19 @@ let app = try await Application.make(.detect())
 app.http.server.configuration.hostname = Environment.get("FM_HOST") ?? "127.0.0.1"
 app.http.server.configuration.port = Int(Environment.get("FM_PORT") ?? "8788") ?? 8788
 
+// Shared-secret gate. When FM_SHARED_SECRET is set, every request must carry a
+// matching `X-FM-Token` header — this is what makes it safe to reach the service
+// over a public tunnel: only the app's server (which holds the secret) can call
+// it. Unset → open (loopback / local dev).
+let requiredSecret = Environment.get("FM_SHARED_SECRET").flatMap { $0.isEmpty ? nil : $0 }
+
 app.post("assistant") { req async throws -> AskResponse in
+    if let requiredSecret {
+        guard req.headers.first(name: "X-FM-Token") == requiredSecret else {
+            throw Abort(.unauthorized, reason: "unauthorized")
+        }
+    }
+
     let body = try req.content.decode(AskRequest.self)
 
     // Availability gates on: Apple-Intelligence-eligible device, the setting

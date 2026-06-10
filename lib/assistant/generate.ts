@@ -35,6 +35,11 @@ Rules:
  *  in this phase → the grounded stub answers. */
 const FM_URL = process.env.ASSISTANT_FM_URL || process.env.NEXT_PUBLIC_ASSISTANT_FM_URL;
 
+/** Shared secret sent as the `X-FM-Token` header so the FM service (reached over
+ *  a public tunnel) only answers calls from this server. Server-only — never
+ *  NEXT_PUBLIC, or it would ship in the browser bundle. Unset → no header sent. */
+const FM_TOKEN = process.env.ASSISTANT_FM_TOKEN;
+
 /** Hard ceiling on how long we wait for the model before falling back. */
 const FM_TIMEOUT_MS = 12_000;
 
@@ -68,7 +73,10 @@ async function callModel(url: string, args: GenerateAssistantAnswerArgs): Promis
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(FM_TOKEN ? { "x-fm-token": FM_TOKEN } : {}),
+      },
       body: JSON.stringify({
         system: ASSISTANT_SYSTEM_PROMPT,
         question: args.userMessage,
