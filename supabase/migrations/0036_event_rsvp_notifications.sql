@@ -2,15 +2,17 @@
 -- Optional notifications when a member RSVPs "going" to an event. Depends on
 -- 0030 (notifications feed + _notify), 0034 (unified push), 0035 (event_attendance).
 --
--- Audience: EVERYONE (minus the person who RSVP'd) — the same "the whole resort
--- wants to know who's coming" shape as new_post. Gated per-recipient on
--- notif_types (in-app Activity feed) and, for a phone buzz, on push_types via the
--- mini's push-sender. So it's fully optional: a member turns it off in either
--- list and stops hearing about it.
+-- OPT-IN: 'event_rsvp' is a valid notif_types / push_types category, but it is NOT
+-- in any default and is NOT backfilled — members turn it on themselves via the
+-- "Event RSVPs" toggle in NotifPrefs (in-app feed) and/or PushToggle (phone push).
+-- The whole resort can get noisy on a popular event, so off-by-default is the
+-- right floor; a member who wants it opts in.
 --
--- Trigger policy: ONLY a fresh "going" — i.e. the first time a member's overall
--- status becomes 'going' for an event. Maybe / can't-make and later edits stay
--- silent, so the feed only carries the meaningful signal ("X is coming").
+-- Audience when on: EVERYONE who opted in (minus the person who RSVP'd) — the
+-- "the resort wants to know who's coming" shape, same as new_post.
+--
+-- Trigger policy: ONLY a fresh "going" — the first time a member's overall status
+-- becomes 'going' for an event. Maybe / can't-make and later edits stay silent.
 --
 -- Why this lives in the RPC (not a trigger on event_attendance, like the other
 -- feeds): the fan-out needs the event's TITLE, and attendance is keyed by a
@@ -20,32 +22,6 @@
 -- both the client-supplied title and the prior status, so it does the fan-out.
 --
 -- Apply in the Supabase SQL editor after 0035.
-
--- ── notif_types: add 'event_rsvp' (default + backfill) ───────────────────────
--- New members get it on by default; existing members keep their current picks
--- but gain the new kind (opt-out), so the Activity feed shows RSVPs for everyone
--- until they turn it off — mirrors how 0033 added the cabin kinds.
-alter table public.profiles
-  alter column notif_types set default
-  '{post_comment,post_reply,post_mention,post_tag,post_reaction,new_post,chat_mention,committee_join,cabin_request,cabin_decision,event_rsvp}';
-
-update public.profiles
-  set notif_types = array(
-    select distinct e from unnest(notif_types || '{event_rsvp}'::text[]) e
-  )
-  where not (notif_types @> '{event_rsvp}'::text[]);
-
--- ── push_types: backfill 'event_rsvp' for members who already use push ───────
--- push_types is the phone-buzz list (0034). New members get the full set
--- (DEFAULT_PUSH_TYPES, client-side) on the first-run prompt; here we add the new
--- category to anyone who ALREADY has push on (non-empty), so existing users get
--- the buzz without re-toggling. Members with push off ('{}') are left alone.
-update public.profiles
-  set push_types = array(
-    select distinct e from unnest(push_types || '{event_rsvp}'::text[]) e
-  )
-  where push_types <> '{}'
-    and not (push_types @> '{event_rsvp}'::text[]);
 
 -- ── set_event_attendance: upsert my RSVP + fan out a fresh "going" ───────────
 -- Replaces the 0035 (text,text,jsonb) version with a 4-arg one that also takes
@@ -87,7 +63,7 @@ begin
   do update set status = excluded.status, days = excluded.days, updated_at = now();
 
   -- Notify the resort when someone newly marks themselves going. _notify skips
-  -- the actor and respects each recipient's notif_types.
+  -- the actor and respects each recipient's notif_types (so only opt-ins hear it).
   if p_status = 'going' and v_prev is distinct from 'going' then
     select coalesce(display_name, 'Someone') into v_actor_name
       from public.profiles where id = v_actor;

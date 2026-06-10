@@ -63,7 +63,6 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "post_tag",
   "post_mention",
   "post_reply",
-  "event_rsvp",
   "chat",
 ];
 
