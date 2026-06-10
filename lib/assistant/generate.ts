@@ -15,7 +15,7 @@
 // quotes what retrieval handed it), so the whole feature is demoable today and
 // upgrades to real generation by editing only this file.
 
-import type { GenerateAssistantAnswerArgs } from "@/lib/assistant/types";
+import type { GenerateAssistantAnswerArgs, ContextRecord } from "@/lib/assistant/types";
 
 /** The model's instructions. Used verbatim by whichever provider is wired in
  *  (passed to the FM service / cloud call). Kept here so prompt + transport
@@ -40,8 +40,11 @@ const FM_URL = process.env.ASSISTANT_FM_URL || process.env.NEXT_PUBLIC_ASSISTANT
  *  NEXT_PUBLIC, or it would ship in the browser bundle. Unset → no header sent. */
 const FM_TOKEN = process.env.ASSISTANT_FM_TOKEN;
 
-/** Hard ceiling on how long we wait for the model before falling back. */
-const FM_TIMEOUT_MS = 12_000;
+/** Whole-response ceiling (blocking path) / overall guard (streaming). The
+ *  on-device M1 model is ~5–12s and variable, so 12s was too tight — it dropped
+ *  good answers to the stub. 30s leaves headroom; streaming surfaces tokens long
+ *  before this fires. */
+const FM_TIMEOUT_MS = 30_000;
 
 const FALLBACK =
   "I couldn't find that in the app data. Try asking about a specific person, date, role, or location.";
@@ -80,7 +83,7 @@ async function callModel(url: string, args: GenerateAssistantAnswerArgs): Promis
       body: JSON.stringify({
         system: ASSISTANT_SYSTEM_PROMPT,
         question: args.userMessage,
-        context: args.contextRecords.map((r) => `[${r.kind}:${r.id}] ${r.label}: ${r.text}`).join("\n"),
+        context: formatContext(args.contextRecords),
       }),
       signal: controller.signal,
     });
@@ -89,6 +92,105 @@ async function callModel(url: string, args: GenerateAssistantAnswerArgs): Promis
     const answer = data.answer?.trim();
     if (!answer) throw new Error("empty answer");
     return answer;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Bound what the model sees. The on-device M1 model is prefill-bound, so a broad
+// question that retrieves many verbose records (e.g. "what's the schedule" pulls
+// the whole week) otherwise blows past the timeout. Cap the record count and trim
+// each to its front-loaded facts. The grounded-stub fallback still uses the full
+// records, so the displayed answer for list questions stays complete.
+const MODEL_MAX_RECORDS = 8;
+const MODEL_MAX_RECORD_CHARS = 200;
+function formatContext(records: ContextRecord[]): string {
+  return records
+    .slice(0, MODEL_MAX_RECORDS)
+    .map((r) => {
+      const text =
+        r.text.length > MODEL_MAX_RECORD_CHARS ? `${r.text.slice(0, MODEL_MAX_RECORD_CHARS)}…` : r.text;
+      return `[${r.kind}:${r.id}] ${r.label}: ${text}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Streaming generation. Yields text deltas as the model produces them (the FM
+ * service streams cumulative snapshots; we forward the new text). Falls back to
+ * the grounded stub when no model is wired, or if the stream fails/times out
+ * BEFORE any token — but keeps a partial answer if tokens already arrived.
+ */
+export async function* streamAssistantAnswer(
+  args: GenerateAssistantAnswerArgs,
+): AsyncGenerator<string> {
+  if (args.contextRecords.length === 0) {
+    yield FALLBACK;
+    return;
+  }
+  if (FM_URL) {
+    let yielded = false;
+    try {
+      for await (const delta of streamFromModel(FM_URL, args)) {
+        yielded = true;
+        yield delta;
+      }
+      return;
+    } catch {
+      if (yielded) return; // keep the partial answer rather than discarding it
+    }
+  }
+  yield groundedStub(args);
+}
+
+/** Consume the FM service's SSE stream (`data: {"delta":"..."}` … `event: done`),
+ *  yielding each text delta. Aborts the whole stream after FM_TIMEOUT_MS. */
+async function* streamFromModel(
+  url: string,
+  args: GenerateAssistantAnswerArgs,
+): AsyncGenerator<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FM_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${url}/stream`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(FM_TOKEN ? { "x-fm-token": FM_TOKEN } : {}),
+      },
+      body: JSON.stringify({
+        system: ASSISTANT_SYSTEM_PROMPT,
+        question: args.userMessage,
+        context: formatContext(args.contextRecords),
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`FM stream ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) >= 0) {
+        const evt = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let event = "message";
+        let data = "";
+        for (const line of evt.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (event === "done") return;
+        if (event === "error") throw new Error("FM stream error");
+        if (data) {
+          const parsed = JSON.parse(data) as { delta?: string };
+          if (parsed.delta) yield parsed.delta;
+        }
+      }
+    }
   } finally {
     clearTimeout(timer);
   }
