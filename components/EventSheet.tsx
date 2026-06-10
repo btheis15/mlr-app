@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent } from "@/lib/types";
-import { formatDate, formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
-import { deleteEvent, effectiveStatus, eventDays, isOngoing } from "@/lib/events";
+import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
+import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
@@ -43,25 +43,30 @@ export function EventSheet({
   const { closing, close } = useSheetDismiss(onClose);
   const [deleting, setDeleting] = useState(false);
   const days = eventDays(event.startDate, event.endDate);
-  const showDayPicker = event.dayRsvp && days.length > 1;
+  const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
-  const [pickDays, setPickDays] = useState(Boolean(mine?.days && Object.keys(mine.days).length));
 
-  // The displayed status for one day: an explicit choice, else inherited from a
-  // top-level "Going" (so marking the whole event Going lights every day).
-  const dayValue = (day: string): AttendanceStatus | null =>
-    mine?.days?.[day] ?? (myEffective === "going" ? "going" : null);
+  // Per-day going roster (visible to everyone) + the viewer's own going days.
+  const byDay = showDays ? goingByDay(summary.going, days) : {};
+  const mineDays = showDays ? myGoingDays(mine, days) : new Set<string>();
+  const allDays = mineDays.size === days.length;
 
-  const onDayChange = (day: string, status: AttendanceStatus) => {
-    const base: Record<string, AttendanceStatus> =
-      mine?.days && Object.keys(mine.days).length
-        ? { ...mine.days }
-        : myEffective === "going"
-          ? Object.fromEntries(days.map((d) => [d, "going" as AttendanceStatus]))
-          : {};
-    base[day] = status;
-    // Roll the per-day picks up to the overall status (going if any day is going).
-    onSetStatus(effectiveStatus("not_going", base), base);
+  // Toggle one day on/off for the viewer. Tapping from no-RSVP marks just that day;
+  // all days selected collapses back to a plain "going" (no per-day map = whole
+  // week); none selected means they're not coming. We roll per-day picks up to the
+  // overall status so the overview/counts stay in sync.
+  const toggleDay = (day: string) => {
+    const next = new Set(mineDays);
+    if (next.has(day)) next.delete(day);
+    else next.add(day);
+    if (next.size === 0) return onSetStatus("not_going", null);
+    if (next.size === days.length) return onSetStatus("going", null);
+    onSetStatus(
+      "going",
+      Object.fromEntries(
+        days.map((d) => [d, (next.has(d) ? "going" : "not_going") as AttendanceStatus]),
+      ),
+    );
   };
 
   const remove = async () => {
@@ -131,36 +136,70 @@ export function EventSheet({
           {/* RSVP */}
           <div className="space-y-2">
             <SectionLabel>Are you coming?</SectionLabel>
-            <AttendanceControl value={myEffective} onChange={(s) => onSetStatus(s, null)} />
+            <AttendanceControl
+              value={myEffective}
+              onChange={(s) => onSetStatus(s, null)}
+              hideMaybe={event.dayRsvp}
+            />
 
-            {showDayPicker && (
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => setPickDays((v) => !v)}
-                  aria-expanded={pickDays}
-                  className="press text-xs font-medium text-primary"
-                >
-                  {pickDays ? "Hide specific days" : "Pick specific days ›"}
-                </button>
-                {pickDays && (
-                  <div className="mt-2 space-y-2 rounded-xl bg-card p-3 ring-1 ring-border">
-                    <p className="text-xs text-foreground/55">
-                      Going at least one day counts as <span className="font-medium text-primary">Going</span> overall.
-                    </p>
-                    {days.map((day) => (
-                      <div key={day} className="space-y-1">
-                        <p className="px-0.5 text-xs font-medium text-foreground/70">
-                          {formatDate(new Date(`${day}T00:00:00`))}
-                        </p>
-                        <AttendanceControl size="sm" value={dayValue(day)} onChange={(s) => onDayChange(day, s)} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {showDays && (
+              <p className="px-0.5 pt-0.5 text-xs text-foreground/55">
+                <span className="font-medium text-primary">Going</span> signs you up for all {days.length} days.
+                Only around part of the week? Just tap the days you&rsquo;ll be there.
+              </p>
             )}
           </div>
+
+          {/* Per-day breakdown — interactive day toggles + counts everyone can see */}
+          {showDays && (
+            <div className="space-y-2">
+              <SectionLabel>
+                {mineDays.size === 0
+                  ? "Pick your days"
+                  : allDays
+                    ? "You’re here all week"
+                    : `You’re here ${mineDays.size} of ${days.length} days`}
+              </SectionLabel>
+              <div className="grid grid-flow-col auto-cols-[minmax(54px,1fr)] gap-1.5 overflow-x-auto pb-1">
+                {days.map((day) => {
+                  const d = new Date(`${day}T00:00:00`);
+                  const count = byDay[day]?.length ?? 0;
+                  const on = mineDays.has(day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(day)}
+                      aria-pressed={on}
+                      aria-label={`${formatDateLong(day)} — ${count} going. ${on ? "You’re here" : "Tap if you’ll be here"}.`}
+                      className={`press flex flex-col items-center gap-0.5 rounded-xl py-2 ring-1 ${
+                        on ? "bg-primary text-white ring-primary" : "bg-card text-foreground/70 ring-border"
+                      }`}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wide opacity-75">
+                        {d.toLocaleDateString(undefined, { weekday: "short" })}
+                      </span>
+                      <span className="text-base font-bold leading-none">{d.getDate()}</span>
+                      <span
+                        className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold ${
+                          on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${on ? "bg-white/80" : count > 0 ? "bg-primary" : "bg-foreground/25"}`}
+                          aria-hidden
+                        />
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="px-0.5 text-[11px] text-foreground/45">
+                Numbers show how many are here each day · tap a day to add or drop it.
+              </p>
+            </div>
+          )}
 
           {/* Who's coming */}
           <div className="space-y-2">
@@ -170,7 +209,7 @@ export function EventSheet({
             ) : (
               <div className="space-y-3">
                 <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
-                <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />
+                {!event.dayRsvp && <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />}
                 <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
               </div>
             )}
