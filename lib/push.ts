@@ -90,7 +90,7 @@ export async function ensureServiceWorker(): Promise<void> {
  * Returns true if the device is now subscribed; false if permission was denied
  * or push isn't available. Throws only on unexpected failures.
  */
-export async function enablePush(): Promise<boolean> {
+export async function enablePush(opts?: { forceFresh?: boolean }): Promise<boolean> {
   if (!isPushSupported() || !supabase) return false;
   if (Notification.permission === "denied") return false;
 
@@ -108,6 +108,16 @@ export async function enablePush(): Promise<boolean> {
   const reg = await navigator.serviceWorker.ready;
 
   let sub = await reg.pushManager.getSubscription();
+  // forceFresh: drop any existing subscription and mint a new one. iOS can hand
+  // back a PushSubscription object whose token is already dead on Apple's side
+  // (Apple still returns 201 for it, so it silently swallows every push). Reusing
+  // it re-saves the same dead endpoint. When the member is explicitly (re-)turning
+  // notifications on, we can't trust the old object — unsubscribe it so subscribe()
+  // below produces a brand-new, deliverable endpoint.
+  if (sub && opts?.forceFresh) {
+    try { await sub.unsubscribe(); } catch { /* ignore */ }
+    sub = null;
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
@@ -135,6 +145,35 @@ export async function enablePush(): Promise<boolean> {
     { onConflict: "endpoint" },
   );
   return !error;
+}
+
+/**
+ * Silently keep THIS device's subscription fresh — call on every app open and
+ * when the app returns from the background.
+ *
+ * Why this exists: iOS rotates or drops a PWA's push token on its own (after an
+ * OS update, a Home-Screen icon re-add, or simply weeks idle) while Apple keeps
+ * returning HTTP 201 for the now-dead token — so a subscription saved once goes
+ * SILENTLY dead and every notification is accepted-but-never-delivered. Re-running
+ * subscribe() on open replaces a rotated token with the live one and re-upserts it
+ * (refreshing last_seen_at), so the row in `push_subscriptions` always points at a
+ * deliverable endpoint. If iOS dropped the subscription entirely, getSubscription()
+ * returns null inside enablePush() and we create a fresh one.
+ *
+ * No-ops unless push is supported, permission is ALREADY granted, and (on iOS) the
+ * app is installed — so it never shows a permission prompt. Best-effort: failures
+ * are swallowed. Caller should only invoke this when the member actually wants push
+ * (push_types is non-empty), so we don't resurrect a subscription they turned off.
+ */
+export async function reconcilePush(): Promise<void> {
+  if (!isPushSupported() || !supabase) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (isIos() && !isStandalone()) return;
+  try {
+    await enablePush();
+  } catch {
+    /* best-effort; the next app open tries again */
+  }
 }
 
 /** Remove this device's subscription (browser + Supabase). Safe to call anytime. */

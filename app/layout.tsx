@@ -4,6 +4,7 @@ import "./globals.css";
 import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
 import { PushPrompt } from "@/components/PushPrompt";
+import { PushKeepAlive } from "@/components/PushKeepAlive";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
@@ -79,6 +80,7 @@ export default async function RootLayout({
           <IdentityProvider>
             <InstallHint />
             <PushPrompt />
+            <PushKeepAlive />
           <main
             className="mx-auto w-full max-w-md px-4 pt-2"
             style={{

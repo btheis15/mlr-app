@@ -38,6 +38,8 @@ export function PushToggle() {
   const [needsInstall, setNeedsInstall] = useState(false);
   const [busy, setBusy] = useState<PushType | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const [fixMsg, setFixMsg] = useState<string | null>(null);
 
   const types = user?.pushTypes ?? [];
   const has = (t: PushType) => types.includes(t);
@@ -73,9 +75,12 @@ export function PushToggle() {
     }
     if (types.length === 0) {
       // Turning the FIRST one on → need a device subscription (asks permission).
+      // forceFresh: mint a brand-new subscription rather than reuse whatever the
+      // browser still holds — iOS can hand back a dead-but-present token that
+      // silently swallows pushes, so "turn on" must always produce a live one.
       setBusy(t);
       try {
-        const ok = await enablePush();
+        const ok = await enablePush({ forceFresh: true });
         if (ok) {
           await updateUser({ pushTypes: next });
         } else {
@@ -95,6 +100,33 @@ export function PushToggle() {
     }
     // Already subscribed — just changing which categories are on.
     await updateUser({ pushTypes: next });
+  };
+
+  // Recovery: re-register THIS device from scratch. Use when a member has the
+  // right categories ticked but still isn't getting notifications — the usual
+  // cause is a dead device subscription (iOS rotated/dropped the push token after
+  // an app re-install or OS update; Apple keeps 201-ing the dead token so pushes
+  // vanish silently). Toggling categories won't fix that — it never re-subscribes
+  // once any category is already on — so this forces a brand-new subscription.
+  const reRegister = async () => {
+    if (fixing || busy) return;
+    setFixing(true);
+    setFixMsg(null);
+    try {
+      const ok = await enablePush({ forceFresh: true });
+      setFixMsg(
+        ok
+          ? "✓ This device is re-registered — you should get notifications again."
+          : isIos() && !isStandalone()
+            ? "Add the app to your Home Screen first, then try again."
+            : "Couldn't re-register — allow notifications when prompted (or in your browser/iOS settings).",
+      );
+    } catch (e) {
+      const name = e instanceof Error && e.name ? ` (${e.name})` : "";
+      setFixMsg(`Couldn't re-register this device${name}.`);
+    } finally {
+      setFixing(false);
+    }
   };
 
   if (!supported) {
@@ -139,6 +171,20 @@ export function PushToggle() {
       </div>
       {!anyOn && <p className="px-1 text-xs text-foreground/45">All off — no push notifications on this device.</p>}
       {msg && <p className="px-1 text-xs text-accent">{msg}</p>}
+
+      {anyOn && (
+        <div className="px-1 pt-1">
+          <button
+            type="button"
+            onClick={reRegister}
+            disabled={fixing}
+            className="press text-xs font-medium text-primary underline-offset-2 hover:underline disabled:opacity-60"
+          >
+            {fixing ? "Re-registering…" : "Not getting notifications? Re-register this device"}
+          </button>
+          {fixMsg && <p className="mt-1 text-xs text-foreground/60">{fixMsg}</p>}
+        </div>
+      )}
       {needsInstall && !msg && (
         <p className="px-1 text-xs text-foreground/45">
           On iPhone/iPad, add the app to your Home Screen (Share → Add to Home Screen) so notifications can reach you.

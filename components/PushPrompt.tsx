@@ -47,7 +47,7 @@ export function PushPrompt() {
     setBusy(true);
     setMsg(null);
     try {
-      const ok = await enablePush();
+      const ok = await enablePush({ forceFresh: true });
       if (ok) {
         await updateUser({ pushTypes: DEFAULT_PUSH_TYPES, pushPrompted: true });
         setShow(false);
