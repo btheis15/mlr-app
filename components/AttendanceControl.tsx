@@ -2,11 +2,13 @@
 
 import type { AttendanceStatus } from "@/lib/types";
 
-// The Facebook-style RSVP: a 3-way segmented control (Going / Maybe / Can't make).
+// The Facebook-style RSVP: a segmented control (Going / Maybe / Can't make).
 // Presentational only — the parent decides what a tap does (write the RSVP, or
 // prompt sign-in for a guest). The selected option fills with its solid color +
 // white text; the rest stay quiet on white. All solid, LIGHT-MODE-safe colors
 // (never a dark translucent surface tint — see globals.css transparency rule).
+// `hideMaybe` drops the middle option for day-by-day planning (Family Fest), where
+// the question is just which days you'll be there.
 
 const OPTIONS: { value: AttendanceStatus; label: string; on: string }[] = [
   { value: "going", label: "Going", on: "bg-primary text-white ring-primary" },
@@ -19,18 +21,26 @@ export function AttendanceControl({
   onChange,
   size = "md",
   disabled = false,
+  hideMaybe = false,
   className = "",
 }: {
   value: AttendanceStatus | null;
   onChange: (status: AttendanceStatus) => void;
   size?: "sm" | "md";
   disabled?: boolean;
+  /** Drop the "Maybe" option (Family Fest planning is Going / Can't make only). */
+  hideMaybe?: boolean;
   className?: string;
 }) {
   const pad = size === "sm" ? "py-1.5 text-xs" : "py-2.5 text-sm";
+  const options = hideMaybe ? OPTIONS.filter((o) => o.value !== "maybe") : OPTIONS;
   return (
-    <div className={`grid grid-cols-3 gap-2 ${className}`} role="group" aria-label="Your RSVP">
-      {OPTIONS.map((o) => {
+    <div
+      className={`grid gap-2 ${hideMaybe ? "grid-cols-2" : "grid-cols-3"} ${className}`}
+      role="group"
+      aria-label="Your RSVP"
+    >
+      {options.map((o) => {
         const on = value === o.value;
         return (
           <button

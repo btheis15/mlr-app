@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useEvents } from "@/lib/hooks";
-import { EMPTY_SUMMARY, effectiveStatus } from "@/lib/events";
+import { EMPTY_SUMMARY, effectiveStatus, eventDays, goingByDay } from "@/lib/events";
+import { formatDateLong } from "@/lib/format";
 import { useIdentity } from "@/components/IdentityProvider";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { EventSheet } from "@/components/EventSheet";
 
-// The Family Fest RSVP, surfaced near the top of the Family Fest hub: tap Going /
-// Maybe / Can't make, optionally pick which days, and see who's coming (via the
-// shared EventSheet). Scoped to the synthesized Family Fest event so it's the same
-// attendance shown on Home and /events. Renders nothing until mounted/loaded.
+// The Family Fest RSVP, surfaced near the top of the Family Fest hub: tap Going or
+// Can't make (no Maybe for fest planning), see how many are here each day, and tap
+// through to pick your days / see who's coming (the shared EventSheet). Scoped to
+// the synthesized Family Fest event so it's the same attendance shown on Home and
+// /events. Renders nothing until mounted/loaded.
 const FEST_EVENT_ID = "family-fest-2026";
 
 export function FestRsvp() {
@@ -30,9 +32,12 @@ export function FestRsvp() {
   const c = summary.counts;
   const counts = [
     c.going ? `${c.going} going` : null,
-    c.maybe ? `${c.maybe} maybe` : null,
     c.notGoing ? `${c.notGoing} can’t make` : null,
   ].filter(Boolean);
+
+  // Per-day going counts (everyone sees these), tap-through to the day picker.
+  const days = event.dayRsvp ? eventDays(event.startDate, event.endDate) : [];
+  const byDay = goingByDay(summary.going, days);
 
   return (
     <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
@@ -43,18 +48,56 @@ export function FestRsvp() {
         </button>
       </div>
 
-      <AttendanceControl value={myStatus} onChange={(s) => setStatus(event.id, s)} />
+      <AttendanceControl value={myStatus} onChange={(s) => setStatus(event.id, s)} hideMaybe />
 
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-foreground/55">
-          {counts.length ? counts.join(" · ") : "No RSVPs yet — be the first"}
-        </p>
-        {event.dayRsvp && (
-          <button onClick={() => setOpen(true)} className="press shrink-0 text-xs font-medium text-primary">
-            Pick specific days ›
-          </button>
-        )}
-      </div>
+      {days.length > 1 && (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="See and pick which days you’ll be at Family Fest"
+          className="press block w-full text-left"
+        >
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-xs text-foreground/55">
+              {myStatus === "going" ? "Which days you’ll be here" : "Who’s here each day"}
+            </span>
+            <span className="shrink-0 text-xs font-medium text-primary">Pick your days ›</span>
+          </div>
+          <div className="grid grid-flow-col auto-cols-[minmax(48px,1fr)] gap-1.5 overflow-x-auto">
+            {days.map((day) => {
+              const d = new Date(`${day}T00:00:00`);
+              const count = byDay[day]?.length ?? 0;
+              const on =
+                myStatus === "going" &&
+                (!m?.days || Object.keys(m.days).length === 0 || m.days[day] === "going");
+              return (
+                <div
+                  key={day}
+                  title={`${formatDateLong(day)} — ${count} going`}
+                  className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 ring-1 ${
+                    on ? "bg-primary text-white ring-primary" : "bg-background text-foreground/70 ring-border"
+                  }`}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wide opacity-75">
+                    {d.toLocaleDateString(undefined, { weekday: "short" })}
+                  </span>
+                  <span className="text-sm font-bold leading-none">{d.getDate()}</span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </button>
+      )}
+
+      <p className="text-xs text-foreground/55">
+        {counts.length ? counts.join(" · ") : "No RSVPs yet — be the first"}
+      </p>
 
       {open && (
         <EventSheet

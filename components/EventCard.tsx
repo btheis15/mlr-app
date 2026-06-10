@@ -23,8 +23,9 @@ function whenLabel(event: ResortEvent, today: string): string {
   return relativeDays(today, event.startDate) ?? "";
 }
 
-/** "● 12 going · 3 maybe · 2 can't make", with colored dots; a quiet hint when empty. */
-function CountChips({ counts }: { counts: AttendanceSummary["counts"] }) {
+/** "● 12 going · 3 maybe · 2 can't make", with colored dots; a quiet hint when empty.
+ *  `hideMaybe` drops the maybe chip for day-by-day events (Family Fest). */
+function CountChips({ counts, hideMaybe = false }: { counts: AttendanceSummary["counts"]; hideMaybe?: boolean }) {
   if (counts.going === 0 && counts.maybe === 0 && counts.notGoing === 0) {
     return <span className="text-xs text-foreground/40">No RSVPs yet — be the first</span>;
   }
@@ -36,7 +37,7 @@ function CountChips({ counts }: { counts: AttendanceSummary["counts"] }) {
           {counts.going} going
         </span>
       )}
-      {counts.maybe > 0 && (
+      {!hideMaybe && counts.maybe > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-sun" aria-hidden />
           {counts.maybe} maybe
@@ -128,12 +129,12 @@ export function EventCard({
       </button>
 
       <div className="mt-3">
-        <CountChips counts={summary.counts} />
+        <CountChips counts={summary.counts} hideMaybe={event.dayRsvp} />
       </div>
 
       {onSetStatus && (
         <div className="mt-3">
-          <AttendanceControl value={myStatus} onChange={onSetStatus} />
+          <AttendanceControl value={myStatus} onChange={onSetStatus} hideMaybe={event.dayRsvp} />
         </div>
       )}
     </div>

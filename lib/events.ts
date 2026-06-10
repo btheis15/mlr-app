@@ -169,6 +169,31 @@ export function summarize(rows: EventAttendance[]): AttendanceSummary {
   };
 }
 
+/** For a multi-day day-RSVP event, the going roster split per ISO day. A member
+ *  who's "going" with no per-day map is in for the whole run (counts on every
+ *  day); one with a map counts only on the days they marked going. Pass an event's
+ *  `summary.going` (already day-aware) so a maybe/can't-make never leaks in. Drives
+ *  the per-day breakdown everyone can see and the day toggles when you RSVP. */
+export function goingByDay(going: EventAttendance[], days: string[]): Record<string, EventAttendance[]> {
+  const out: Record<string, EventAttendance[]> = {};
+  for (const day of days) {
+    out[day] = going.filter((p) =>
+      p.days && Object.keys(p.days).length ? p.days[day] === "going" : true,
+    );
+  }
+  return out;
+}
+
+/** The set of days a member is going (for the RSVP day toggles): their explicit
+ *  "going" days if they picked any, else every day when they're going overall (the
+ *  whole-week default), else none. */
+export function myGoingDays(mine: EventAttendance | null, days: string[]): Set<string> {
+  if (mine?.days && Object.keys(mine.days).length) {
+    return new Set(days.filter((d) => mine.days![d] === "going"));
+  }
+  return new Set(effectiveStatus(mine?.status ?? "not_going", mine?.days) === "going" ? days : []);
+}
+
 /** Set/change my RSVP to an event. `days` is an optional per-day map for day-RSVP
  *  events. Returns an error message on failure. */
 export async function setAttendance(
