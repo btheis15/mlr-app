@@ -43,6 +43,12 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
 
+  // Beta-only while the assistant is being trialed. The UI hides the button for
+  // non-beta members; this enforces it server-side too. is_beta_tester() checks
+  // the caller's profiles.beta_tester (migration 0029) via auth.uid().
+  const { data: isBeta } = await supabase.rpc("is_beta_tester");
+  if (!isBeta) return NextResponse.json({ error: "beta_only" }, { status: 403 });
+
   if (rateLimited(user.id)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   const { message } = (await req.json()) as AssistantRequest;
