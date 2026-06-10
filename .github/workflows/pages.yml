@@ -27,6 +27,11 @@ jobs:
           node-version: 20
       - name: Install deps
         run: npm install
+      - name: Drop server routes from the static export
+        # `output: export` (static Pages build) can't host a POST route handler.
+        # The real assistant route ships on Vercel; Pages keeps the in-browser
+        # grounded-stub assistant via lib/assistant/client.ts's fallback.
+        run: rm -rf app/api
       - name: Build static export
         env:
           # Serves the project site at https://<user>.github.io/mlr-app/

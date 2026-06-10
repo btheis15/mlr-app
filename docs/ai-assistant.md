@@ -63,18 +63,24 @@ model is reached.
   data, the chat UI (button, panel, mic via Web Speech with graceful fallback,
   read-aloud via Speech Synthesis, loading/error states), the sign-in gate, and
   the chats-excluded allow-list. Grounded stub answers.
-- **Phase 1.5 (server route, Vercel-only):** move orchestration behind
-  `POST /api/assistant` so the server validates the token and (optionally) reads
-  **posts** + the **member directory** for contact lookups as the signed-in user.
-  See the route wrapper below.
-- **Phase 2:** stand up the Swift Foundation Models service on the mini and set
-  `ASSISTANT_FM_URL`.
+- **Phase 1.5 (server route, Vercel-only) — implemented:** orchestration runs
+  behind `POST /api/assistant` (`app/api/assistant/route.ts`), which validates the
+  Supabase token and rate-limits per user. The UI reaches it through
+  `lib/assistant/client.ts`, which falls back to the in-browser pipeline on the
+  static Pages build. Reading **posts** + the **member directory** as the signed-in
+  user remains an optional extension.
+- **Phase 2 — running on the mini:** the Swift Foundation Models service
+  (`media-server/fm-service/`) runs as a LaunchAgent (`com.mlr.fm-service`, bound
+  to `127.0.0.1:8788`). Set `ASSISTANT_FM_URL` to its tunnel URL to switch
+  generation from the grounded stub to the on-device model.
 
-## Server route (Vercel only — not committed as a live route)
+## Server route (Vercel only)
 
-The GitHub Pages build uses `output: "export"` (static), which can't host a POST
-route handler. So the endpoint ships on the **Vercel** deploy only. Drop this in
-as `app/api/assistant/route.ts` on a Vercel-only branch/deploy:
+Committed at `app/api/assistant/route.ts`. The GitHub Pages build uses
+`output: "export"` (static), which can't host a POST route handler, so the deploy
+workflow (`.github/workflows/pages.yml`) strips `app/api` before the static export
+— the route ships on the **Vercel** deploy only, and Pages keeps the in-browser
+grounded-stub assistant via the `client.ts` fallback. The handler:
 
 ```ts
 // app/api/assistant/route.ts  (Vercel runtime only — breaks `output: export`)
@@ -121,7 +127,9 @@ export async function POST(req: Request) {
 }
 ```
 
-When the route exists, switch `askAssistant` in `AssistantChat` to `fetch("/api/assistant", …)` with the Supabase access token in the `Authorization` header.
+This is wired: `components/AssistantChat.tsx` calls `askAssistantClient`
+(`lib/assistant/client.ts`), which POSTs to `/api/assistant` with the Supabase
+access token and falls back to the in-browser pipeline when there's no server.
 
 ## Environment variables
 

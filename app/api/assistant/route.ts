@@ -1,0 +1,51 @@
+// app/api/assistant/route.ts — Vercel runtime only.
+//
+// The server broker for "Ask MLR": it validates the Supabase session token,
+// rate-limits per user, then runs the same `askAssistant` pipeline (intent +
+// chats-excluded retrieval + generation). Generation delegates to the Mac mini's
+// Foundation Models service when ASSISTANT_FM_URL is set (see lib/assistant/
+// generate.ts), falling back to the grounded stub otherwise.
+//
+// This route is EXCLUDED from the GitHub Pages static export — `output: export`
+// can't host a POST handler — by the "Drop server routes" step in
+// .github/workflows/pages.yml. The Pages site keeps the in-browser assistant via
+// the lib/assistant/client.ts fallback.
+
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { askAssistant } from "@/lib/assistant";
+import type { AssistantRequest } from "@/lib/assistant/types";
+
+export const runtime = "nodejs";
+
+// Tiny in-memory limiter (swap for a shared store if you ever run >1 instance).
+const hits = new Map<string, number[]>();
+function rateLimited(key: string, max = 20, windowMs = 60_000) {
+  const now = Date.now();
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  recent.push(now);
+  hits.set(key, recent);
+  return recent.length > max;
+}
+
+export async function POST(req: Request) {
+  // Guardrail 1 — verify the Supabase session token server-side.
+  const token = req.headers.get("authorization")?.replace(/^Bearer /, "");
+  if (!token) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } },
+  );
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
+
+  if (rateLimited(user.id)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+
+  const { message } = (await req.json()) as AssistantRequest;
+  const res = await askAssistant({ message, signedIn: true, userId: user.id });
+  return NextResponse.json(res);
+}
