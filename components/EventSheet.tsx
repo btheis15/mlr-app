@@ -25,6 +25,7 @@ export function EventSheet({
   isAdmin = false,
   onEdit,
   onChanged,
+  initialDay = null,
 }: {
   event: ResortEvent;
   summary: AttendanceSummary;
@@ -39,12 +40,16 @@ export function EventSheet({
   onEdit?: () => void;
   /** Reload the parent after a delete. */
   onChanged?: () => void;
+  /** Pre-select a day in the "Who's coming" breakdown (deep-link from a day chip). */
+  initialDay?: string | null;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const [deleting, setDeleting] = useState(false);
   const days = eventDays(event.startDate, event.endDate);
   const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
+  // "Who's coming" can be filtered to one day's participants (null = everyone).
+  const [dayFilter, setDayFilter] = useState<string | null>(initialDay);
 
   // Per-day going roster (visible to everyone) + the viewer's own going days.
   const byDay = showDays ? goingByDay(summary.going, days) : {};
@@ -206,10 +211,47 @@ export function EventSheet({
             <SectionLabel>Who&rsquo;s coming</SectionLabel>
             {summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
               <p className="text-sm text-foreground/45">No RSVPs yet.</p>
+            ) : showDays ? (
+              <div className="space-y-3">
+                {/* Filter the roster to a single day's participants. */}
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+                  <DayFilterPill
+                    label="Everyone"
+                    count={summary.counts.going}
+                    active={dayFilter === null}
+                    onClick={() => setDayFilter(null)}
+                  />
+                  {days.map((day) => {
+                    const d = new Date(`${day}T00:00:00`);
+                    return (
+                      <DayFilterPill
+                        key={day}
+                        label={`${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getDate()}`}
+                        count={byDay[day]?.length ?? 0}
+                        active={dayFilter === day}
+                        onClick={() => setDayFilter(day)}
+                      />
+                    );
+                  })}
+                </div>
+                {dayFilter === null ? (
+                  <div className="space-y-3">
+                    <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
+                    <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
+                  </div>
+                ) : (
+                  <RosterGroup
+                    label={`Here ${formatDateLong(dayFilter)}`}
+                    dotClass="bg-primary"
+                    people={byDay[dayFilter] ?? []}
+                    emptyText="No one’s marked this day yet."
+                  />
+                )}
+              </div>
             ) : (
               <div className="space-y-3">
                 <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
-                {!event.dayRsvp && <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />}
+                <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />
                 <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
               </div>
             )}
@@ -218,33 +260,74 @@ export function EventSheet({
   );
 }
 
+/** A scrollable day chip that filters the roster below. Shows its going count;
+ *  the active one fills with the primary color. */
+function DayFilterPill({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`press flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${
+        active ? "bg-primary text-white ring-primary" : "bg-card text-foreground/65 ring-border"
+      }`}
+    >
+      {label}
+      <span
+        className={`rounded-full px-1.5 text-[10px] ${
+          active ? "bg-white/25 text-white" : "bg-background text-foreground/55"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function RosterGroup({
   label,
   dotClass,
   people,
+  emptyText,
 }: {
   label: string;
   dotClass: string;
   people: EventAttendance[];
+  /** When set, render the header + this message instead of nothing on an empty group. */
+  emptyText?: string;
 }) {
-  if (people.length === 0) return null;
+  if (people.length === 0 && !emptyText) return null;
   return (
     <div className="space-y-1.5">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground/70">
         <span className={`h-2 w-2 rounded-full ${dotClass}`} aria-hidden />
-        {label} · {people.length}
+        {label}{people.length > 0 && ` · ${people.length}`}
       </p>
-      <div className="flex flex-wrap gap-1.5">
-        {people.map((p) => (
-          <span
-            key={p.userId}
-            className="inline-flex items-center gap-1.5 rounded-full bg-card py-1 pl-1 pr-2.5 ring-1 ring-border"
-          >
-            <Avatar name={p.name} url={p.avatarUrl} size={20} />
-            <PrivateName name={p.name} className="text-xs font-medium" />
-          </span>
-        ))}
-      </div>
+      {people.length === 0 ? (
+        <p className="text-sm text-foreground/45">{emptyText}</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {people.map((p) => (
+            <span
+              key={p.userId}
+              className="inline-flex items-center gap-1.5 rounded-full bg-card py-1 pl-1 pr-2.5 ring-1 ring-border"
+            >
+              <Avatar name={p.name} url={p.avatarUrl} size={20} />
+              <PrivateName name={p.name} className="text-xs font-medium" />
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
