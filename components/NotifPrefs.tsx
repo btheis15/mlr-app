@@ -13,6 +13,7 @@ const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: bo
   { value: "chat_mention", label: "Tagged in committee chat", desc: "When you're @mentioned in a committee chat" },
   { value: "committee_join", label: "Committee decisions", desc: "When your request to join a committee is approved or declined" },
   { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
+  { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "cabin_request", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
 ];
 

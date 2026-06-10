@@ -49,7 +49,8 @@ export type PushType =
   | "cabin_decision"
   | "post_tag"
   | "post_mention"
-  | "post_reply";
+  | "post_reply"
+  | "event_rsvp";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -80,6 +81,7 @@ export type NotifType =
   | "committee_join"
   | "cabin_request"
   | "cabin_decision"
+  | "event_rsvp"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -100,6 +102,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "committee_join",
   "cabin_request",
   "cabin_decision",
+  "event_rsvp",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
