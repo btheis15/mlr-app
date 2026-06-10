@@ -34,19 +34,19 @@ function CountChips({ counts, hideMaybe = false }: { counts: AttendanceSummary["
       {counts.going > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-primary" aria-hidden />
-          {counts.going} going
+          <span>{`${counts.going} going`}</span>
         </span>
       )}
       {!hideMaybe && counts.maybe > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-sun" aria-hidden />
-          {counts.maybe} maybe
+          <span>{`${counts.maybe} maybe`}</span>
         </span>
       )}
       {counts.notGoing > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-foreground/30" aria-hidden />
-          {counts.notGoing} can&rsquo;t make
+          <span>{`${counts.notGoing} can’t make`}</span>
         </span>
       )}
     </span>

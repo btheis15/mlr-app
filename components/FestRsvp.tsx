@@ -21,6 +21,12 @@ export function FestRsvp() {
   const { isAdmin } = useIdentity();
   const { events, summaries, mine, loading, setStatus } = useEvents();
   const [open, setOpen] = useState(false);
+  // Which day to open the sheet on (null = the overview / "Everyone").
+  const [focusDay, setFocusDay] = useState<string | null>(null);
+  const openSheet = (day: string | null = null) => {
+    setFocusDay(day);
+    setOpen(true);
+  };
 
   if (!today || loading) return null;
   const event = events.find((e) => e.id === FEST_EVENT_ID);
@@ -43,7 +49,7 @@ export function FestRsvp() {
     <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold">Are you coming to Family Fest?</p>
-        <button onClick={() => setOpen(true)} className="press shrink-0 text-xs font-medium text-primary">
+        <button onClick={() => openSheet()} className="press shrink-0 text-xs font-medium text-primary">
           Who&rsquo;s coming ›
         </button>
       </div>
@@ -51,16 +57,14 @@ export function FestRsvp() {
       <AttendanceControl value={myStatus} onChange={(s) => setStatus(event.id, s)} hideMaybe />
 
       {days.length > 1 && (
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="See and pick which days you’ll be at Family Fest"
-          className="press block w-full text-left"
-        >
+        <div>
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="text-xs text-foreground/55">
               {myStatus === "going" ? "Which days you’ll be here" : "Who’s here each day"}
             </span>
-            <span className="shrink-0 text-xs font-medium text-primary">Pick your days ›</span>
+            <button onClick={() => openSheet()} className="press shrink-0 text-xs font-medium text-primary">
+              Pick your days ›
+            </button>
           </div>
           <div className="grid grid-flow-col auto-cols-[minmax(48px,1fr)] gap-1.5 overflow-x-auto">
             {days.map((day) => {
@@ -70,10 +74,12 @@ export function FestRsvp() {
                 myStatus === "going" &&
                 (!m?.days || Object.keys(m.days).length === 0 || m.days[day] === "going");
               return (
-                <div
+                <button
                   key={day}
-                  title={`${formatDateLong(day)} — ${count} going`}
-                  className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 ring-1 ${
+                  type="button"
+                  onClick={() => openSheet(day)}
+                  aria-label={`${formatDateLong(day)} — ${count} going. Tap to see who’s here.`}
+                  className={`press flex flex-col items-center gap-0.5 rounded-xl py-1.5 ring-1 ${
                     on ? "bg-primary text-white ring-primary" : "bg-background text-foreground/70 ring-border"
                   }`}
                 >
@@ -88,11 +94,12 @@ export function FestRsvp() {
                   >
                     {count}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
-        </button>
+          <p className="mt-1 px-0.5 text-[11px] text-foreground/45">Tap a day to see who’s coming that day.</p>
+        </div>
       )}
 
       <p className="text-xs text-foreground/55">
@@ -108,6 +115,7 @@ export function FestRsvp() {
           onSetStatus={(s, days) => setStatus(event.id, s, days)}
           onClose={() => setOpen(false)}
           isAdmin={isAdmin}
+          initialDay={focusDay}
         />
       )}
     </section>
