@@ -1,7 +1,9 @@
 # Muskellunge Lake Resort (MLR)
 
-The year-round resort app — activities, dining, an embedded Family Fest hub, and
-resort chat — installable to your phone's home screen. **Light mode only**, built
+The year-round resort app — activities, dining, an embedded Family Fest hub,
+resort chat, and a signed-in **"Ask MLR" AI assistant** (answers from your resort
+info — never private chats; see [`docs/ai-assistant.md`](docs/ai-assistant.md)) —
+installable to your phone's home screen. **Light mode only**, built
 around the official **forest-green** Muskellunge Lake Resort logo (cabin in the
 pines, EST 1987) with vintage heritage from the original resort (Leo & Dorothy
 Theis · Fishing · Hunting · Boating · Tomahawk, WI).
