@@ -34,10 +34,23 @@ export function TabBar() {
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
-    const onResize = () => setKeyboardOpen(window.innerHeight - vv.height > 120);
-    onResize();
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
+    const check = () => setKeyboardOpen(window.innerHeight - vv.height > 120);
+    check();
+    vv.addEventListener("resize", check);
+    // On iOS the visualViewport fires a resize with wrong dimensions during the
+    // background→foreground transition, which locks the bar off-screen. Reset
+    // immediately when the app becomes visible, then re-check once settled.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setKeyboardOpen(false);
+        setTimeout(check, 300);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      vv.removeEventListener("resize", check);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   return (
