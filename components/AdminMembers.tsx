@@ -271,9 +271,9 @@ export function AdminMembers() {
                       <p className="truncate text-xs text-foreground/45">{m.email || m.household}</p>
                     )}
                   </div>
-                  {rpcReady && !isMe && (
+                  {rpcReady && (
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {editUnlocked && (
+                      {!isMe && editUnlocked && (
                         <button
                           onClick={() => setEditId(editId === m.id ? null : m.id)}
                           aria-label={`Edit ${name}'s information`}
@@ -283,11 +283,13 @@ export function AdminMembers() {
                           ✏️ Edit info
                         </button>
                       )}
+                      {/* Beta toggle works on your own row too — useful for an
+                          admin to add themselves to the beta group. */}
                       <button
                         onClick={() => setBeta(m, !m.beta_tester)}
                         disabled={busyId === m.id}
                         aria-label={m.beta_tester ? `Remove ${name} from beta testers` : `Make ${name} a beta tester`}
-                        title="Beta Tester — can receive admin test notifications"
+                        title="Beta Tester — sees features being trialed + admin test notifications"
                         className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
                           m.beta_tester
                             ? "bg-amber-500/15 text-amber-700 ring-amber-500/40"
@@ -296,18 +298,20 @@ export function AdminMembers() {
                       >
                         {busyId === m.id ? "…" : m.beta_tester ? "Beta ✓" : "Beta"}
                       </button>
-                      <button
-                        onClick={() => setAdmin(m, !m.is_admin)}
-                        disabled={busyId === m.id}
-                        className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
-                          m.is_admin
-                            ? "bg-background text-foreground/60 ring-border"
-                            : "bg-primary text-white ring-primary"
-                        }`}
-                      >
-                        {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
-                      </button>
-                      {!m.is_admin && (
+                      {!isMe && (
+                        <button
+                          onClick={() => setAdmin(m, !m.is_admin)}
+                          disabled={busyId === m.id}
+                          className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
+                            m.is_admin
+                              ? "bg-background text-foreground/60 ring-border"
+                              : "bg-primary text-white ring-primary"
+                          }`}
+                        >
+                          {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
+                        </button>
+                      )}
+                      {!isMe && !m.is_admin && (
                         <button
                           onClick={() => removeMember(m)}
                           disabled={busyId === m.id}
