@@ -12,6 +12,7 @@ import { AssistantButton } from "@/components/AssistantButton";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
+import { Analytics } from "@vercel/analytics/next";
 
 // Brush script for the resort wordmark (echoes the official logo's hand-script
 // "Muskellunge Lake"). Self-hosted by next/font (works in static export + PWA);
@@ -103,6 +104,7 @@ export default async function RootLayout({
           <MemberSheetHost />
           </IdentityProvider>
         </DemoDateProvider>
+        <Analytics />
       </body>
     </html>
   );
