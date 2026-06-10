@@ -5,7 +5,8 @@ import { Sheet, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useIdentity } from "@/components/IdentityProvider";
-import { askAssistant, MAX_MESSAGE_LENGTH } from "@/lib/assistant";
+import { MAX_MESSAGE_LENGTH } from "@/lib/assistant";
+import { askAssistantClient } from "@/lib/assistant/client";
 import type { Source } from "@/lib/assistant";
 
 // The "Ask MLR" chat panel. Mobile-first, built on the shared Sheet. Text input
@@ -82,7 +83,7 @@ export function AssistantChat({ onClose }: { onClose: () => void }) {
     setMessages((m) => [...m, { role: "user", text: q }]);
     setBusy(true);
     try {
-      const res = await askAssistant({
+      const res = await askAssistantClient({
         message: q,
         signedIn: Boolean(user),
         userId: user ? user.email : null,
