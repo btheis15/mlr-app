@@ -201,6 +201,7 @@ async function start() {
   // (the feed's _notify skips self), so there's no self-ping to guard here.
   const PUSHABLE_FEED_TYPES = new Set([
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
+    "event_rsvp",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

@@ -404,10 +404,12 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
           days: days ?? null,
         },
       }));
-      await setAttendance(eventId, status, days);
+      // Pass the title so the server can label the "X is going to <event>"
+      // notification for seed events (no public.events row to look it up from).
+      await setAttendance(eventId, status, days, events.find((e) => e.id === eventId)?.title);
       await reload();
     },
-    [user, previewAsId, promptSignIn, reload],
+    [user, previewAsId, promptSignIn, reload, events],
   );
 
   return {

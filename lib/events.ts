@@ -175,13 +175,17 @@ export async function setAttendance(
   eventId: string,
   status: AttendanceStatus,
   days?: Record<string, AttendanceStatus> | null,
+  title?: string,
 ): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Sign-in isn't available yet." };
+  // `title` lets the server label the "X is going to <event>" notification for
+  // seed events (Family Fest, the 4th) that have no row in public.events.
   const { error } = await sb.rpc("set_event_attendance", {
     p_event: eventId,
     p_status: status,
     p_days: days ?? null,
+    p_title: title ?? null,
   });
   return error ? { error: error.message } : {};
 }

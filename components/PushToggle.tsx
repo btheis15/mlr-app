@@ -17,6 +17,7 @@ const TYPES: { value: PushType; label: string; desc: string }[] = [
   { value: "post_tag", label: "Tagged in a post", desc: "When someone tags you in a post" },
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
   { value: "post_reply", label: "Replies on posts", desc: "When someone replies on a post you're on" },
+  { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 
