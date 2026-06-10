@@ -13,10 +13,11 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { askAssistant } from "@/lib/assistant";
+import { streamAssistant } from "@/lib/assistant";
 import type { AssistantRequest } from "@/lib/assistant/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // Tiny in-memory limiter (swap for a shared store if you ever run >1 instance).
 const hits = new Map<string, number[]>();
@@ -52,6 +53,33 @@ export async function POST(req: Request) {
   if (rateLimited(user.id)) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   const { message } = (await req.json()) as AssistantRequest;
-  const res = await askAssistant({ message, signedIn: true, userId: user.id });
-  return NextResponse.json(res);
+  const { intent, sources, stream } = await streamAssistant({ message, signedIn: true, userId: user.id });
+
+  // Stream Server-Sent Events: sources up front, then answer deltas as the
+  // on-device model generates them, then `done`. streamAssistant owns its own
+  // grounded-stub fallback, so this always yields a usable answer.
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (s: string) => controller.enqueue(encoder.encode(s));
+      try {
+        send(`event: sources\ndata: ${JSON.stringify({ sources, intent })}\n\n`);
+        for await (const delta of stream) {
+          send(`data: ${JSON.stringify({ delta })}\n\n`);
+        }
+        send(`event: done\ndata: {}\n\n`);
+      } catch {
+        send(`event: error\ndata: {}\n\n`);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  });
 }

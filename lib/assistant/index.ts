@@ -10,8 +10,8 @@
 
 import { classifyIntent } from "@/lib/assistant/intent";
 import { retrieveContext } from "@/lib/assistant/retrieval";
-import { generateAssistantAnswer } from "@/lib/assistant/generate";
-import type { AssistantResponse } from "@/lib/assistant/types";
+import { generateAssistantAnswer, streamAssistantAnswer } from "@/lib/assistant/generate";
+import type { AssistantResponse, AssistantIntent, Source } from "@/lib/assistant/types";
 
 /** Max characters accepted from the user (spec: cap input length). */
 export const MAX_MESSAGE_LENGTH = 500;
@@ -58,4 +58,41 @@ export async function askAssistant(opts: {
   return { answer, sources, intent };
 }
 
-export type { AssistantResponse, Source, AssistantIntent } from "@/lib/assistant/types";
+/** Streaming sibling of askAssistant: same sign-in gate + intent + chats-excluded
+ *  retrieval, but returns the sources up front plus an async stream of answer
+ *  deltas (the model's output as it generates). The server route forwards this to
+ *  the browser as SSE; the in-browser fallback collects it into one answer. */
+export async function streamAssistant(opts: {
+  message: string;
+  signedIn: boolean;
+  userId?: string | null;
+  now?: Date;
+}): Promise<{ intent: AssistantIntent; sources: Source[]; stream: AsyncGenerator<string> }> {
+  if (!opts.signedIn) {
+    return { intent: "unknown", sources: [], stream: once(SIGN_IN_REQUIRED) };
+  }
+  const message = opts.message.trim().slice(0, MAX_MESSAGE_LENGTH);
+  if (!message) {
+    return {
+      intent: "unknown",
+      sources: [],
+      stream: once("Ask me about the schedule, who's in charge, a contact, a location, or where to find something in the app."),
+    };
+  }
+  const now = opts.now ?? new Date();
+  const intent = classifyIntent(message);
+  const { records, sources } = retrieveContext(intent, message, now);
+  const stream = streamAssistantAnswer({
+    userMessage: message,
+    userId: opts.userId ?? null,
+    permissions: { signedIn: true },
+    contextRecords: records,
+  });
+  return { intent, sources, stream };
+}
+
+async function* once(text: string): AsyncGenerator<string> {
+  yield text;
+}
+
+export type { AssistantResponse, Source, AssistantIntent };
