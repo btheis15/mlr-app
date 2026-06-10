@@ -7,6 +7,7 @@ import { PushPrompt } from "@/components/PushPrompt";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
+import { AssistantButton } from "@/components/AssistantButton";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
@@ -95,6 +96,7 @@ export default async function RootLayout({
             {children}
           </main>
           <TabBar />
+          <AssistantButton />
           <PreviewBanner />
           <MemberSheetHost />
           </IdentityProvider>

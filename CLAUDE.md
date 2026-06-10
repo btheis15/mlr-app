@@ -272,6 +272,37 @@ triggers/RPCs (no client insert); members can read/dismiss their own.
 and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
 [`push-sender.js`](media-server/push-sender.js) side jobs alongside uploads.
 
+## AI Assistant ("Ask MLR")
+
+A signed-in convenience bot (floating ✨ button → [`AssistantButton`](components/AssistantButton.tsx)
+→ [`AssistantChat`](components/AssistantChat.tsx) on `Sheet`) that answers
+questions from app data the member can already see — schedule, who's in charge,
+contacts, locations, "where do I find this?". **Two hard guarantees:** (1)
+**signed-in only** (the button gates via `useGuest`; `askAssistant` refuses
+guests; the future server route re-checks the Supabase token), and (2) **chats
+are never a source** — resort/committee chat are absent from retrieval by design;
+**posts** (public to any signed-in member) are the only sanctioned social source
+(allow-listed, not yet wired). So the privacy bar is just "signed-in + no chats"
+— it does *not* depend on the larger RLS hardening.
+
+Pipeline lives in [`lib/assistant/`](lib/assistant/): `index.ts` (`askAssistant`
+orchestrator — sign-in gate, 500-char cap), `intent.ts` (pure `classifyIntent` /
+`resolveDay`), `retrieval.ts` (the **allow-list** over static `lib/data.ts` —
+`SOURCE_ALLOWLIST`, chats excluded), `generate.ts` (the single swappable model
+seam + system prompt). It runs **client-side today** (all v1 data is static, so
+nothing new is exposed) and drops into a `POST /api/assistant` route unchanged.
+
+**Model is swappable behind `generateAssistantAnswer()`.** With none wired it
+answers via a deterministic *grounded stub* (no invention; assembled from the
+retrieved records). Phase 2 points `ASSISTANT_FM_URL` at **Apple Foundation
+Models** running in a small Swift service on the Mac mini
+([`media-server/fm-service/`](media-server/fm-service/)) — Apple's on-device
+model only runs on Apple Silicon, so generation lives on the mini while
+orchestration stays on Vercel (contract: `POST {system,question,context} →
+{answer}`). The `/api/assistant` route ships **Vercel-only** (a POST handler
+breaks the Pages `output: export`); its wrapper + env vars are in
+[`docs/ai-assistant.md`](docs/ai-assistant.md).
+
 ## Conventions
 
 - **Theme** — all colors are CSS variables in the `@theme` block of
