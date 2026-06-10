@@ -23,6 +23,7 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   committee_join: "👥",
   cabin_request: "🏡",
   cabin_decision: "🏡",
+  event_rsvp: "📅",
   broadcast: "📣",
 };
 
