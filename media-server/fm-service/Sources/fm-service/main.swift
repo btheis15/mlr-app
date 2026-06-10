@@ -56,4 +56,19 @@ app.post("assistant") { req async throws -> AskResponse in
     return AskResponse(answer: result.content)
 }
 
+// Keep the model + its content-safety (SensitiveContentAnalysis) assets resident.
+// A long-idle process otherwise loses access to those assets and then fails EVERY
+// request with a FoundationModels GenerationError → ModelManagerError 1013 until
+// it's restarted (observed after ~15 min idle; a fresh process always works). A
+// small periodic generation keeps the whole pipeline warm. Best-effort: every
+// error here is swallowed so a transient blip never crashes the service.
+Task {
+    while true {
+        try? await Task.sleep(for: .seconds(120))
+        guard case .available = SystemLanguageModel.default.availability else { continue }
+        let warm = LanguageModelSession(instructions: "Reply with the single word: ok")
+        _ = try? await warm.respond(to: "Say ok.")
+    }
+}
+
 try await app.execute()
