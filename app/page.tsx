@@ -23,14 +23,14 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 export default function HomePage() {
   return (
     <div className="space-y-6 pt-4">
-      {/* The authentic vintage-card wordmark — the actual "Muskellunge Lake Resort"
-          lettering lifted from the original business card, cleaned + recolored green
-          (public/wordmark-card.png), not a lookalike font. Compact, so it doesn't
-          eat the top of the screen; the app-open splash carries the full logo. */}
+      {/* The authentic vintage-card wordmark — the real "Muskellunge Lake Resort"
+          lettering lifted from the original business card at native resolution, with
+          its ink grain + worn strokes preserved (only the paper dropped, recolored
+          green): public/wordmark.png. Not a font, not smoothed. */}
       <header className="pt-1 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/wordmark-card.png"
+          src="/wordmark.png"
           alt="Muskellunge Lake Resort"
           className="mx-auto block h-10 w-auto max-w-full"
         />
