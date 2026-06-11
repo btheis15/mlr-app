@@ -205,6 +205,53 @@ own RSVP) — the same shape as the cabin feature.
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
   Google-Calendar ICS feed (see Backend seams).
 
+## Ask for Help (BETA)
+
+A member who's **at the resort** posts a short request for a hand (moving logs,
+setting up, a ride, supplies, or the rare 🚨 Urgent); members who opted into
+**Willing to Help** *and* are also at the resort right now get an in-app
+notification + phone push, can tap **On my way** (the only response), and see open
+requests in a shared **log** ([`/help-requests`](app/help-requests/page.tsx) →
+[`HelpRequestsView`](components/HelpRequestsView.tsx)). The requester says how many
+people they need; once that many are on the way the request reads **✅ Covered** and
+everyone eligible is told (so others don't bother). **Beta-gated** behind
+`profiles.beta_tester` (entry: a self-hiding Home card
+[`AskForHelpHomeCard`](components/AskForHelpHomeCard.tsx) + a Profile → Beta link;
+the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives there too).
+
+- **Presence with no geolocation.** A PWA can't track location in the background,
+  so "at the resort right now" is derived from data we already have: you're present
+  if you're RSVP'd **going** to an event whose window **±2 days**
+  (`EVENT_PRESENCE_GRACE_DAYS`, for early arrivals / lingering long weekends)
+  includes today, **or** you have an **approved cabin stay** covering today. For
+  day-RSVP events (Family Fest) on a real event day the per-day `days[today]` map is
+  checked (a Mon–Wed attendee isn't pinged Thursday); on the ±2 grace shoulder days
+  it falls back to "going at all" (lenient on purpose — better to over-ask than
+  miss someone who's still around).
+- **Targeting is client-snapshotted, server-resolved.** The client merges DB + seed
+  events (Family Fest's dates live in code) to compute the live-event ids
+  ([`helpTargeting`](lib/helpRequests.ts)) and passes them to `request_help`; the
+  server resolves recipients via `_help_recipients` (willing + present + beta + the
+  `help_request` notif pref) and re-checks the **requester** is present. It *trusts*
+  the client's event-window snapshot — recomputing server-side would mean moving
+  seed-event dates into the DB and would break the demo-date test override. That's an
+  accepted beta trade-off; **GA hardening:** persist seed event windows + re-derive in
+  the RPC (see the 0037 header).
+- **Data flow** mirrors the cabin + events features: a public(member)-read table
+  written only via SECURITY DEFINER RPCs (`request_help` → `(id, notified)`,
+  `respond_to_help`, `withdraw_help`, `set_help_status`), AFTER-INSERT triggers that
+  fan out via `_notify` (so it rides the in-app feed + the mini's push-sender once
+  `help_request`/`help_response` are in `notif_types`/`push_types`/`PUSHABLE_FEED_TYPES`),
+  a realtime [`useHelpRequests`](lib/hooks.ts) hook, and the
+  [`AskForHelpSheet`](components/AskForHelpSheet.tsx) form (type · what · how many ·
+  where + optional one-tap GPS pin · optional time · "notify everyone willing"
+  escape hatch). Fulfillment is **race-safe** (conditional `update … where
+  fulfilled_at is null` + `FOUND`). **Data model:** migration
+  [`0037`](supabase/migrations/0037_help_requests.sql) (`profiles.willing_to_help`,
+  `help_requests`, `help_responses`, the RPCs/triggers, + `help_request`/`help_response`
+  added to `notif_types`/`push_types`). An open-request cap (10) is the only
+  anti-spam guard for now.
+
 ## Backend seams (planned, not yet wired)
 
 These are built UI-first with the swap point isolated to one module each:
@@ -277,10 +324,14 @@ and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
 A signed-in convenience bot (floating ✨ button → [`AssistantButton`](components/AssistantButton.tsx)
 → [`AssistantChat`](components/AssistantChat.tsx) on `Sheet`) that answers
 questions from app data the member can already see — schedule, who's in charge,
-contacts, locations, "where do I find this?". **Two hard guarantees:** (1)
-**signed-in only** (the button gates via `useGuest`; `askAssistant` refuses
-guests; the future server route re-checks the Supabase token), and (2) **chats
-are never a source** — resort/committee chat are absent from retrieval by design;
+contacts, locations, "where do I find this?". **Off by default for everyone.**
+The button shows only when you're a **Beta Tester** (`profiles.beta_tester`) **and**
+you've turned it on in Profile → Beta features ([`AssistantToggle`](components/AssistantToggle.tsx),
+a per-device localStorage switch via [`lib/assistantToggle.ts`](lib/assistantToggle.ts),
+default off; the toggle itself only renders for beta testers). **Two hard
+guarantees:** (1) **signed-in only** (beta implies signed-in; `askAssistant`
+refuses guests; the future server route re-checks the Supabase token), and (2)
+**chats are never a source** — resort/committee chat are absent from retrieval by design;
 **posts** (public to any signed-in member) are the only sanctioned social source
 (allow-listed, not yet wired). So the privacy bar is just "signed-in + no chats"
 — it does *not* depend on the larger RLS hardening.
@@ -294,13 +345,24 @@ nothing new is exposed) and drops into a `POST /api/assistant` route unchanged.
 
 **Model is swappable behind `generateAssistantAnswer()`.** With none wired it
 answers via a deterministic *grounded stub* (no invention; assembled from the
-retrieved records). Phase 2 points `ASSISTANT_FM_URL` at **Apple Foundation
+retrieved records). Otherwise it points `ASSISTANT_FM_URL` at **Apple Foundation
 Models** running in a small Swift service on the Mac mini
-([`media-server/fm-service/`](media-server/fm-service/)) — Apple's on-device
-model only runs on Apple Silicon, so generation lives on the mini while
-orchestration stays on Vercel (contract: `POST {system,question,context} →
-{answer}`). The `/api/assistant` route ships **Vercel-only** (a POST handler
-breaks the Pages `output: export`); its wrapper + env vars are in
+([`media-server/fm-service/`](media-server/fm-service/)) — Apple's models only run
+on Apple devices, so generation lives on the mini while orchestration stays on
+Vercel (contract: `POST {system,question,context} → {answer,model}`). On **macOS
+27** the service is wired to prefer Apple's **Private Cloud Compute** model (far
+more capable, ~32K context) with on-device fallback, decided by a startup probe.
+⚠️ But PCC *inference* is entitlement-gated and **currently not attainable**: it
+fails with `ModelManagerError 1046`; the only third-party capability is the
+**request-only** `com.apple.developer.foundation-model-adapter` (for custom
+adapters), a **free Personal Team can't get it** (Xcode provisioning rejects it
+verbatim), and even a legit Xcode dev signature (`get-task-allow`) doesn't bypass
+the gate. Enabling it would need a paid membership + an Apple-approved entitlement.
+So the bot runs **on-device** today; the probe auto-switches to PCC if it ever
+becomes reachable. Full findings in [`media-server/fm-service/README.md`](media-server/fm-service/README.md).
+Also note: `swift build` on the current CLT beta needs a `DYLD_FALLBACK_FRAMEWORK_PATH`
+workaround (README). The `/api/assistant` route ships **Vercel-only** (a POST
+handler breaks the Pages `output: export`); its wrapper + env vars are in
 [`docs/ai-assistant.md`](docs/ai-assistant.md).
 
 ## Conventions

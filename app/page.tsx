@@ -9,6 +9,7 @@ import { ShareApp } from "@/components/ShareApp";
 import { InstallButton } from "@/components/InstallButton";
 import { WelcomeCard } from "@/components/WelcomeCard";
 import { UpcomingEvents } from "@/components/UpcomingEvents";
+import { AskForHelpHomeCard } from "@/components/AskForHelpHomeCard";
 
 /**
  * Home is intentionally lean — the resort identity, the Family Fest season
@@ -58,6 +59,9 @@ export default function HomePage() {
           RSVP, the next couple below, and a link to the full /events calendar.
           Renders nothing when there's nothing upcoming (keeps Home lean). */}
       <UpcomingEvents />
+
+      {/* Ask for Help (BETA) — beta testers only; self-hides for everyone else. */}
+      <AskForHelpHomeCard />
 
       {/* Pay-your-dues CTA, prominent during the run-up. */}
       <FestDuesCallout />

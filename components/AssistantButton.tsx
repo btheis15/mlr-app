@@ -3,19 +3,23 @@
 import { useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { AssistantChat } from "@/components/AssistantChat";
+import { useAssistantEnabled } from "@/lib/assistantToggle";
 
 // The floating "Ask MLR" entry point, mounted globally in layout.tsx. Sits just
-// above the TabBar. BETA-ONLY for now: only members with the Beta Tester role
-// (profiles.beta_tester, assigned by an admin) see it, so the assistant can be
-// trialed without exposing it to the whole resort. Beta implies a signed-in
-// account, so no guest handling is needed; it's also hidden during an admin
-// "view as" preview (isBetaTester is forced false there).
+// above the TabBar. Hidden by default for EVERYONE. It appears only when (a) you
+// have the Beta Tester role (profiles.beta_tester, admin-assigned) AND (b) you've
+// turned it on in Profile → Beta features (a per-device toggle, default off —
+// see lib/assistantToggle.ts). Beta implies a signed-in account, so no guest
+// handling is needed; it's also hidden during an admin "view as" preview
+// (isBetaTester is forced false there). The toggle only shows for beta testers,
+// so non-beta members can't enable it.
 
 export function AssistantButton() {
   const { isBetaTester } = useIdentity();
+  const [assistantEnabled] = useAssistantEnabled();
   const [open, setOpen] = useState(false);
 
-  if (!isBetaTester) return null;
+  if (!isBetaTester || !assistantEnabled) return null;
 
   return (
     <>

@@ -66,5 +66,14 @@ public/         manifest.webmanifest, icon.svg
   [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
   (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
   attendance**.
+- **Ask for Help (BETA)** — at `/help-requests`, a member who's at the resort posts
+  a short request for a hand (moving, setup, a ride, supplies, or 🚨 urgent); willing
+  members who are *also* at the resort get a push, tap **On my way**, and the request
+  reads **✅ Covered** once enough are coming. "At the resort" is derived from event
+  attendance (±2 days) / approved cabin stays — no geolocation. Beta-gated behind
+  `profiles.beta_tester`. Migration
+  [`0037_help_requests.sql`](supabase/migrations/0037_help_requests.sql);
+  [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
+  **Ask for Help (BETA)**.
 
 See [CLAUDE.md](./CLAUDE.md) for the operating manual for AI sessions.

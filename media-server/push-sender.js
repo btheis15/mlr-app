@@ -202,6 +202,11 @@ async function start() {
   const PUSHABLE_FEED_TYPES = new Set([
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp",
+    // "Ask for Help" (migration 0037): a request reaching willing+present members,
+    // a response landing for the requester, and the "✅ covered" broadcast — all
+    // ride the feed-mirror path (the trigger fans out notifications rows; we relay
+    // each to a phone push, gated on push_types).
+    "help_request", "help_response",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

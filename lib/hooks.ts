@@ -15,10 +15,12 @@ import {
   setAttendance,
   summarize,
 } from "@/lib/events";
+import { fetchHelpRequests } from "@/lib/helpRequests";
 import type {
   AttendanceStatus,
   AttendanceSummary,
   EventAttendance,
+  HelpRequest,
   ResortEvent,
 } from "@/lib/types";
 
@@ -421,4 +423,52 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
     setStatus,
     reload,
   };
+}
+
+/**
+ * Loads the "Ask for Help" log (migration 0037) and keeps it live. Mirrors the
+ * shape of `useEvents`: an initial load plus a debounced Realtime subscription on
+ * both source tables (a new/edited request, and responses landing). The view
+ * calls the RPC wrappers (requestHelp/respondToHelp/setHelpStatus) then `reload()`
+ * for an immediate refresh; Realtime keeps everyone else's view in sync. Safe
+ * no-op (empty list) with no backend.
+ */
+export function useHelpRequests(): {
+  requests: HelpRequest[];
+  loading: boolean;
+  reload: () => Promise<void>;
+} {
+  const [requests, setRequests] = useState<HelpRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [schedule] = useDebouncedCallback(250);
+
+  const reload = useCallback(async () => {
+    try {
+      setRequests(await fetchHelpRequests());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void reload();
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const channel = sb
+      .channel("help-requests-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "help_requests" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "help_responses" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      cancelled = true;
+      sb.removeChannel(channel);
+    };
+  }, [reload, schedule]);
+
+  return { requests, loading, reload };
 }
