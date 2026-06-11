@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Yellowtail } from "next/font/google";
+import { Allura } from "next/font/google";
 import "./globals.css";
 import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
@@ -15,13 +15,13 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
 import { Analytics } from "@vercel/analytics/next";
 
-// Brush script for the resort wordmark (echoes the official logo's hand-script
-// "Muskellunge Lake"). Self-hosted by next/font (works in static export + PWA);
-// feeds --font-script in globals.css via the .font-script utility.
-const yellowtail = Yellowtail({
+// Elegant connected script for the resort wordmark — chosen to echo the vintage
+// "Muskellunge Lake Resort" business card. Self-hosted by next/font (works in
+// static export + PWA); feeds --font-script in globals.css via .font-script.
+const wordmark = Allura({
   subsets: ["latin"],
   weight: "400",
-  variable: "--font-yellowtail",
+  variable: "--font-wordmark",
   display: "swap",
 });
 
@@ -67,7 +67,7 @@ export default async function RootLayout({
   const announcements = await getAnnouncements();
 
   return (
-    <html lang="en" className={`h-full ${yellowtail.variable}`}>
+    <html lang="en" className={`h-full ${wordmark.variable}`}>
       <head>
         {/* Apply the saved "Text size" choice before first paint so there's no
             flash of small text. Keep the size map in sync with TextSizeControl. */}
