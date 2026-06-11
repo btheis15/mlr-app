@@ -37,8 +37,9 @@
      (e.g. the Family Fest tab in the TabBar). Inside .ff-section it's the
      re-declared --color-primary below. */
   --color-fest: #8b2e2e;
-  /* Brush script for the resort wordmark (echoes the logo); via next/font. */
-  --font-script: var(--font-yellowtail), "Brush Script MT", cursive;
+  /* Elegant script for the resort wordmark (echoes the vintage business card);
+     via next/font. */
+  --font-script: var(--font-wordmark), "Snell Roundhand", "Apple Chancery", cursive;
 }
 
 /* Northwoods ambient backdrop. A subtle, light-mode-only atmosphere instead of
@@ -216,10 +217,10 @@ body {
    self-clears even if JS hydrates late (never traps the app behind the overlay). */
 @keyframes mlr-splash-wash {
   0%   { opacity: 1; pointer-events: auto; }
-  76%  { opacity: 1; pointer-events: auto; }
+  82%  { opacity: 1; pointer-events: auto; }
   100% { opacity: 0; pointer-events: none; }
 }
-@utility splash-wash { animation: mlr-splash-wash 2500ms var(--ease-ios) forwards; }
+@utility splash-wash { animation: mlr-splash-wash 3400ms var(--ease-ios) forwards; }
 
 /* Tactile tap. touch-action manipulation removes the iOS legacy tap delay.
    Press DOWN is quick + linear-ish (ease-ios); RELEASE springs back with a
