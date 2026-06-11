@@ -47,12 +47,12 @@ export const viewport: Viewport = {
   themeColor: "#f5f6f3",
   width: "device-width",
   initialScale: 1,
-  // Allow pinch-to-zoom (accessibility). Pinning maximumScale:1 /
-  // userScalable:false blocks zoom for low-vision users — a real barrier for the
-  // older family members this app is for. The app already scales well; let them
-  // zoom on top of that and the in-app Text-size control.
-  maximumScale: 5,
-  userScalable: true,
+  // Pinch-to-zoom is OFF: it was catching accidental pinches and zooming the
+  // layout without people realizing. The in-app **Text size** control
+  // (Profile → Text size, 17/19/21px) is the larger-text path instead — same
+  // accessibility benefit, no stray zoom.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   // Resize the layout (not just overlay) when the on-screen keyboard opens, so
   // bottom-pinned UI like the chat composer stays above it on Android Chrome.

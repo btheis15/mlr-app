@@ -257,6 +257,15 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   to reach people when off-season), and **beta-tester requesters get a self-ping**
   for their own request (`_notify` normally skips the actor) so it can be verified
   solo. Both fall away at GA (they key on `is_admin` / `beta_tester`).
+- **GA plan — Urgent/SOS goes to EVERYONE.** While in beta the whole feature is
+  beta-gated and routed only to willing + present members. **Once out of beta**, an
+  **Urgent** request (`category = 'urgent'`) must alert **every member who has
+  notifications on**, regardless of `willing_to_help` or presence — emergencies are
+  for everyone. Non-urgent types keep the willing + present targeting. Implementation
+  sketch: in `notif_on_help_request`, when `NEW.category = 'urgent'`, fan out to all
+  members with `'help_request' = any(notif_types)` (skip the willing/present filter);
+  otherwise use `_help_recipients` as today. (Deferred until GA — don't enable while
+  beta-gated.)
 
 ## Backend seams (planned, not yet wired)
 
