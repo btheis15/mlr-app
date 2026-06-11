@@ -50,7 +50,9 @@ export type PushType =
   | "post_tag"
   | "post_mention"
   | "post_reply"
-  | "event_rsvp";
+  | "event_rsvp"
+  | "help_request"
+  | "help_response";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -64,6 +66,8 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "post_mention",
   "post_reply",
   "chat",
+  "help_request",
+  "help_response",
 ];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
@@ -82,6 +86,8 @@ export type NotifType =
   | "cabin_request"
   | "cabin_decision"
   | "event_rsvp"
+  | "help_request"
+  | "help_response"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -103,6 +109,8 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "cabin_request",
   "cabin_decision",
   "event_rsvp",
+  "help_request",
+  "help_response",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
@@ -154,6 +162,11 @@ export interface User {
    *  (migration 0034). False = show "Turn on notifications?" the next time they
    *  open the app; set true once they accept or dismiss it. */
   pushPrompted: boolean;
+  /** BETA opt-in (default off): when at the resort, get an "Ask for Help" ping
+   *  when another member nearby needs a hand. The real switch for receiving help
+   *  requests — separate from notif_types/push_types, which only mute/route it.
+   *  See migration 0037 + lib/helpRequests.ts. */
+  willingToHelp: boolean;
   /** Profile photo URL (Supabase `avatars` bucket); null/absent = show initials. */
   avatarUrl?: string | null;
 }
@@ -373,4 +386,54 @@ export interface AttendanceSummary {
   maybe: EventAttendance[];
   notGoing: EventAttendance[];
   counts: { going: number; maybe: number; notGoing: number };
+}
+
+/* ── Ask for Help (BETA) ─────────────────────────────────────────────────────
+   A member at the resort posts a short request; willing members who are also at
+   the resort right now get notified, can respond, and see open requests in a
+   shared log. "At the resort" is derived from event attendance (±2 days) /
+   approved cabin stays — no geolocation. Backed by Supabase (migration 0037).
+   See lib/helpRequests.ts for the presence math + RPC wrappers. */
+
+export type HelpRequestStatus = "open" | "resolved" | "cancelled";
+
+/** A "who's on the way" entry on a help request — the only response is committing
+ *  to come help. `name`/`avatarUrl` are joined from the responder's profile when
+ *  the log loads. */
+export interface HelpResponse {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+/** One help request in the shared log. `responses` is filled in when the log
+ *  loads (joined from help_responses). `lat`/`lng` are present only if the
+ *  requester chose to share their precise location. */
+export interface HelpRequest {
+  id: string;
+  userId: string;
+  /** Requester's display name + avatar, joined for the log. */
+  name: string;
+  avatarUrl: string | null;
+  description: string;
+  category: string | null;
+  whereText: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** ISO timestamp — when help is needed (defaults to submit time). */
+  neededAt: string;
+  /** How many people the requester needs (≥1). Once this many are on the way the
+   *  request reads as fulfilled and everyone eligible is told. */
+  neededCount: number;
+  status: HelpRequestStatus;
+  /** Set once `neededCount` people are on the way (null until then). */
+  fulfilledAt: string | null;
+  /** How many willing + present members it was sent to (stamped at submit). */
+  notifiedCount: number;
+  createdAt: string;
+  /** ISO timestamp; past it the request reads as "expired" in the log. */
+  expiresAt: string | null;
+  responses: HelpResponse[];
 }

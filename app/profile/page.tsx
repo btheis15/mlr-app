@@ -23,9 +23,11 @@ import { NotifPrefs } from "@/components/NotifPrefs";
 import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
+import { AssistantToggle } from "@/components/AssistantToggle";
+import { WillingToHelpToggle } from "@/components/WillingToHelpToggle";
 
 export default function ProfilePage() {
-  const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
+  const { user, isAdmin, isBetaTester, updateUser, promptSignIn, signOut } = useIdentity();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -241,6 +243,25 @@ export default function ProfilePage() {
             <PreviewAs />
           </CollapsibleSection>
         </>
+      )}
+
+      {isBetaTester && (
+        <div className="space-y-2">
+          <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+            Beta features
+          </p>
+          <AssistantToggle />
+          <WillingToHelpToggle />
+          <Link
+            href="/help-requests"
+            className="press flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border"
+          >
+            <span className="flex items-center gap-3 text-sm font-medium">
+              <span className="text-lg" aria-hidden>🙌</span> Ask for Help
+            </span>
+            <span className="text-foreground/40" aria-hidden>›</span>
+          </Link>
+        </div>
       )}
 
       <div className="space-y-2">

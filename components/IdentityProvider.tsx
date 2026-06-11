@@ -89,6 +89,7 @@ interface ProfileRow {
   notify_new_members: boolean | null;
   notif_types: string[] | null;
   push_prompted: boolean | null;
+  willing_to_help: boolean | null;
   is_admin: boolean;
   beta_tester: boolean | null;
 }
@@ -144,14 +145,14 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const email = session.user.email ?? "";
       const { data } = await sb
         .from("profiles")
-        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, notif_types, push_prompted, is_admin, beta_tester")
+        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, notif_types, push_prompted, willing_to_help, is_admin, beta_tester")
         .eq("id", session.user.id)
         .maybeSingle();
       if (!active) return;
       const profile = data as ProfileRow | null;
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
-      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, avatarUrl: profile?.avatar_url ?? null });
+      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, willingToHelp: profile?.willing_to_help ?? false, avatarUrl: profile?.avatar_url ?? null });
       setAdminFlag(Boolean(profile?.is_admin));
       setBetaFlag(Boolean(profile?.beta_tester));
     };
@@ -182,6 +183,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (patch.notifyNewMembers !== undefined) row.notify_new_members = patch.notifyNewMembers;
     if (patch.notifTypes !== undefined) row.notif_types = patch.notifTypes;
     if (patch.pushPrompted !== undefined) row.push_prompted = patch.pushPrompted;
+    if (patch.willingToHelp !== undefined) row.willing_to_help = patch.willingToHelp;
     if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
     if (Object.keys(row).length) {
       await sb.from("profiles").update(row).eq("id", id);
@@ -262,7 +264,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     previewMode === "guest"
       ? null
       : previewMode === "member" && previewMember
-        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, notifTypes: DEFAULT_NOTIF_TYPES, pushPrompted: true, avatarUrl: previewMember.avatarUrl }
+        ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, notifTypes: DEFAULT_NOTIF_TYPES, pushPrompted: true, willingToHelp: false, avatarUrl: previewMember.avatarUrl }
         : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
   const effectiveBeta = previewMode === "off" ? betaFlag : false;
