@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { FAMILY_FEST } from "@/lib/data";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 
-// The resort destinations on Home, organized into two plainly-labeled groups so
-// the screen reads as a few clear sections instead of a pile of equal cards —
-// tuned for a mostly-non-technical, all-ages crowd. Everything is visible (no
-// hidden/expand), just grouped. Work Weekends never happen during the fest week,
-// so it drops out then (same rule as before).
+// The resort destinations on Home, as COLLAPSED groups so the default screen
+// stays short and calm for a mostly-non-technical, all-ages crowd. Each group's
+// header previews what's inside (the subtitle lists the items), so nothing feels
+// hidden — tap to open the tiles. Same accordion the Profile tab uses, so it's
+// familiar. Work Weekends drops out during the fest week (unchanged rule).
 //
 //   Get involved      → Events · Committees · Work Weekends
 //   Around the resort → Cabin Stay · People · Local Places
@@ -40,25 +41,26 @@ export function HomeResortGroups() {
   ];
 
   return (
-    <div className="space-y-5">
-      <Group label="Get involved" tiles={getInvolved} />
-      <Group label="Around the resort" tiles={aroundResort} />
+    <div className="space-y-3">
+      <CollapsibleSection title="Get involved" icon="🗓️" subtitle={getInvolved.map((t) => t.title).join(" · ")}>
+        <TileGrid tiles={getInvolved} />
+      </CollapsibleSection>
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle={aroundResort.map((t) => t.title).join(" · ")}>
+        <TileGrid tiles={aroundResort} />
+      </CollapsibleSection>
     </div>
   );
 }
 
-function Group({ label, tiles }: { label: string; tiles: TileDef[] }) {
+function TileGrid({ tiles }: { tiles: TileDef[] }) {
   // Odd count ⇒ last tile spans full width, so a row never has a lonely half-card.
   const odd = tiles.length % 2 === 1;
   return (
-    <section className="space-y-2">
-      <h2 className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/45">{label}</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {tiles.map((t, i) => (
-          <TileCard key={t.href} {...t} wide={odd && i === tiles.length - 1} />
-        ))}
-      </div>
-    </section>
+    <div className="grid grid-cols-2 gap-3">
+      {tiles.map((t, i) => (
+        <TileCard key={t.href} {...t} wide={odd && i === tiles.length - 1} />
+      ))}
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import { InstallButton } from "@/components/InstallButton";
 import { WelcomeCard } from "@/components/WelcomeCard";
 import { UpcomingEvents } from "@/components/UpcomingEvents";
 import { AskForHelpHomeCard } from "@/components/AskForHelpHomeCard";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 /**
  * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
@@ -57,11 +58,11 @@ export default function HomePage() {
       {/* Ask for Help (BETA) — beta testers only; self-hides for everyone else. */}
       <AskForHelpHomeCard />
 
-      {/* ── Everything else, grouped into clear sections ────────────────────── */}
+      {/* ── Everything else, in collapsed groups (tap to open) ──────────────── */}
       <HomeResortGroups />
 
-      {/* ── Quiet utilities, tucked at the bottom ───────────────────────────── */}
-      <div className="space-y-3 pt-1">
+      {/* Quiet utilities, collapsed into one group at the bottom. */}
+      <CollapsibleSection title="App & help" icon="📲" subtitle="Add to phone · Share · Help">
         <InstallButton />
         <ShareApp />
         <RowLink
@@ -70,7 +71,7 @@ export default function HomePage() {
           title="Help & how-to"
           subtitle="New here, or stuck? Start here."
         />
-      </div>
+      </CollapsibleSection>
 
       {/* Heritage, condensed to a single line. */}
       <p className="text-center text-[11px] italic text-foreground/40">
