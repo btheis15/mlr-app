@@ -7,13 +7,17 @@ import { RESORT } from "@/lib/data";
 // the logo pops into, the motto rises below, then the whole thing fades to reveal
 // the app. Plays once per session (a true relaunch is a fresh session), respects
 // reduce-motion, and is tap-to-skip. Rendered from the server markup so it covers
-// from the first paint (no flash of the app underneath); the client then plays /
-// skips it. Mounted globally in layout.tsx.
+// from the first paint (no flash of the app underneath).
+//
+// Robustness: the fade-out + click-through is CSS-driven (the `splash-wash`
+// animation ends at opacity:0 + pointer-events:none), so even if JS is slow to
+// hydrate on spotty wifi the overlay always clears itself and never traps the
+// app. The React timer just removes it from the DOM cleanly afterward (and
+// handles tap-to-skip + the reduce-motion / once-per-session skips).
 const SESSION_KEY = "mlr-splash";
 
 export function SplashIntro() {
   const [gone, setGone] = useState(false);
-  const [fading, setFading] = useState(false);
 
   useEffect(() => {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
@@ -32,12 +36,8 @@ export function SplashIntro() {
     } catch {
       /* ignore */
     }
-    const fade = setTimeout(() => setFading(true), 1900); // start the fade-out
-    const done = setTimeout(() => setGone(true), 2450); // unmount after it
-    return () => {
-      clearTimeout(fade);
-      clearTimeout(done);
-    };
+    const done = setTimeout(() => setGone(true), 2500);
+    return () => clearTimeout(done);
   }, []);
 
   if (gone) return null;
@@ -46,9 +46,7 @@ export function SplashIntro() {
     <div
       onClick={() => setGone(true)}
       aria-hidden
-      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-logo px-8 text-center transition-opacity duration-500 ${
-        fading ? "opacity-0" : "opacity-100"
-      }`}
+      className="splash-wash fixed inset-0 z-[100] flex flex-col items-center justify-center bg-logo px-8 text-center"
     >
       {/* The logo's own green matches the wash, so only the white art shows. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
