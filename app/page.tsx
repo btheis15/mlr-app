@@ -3,7 +3,7 @@ import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { TshirtCallout } from "@/components/TshirtCallout";
-import { HomePreFestCards } from "@/components/HomePreFestCards";
+import { HomeResortGroups } from "@/components/HomeResortGroups";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
 import { InstallButton } from "@/components/InstallButton";
@@ -12,9 +12,13 @@ import { UpcomingEvents } from "@/components/UpcomingEvents";
 import { AskForHelpHomeCard } from "@/components/AskForHelpHomeCard";
 
 /**
- * Home is intentionally lean — the resort identity, the Family Fest season
- * headline, and the front-desk call. (Future resort sections — Work Weekends,
- * Prep needed, Committees, etc. — will get their cards here.)
+ * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
+ *   1) WHAT'S HAPPENING up top, front & center — the Family Fest season spotlight
+ *      and the nearest event + RSVP (plus the in-season dues / t-shirt CTAs).
+ *   2) EVERYTHING ELSE grouped into two clearly-labeled sections (Get involved /
+ *      Around the resort) via HomeResortGroups, so it reads as a few sections
+ *      instead of a wall of equal cards.
+ *   3) QUIET UTILITIES (install, share, help) tucked at the bottom, out of the way.
  */
 export default function HomePage() {
   return (
@@ -30,23 +34,13 @@ export default function HomePage() {
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
 
-      {/* First visit only: orient newcomers to browse-first + no-password sign-in. */}
+      {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
       <WelcomeCard />
-
-      {/* Guests only: a front-page nudge to sign in (no need to find Profile). */}
       <HomeSignInCTA />
 
-      {/* Add-to-home-screen — visible to everyone until the app is installed
-          (then it hides itself). The way back for anyone who dismissed the
-          first-run nag, and the only install entry point Android users get. */}
-      <InstallButton />
-
-      {/* Easy, visible way for anyone to share the app with family. */}
-      <ShareApp />
-
-      {/* Family Fest — quiet banner most of the year, a takeover hero during
-          the event week (see FamilyFestSpotlight). This is what makes the fest
-          read as a season of the resort app rather than a separate app. */}
+      {/* ── What's happening — kept front & center ──────────────────────────── */}
+      {/* Family Fest: quiet banner most of the year, a takeover hero during the
+          week. The nearest event + inline RSVP sits right below it. */}
       <FamilyFestSpotlight
         name={FAMILY_FEST.name}
         tagline={FAMILY_FEST.tagline}
@@ -54,43 +48,29 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
-
-      {/* Resort events + attendance: the nearest gathering up top with an inline
-          RSVP, the next couple below, and a link to the full /events calendar.
-          Renders nothing when there's nothing upcoming (keeps Home lean). */}
       <UpcomingEvents />
+
+      {/* Time-sensitive fest CTAs — self-hide outside the run-up season. */}
+      <FestDuesCallout />
+      <TshirtCallout />
 
       {/* Ask for Help (BETA) — beta testers only; self-hides for everyone else. */}
       <AskForHelpHomeCard />
 
-      {/* Pay-your-dues CTA, prominent during the run-up. */}
-      <FestDuesCallout />
+      {/* ── Everything else, grouped into clear sections ────────────────────── */}
+      <HomeResortGroups />
 
-      {/* Order T-Shirts — right under dues (placeholder until designs land). */}
-      <TshirtCallout />
-
-      {/* Year-round resort cards (run-up to the fest; hidden during the week). */}
-      <HomePreFestCards />
-
-      {/* People — the member directory: everyone with an account, with quick
-          Text / Call / pay-preference links and a tap-through to full profiles. */}
-      <RowLink
-        href="/people"
-        emoji="👥"
-        tile="bg-primary/12"
-        title="People"
-        subtitle="Find any member — text, call, or pay them in a tap."
-      />
-
-      {/* Local Places — the nearby favorites: tee times at Inshalla (handed off
-          to our in-app booking) plus the bars & grills we order from. Year-round. */}
-      <RowLink
-        href="/local-places"
-        emoji="📍"
-        tile="bg-lake/12"
-        title="Local Places"
-        subtitle="Book a tee time, order pizza, and more nearby."
-      />
+      {/* ── Quiet utilities, tucked at the bottom ───────────────────────────── */}
+      <div className="space-y-3 pt-1">
+        <InstallButton />
+        <ShareApp />
+        <RowLink
+          href="/help"
+          emoji="❓"
+          title="Help & how-to"
+          subtitle="New here, or stuck? Start here."
+        />
+      </div>
 
       {/* Heritage, condensed to a single line. */}
       <p className="text-center text-[11px] italic text-foreground/40">
