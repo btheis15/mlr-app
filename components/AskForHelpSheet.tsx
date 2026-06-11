@@ -159,7 +159,6 @@ export function AskForHelpSheet({
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
           maxLength={400}
-          autoFocus
           placeholder="e.g. Need 2–3 people to move logs from the lot to the pavilion."
           className={`${FIELD} w-full resize-none`}
         />

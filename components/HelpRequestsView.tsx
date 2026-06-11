@@ -37,7 +37,7 @@ function firstNames(names: string[]): string {
 }
 
 export function HelpRequestsView() {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, isAdmin, isBetaTester, promptSignIn } = useIdentity();
   const { today } = useDemoDate();
   const { events, mine, loading: eventsLoading } = useEvents();
   const { requests, loading, reload } = useHelpRequests();
@@ -187,6 +187,7 @@ export function HelpRequestsView() {
               req={r}
               myId={myId}
               isAdmin={isAdmin}
+              isBetaTester={isBetaTester}
               busy={busy === r.id}
               onToggleOnWay={() => toggleOnWay(r)}
               onResolve={() => resolve(r)}
@@ -239,6 +240,7 @@ function HelpCard({
   req,
   myId,
   isAdmin,
+  isBetaTester,
   busy,
   onToggleOnWay,
   onResolve,
@@ -247,6 +249,7 @@ function HelpCard({
   req: HelpRequest;
   myId: string | null;
   isAdmin: boolean;
+  isBetaTester: boolean;
   busy: boolean;
   onToggleOnWay: () => void;
   onResolve: () => void;
@@ -329,7 +332,21 @@ function HelpCard({
 
       {/* Actions */}
       {mine ? (
-        <div className="flex items-center gap-3 pt-0.5">
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          {/* Beta only: respond to your OWN request, so a tester can see the
+              "on the way" / count / Covered side work solo. Hidden at GA. */}
+          {isBetaTester && (
+            <button
+              onClick={onToggleOnWay}
+              disabled={busy}
+              title="Beta test — respond to your own request to see how it looks for helpers"
+              className={`press rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ring-primary/30 disabled:opacity-50 ${
+                iAmOnWay ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+              }`}
+            >
+              {iAmOnWay ? "🚶 On my way ✓ (test)" : "🚶 On my way (test)"}
+            </button>
+          )}
           <button onClick={onResolve} disabled={busy} className="press rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
             Mark resolved
           </button>
