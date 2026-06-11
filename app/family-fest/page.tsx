@@ -2,8 +2,7 @@ import Link from "next/link";
 import { FestStatus } from "@/components/FestStatus";
 import { FestRsvp } from "@/components/FestRsvp";
 import { FestWeek } from "@/components/FestWeek";
-import { FestDuesCallout } from "@/components/FestDuesCallout";
-import { TshirtCallout } from "@/components/TshirtCallout";
+import { FestDuesShirts } from "@/components/FestDuesShirts";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
 import { FAMILY_FEST, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
@@ -41,11 +40,8 @@ export default function FamilyFestPage() {
       {/* Attendance — are you coming? (Going / Maybe / Can't make + day picker.) */}
       <FestRsvp />
 
-      {/* Pay-your-dues CTA, prominent during the run-up. */}
-      <FestDuesCallout />
-
-      {/* Order T-Shirts — right under dues (placeholder until designs land). */}
-      <TshirtCallout />
+      {/* Pay Dues + Order T-Shirts, side by side (run-up only). */}
+      <FestDuesShirts />
 
       {/* Committees stay reachable from the hub. */}
       <FestCommitteesLink />
