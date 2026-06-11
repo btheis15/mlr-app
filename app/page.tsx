@@ -23,19 +23,13 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 export default function HomePage() {
   return (
     <div className="space-y-6 pt-4">
-      {/* Compact logo band: the logo sits at a reasonable size (≈112px tall, well
-          under half its old full-width height), centered on a band of the logo's
-          exact green (--color-logo) so the green fills the width seamlessly — no
-          more quarter-page header to scroll past. */}
-      <header className="flex items-center justify-center overflow-hidden rounded-3xl bg-logo py-3 shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/brand-logo.jpg"
-          alt="Muskellunge Lake Resort — Family Fest · Est. 1987"
-          className="block h-28 w-auto"
-        />
+      {/* No banner — the app-open splash carries the logo. A compact forest-green
+          script wordmark keeps the resort's identity + green character on Home
+          without eating the top of the screen. */}
+      <header className="pt-1 text-center">
+        <h1 className="font-script text-3xl leading-tight text-primary">{RESORT.name}</h1>
+        <p className="mt-1 text-sm text-foreground/55">{RESORT.tagline}</p>
       </header>
-      <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
 
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
       <WelcomeCard />
