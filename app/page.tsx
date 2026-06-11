@@ -23,12 +23,18 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 export default function HomePage() {
   return (
     <div className="space-y-6 pt-4">
-      {/* No banner — the app-open splash carries the logo. A compact forest-green
-          script wordmark keeps the resort's identity + green character on Home
-          without eating the top of the screen. */}
+      {/* The authentic vintage-card wordmark — the actual "Muskellunge Lake Resort"
+          lettering lifted from the original business card, cleaned + recolored green
+          (public/wordmark-card.png), not a lookalike font. Compact, so it doesn't
+          eat the top of the screen; the app-open splash carries the full logo. */}
       <header className="pt-1 text-center">
-        <h1 className="font-script text-3xl leading-tight text-primary">{RESORT.name}</h1>
-        <p className="mt-1 text-sm text-foreground/55">{RESORT.tagline}</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/wordmark-card.png"
+          alt="Muskellunge Lake Resort"
+          className="mx-auto block h-10 w-auto max-w-full"
+        />
+        <p className="mt-1.5 text-sm text-foreground/55">{RESORT.tagline}</p>
       </header>
 
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
