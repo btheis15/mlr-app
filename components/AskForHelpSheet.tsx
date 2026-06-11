@@ -247,12 +247,18 @@ export function AskForHelpSheet({
           </span>
         </label>
         {later && (
-          <input
-            type="datetime-local"
-            value={neededLocal}
-            onChange={(e) => setNeededLocal(e.target.value)}
-            className={`${FIELD} w-full`}
-          />
+          <>
+            <input
+              type="datetime-local"
+              value={neededLocal}
+              onChange={(e) => setNeededLocal(e.target.value)}
+              className={`${FIELD} w-full`}
+            />
+            <p className="px-0.5 text-[11px] text-foreground/45">
+              It goes out now so people can sign up. 15 minutes before, everyone who said they&rsquo;re coming
+              gets a reminder — and if you&rsquo;re still short, it asks people nearby again.
+            </p>
+          </>
         )}
       </div>
 

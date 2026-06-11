@@ -319,7 +319,10 @@ function HelpCard({
       {/* Who's helping / progress */}
       <div className={`rounded-xl px-3 py-2 text-xs ring-1 ${fulfilled ? "bg-primary/10 text-primary ring-primary/20" : "bg-background text-foreground/70 ring-border"}`}>
         {fulfilled ? (
-          <p className="font-semibold">✅ Covered — {committed} on the way{committed > needed ? "" : ""}</p>
+          <p className="font-semibold">
+            ✅ Covered — {committed} on the way
+            {committed > needed ? ` (${committed - needed} more than you asked — 🎉)` : ""}
+          </p>
         ) : committed > 0 ? (
           <p>🚶 <span className="font-medium">{committed} of {needed}</span> on the way</p>
         ) : (
