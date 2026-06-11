@@ -251,6 +251,12 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   `help_requests`, `help_responses`, the RPCs/triggers, + `help_request`/`help_response`
   added to `notif_types`/`push_types`). An open-request cap (10) is the only
   anti-spam guard for now.
+- **Beta testing affordances** (migration [`0038`](supabase/migrations/0038_help_test_affordances.sql)):
+  **admins bypass the requester presence gate** (post from anywhere to test/demo —
+  the beta gate + recipient presence still apply, so use "Notify everyone willing"
+  to reach people when off-season), and **beta-tester requesters get a self-ping**
+  for their own request (`_notify` normally skips the actor) so it can be verified
+  solo. Both fall away at GA (they key on `is_admin` / `beta_tester`).
 
 ## Backend seams (planned, not yet wired)
 

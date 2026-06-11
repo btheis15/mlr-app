@@ -79,10 +79,12 @@ export function HelpRequestsView() {
     return () => clearTimeout(id);
   }, [flash]);
 
-  const present = useMemo(
+  const atResort = useMemo(
     () => (today ? amIPresent(mine, events, today, bookingCoversToday) : false),
     [mine, events, today, bookingCoversToday],
   );
+  // Admins can post from anywhere (to test/demo); regular beta testers must be present.
+  const canAsk = atResort || isAdmin;
 
   const { active, done } = useMemo(() => {
     const active = requests.filter((r) => r.status === "open");
@@ -138,14 +140,22 @@ export function HelpRequestsView() {
             Add your name &amp; email
           </button>
         </div>
-      ) : present ? (
-        <button
-          type="button"
-          onClick={() => setSheetOpen(true)}
-          className="press w-full rounded-2xl bg-primary py-4 text-base font-semibold text-white shadow-sm"
-        >
-          🙌 Ask for help
-        </button>
+      ) : canAsk ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="press w-full rounded-2xl bg-primary py-4 text-base font-semibold text-white shadow-sm"
+          >
+            🙌 Ask for help
+          </button>
+          {isAdmin && !atResort && (
+            <p className="px-1 text-xs text-foreground/55">
+              🔧 Admin test mode — you&rsquo;re not at a live event. Tick{" "}
+              <span className="font-medium">&ldquo;Notify everyone willing to help&rdquo;</span> in the form so it reaches testers.
+            </p>
+          )}
+        </div>
       ) : (
         <div className="space-y-1 rounded-2xl bg-card p-4 ring-1 ring-border">
           <p className="text-sm font-semibold">You can ask once you&rsquo;re at the resort</p>
