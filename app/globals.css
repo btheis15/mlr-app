@@ -24,6 +24,7 @@
   --color-card: #ffffff; /* raised surfaces (solid white) */
   --color-border: #e5e4da; /* soft warm hairline borders */
   --color-primary: #15503a; /* pine green — the logo color; white text passes */
+  --color-logo: #0c4029; /* exact green baked into brand-logo.jpg — the Home header band uses it so the shrunken logo blends seamlessly */
   --color-accent: #c2410c; /* campfire orange (lively warm accent) */
   /* Northwoods accent palette — lakes, campfires, golden hour, dusk. Used for
      tints (e.g. bg-lake/10), icons, and text across the app to give it life.

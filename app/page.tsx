@@ -2,7 +2,6 @@ import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
-import { TshirtCallout } from "@/components/TshirtCallout";
 import { HomeResortGroups } from "@/components/HomeResortGroups";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
@@ -24,13 +23,16 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 export default function HomePage() {
   return (
     <div className="space-y-6 pt-4">
-      {/* Official Muskellunge Lake Resort logo. */}
-      <header className="overflow-hidden rounded-3xl shadow-sm">
+      {/* Compact logo band: the logo sits at a reasonable size (≈112px tall, well
+          under half its old full-width height), centered on a band of the logo's
+          exact green (--color-logo) so the green fills the width seamlessly — no
+          more quarter-page header to scroll past. */}
+      <header className="flex items-center justify-center overflow-hidden rounded-3xl bg-logo py-3 shadow-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/brand-logo.jpg"
           alt="Muskellunge Lake Resort — Family Fest · Est. 1987"
-          className="block w-full"
+          className="block h-28 w-auto"
         />
       </header>
       <p className="text-center text-sm text-foreground/60">{RESORT.tagline}</p>
@@ -49,11 +51,12 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
-      <UpcomingEvents />
 
-      {/* Time-sensitive fest CTAs — self-hide outside the run-up season. */}
+      {/* Pay-your-dues CTA, right under the Family Fest spotlight (run-up only,
+          self-hides otherwise). T-shirt ordering lives on the Family Fest page. */}
       <FestDuesCallout />
-      <TshirtCallout />
+
+      <UpcomingEvents />
 
       {/* Ask for Help (BETA) — beta testers only; self-hides for everyone else. */}
       <AskForHelpHomeCard />
