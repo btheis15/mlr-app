@@ -204,6 +204,15 @@ body {
   animation-delay: calc(var(--i, 0) * 45ms);
 }
 
+/* App-open splash (see components/SplashIntro.tsx): the logo pops in with a
+   little spring, the motto rises a beat later. */
+@keyframes mlr-splash-logo {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@utility splash-logo { animation: mlr-splash-logo 600ms var(--ease-spring) 150ms both; }
+@utility splash-motto { animation: mlr-rise 500ms var(--ease-ios) 720ms both; }
+
 /* Tactile tap. touch-action manipulation removes the iOS legacy tap delay.
    Press DOWN is quick + linear-ish (ease-ios); RELEASE springs back with a
    small overshoot (ease-spring) for the poppy/bubbly iOS feel. */

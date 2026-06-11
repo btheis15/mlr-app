@@ -9,6 +9,7 @@ import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
 import { AssistantButton } from "@/components/AssistantButton";
+import { SplashIntro } from "@/components/SplashIntro";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getAnnouncements } from "@/lib/announcements";
@@ -78,6 +79,8 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full text-foreground antialiased">
+        {/* App-open splash: green wash → logo pops → motto → fades to the app. */}
+        <SplashIntro />
         <DemoDateProvider>
           <IdentityProvider>
             <InstallHint />
