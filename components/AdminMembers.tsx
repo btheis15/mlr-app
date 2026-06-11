@@ -254,11 +254,13 @@ export function AdminMembers() {
             const isMe = m.id === meId;
             return (
               <li key={m.id} className="flex flex-col gap-2 rounded-xl bg-background p-2.5 ring-1 ring-border">
+                {/* Row 1: avatar + full name/email (gets the whole width — no
+                    longer squeezed by the action buttons). */}
                 <div className="flex items-center gap-3">
                   <Avatar name={name} url={m.avatar_url} size={36} />
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-                      <span className="truncate">{name}</span>
+                    <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+                      <span>{name}</span>
                       {isMe && <span className="shrink-0 text-xs text-foreground/40">(you)</span>}
                       {m.is_admin && (
                         <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Admin</span>
@@ -268,63 +270,66 @@ export function AdminMembers() {
                       )}
                     </p>
                     {(m.email || m.household) && (
-                      <p className="truncate text-xs text-foreground/45">{m.email || m.household}</p>
+                      <p className="break-words text-xs text-foreground/45">{m.email || m.household}</p>
                     )}
                   </div>
-                  {rpcReady && (
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {!isMe && editUnlocked && (
-                        <button
-                          onClick={() => setEditId(editId === m.id ? null : m.id)}
-                          aria-label={`Edit ${name}'s information`}
-                          title="Edit this member's information"
-                          className="press shrink-0 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/40"
-                        >
-                          ✏️ Edit info
-                        </button>
-                      )}
-                      {/* Beta toggle works on your own row too — useful for an
-                          admin to add themselves to the beta group. */}
+                </div>
+
+                {/* Row 2: the actions, on their own full-width line so each label
+                    is fully readable. */}
+                {rpcReady && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {!isMe && editUnlocked && (
                       <button
-                        onClick={() => setBeta(m, !m.beta_tester)}
+                        onClick={() => setEditId(editId === m.id ? null : m.id)}
+                        aria-label={`Edit ${name}'s information`}
+                        title="Edit this member's information"
+                        className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/40"
+                      >
+                        ✏️ Edit info
+                      </button>
+                    )}
+                    {/* Beta toggle works on your own row too — useful for an
+                        admin to add themselves to the beta group. */}
+                    <button
+                      onClick={() => setBeta(m, !m.beta_tester)}
+                      disabled={busyId === m.id}
+                      aria-label={m.beta_tester ? `Remove ${name} from beta testers` : `Make ${name} a beta tester`}
+                      title="Beta Tester — sees features being trialed + admin test notifications"
+                      className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
+                        m.beta_tester
+                          ? "bg-amber-500/15 text-amber-700 ring-amber-500/40"
+                          : "bg-background text-foreground/60 ring-border"
+                      }`}
+                    >
+                      {busyId === m.id ? "…" : m.beta_tester ? "Beta ✓" : "Beta"}
+                    </button>
+                    {!isMe && (
+                      <button
+                        onClick={() => setAdmin(m, !m.is_admin)}
                         disabled={busyId === m.id}
-                        aria-label={m.beta_tester ? `Remove ${name} from beta testers` : `Make ${name} a beta tester`}
-                        title="Beta Tester — sees features being trialed + admin test notifications"
-                        className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
-                          m.beta_tester
-                            ? "bg-amber-500/15 text-amber-700 ring-amber-500/40"
-                            : "bg-background text-foreground/60 ring-border"
+                        className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
+                          m.is_admin
+                            ? "bg-background text-foreground/60 ring-border"
+                            : "bg-primary text-white ring-primary"
                         }`}
                       >
-                        {busyId === m.id ? "…" : m.beta_tester ? "Beta ✓" : "Beta"}
+                        {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
                       </button>
-                      {!isMe && (
-                        <button
-                          onClick={() => setAdmin(m, !m.is_admin)}
-                          disabled={busyId === m.id}
-                          className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
-                            m.is_admin
-                              ? "bg-background text-foreground/60 ring-border"
-                              : "bg-primary text-white ring-primary"
-                          }`}
-                        >
-                          {busyId === m.id ? "…" : m.is_admin ? "Remove admin" : "Make admin"}
-                        </button>
-                      )}
-                      {!isMe && !m.is_admin && (
-                        <button
-                          onClick={() => removeMember(m)}
-                          disabled={busyId === m.id}
-                          aria-label={`Remove ${name}`}
-                          title="Permanently remove this member"
-                          className="press shrink-0 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
+                    {!isMe && !m.is_admin && (
+                      <button
+                        onClick={() => removeMember(m)}
+                        disabled={busyId === m.id}
+                        aria-label={`Remove ${name}`}
+                        title="Permanently remove this member"
+                        className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {editId === m.id && editUnlocked && (
                   <AdminEditMember
