@@ -6,34 +6,51 @@ import { useEffect, useRef, useState } from "react";
 // with the white screen the app naturally shows while loading — then the GREEN
 // cabin logo pops in centered, holds a beat, and then *flies* up into the
 // top-left app header, zooming down to the header logo's exact size and
-// position before the overlay clears. The real header logo (#app-logo) sits
-// underneath in the same spot, so when the overlay is removed the hand-off is
-// seamless — the logo simply "settles" into the page chrome.
+// position. The real header logo (#app-logo) is kept HIDDEN for the whole
+// splash (CSS: `html[data-splash] #app-logo { opacity: 0 }`) so there's no
+// second copy to blur against; the instant the fly lands, we drop the overlay
+// and the attribute together, so the logo appears to be *placed* into the
+// header — a clean hand-off, not a cross-fade.
 //
 // How the fly is exact (a FLIP transition): we measure the live header logo's
 // bounding rect at runtime and translate/scale the splash logo's center onto
-// it, so it lands pixel-perfect on any screen size. Both logos are the same
-// image + aspect ratio and both are horizontally centered, so a single
-// translate+scale maps one onto the other.
+// it, so it lands pixel-perfect on any screen size. The hidden header logo is
+// opacity:0 (not display:none), so it's still laid out and measurable. Both
+// logos are the same image + aspect ratio and both are horizontally centered,
+// so a single translate+scale maps one onto the other.
 //
-// Robustness: reduce-motion users skip straight to the app; tap-to-skip works
-// at any point; and if the header logo can't be found (unexpected), we just
-// fade out rather than trap the app.
+// Robustness: reduce-motion users skip straight to the app (the attribute is
+// never set, so the header logo shows normally); tap-to-skip works at any
+// point; and if the header logo can't be found (unexpected), we just clear
+// rather than trap the app.
 const HOLD_MS = 1300; // center pop + hold before the logo flies
 const FLY_MS = 720; // fly + zoom into the header
+const SPLASH_ATTR = "data-splash"; // on <html> while the splash owns the logo
 
 export function SplashIntro() {
   const [phase, setPhase] = useState<"intro" | "flying" | "done">("intro");
   const logoRef = useRef<HTMLImageElement>(null);
   const [flyTransform, setFlyTransform] = useState<string | undefined>();
 
+  // Clear the overlay AND reveal the header logo in the same beat, so the
+  // hand-off reads as "the logo was placed there" with no overlap/blur.
+  const finish = () => {
+    document.documentElement.removeAttribute(SPLASH_ATTR);
+    setPhase("done");
+  };
+
   useEffect(() => {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
       setPhase("done");
       return;
     }
+    // The splash owns the logo: hide the header copy until the fly lands.
+    document.documentElement.setAttribute(SPLASH_ATTR, "");
     const t = setTimeout(startFly, HOLD_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      document.documentElement.removeAttribute(SPLASH_ATTR);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -41,7 +58,7 @@ export function SplashIntro() {
     const target = document.getElementById("app-logo");
     const el = logoRef.current;
     if (!target || !el) {
-      setPhase("done");
+      finish();
       return;
     }
     const from = el.getBoundingClientRect();
@@ -56,14 +73,14 @@ export function SplashIntro() {
     requestAnimationFrame(() =>
       requestAnimationFrame(() => setFlyTransform(`translate(${dx}px, ${dy}px) scale(${scale})`)),
     );
-    setTimeout(() => setPhase("done"), FLY_MS + 60);
+    setTimeout(finish, FLY_MS + 60);
   };
 
   if (phase === "done") return null;
 
   return (
     <div
-      onClick={() => setPhase("done")}
+      onClick={finish}
       aria-hidden
       // `splash-wash` is the CSS-driven safety net: even if JS never runs, the
       // whole overlay animates to opacity:0 + pointer-events:none on its own, so
