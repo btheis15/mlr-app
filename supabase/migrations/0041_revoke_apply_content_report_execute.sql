@@ -1,0 +1,11 @@
+-- 0041_revoke_apply_content_report_execute.sql
+-- Follow-up to 0040: lock down the trigger function apply_content_report() like
+-- the other trigger/internal functions (_notify, moderate_content_text). It was
+-- left callable via PostgREST (/rest/v1/rpc/apply_content_report) by anon +
+-- authenticated, which a Supabase security advisor flags. Trigger functions run
+-- as the table owner regardless of grants, so removing EXECUTE from clients
+-- closes the REST surface without affecting the AFTER INSERT trigger on
+-- content_reports.
+--
+-- Apply in the Supabase SQL editor after 0040.
+revoke all on function public.apply_content_report() from public, anon, authenticated;
