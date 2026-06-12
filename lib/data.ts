@@ -91,7 +91,10 @@ export const RESORT = {
   name: "Muskellunge Lake Resort",
   shortName: "MLR",
   tagline: "Your Northwoods home on Muskellunge Lake.",
-  /** Heritage (from the original resort's business card + the EST-1987 logo). */
+  /** Heritage. The resort has been in the Theis family since **1959** (when it
+      was purchased) — that's the line Home leads with. **1987** is when **Family
+      Fest** began (and what the logo reads), so it's the Family-Fest-page callout. */
+  familySince: "1959",
   est: "1987",
   founders: "Leo & Dorothy Theis",
   heritageTagline: "Fishing · Hunting · Boating",

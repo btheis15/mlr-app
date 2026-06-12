@@ -5,7 +5,7 @@ import { FestWeek } from "@/components/FestWeek";
 import { FestDuesShirts } from "@/components/FestDuesShirts";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
-import { FAMILY_FEST, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
+import { FAMILY_FEST, RESORT, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
 
 /**
@@ -25,6 +25,11 @@ export default function FamilyFestPage() {
         </p>
         <p className="text-xs text-foreground/50">
           {formatDateLong(FAMILY_FEST.startDate)} – {formatDateLong(FAMILY_FEST.endDate)}
+        </p>
+        {/* The Family Fest heritage stamp — the fest began in 1987 (what the logo
+            reads). The resort itself dates to 1959; that line lives on Home. */}
+        <p className="font-display text-[11px] uppercase tracking-[0.18em] text-primary/70">
+          ⚜ A family tradition since {RESORT.est} ⚜
         </p>
       </header>
 

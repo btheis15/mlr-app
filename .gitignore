@@ -40,3 +40,6 @@ next-env.d.ts
 # Python
 __pycache__/
 *.pyc
+
+# Swift build output (the Ask-MLR Foundation Models service — WIP, never deployed)
+media-server/fm-service/.build/
