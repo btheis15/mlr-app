@@ -67,15 +67,24 @@ and the bubble (and any reply that quotes it) becomes a **"message deleted"**
 tombstone for everyone, regardless of who removed it; edits stamp `edited_at` and
 show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
 not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
-| `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon, left of Profile) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), **email members** ([`EmailMembers`](components/EmailMembers.tsx) — open to all: custom list / your committees / everyone-if-involved), admin alert + notification composers, sign out |
+| `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
+| `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** tab (👥, last slot — took Profile's old spot) — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx)) |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out. **Not a tab** — reached via the profile photo in the top-left of the app header ([`AppHeader`](components/AppHeader.tsx)) |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 | `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 | `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
 | `/help` | [`app/help/page.tsx`](app/help/page.tsx) | **Help & how-to** — non-technical onboarding: what the app is, browse-vs-sign-in, "I didn't get my code" troubleshooting, add-to-home-screen ([`InstallButton`](components/InstallButton.tsx)), and a **text-size control** ([`TextSizeControl`](components/TextSizeControl.tsx)). Leads with a human escape hatch (text/email `HELP_CONTACT` in [`lib/help.ts`](lib/help.ts)). Linked from Profile + the sign-in sheet. Not a tab |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
-is the single source of truth for routes + labels + icons).
+is the single source of truth for routes + labels + icons): Home · Feed ·
+Family Fest · Activity · **People**.
+
+Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — a
+persistent header (above the announcement banner + page content) with your
+**profile photo in the top-left corner** (Facebook/X style; a generic "blank
+profile" silhouette via [`Avatar`](components/Avatar.tsx) `fallback="icon"`
+until you add a photo) linking to `/profile`, and the **MLR wordmark centered**
+linking Home. Replaces the old Home-only wordmark header.
 
 ## Non-technical / accessibility UX
 
