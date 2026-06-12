@@ -90,10 +90,13 @@ land on it. Replaces the old Home-only wordmark header.
 
 App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
 the green logo center-screen, then **flies + zooms it into the header's
-`#app-logo` slot** (a measured FLIP translate/scale) before clearing the
-overlay, so the logo seamlessly settles into the page chrome. `splash-wash` (in
-[`app/globals.css`](app/globals.css)) is the CSS-only self-clear fallback;
-reduce-motion skips straight to the app.
+`#app-logo` slot** (a measured FLIP translate/scale). The header logo is held
+hidden for the whole splash (`html[data-splash] #app-logo { opacity: 0 }` in
+[`app/globals.css`](app/globals.css), kept laid out so it stays measurable) and
+revealed the instant the fly lands — so the logo reads as *placed* into the
+header, not cross-faded against a second copy. `splash-wash` is the CSS-only
+self-clear fallback; reduce-motion skips straight to the app (attribute never
+set, header logo shows normally).
 
 ## Non-technical / accessibility UX
 

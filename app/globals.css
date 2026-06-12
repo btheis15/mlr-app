@@ -222,6 +222,14 @@ body {
 }
 @utility splash-wash { animation: mlr-splash-wash 3400ms var(--ease-ios) forwards; }
 
+/* While the splash owns the logo (SplashIntro sets data-splash on <html>), keep
+   the header's logo invisible so the flying splash logo doesn't blur against a
+   second copy. It stays laid out (opacity, not display:none) so the splash can
+   measure where to land; the attribute is removed the instant the fly lands, so
+   the header logo simply appears in place. */
+html[data-splash] #app-logo { opacity: 0; }
+
+
 /* Tactile tap. touch-action manipulation removes the iOS legacy tap delay.
    Press DOWN is quick + linear-ish (ease-ios); RELEASE springs back with a
    small overshoot (ease-spring) for the poppy/bubbly iOS feel. */
