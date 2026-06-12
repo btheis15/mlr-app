@@ -21,19 +21,10 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
  */
 export default function HomePage() {
   return (
-    <div className="space-y-6 pt-4">
-      {/* The authentic vintage-card wordmark — the real "Muskellunge Lake Resort"
-          lettering lifted from the original business card and vectorized
-          (public/wordmark.svg), so it's crisp at any size and never pixelates while
-          keeping the card's exact letterforms. */}
-      <header className="pt-1 pb-1 text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/wordmark.svg"
-          alt="Muskellunge Lake Resort"
-          className="mx-auto block h-11 w-auto max-w-full"
-        />
-      </header>
+    <div className="space-y-6 pt-2">
+      {/* The MLR wordmark now lives in the persistent top app chrome
+          (components/AppHeader.tsx), centered with the profile photo at the
+          top-left — so it's no longer repeated here at the top of Home. */}
 
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
       <WelcomeCard />

@@ -12,6 +12,7 @@ import { AssistantButton } from "@/components/AssistantButton";
 import { SplashIntro } from "@/components/SplashIntro";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { AppHeader } from "@/components/AppHeader";
 import { getAnnouncements } from "@/lib/announcements";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -96,7 +97,8 @@ export default async function RootLayout({
               paddingBottom: "calc(6rem + env(safe-area-inset-bottom))",
             }}
           >
-            <div className="pt-2">
+            <AppHeader />
+            <div className="pt-1">
               <AnnouncementBanner items={announcements} />
             </div>
             {children}

@@ -7,7 +7,10 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 // all-ages crowd. Each header previews its contents.
 //
 //   Get involved      → Events & Work Weekends · Committees   (horizontal, "come help" cards)
-//   Around the resort → Cabin Stay · People · Local Places    (tiles)
+//   Around the resort → Cabin Stay · Local Places             (tiles)
+//
+// People used to live here too, but it's now a primary bottom tab (👥), so the
+// duplicate tile was dropped.
 //
 // Events and Work Weekends are one card now (work weekends are just events) and
 // both Get-involved cards are full-width with an inviting line, to pull people in.
@@ -31,11 +34,10 @@ export function HomeResortGroups() {
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · People · Local Places">
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · Local Places">
         <div className="grid grid-cols-2 gap-3">
           <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
-          <TileCard href="/people" emoji="👥" title="People" body="Find any member — text, call, or pay." tile="bg-primary/12" />
-          <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" wide />
+          <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
         </div>
       </CollapsibleSection>
     </div>
@@ -48,19 +50,17 @@ function TileCard({
   title,
   body,
   tile,
-  wide,
 }: {
   href: string;
   emoji: string;
   title: string;
   body: string;
   tile: string;
-  wide?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className={`press rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm ${wide ? "col-span-2" : ""}`}
+      className="press rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
     >
       <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${tile}`}>{emoji}</span>
       <h3 className="mt-2 text-sm font-semibold">{title}</h3>

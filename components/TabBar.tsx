@@ -11,11 +11,12 @@ const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/posts", label: "Feed", icon: "📣" },
   { href: "/family-fest", label: "Family Fest", icon: "🎉" },
-  // The Notifications feed — everything that happened involving you. Sits just
-  // left of Profile. Labelled "Activity" so it fits the bar (the page itself is
-  // titled "Notifications").
+  // The Notifications feed — everything that happened involving you. Labelled
+  // "Activity" so it fits the bar (the page itself is titled "Notifications").
   { href: "/notifications", label: "Activity", icon: "🔔" },
-  { href: "/profile", label: "Profile", icon: "👤" },
+  // People (the member directory: text/call/pay, see info, email a group) takes
+  // the last slot — Profile moved to the top-left avatar in the app header.
+  { href: "/people", label: "People", icon: "👥" },
 ] as const;
 
 export function TabBar() {
