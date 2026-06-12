@@ -75,5 +75,15 @@ public/         manifest.webmanifest, icon.svg
   [`0037_help_requests.sql`](supabase/migrations/0037_help_requests.sql);
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
+- **Content safeguards (feed moderation)** — layered checks on the Posts feed so
+  sensitive/inappropriate/illegal content doesn't sit in front of the family.
+  The mini rejects non-image/video uploads by magic bytes; an admin-managed
+  blocklist + member **Report** auto-hold flagged posts/comments for an admin
+  review queue (Profile → Admin → Content review); on-device Apple nudity/text
+  checks on the mini are the planned next layer. Migration
+  [`0040_content_moderation.sql`](supabase/migrations/0040_content_moderation.sql);
+  [`lib/moderation.ts`](lib/moderation.ts). Full writeup in
+  [`docs/content-moderation.md`](docs/content-moderation.md) and CLAUDE.md →
+  **Content safeguards**.
 
 See [CLAUDE.md](./CLAUDE.md) for the operating manual for AI sessions.

@@ -21,6 +21,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PushToggle } from "@/components/PushToggle";
 import { NotifPrefs } from "@/components/NotifPrefs";
 import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
+import { AdminModeration } from "@/components/AdminModeration";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
 import { AssistantToggle } from "@/components/AssistantToggle";
@@ -223,6 +224,9 @@ export default function ProfilePage() {
           </CollapsibleSection>
           <CollapsibleSection title="Send a notification" icon="🔔" subtitle="To everyone, beta testers, or admins · their Activity tab">
             <AdminNotificationComposer />
+          </CollapsibleSection>
+          <CollapsibleSection title="Content review" icon="🛡️" subtitle="Held & reported posts · blocked words">
+            <AdminModeration />
           </CollapsibleSection>
           <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
             <AdminCommittees />

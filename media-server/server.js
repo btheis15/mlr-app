@@ -115,6 +115,41 @@ function uploadSubdir(req) {
   return path.join("posts", ym); // default: Posts feed
 }
 
+// ── Tier-0 content guard: only real images/videos get in ─────────────────────
+// Sniff the first bytes of the saved file and confirm it's an image or video
+// (magic bytes, not just the client-supplied name/MIME, which are trivially
+// spoofable). Anything else — PDFs, archives, scripts, disguised executables —
+// is rejected and the temp file deleted before it can be served or land in the
+// feed. This is the dependable floor; the on-device Apple nudity/text checks
+// (docs/content-moderation.md) layer on top for what the bytes can't tell us.
+function sniffMediaKind(filePath) {
+  let buf;
+  try {
+    const fd = fs.openSync(filePath, "r");
+    buf = Buffer.alloc(32);
+    fs.readSync(fd, buf, 0, 32, 0);
+    fs.closeSync(fd);
+  } catch {
+    return null;
+  }
+  const ascii = (start, len) => buf.toString("latin1", start, start + len);
+  // Images
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image"; // JPEG
+  if (buf[0] === 0x89 && ascii(1, 3) === "PNG") return "image"; // PNG
+  if (ascii(0, 3) === "GIF") return "image"; // GIF
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return "image"; // BMP
+  if (ascii(0, 4) === "RIFF") return ascii(8, 4) === "WEBP" ? "image" : ascii(8, 4) === "AVI " ? "video" : null;
+  // ISO base-media boxes ('ftyp' at offset 4): HEIC/HEIF photos + MP4/MOV/3GP video.
+  if (ascii(4, 4) === "ftyp") {
+    const brand = ascii(8, 4).toLowerCase();
+    if (["heic", "heix", "heif", "hevx", "mif1", "msf1"].includes(brand)) return "image";
+    return "video"; // mp4, m4v, mov(qt), 3gp, …
+  }
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return "video"; // Matroska/WebM (EBML)
+  if (ascii(0, 3) === "FLV") return "video"; // FLV
+  return null;
+}
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
@@ -248,6 +283,15 @@ app.post("/upload", requireUser, (req, res) => {
   upload.single("file")(req, res, async (err) => {
     if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
     if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
+
+    // Tier-0 guard: confirm the bytes really are an image or video. Reject
+    // (and delete) anything else before it's transcoded, served, or referenced.
+    const kind = sniffMediaKind(req.file.path);
+    if (kind !== "image" && kind !== "video") {
+      try { fs.unlinkSync(req.file.path); } catch {}
+      console.warn(`[upload] rejected non-media file ${req.file.originalname} (${req.file.mimetype})`);
+      return res.status(415).json({ error: "Only photos and videos can be uploaded." });
+    }
 
     // Videos → normalize to a web-friendly H.264 MP4 (≤1080p). Photos pass
     // through untouched. Never fatal: on any hiccup we serve the original file.

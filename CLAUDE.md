@@ -298,6 +298,39 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   otherwise use `_help_recipients` as today. (Deferred until GA — don't enable while
   beta-gated.)
 
+## Content safeguards (feed moderation)
+
+Layered safeguards on the social surfaces (Posts + comments + uploaded media) so
+sensitive/inappropriate/illegal content doesn't sit in front of the family. Full
+writeup + the on-device Apple "Tier 2" plan in
+[`docs/content-moderation.md`](docs/content-moderation.md). Posts stay
+**post-moderated** (still go live instantly) but anything a filter trips is
+**held for admin review** — a `status` of `visible | pending | hidden` on
+`posts`/`post_comments`; RLS only returns non-`visible` rows to the author +
+admins, so held/removed content drops out of the public feed without being
+destroyed. **Live now (Tiers 0+1):**
+- **Tier 0 (deterministic):** the mini's `/upload` sniffs **magic bytes** and
+  rejects anything that isn't really an image/video ([`media-server/server.js`](media-server/server.js)
+  `sniffMediaKind`); text length caps + an admin-managed **blocklist** auto-hold
+  matching captions/comments (a Postgres trigger — the always-on "language" floor,
+  no mini needed); client pre-checks in [`lib/moderation.ts`](lib/moderation.ts).
+- **Tier 1 (human):** members **Report** posts/comments
+  ([`ReportButton`](components/ReportButton.tsx) → `report_content` RPC); ≥2
+  distinct reports auto-hold an item; admins work a review queue
+  ([`AdminModeration`](components/AdminModeration.tsx) in Profile → Admin →
+  Content review) with Approve/Remove (`set_content_status`). Members can't change
+  their own item's status (a `BEFORE UPDATE` guard), so editing can't un-hide.
+  Every action is audited in `content_moderation_events`.
+- **Tier 2 (on-device Apple, planned, mini-only):** `SensitiveContentAnalysis`
+  for nudity in images + sampled video frames, and `FoundationModels` for
+  context-aware text — wired into `fm-service`. **No CSAM API exists for third
+  parties** and **PCC is unattainable**; both run on-device. See the doc.
+
+Data model: migration [`0040`](supabase/migrations/0040_content_moderation.sql)
+(`status` columns + status-aware RLS, `moderation_blocklist`, `content_reports`,
+`content_moderation_events`, the `moderate_content_text`/`apply_content_report`
+triggers, and the `report_content`/`set_content_status`/`moderation_queue` RPCs).
+
 ## Backend seams (planned, not yet wired)
 
 These are built UI-first with the swap point isolated to one module each:
