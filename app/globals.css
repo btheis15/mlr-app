@@ -231,15 +231,17 @@ html[data-splash] #app-logo { opacity: 0; }
 
 /* Hero logo: grow to fill the top so Home's "Get involved" card lands as the
    last fully-visible thing above the tab bar — on any iPhone, not one tuned
-   size. The height is derived from geometry, not a magic number: the stack from
-   the logo's bottom through the "Get involved" card is a fixed ~637px, and the
-   fixed tab bar takes ~56px, so the logo wants (usable height − 693px). `100dvh`
-   is the live viewport; we subtract the safe-area insets it includes (status bar
-   + home indicator) to get the height actually usable for content. Clamped so it
-   never drops below the old h-16 (short phones — SE — where Get involved can't
-   fit regardless) nor balloons past 12rem on very tall screens. The plain `4rem`
-   first is the fallback for engines without dvh/clamp. The splash measures this
-   element's live rect, so the fly adapts to whatever height this resolves to. */
+   size. This clamp is the baseline / no-JS fallback (AppHeader refines it to the
+   live layout once hydrated — see its effect). The height is derived from
+   geometry, not a magic number: the stack from the logo's bottom through the
+   "Get involved" card is a fixed ~637px, and the fixed tab bar takes ~56px, so
+   the logo wants (usable height − 693px). `100dvh` is the live viewport; we
+   subtract the safe-area insets it includes (status bar + home indicator) to get
+   the height actually usable for content. Clamped so it never drops below the
+   old h-16 (short phones — SE — where Get involved can't fit regardless) nor
+   balloons past 12rem on very tall screens. The plain `4rem` first is the
+   fallback for engines without dvh/clamp. The splash measures this element's
+   live rect, so the fly adapts to whatever height this resolves to. */
 #app-logo {
   height: 4rem;
   height: clamp(
