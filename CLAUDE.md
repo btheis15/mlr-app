@@ -46,7 +46,7 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**: Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), the nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), resort cards ([`HomePreFestCards`](components/HomePreFestCards.tsx) — Events / Work Weekends / Committees / Cabin), front-desk call, one-line heritage |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: the hero MLR logo, Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), **Get involved** ([`HomeGetInvolved`](components/HomeResortGroups.tsx) — Events/Work Weekends · Committees), **Ask for Help + People** side-by-side tiles ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)), **Around the resort** ([`HomeAroundResort`](components/HomeResortGroups.tsx) — Cabin Stay · Local Places), an "App & help" group, one-line heritage |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
 | `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
@@ -68,8 +68,8 @@ tombstone for everyone, regardless of who removed it; edits stamp `edited_at` an
 show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
 not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
 | `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
-| `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** tab (👥, last slot — took Profile's old spot) — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx)) |
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out. **Not a tab** — reached via the profile photo in the top-left of the app header ([`AppHeader`](components/AppHeader.tsx)) |
+| `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx)). **Not a tab** — reached from the People tile on Home ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)) |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out. **The last bottom tab** (👤) — it moved back here from the header avatar, which was removed |
 | `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
 | `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 | `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
@@ -77,30 +77,26 @@ not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_e
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons): Home · Feed ·
-Family Fest · Activity · **People**.
+Family Fest · Activity · **Profile** (👤). (Profile moved back to a tab from the
+old header avatar; People moved off the bar to a Home tile.)
 
-Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — a
-persistent header (above the announcement banner + page content) with your
-**profile photo in the top-left corner** (Facebook/X style; a generic "blank
-profile" silhouette via [`Avatar`](components/Avatar.tsx) `fallback="icon"`
-until you add a photo) linking to `/profile`. The avatar shows on **every tab**
-(so Profile is always one tap away), but the **green MLR cabin logo** (centered,
-`/brand-logo-green.png` — the same mark as the opening splash, *not* the stylized
-wordmark, linking Home) is drawn **only on Home** — the other tabs carry their
-own titles/back-links, so the hero logo there is just wasted space (gated by the
-`usePathname() === "/"` check in `AppHeader`). The logo is tagged `id="app-logo"`
+Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
+**Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —
+the same mark as the opening splash, *not* the stylized wordmark) linking Home.
+There is no header avatar and no bar on the other tabs (they carry their own
+titles/back-links, and Profile is a bottom tab), so nothing floats across them.
+Gated by the `usePathname() === "/"` check in `AppHeader`. Tagged `id="app-logo"`
 so the splash can land on it (on a non-Home cold open it isn't present, so the
-splash just clears — the fly is a Home thing). Replaces the old Home-only
-wordmark header. The logo is a
-**responsive hero**: a viewport-derived `clamp()` (the `#app-logo` rule in
-[`app/globals.css`](app/globals.css)) is the baseline, and an effect in
-`AppHeader` **refines it against the live layout** — it measures the rendered
-"Get involved" card and sizes the logo so that card lands ~12px above the tab
-bar (the next card then sits at the fold, hidden). Measuring (not pure CSS) is
-what lets it stay correct when the stack above "Get involved" varies per user
-(the beta "Ask for Help" card, Family Fest takeover weeks, …). Shrinks to the
-old `h-16` on short screens (SE) and the header row is `items-start` so the
-avatar stays pinned top-left as the logo grows.
+splash just clears — the fly is a Home thing). The logo is a **responsive
+hero**: a viewport-derived `clamp()` (the `#app-logo` rule in
+[`app/globals.css`](app/globals.css)) is the no-JS baseline, and an effect in
+`AppHeader` **refines it against the live layout** — it measures the marked
+`[data-fit-anchor]` card (the Ask-for-Help / People row,
+[`HomeHelpPeople`](components/HomeHelpPeople.tsx)) and sizes the logo so that row
+lands ~12px above the tab bar (the "Around the resort" group then sits just past
+the fold, hidden). It fits at load / when the beta tile resolves / on viewport
+change, **not** on live reflow — so opening an accordion just scrolls. Shrinks to
+the old `h-16` on short screens (SE).
 
 App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
 the green logo center-screen, then **flies + zooms it into the header's
