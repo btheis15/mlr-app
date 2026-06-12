@@ -1,70 +1,62 @@
-"use client";
-
 import Link from "next/link";
-import { useFestSeason } from "@/lib/useFestSeason";
-import { FAMILY_FEST } from "@/lib/data";
+import { RowLink } from "@/components/RowLink";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 
-// The resort destinations on Home, as COLLAPSED groups so the default screen
-// stays short and calm for a mostly-non-technical, all-ages crowd. Each group's
-// header previews what's inside (the subtitle lists the items), so nothing feels
-// hidden — tap to open the tiles. Same accordion the Profile tab uses, so it's
-// familiar. Work Weekends drops out during the fest week (unchanged rule).
+// The resort destinations on Home, in two collapsed groups (the same accordion
+// the Profile tab uses) so the screen stays short for a mostly-non-technical,
+// all-ages crowd. Each header previews its contents.
 //
-//   Get involved      → Events · Committees · Work Weekends
-//   Around the resort → Cabin Stay · People · Local Places
+//   Get involved      → Events & Work Weekends · Committees   (horizontal, "come help" cards)
+//   Around the resort → Cabin Stay · People · Local Places    (tiles)
+//
+// Events and Work Weekends are one card now (work weekends are just events) and
+// both Get-involved cards are full-width with an inviting line, to pull people in.
+export function HomeResortGroups() {
+  return (
+    <div className="space-y-3">
+      <CollapsibleSection title="Get involved" icon="🗓️" subtitle="Events & Work Weekends · Committees">
+        <RowLink
+          href="/events"
+          emoji="📅"
+          tile="bg-sun/12"
+          title="Events & Work Weekends"
+          subtitle="See what's coming up — RSVP to gatherings and grab a spot on a work weekend."
+        />
+        <RowLink
+          href="/committees"
+          emoji="🤝"
+          tile="bg-campfire/12"
+          title="Committees"
+          subtitle="Join a crew and help make the resort & Family Fest happen — there's a spot for everyone."
+        />
+      </CollapsibleSection>
 
-interface TileDef {
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · People · Local Places">
+        <div className="grid grid-cols-2 gap-3">
+          <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
+          <TileCard href="/people" emoji="👥" title="People" body="Find any member — text, call, or pay." tile="bg-primary/12" />
+          <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" wide />
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function TileCard({
+  href,
+  emoji,
+  title,
+  body,
+  tile,
+  wide,
+}: {
   href: string;
   emoji: string;
   title: string;
   body: string;
   tile: string;
-}
-
-export function HomeResortGroups() {
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
-  if (!season) return null;
-
-  const getInvolved: TileDef[] = [
-    { href: "/events", emoji: "📅", title: "Events", body: "The calendar — RSVP to what's coming.", tile: "bg-sun/12" },
-    { href: "/committees", emoji: "🤝", title: "Committees", body: "Who runs what — and how to help.", tile: "bg-campfire/12" },
-    ...(!season.isLive
-      ? [{ href: "/work-weekends", emoji: "🛠️", title: "Work Weekends", body: "Pitch in to get the resort ready.", tile: "bg-lake/12" }]
-      : []),
-  ];
-
-  const aroundResort: TileDef[] = [
-    { href: "/request-stay", emoji: "🏡", title: "Cabin Stay", body: "Reserve a room for any week.", tile: "bg-dusk/12" },
-    { href: "/people", emoji: "👥", title: "People", body: "Find any member — text, call, or pay.", tile: "bg-primary/12" },
-    { href: "/local-places", emoji: "📍", title: "Local Places", body: "Tee times, food & favorites nearby.", tile: "bg-lake/12" },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <CollapsibleSection title="Get involved" icon="🗓️" subtitle={getInvolved.map((t) => t.title).join(" · ")}>
-        <TileGrid tiles={getInvolved} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Around the resort" icon="🧭" subtitle={aroundResort.map((t) => t.title).join(" · ")}>
-        <TileGrid tiles={aroundResort} />
-      </CollapsibleSection>
-    </div>
-  );
-}
-
-function TileGrid({ tiles }: { tiles: TileDef[] }) {
-  // Odd count ⇒ last tile spans full width, so a row never has a lonely half-card.
-  const odd = tiles.length % 2 === 1;
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      {tiles.map((t, i) => (
-        <TileCard key={t.href} {...t} wide={odd && i === tiles.length - 1} />
-      ))}
-    </div>
-  );
-}
-
-function TileCard({ href, emoji, title, body, tile, wide }: TileDef & { wide?: boolean }) {
+  wide?: boolean;
+}) {
   return (
     <Link
       href={href}

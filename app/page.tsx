@@ -1,7 +1,6 @@
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
-import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { HomeResortGroups } from "@/components/HomeResortGroups";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
@@ -24,17 +23,16 @@ export default function HomePage() {
   return (
     <div className="space-y-6 pt-4">
       {/* The authentic vintage-card wordmark — the real "Muskellunge Lake Resort"
-          lettering lifted from the original business card at native resolution, with
-          its ink grain + worn strokes preserved (only the paper dropped, recolored
-          green): public/wordmark.png. Not a font, not smoothed. */}
-      <header className="pt-1 text-center">
+          lettering lifted from the original business card and vectorized
+          (public/wordmark.svg), so it's crisp at any size and never pixelates while
+          keeping the card's exact letterforms. */}
+      <header className="pt-1 pb-1 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/wordmark.png"
+          src="/wordmark.svg"
           alt="Muskellunge Lake Resort"
-          className="mx-auto block h-10 w-auto max-w-full"
+          className="mx-auto block h-11 w-auto max-w-full"
         />
-        <p className="mt-1.5 text-sm text-foreground/55">{RESORT.tagline}</p>
       </header>
 
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
@@ -51,10 +49,6 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
-
-      {/* Pay-your-dues CTA, right under the Family Fest spotlight (run-up only,
-          self-hides otherwise). T-shirt ordering lives on the Family Fest page. */}
-      <FestDuesCallout />
 
       <UpcomingEvents />
 
