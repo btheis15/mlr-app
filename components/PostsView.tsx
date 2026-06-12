@@ -12,6 +12,8 @@ import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { Lightbox } from "@/components/Lightbox";
+import { ReportButton } from "@/components/ReportButton";
+import { POST_TEXT_MAX, fileRejectionReason } from "@/lib/moderation";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -40,6 +42,7 @@ interface FeedPost {
   tags: Tag[];
   gradient?: string; // seed only (local fallback)
   emoji?: string;
+  status?: string; // moderation status (0040): 'visible' | 'pending' | 'hidden' — only the author/admins ever receive non-visible rows
 }
 
 interface CommentItem {
@@ -59,6 +62,7 @@ interface PostRow {
   created_at: string;
   occurred_at?: string | null;
   author_id: string;
+  status?: string | null;
 }
 interface CommentRow {
   id: string;
@@ -191,16 +195,27 @@ export function PostsView({ seed }: { seed: Post[] }) {
     // the column is missing — fall back to created_at so the feed still loads.
     const withOcc = await sb
       .from("posts")
-      .select("id, text, image_path, created_at, occurred_at, author_id")
+      .select("id, text, image_path, created_at, occurred_at, author_id, status")
       .order("occurred_at", { ascending: false });
     let postRowsRaw: PostRow[];
     if (withOcc.error) {
-      const base = await sb
+      // status column missing (0040 not yet run) but occurred_at present? Keep
+      // the timeline ordering; only drop to created_at if occurred_at is gone too.
+      const withoutStatus = await sb
         .from("posts")
-        .select("id, text, image_path, created_at, author_id")
-        .order("created_at", { ascending: false });
-      postRowsRaw = (base.data ?? []) as unknown as PostRow[];
-      setHasOccurredAt(false);
+        .select("id, text, image_path, created_at, occurred_at, author_id")
+        .order("occurred_at", { ascending: false });
+      if (!withoutStatus.error) {
+        postRowsRaw = (withoutStatus.data ?? []) as unknown as PostRow[];
+        setHasOccurredAt(true);
+      } else {
+        const base = await sb
+          .from("posts")
+          .select("id, text, image_path, created_at, author_id")
+          .order("created_at", { ascending: false });
+        postRowsRaw = (base.data ?? []) as unknown as PostRow[];
+        setHasOccurredAt(false);
+      }
     } else {
       postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
       setHasOccurredAt(true);
@@ -254,6 +269,7 @@ export function PostsView({ seed }: { seed: Post[] }) {
           text: r.text || undefined,
           media,
           tags: tagsByPost[r.id] ?? [],
+          status: r.status ?? undefined,
         };
       }),
     );
@@ -317,6 +333,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
 
   const toggleTag = (id: string) => setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  // Reporting is tied to identity — route a guest to sign-in first. Returns true
+  // if it handled the guest (so the caller stops).
+  const requireSignIn = () => {
+    if (!user) { promptSignIn(); return true; }
+    return false;
+  };
+
   const openFacebook = (caption?: string) => {
     if (caption) navigator.clipboard.writeText(caption).catch(() => {});
     window.open(FAMILY_FEST.facebookGroupUrl, "_blank", "noreferrer");
@@ -335,6 +358,19 @@ export function PostsView({ seed }: { seed: Post[] }) {
     if (!user) { promptSignIn(); return; }
     if (!text.trim() && files.length === 0) return;
     const caption = text.trim();
+
+    // Friendly client-side guards (the server re-checks both — see lib/moderation).
+    if (caption.length > POST_TEXT_MAX) {
+      setStatus(`That's a long one — please keep posts under ${POST_TEXT_MAX.toLocaleString()} characters.`);
+      window.setTimeout(() => setStatus(null), 7000);
+      return;
+    }
+    const badFile = files.map(fileRejectionReason).find(Boolean);
+    if (badFile) {
+      setStatus(badFile);
+      window.setTimeout(() => setStatus(null), 7000);
+      return;
+    }
 
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
@@ -700,14 +736,30 @@ export function PostsView({ seed }: { seed: Post[] }) {
                     <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
                   </div>
                 </button>
-                {canEditPost(p) ? (
-                  <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
-                    {editingId === p.id ? "Close" : "Edit"}
-                  </button>
-                ) : canDeletePost(p, isAdded) ? (
-                  <button onClick={() => deletePost(p, isAdded)} className="press shrink-0 rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
-                ) : null}
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {configured && !isAdded && p.authorId !== uid && (
+                    <ReportButton entity="post" entityId={p.id} needsSignIn={requireSignIn} />
+                  )}
+                  {canEditPost(p) ? (
+                    <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
+                      {editingId === p.id ? "Close" : "Edit"}
+                    </button>
+                  ) : canDeletePost(p, isAdded) ? (
+                    <button onClick={() => deletePost(p, isAdded)} className="press rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
+                  ) : null}
+                </div>
               </div>
+
+              {p.status === "pending" && (
+                <p className="mx-4 mt-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                  ⏳ Pending review — only you and admins can see this until an admin approves it.
+                </p>
+              )}
+              {p.status === "hidden" && (
+                <p className="mx-4 mt-2 rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent">
+                  🚫 Removed by an admin — hidden from the feed.
+                </p>
+              )}
 
               {editingId === p.id && (
                 <EditPostPanel
@@ -790,9 +842,11 @@ export function PostsView({ seed }: { seed: Post[] }) {
                         <span className="font-semibold">{c.author}</span>
                       </button>
                       <span className="min-w-0 flex-1 text-foreground/75"><MentionText text={c.text} mentions={c.mentions} members={members} /></span>
-                      {(isAdmin || (!!uid && c.authorId === uid)) && (
+                      {isAdmin || (!!uid && c.authorId === uid) ? (
                         <button onClick={() => removeComment(c.id)} className="press shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
-                      )}
+                      ) : configured ? (
+                        <ReportButton entity="comment" entityId={c.id} needsSignIn={requireSignIn} variant="comment" />
+                      ) : null}
                     </div>
                   ))}
                   <CommentBox members={members} uid={uid} onAdd={(t, ids) => addComment(p.id, t, ids)} />
