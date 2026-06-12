@@ -86,7 +86,13 @@ profile" silhouette via [`Avatar`](components/Avatar.tsx) `fallback="icon"`
 until you add a photo) linking to `/profile`, and the **green MLR cabin logo
 centered** (`/brand-logo-green.png` — the same mark as the opening splash, *not*
 the stylized wordmark) linking Home. Tagged `id="app-logo"` so the splash can
-land on it. Replaces the old Home-only wordmark header.
+land on it. Replaces the old Home-only wordmark header. The logo is a
+**responsive hero**: its height is a viewport-derived `clamp()` (the `#app-logo`
+rule in [`app/globals.css`](app/globals.css)) tuned so Home's "Get involved"
+card lands as the last fully-visible thing above the tab bar on a typical
+iPhone, shrinking to the old `h-16` on short screens (SE) and capping at 12rem
+on tall ones. The header row is `items-start` so the avatar stays pinned
+top-left as the logo grows.
 
 App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
 the green logo center-screen, then **flies + zooms it into the header's
