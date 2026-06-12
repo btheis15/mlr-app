@@ -22,25 +22,26 @@ export function AppHeader() {
         aria-label="Your profile"
         className="press shrink-0 rounded-full"
       >
-        <Avatar name={user?.name ?? ""} url={user?.avatarUrl} size={36} fallback="icon" />
+        <Avatar name={user?.name ?? ""} url={user?.avatarUrl} size={40} fallback="icon" />
       </Link>
 
       <Link href="/" aria-label="Muskellunge Lake Resort — Home" className="press min-w-0">
         {/* The green cabin-in-the-pines brand logo (same mark as the opening
-            splash), not the stylized wordmark — and tagged `app-logo` so the
-            SplashIntro can measure this exact spot and fly the splash logo into
-            it for a seamless hand-off. */}
+            splash), not the stylized wordmark — sized large to fill the top of
+            the screen as the app's hero. Tagged `app-logo` so the SplashIntro
+            can measure this exact spot and fly the splash logo into it for a
+            seamless hand-off. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           id="app-logo"
           src="/brand-logo-green.png"
           alt="Muskellunge Lake Resort"
-          className="block h-10 w-auto max-w-full"
+          className="block h-16 w-auto max-w-full"
         />
       </Link>
 
-      {/* Spacer to balance the avatar so the wordmark centers. */}
-      <span aria-hidden className="h-9 w-9 shrink-0" />
+      {/* Spacer to balance the avatar so the logo stays centered. */}
+      <span aria-hidden className="h-10 w-10 shrink-0" />
     </header>
   );
 }
