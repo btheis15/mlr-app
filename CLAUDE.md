@@ -83,10 +83,15 @@ Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — a
 persistent header (above the announcement banner + page content) with your
 **profile photo in the top-left corner** (Facebook/X style; a generic "blank
 profile" silhouette via [`Avatar`](components/Avatar.tsx) `fallback="icon"`
-until you add a photo) linking to `/profile`, and the **green MLR cabin logo
-centered** (`/brand-logo-green.png` — the same mark as the opening splash, *not*
-the stylized wordmark) linking Home. Tagged `id="app-logo"` so the splash can
-land on it. Replaces the old Home-only wordmark header. The logo is a
+until you add a photo) linking to `/profile`. The avatar shows on **every tab**
+(so Profile is always one tap away), but the **green MLR cabin logo** (centered,
+`/brand-logo-green.png` — the same mark as the opening splash, *not* the stylized
+wordmark, linking Home) is drawn **only on Home** — the other tabs carry their
+own titles/back-links, so the hero logo there is just wasted space (gated by the
+`usePathname() === "/"` check in `AppHeader`). The logo is tagged `id="app-logo"`
+so the splash can land on it (on a non-Home cold open it isn't present, so the
+splash just clears — the fly is a Home thing). Replaces the old Home-only
+wordmark header. The logo is a
 **responsive hero**: a viewport-derived `clamp()` (the `#app-logo` rule in
 [`app/globals.css`](app/globals.css)) is the baseline, and an effect in
 `AppHeader` **refines it against the live layout** — it measures the rendered
