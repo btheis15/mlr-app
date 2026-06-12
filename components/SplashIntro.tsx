@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RESORT } from "@/lib/data";
 
 // App-open splash. A near-white wash (the app's own background) so it blends with
 // the white screen the app naturally shows while loading — then the GREEN logo
@@ -37,9 +36,6 @@ export function SplashIntro() {
       {/* Green-on-transparent logo (recolored from brand-logo.jpg) on the white wash. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/brand-logo-green.png" alt="" className="splash-logo h-44 w-auto max-w-[82%]" />
-      <p className="splash-motto -mt-1 text-sm font-medium tracking-wide text-primary/80">
-        {RESORT.tagline}
-      </p>
     </div>
   );
 }
