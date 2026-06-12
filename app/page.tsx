@@ -70,9 +70,10 @@ export default function HomePage() {
         />
       </CollapsibleSection>
 
-      {/* Heritage, condensed to a single line. */}
+      {/* Heritage, condensed to a single line. The resort has been in the family
+          since 1959 (1987 — when Family Fest began — lives on the Family Fest tab). */}
       <p className="text-center text-[11px] italic text-foreground/40">
-        Est. {RESORT.est} · {RESORT.founders} · {RESORT.town}
+        In the family since {RESORT.familySince} · {RESORT.founders} · {RESORT.town}
       </p>
     </div>
   );
