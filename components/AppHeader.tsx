@@ -26,11 +26,16 @@ export function AppHeader() {
       </Link>
 
       <Link href="/" aria-label="Muskellunge Lake Resort — Home" className="press min-w-0">
+        {/* The green cabin-in-the-pines brand logo (same mark as the opening
+            splash), not the stylized wordmark — and tagged `app-logo` so the
+            SplashIntro can measure this exact spot and fly the splash logo into
+            it for a seamless hand-off. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/wordmark.svg"
+          id="app-logo"
+          src="/brand-logo-green.png"
           alt="Muskellunge Lake Resort"
-          className="block h-9 w-auto max-w-full"
+          className="block h-10 w-auto max-w-full"
         />
       </Link>
 
