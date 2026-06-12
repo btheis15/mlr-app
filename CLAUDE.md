@@ -83,8 +83,17 @@ Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — a
 persistent header (above the announcement banner + page content) with your
 **profile photo in the top-left corner** (Facebook/X style; a generic "blank
 profile" silhouette via [`Avatar`](components/Avatar.tsx) `fallback="icon"`
-until you add a photo) linking to `/profile`, and the **MLR wordmark centered**
-linking Home. Replaces the old Home-only wordmark header.
+until you add a photo) linking to `/profile`, and the **green MLR cabin logo
+centered** (`/brand-logo-green.png` — the same mark as the opening splash, *not*
+the stylized wordmark) linking Home. Tagged `id="app-logo"` so the splash can
+land on it. Replaces the old Home-only wordmark header.
+
+App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
+the green logo center-screen, then **flies + zooms it into the header's
+`#app-logo` slot** (a measured FLIP translate/scale) before clearing the
+overlay, so the logo seamlessly settles into the page chrome. `splash-wash` (in
+[`app/globals.css`](app/globals.css)) is the CSS-only self-clear fallback;
+reduce-motion skips straight to the app.
 
 ## Non-technical / accessibility UX
 
