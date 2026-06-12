@@ -21,7 +21,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
  */
 export default function HomePage() {
   return (
-    <div className="space-y-6 pt-2">
+    <div className="space-y-5 pt-1">
       {/* The MLR wordmark now lives in the persistent top app chrome
           (components/AppHeader.tsx), centered with the profile photo at the
           top-left — so it's no longer repeated here at the top of Home. */}
