@@ -1,22 +1,21 @@
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
-import { HomeResortGroups } from "@/components/HomeResortGroups";
+import { HomeGetInvolved, HomeAroundResort } from "@/components/HomeResortGroups";
+import { HomeHelpPeople } from "@/components/HomeHelpPeople";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
 import { InstallButton } from "@/components/InstallButton";
 import { WelcomeCard } from "@/components/WelcomeCard";
 import { UpcomingEvents } from "@/components/UpcomingEvents";
-import { AskForHelpHomeCard } from "@/components/AskForHelpHomeCard";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 
 /**
  * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
  *   1) WHAT'S HAPPENING up top, front & center — the Family Fest season spotlight
  *      and the nearest event + RSVP (plus the in-season dues / t-shirt CTAs).
- *   2) EVERYTHING ELSE grouped into two clearly-labeled sections (Get involved /
- *      Around the resort) via HomeResortGroups, so it reads as a few sections
- *      instead of a wall of equal cards.
+ *   2) GET INVOLVED right after the events (the most important ask), then the
+ *      Ask-for-Help / People tiles, then the quieter "Around the resort" group.
  *   3) QUIET UTILITIES (install, share, help) tucked at the bottom, out of the way.
  */
 export default function HomePage() {
@@ -43,11 +42,14 @@ export default function HomePage() {
 
       <UpcomingEvents />
 
-      {/* Ask for Help (BETA) — beta testers only; self-hides for everyone else. */}
-      <AskForHelpHomeCard />
+      {/* ── Get involved — pulled up high (most important ask) ──────────────── */}
+      <HomeGetInvolved />
 
-      {/* ── Everything else, in collapsed groups (tap to open) ──────────────── */}
-      <HomeResortGroups />
+      {/* Ask for Help (BETA, self-hides) + People, as side-by-side square tiles. */}
+      <HomeHelpPeople />
+
+      {/* ── Quieter destinations, lower down ─────────────────────────────────── */}
+      <HomeAroundResort />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}
       <CollapsibleSection title="App & help" icon="📲" subtitle="Add to phone · Share · Help">

@@ -14,9 +14,9 @@ const TABS = [
   // The Notifications feed — everything that happened involving you. Labelled
   // "Activity" so it fits the bar (the page itself is titled "Notifications").
   { href: "/notifications", label: "Activity", icon: "🔔" },
-  // People (the member directory: text/call/pay, see info, email a group) takes
-  // the last slot — Profile moved to the top-left avatar in the app header.
-  { href: "/people", label: "People", icon: "👥" },
+  // Profile (your account, settings, sign-out) is back in the last slot. People
+  // (the member directory) moved off the tab bar to a card on Home.
+  { href: "/profile", label: "Profile", icon: "👤" },
 ] as const;
 
 export function TabBar() {
