@@ -524,14 +524,13 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   return (
-    <div className="space-y-5 pt-2">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
-        <p className="text-sm text-foreground/60">Share photos &amp; videos with everyone — and out to the family Facebook group.</p>
-        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press inline-block text-xs font-medium text-primary">
-          Open the family Facebook group ↗
-        </a>
-      </header>
+    <div className="space-y-3 pt-1">
+      {/* The "Posts" pill above already labels this view, so we skip a redundant
+          title/subtitle here and keep just the one useful link out to Facebook —
+          the composer's placeholder is instruction enough. */}
+      <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press inline-flex items-center gap-1 text-xs font-medium text-primary">
+        📘 Open the family Facebook group ↗
+      </a>
 
       <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <textarea
