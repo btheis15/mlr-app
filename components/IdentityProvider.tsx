@@ -32,6 +32,13 @@ interface IdentityValue {
    *  migration 0029) — used to gate things being trialed. Forced false while
    *  previewing, like isAdmin. */
   isBetaTester: boolean;
+  /** True once the initial auth check has settled — i.e. we've read the stored
+   *  session (and loaded its profile) or determined there is none. `user` is
+   *  trustworthy only after this flips true; before it, we simply don't know yet.
+   *  The app-open splash holds until this is true so the first paint is already
+   *  the right (member vs guest) view — no post-splash shift. Always true when
+   *  Supabase isn't configured (nothing to wait on). */
+  authReady: boolean;
   /** Current admin "view as" preview (off unless an admin turned it on). */
   previewMode: PreviewMode;
   /** When previewing as a specific member, who it is (UI-only); null otherwise. */
@@ -63,6 +70,7 @@ const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
   isBetaTester: false,
+  authReady: true,
   previewMode: "off",
   previewMember: null,
   previewAsId: null,
@@ -110,6 +118,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [adminFlag, setAdminFlag] = useState(false);
   const [betaFlag, setBetaFlag] = useState(false);
+  // Has the initial auth check finished? Starts false; flips true once the
+  // stored session (+ profile) is loaded, or immediately if there's no backend.
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const [prompting, setPrompting] = useState(false);
   const [previewMode, setPreviewState] = useState<PreviewMode>("off");
   const [previewMember, setPreviewMemberState] = useState<PreviewMember | null>(null);
@@ -130,7 +141,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const sb = supabase;
-    if (!sb) return;
+    if (!sb) {
+      setAuthReady(true);
+      return;
+    }
     let active = true;
 
     const loadFromSession = async (session: Session | null) => {
@@ -157,7 +171,15 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       setBetaFlag(Boolean(profile?.beta_tester));
     };
 
-    sb.auth.getSession().then(({ data }) => loadFromSession(data.session));
+    // Resolve the stored session and its profile, then mark auth settled. The
+    // splash waits on this flag so the app's first visible paint is already the
+    // correct member/guest view (no flash of the wrong one once it resolves).
+    sb.auth
+      .getSession()
+      .then(({ data }) => loadFromSession(data.session))
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
     const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
       loadFromSession(session);
       if (session) setPrompting(false);
@@ -275,6 +297,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         user: effectiveUser,
         isAdmin: effectiveAdmin,
         isBetaTester: effectiveBeta,
+        authReady,
         previewMode,
         previewMember,
         previewAsId: previewMode === "member" && previewMember ? previewMember.id : null,

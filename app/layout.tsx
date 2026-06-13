@@ -80,10 +80,12 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full text-foreground antialiased">
-        {/* App-open splash: green wash → logo pops → motto → fades to the app. */}
-        <SplashIntro />
         <DemoDateProvider>
           <IdentityProvider>
+            {/* App-open splash: logo pops, holds until auth resolves, then flies
+                into the header — inside IdentityProvider so it can wait on
+                `authReady` and avoid a post-splash member/guest shift. */}
+            <SplashIntro />
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />

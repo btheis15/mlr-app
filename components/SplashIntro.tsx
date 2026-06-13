@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useIdentity } from "@/components/IdentityProvider";
 
 // App-open splash. A near-white wash (the app's own background) so it blends
 // with the white screen the app naturally shows while loading — then the GREEN
@@ -23,14 +24,28 @@ import { useEffect, useRef, useState } from "react";
 // never set, so the header logo shows normally); tap-to-skip works at any
 // point; and if the header logo can't be found (unexpected), we just clear
 // rather than trap the app.
-const HOLD_MS = 1300; // center pop + hold before the logo flies
+const HOLD_MS = 1300; // center pop + min hold before the logo can fly
 const FLY_MS = 720; // fly + zoom into the header
+// Safety cap: if the auth check is still pending this long (slow/offline
+// network), fly anyway rather than sit on the splash forever. Kept under the
+// CSS `splash-wash` self-clear window so JS always finishes the hand-off first.
+const MAX_WAIT_MS = 4500;
 const SPLASH_ATTR = "data-splash"; // on <html> while the splash owns the logo
 
 export function SplashIntro() {
+  // Hold the splash until the initial auth check has settled, so the app's first
+  // visible paint is already the right member/guest view — no post-splash shift.
+  const { authReady } = useIdentity();
   const [phase, setPhase] = useState<"intro" | "flying" | "done">("intro");
   const logoRef = useRef<HTMLImageElement>(null);
   const [flyTransform, setFlyTransform] = useState<string | undefined>();
+  // The two gates for starting the fly: the minimum hold has elapsed, and either
+  // auth resolved or the safety cap fired. `started` guards against re-entry from
+  // the effect re-running as those inputs settle.
+  const [held, setHeld] = useState(false);
+  const [forced, setForced] = useState(false);
+  const reduceRef = useRef(false);
+  const started = useRef(false);
 
   // Clear the overlay AND reveal the header logo in the same beat, so the
   // hand-off reads as "the logo was placed there" with no overlap/blur.
@@ -40,24 +55,37 @@ export function SplashIntro() {
   };
 
   useEffect(() => {
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
-      setPhase("done");
-      return;
-    }
-    // The splash owns the logo: hide the header copy until the fly lands.
-    document.documentElement.setAttribute(SPLASH_ATTR, "");
-    const t = setTimeout(startFly, HOLD_MS);
+    reduceRef.current = Boolean(
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+    );
+    // Reduce-motion users skip the fly, but we still hold the plain logo screen
+    // until auth resolves (a hard cut, no animation) so they don't see the shift
+    // either. The header logo is only hidden when we're going to fly into it.
+    if (!reduceRef.current) document.documentElement.setAttribute(SPLASH_ATTR, "");
+    const tHold = setTimeout(() => setHeld(true), HOLD_MS);
+    const tMax = setTimeout(() => setForced(true), MAX_WAIT_MS);
     return () => {
-      clearTimeout(t);
+      clearTimeout(tHold);
+      clearTimeout(tMax);
       document.documentElement.removeAttribute(SPLASH_ATTR);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Start the exit once we've held a beat AND auth has settled (or the cap hit).
+  useEffect(() => {
+    if (started.current) return;
+    if (forced || (held && authReady)) {
+      started.current = true;
+      startFly();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [held, authReady, forced]);
+
   const startFly = () => {
     const target = document.getElementById("app-logo");
     const el = logoRef.current;
-    if (!target || !el) {
+    if (reduceRef.current || !target || !el) {
       finish();
       return;
     }

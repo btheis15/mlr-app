@@ -214,13 +214,16 @@ body {
 @utility splash-logo { animation: mlr-splash-logo 600ms var(--ease-spring) 150ms both; }
 @utility splash-motto { animation: mlr-rise 500ms var(--ease-ios) 720ms both; }
 /* The whole wash holds, then fades out and goes click-through — CSS-driven so it
-   self-clears even if JS hydrates late (never traps the app behind the overlay). */
+   self-clears even if JS hydrates late (never traps the app behind the overlay).
+   The hold runs long (past SplashIntro's MAX_WAIT_MS + fly) so that when JS is
+   running it always drives the hand-off — even while the splash waits on the
+   auth check — and this animation only ever fires as the no-JS fallback. */
 @keyframes mlr-splash-wash {
   0%   { opacity: 1; pointer-events: auto; }
-  82%  { opacity: 1; pointer-events: auto; }
+  90%  { opacity: 1; pointer-events: auto; }
   100% { opacity: 0; pointer-events: none; }
 }
-@utility splash-wash { animation: mlr-splash-wash 3400ms var(--ease-ios) forwards; }
+@utility splash-wash { animation: mlr-splash-wash 6000ms var(--ease-ios) forwards; }
 
 /* While the splash owns the logo (SplashIntro sets data-splash on <html>), keep
    the header's logo invisible so the flying splash logo doesn't blur against a
