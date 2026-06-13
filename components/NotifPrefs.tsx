@@ -17,6 +17,7 @@ const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: bo
   { value: "help_request", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },
   { value: "help_response", label: "Responses to my request", desc: "When someone’s on the way to help with your request" },
   { value: "cabin_request", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
+  { value: "committee_join_request", label: "New committee join requests", desc: "When a member asks to join a committee (leads of that committee see these too)", adminOnly: true },
 ];
 
 /**

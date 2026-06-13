@@ -202,6 +202,10 @@ async function start() {
   const PUSHABLE_FEED_TYPES = new Set([
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp",
+    // A member asking to join a committee (migration 0042): the feed fans a row
+    // out to that committee's leads + every app admin; we relay it to a phone
+    // push, gated on push_types (admins opt in via Profile → Notifications).
+    "committee_join_request",
     // "Ask for Help" (migration 0037): a request reaching willing+present members,
     // a response landing for the requester, and the "✅ covered" broadcast — all
     // ride the feed-mirror path (the trigger fans out notifications rows; we relay

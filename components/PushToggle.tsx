@@ -9,10 +9,11 @@ import type { PushType } from "@/lib/types";
 // The unified push list (migration 0034) — one row per category, in the order
 // shown to members. Each is independent; they only buzz the phone while the
 // master "Push notifications" switch is on (which is what subscribes the device).
-const TYPES: { value: PushType; label: string; desc: string }[] = [
+const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean }[] = [
   { value: "alerts", label: "Broadcast alerts", desc: "Admin & Family Fest alerts" },
   { value: "birthdays", label: "Birthdays", desc: "When it's a member's birthday — tap to text or call them" },
   { value: "committee_join", label: "Committee decisions", desc: "When your request to join a committee is approved or declined" },
+  { value: "committee_join_request", label: "New committee join requests", desc: "Admins: when a member asks to join a committee", adminOnly: true },
   { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
   { value: "post_tag", label: "Tagged in a post", desc: "When someone tags you in a post" },
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
@@ -66,6 +67,9 @@ export function PushToggle() {
   const types = user?.pushTypes ?? [];
   const has = (t: PushType) => types.includes(t);
   const anyOn = types.length > 0;
+  // Admin-only categories (e.g. new committee join requests) only ever fire for
+  // admins, so only they see the toggle.
+  const shownTypes = TYPES.filter((t) => !t.adminOnly || isAdmin);
 
   useEffect(() => {
     setSupported(isPushSupported());
@@ -193,7 +197,7 @@ export function PushToggle() {
           Choose what buzzes your phone — each is independent.
         </p>
         <div className="overflow-hidden rounded-2xl ring-1 ring-border">
-          {TYPES.map((l, i) => {
+          {shownTypes.map((l, i) => {
             const on = has(l.value);
             return (
               <button

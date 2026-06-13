@@ -46,6 +46,7 @@ export type PushType =
   | "alerts"
   | "birthdays"
   | "committee_join"
+  | "committee_join_request"
   | "cabin_decision"
   | "post_tag"
   | "post_mention"
@@ -83,6 +84,7 @@ export type NotifType =
   | "new_post"
   | "chat_mention"
   | "committee_join"
+  | "committee_join_request"
   | "cabin_request"
   | "cabin_decision"
   | "event_rsvp"
@@ -106,6 +108,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "new_post",
   "chat_mention",
   "committee_join",
+  "committee_join_request",
   "cabin_request",
   "cabin_decision",
   "event_rsvp",
