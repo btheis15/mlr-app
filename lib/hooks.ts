@@ -331,12 +331,32 @@ export interface UseEvents {
  * share one implementation (the spirit of `useManagedCommittee`). Pass
  * `{ realtime: true }` on the full page to keep counts live; Home loads once.
  */
+/**
+ * Stale-while-revalidate cache for the events feed. `useEvents` remounts on every
+ * tab navigation; without this it resets to empty + `loading`, so Home's "Upcoming
+ * Up North" and the /events calendar blank out and then pop back in — shoving the
+ * page around. Holding the last result in memory lets a returning tab paint
+ * instantly from cache while a background refetch keeps it current, so the layout
+ * stays put. Memory-only (per session) and only ever written *after* a client
+ * fetch — never during SSR — so it can't change the server/first-paint render and
+ * can't cause a hydration mismatch (a cold load starts with an empty cache, i.e.
+ * the original behavior).
+ */
+interface EventsSnapshot {
+  events: ResortEvent[];
+  rows: EventAttendance[];
+  mine: Record<string, EventAttendance>;
+}
+let eventsCache: EventsSnapshot | null = null;
+
 export function useEvents(opts?: { realtime?: boolean }): UseEvents {
   const { user, previewAsId, promptSignIn } = useIdentity();
-  const [events, setEvents] = useState<ResortEvent[]>([]);
-  const [rows, setRows] = useState<EventAttendance[]>([]);
-  const [mine, setMine] = useState<Record<string, EventAttendance>>({});
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<ResortEvent[]>(eventsCache?.events ?? []);
+  const [rows, setRows] = useState<EventAttendance[]>(eventsCache?.rows ?? []);
+  const [mine, setMine] = useState<Record<string, EventAttendance>>(eventsCache?.mine ?? {});
+  // Warm cache ⇒ paint immediately (no skeleton/blank); still refetch in the
+  // background below so the cached view is brought up to date.
+  const [loading, setLoading] = useState(!eventsCache);
   const [schedule] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
 
@@ -350,6 +370,7 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
       setEvents(ev);
       setRows(at);
       setMine(my);
+      eventsCache = { events: ev, rows: at, mine: my };
     } finally {
       // A flaky/misconfigured backend must never leave the UI stuck "loading".
       setLoading(false);
