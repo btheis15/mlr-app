@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
+import { whenAppLogoStable } from "@/lib/appLogoFit";
 
 // App-open splash. A near-white wash (the app's own background) so it blends
 // with the white screen the app naturally shows while loading — then the GREEN
@@ -89,6 +90,14 @@ export function SplashIntro() {
       finish();
       return;
     }
+    // The header logo's final size/position depends on the (now-resolved) Home
+    // layout — guest vs member differ. WAIT until that fit has settled (we don't
+    // set it — AppHeader owns the size), then measure the fly target, so the
+    // splash logo lands at the exact size it settles to and never "snaps" after.
+    whenAppLogoStable(() => flyInto(target, el));
+  };
+
+  const flyInto = (target: HTMLElement, el: HTMLImageElement) => {
     const from = el.getBoundingClientRect();
     const to = target.getBoundingClientRect();
     const scale = to.height / from.height;
