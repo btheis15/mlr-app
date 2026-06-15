@@ -60,7 +60,9 @@ event. Set `FM_USE_PCC=0` to force on-device only (keeps every byte on the box).
 > unlocks *base* PCC (vs. only custom adapters). Until then the bot runs
 > on-device — fully functional, just less capable. The integration is already
 > wired and probes at startup, so if PCC ever becomes reachable it switches over
-> with no code change.
+> with no code change. **To unblock it once the paid account lands, follow
+> [`PCC-ENABLEMENT.md`](PCC-ENABLEMENT.md)** (entitlements + `scripts/build-sign-restart.sh`
+> + `scripts/pcc-probe.sh`).
 
 ## Requirements
 

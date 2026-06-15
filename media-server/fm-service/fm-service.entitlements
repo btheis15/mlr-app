@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Foundation Models custom-adapter capability.
+
+       This is the ONLY third-party Foundation Models entitlement Apple
+       documents, and it is REQUEST-ONLY: it validates only after the Foundation
+       Models entitlement request is APPROVED on a PAID Apple Developer Program
+       membership (a free Personal Team is rejected outright). It governs *custom
+       adapters* — NOT base Private Cloud Compute access, which is tied to the
+       app's provisioning profile + account eligibility (App Store Small Business
+       Program, <2M first-time downloads), not a plist key.
+
+       So: leave this COMMENTED OUT until the request is approved. Adding an
+       unapproved entitlement makes codesigning/validation fail. See
+       PCC-ENABLEMENT.md for the full checklist. -->
+  <!--
+  <key>com.apple.developer.foundation-model-adapter</key>
+  <true/>
+  -->
+
+  <!-- Dev convenience only (allows attaching a debugger). Harmless on a local
+       loopback service; drop it for a notarized/distributed build. -->
+  <key>com.apple.security.get-task-allow</key>
+  <true/>
+</dict>
+</plist>
