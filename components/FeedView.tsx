@@ -199,7 +199,9 @@ export function FeedView() {
   return (
     <div className="space-y-3 pt-1">
       {committees.length > 0 && <div className="sticky top-0 z-10 -mx-4">{pills}</div>}
-      <PostsView seed={POSTS} />
+      {/* Pills already show a "Posts" label; only have PostsView render its own
+          heading when there are none (no committees → no pill row). */}
+      <PostsView seed={POSTS} showHeading={committees.length === 0} />
     </div>
   );
 }
