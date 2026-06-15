@@ -7,9 +7,11 @@ a small, allow-listed slice of data the server hands the model.
 
 ## The two guarantees (the privacy bar)
 
-1. **Signed-in only.** Guests never reach the model. The floating button gates on
-   sign-in (`AssistantButton` → `useGuest`), `askAssistant` refuses when
-   `signedIn` is false, and the future server route re-checks the Supabase token.
+1. **Signed-in only.** Guests never reach the model. The floating button is **off
+   by default** and shows only for **Beta Testers who opt in** (Profile → Beta
+   features → `AssistantToggle`, a per-device switch in `lib/assistantToggle.ts`);
+   beta implies a signed-in account. `askAssistant` refuses when `signedIn` is
+   false, and the future server route re-checks the Supabase token.
 2. **Chats are never a source.** Resort chat and committee chat are deliberately
    absent from retrieval — there is no code path that reads them. **Posts** (which
    any signed-in member can already see) are the only sanctioned social source;
@@ -49,11 +51,16 @@ model is reached.
 - **No model wired (today):** a deterministic *grounded stub* assembles the
   answer from the retrieved records — no invention, fully demoable, and the
   safety floor if a model call ever fails.
-- **Apple Foundation Models (Phase 2):** set `ASSISTANT_FM_URL` to the Swift
-  service on the mini (`media-server/fm-service/`). Apple's model only runs on
-  Apple Silicon, so the *generation step* lives on the mini even though the
-  orchestration lives on Vercel. Contract:
-  `POST {system, question, context} → {answer}`.
+- **Apple Foundation Models:** set `ASSISTANT_FM_URL` to the Swift service on the
+  mini (`media-server/fm-service/`). Apple's models only run on Apple devices, so
+  the *generation step* lives on the mini even though orchestration lives on
+  Vercel. On macOS 27 the service prefers Apple's **Private Cloud Compute** model
+  (much more capable, ~32K-token context) and falls back to the small on-device
+  model automatically. **PCC needs a code-signed, entitled build** — an ad-hoc
+  `swift build` binary falls back to on-device (see
+  `media-server/fm-service/README.md`). Contract:
+  `POST {system, question, context} → {answer, model}` (`model` is informational;
+  the app reads only `answer`).
 - **Other providers:** expose the same contract (Ollama, a cloud proxy) and
   point `ASSISTANT_FM_URL` at it.
 
@@ -72,7 +79,8 @@ model is reached.
 - **Phase 2 — running on the mini:** the Swift Foundation Models service
   (`media-server/fm-service/`) runs as a LaunchAgent (`com.mlr.fm-service`, bound
   to `127.0.0.1:8788`). Set `ASSISTANT_FM_URL` to its tunnel URL to switch
-  generation from the grounded stub to the on-device model.
+  generation from the grounded stub to Apple Foundation Models — Private Cloud
+  Compute when the build is signed/entitled, on-device otherwise.
 
 ## Server route (Vercel only)
 
@@ -136,7 +144,13 @@ access token and falls back to the in-browser pipeline when there's no server.
 | Var | Where | Purpose |
 |---|---|---|
 | `ASSISTANT_FM_URL` | app server (Vercel) | Foundation Models service URL on the mini. Unset → grounded stub. |
+| `ASSISTANT_FM_TOKEN` | app server (Vercel) | Sent as `X-FM-Token`; must match the mini's `FM_SHARED_SECRET`. |
+| `ASSISTANT_MODEL_MAX_RECORDS` | app server | Max context records sent to the model (default `8`; raise once PCC is enabled). |
+| `ASSISTANT_MODEL_MAX_RECORD_CHARS` | app server | Per-record char cap (default `200`; raise once PCC is enabled). |
 | `FM_HOST` / `FM_PORT` | mini | Bind address for the Swift service (default `127.0.0.1:8788`). |
+| `FM_SHARED_SECRET` | mini | Require a matching `X-FM-Token` on every request. |
+| `FM_USE_PCC` | mini | `0` → on-device only; otherwise prefer Private Cloud Compute (default). |
+| `FM_PCC_MAX_TOKENS` / `FM_MAX_TOKENS` / `FM_PCC_REASONING` | mini | PCC/on-device token caps + PCC reasoning effort. See the service README. |
 
 ## Files
 
@@ -145,6 +159,8 @@ access token and falls back to the in-browser pipeline when there's no server.
 - `lib/assistant/retrieval.ts` — the **allow-list** (chats excluded), static data.
 - `lib/assistant/generate.ts` — the swappable model seam + system prompt + stub.
 - `lib/assistant/index.ts` — `askAssistant` orchestrator (sign-in gate, caps).
-- `components/AssistantButton.tsx` — floating entry point, sign-in gated.
+- `components/AssistantButton.tsx` — floating entry point; shows only for beta testers who opted in.
+- `components/AssistantToggle.tsx` — Profile → Beta features on/off switch (beta-only).
+- `lib/assistantToggle.ts` — per-device enabled flag + `useAssistantEnabled()` (default off).
 - `components/AssistantChat.tsx` — the chat panel (mic/TTS/states), on `Sheet`.
 - `media-server/fm-service/` — the Phase-2 Swift Foundation Models service.
