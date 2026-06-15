@@ -113,7 +113,7 @@ function matchesName(name: string, query: string): boolean {
  * reactions, all live via Supabase. Names/tags resolve from a separate profiles
  * query (no PostgREST embed) so an ambiguous relationship can't blank the feed.
  */
-export function PostsView({ seed }: { seed: Post[] }) {
+export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHeading?: boolean }) {
   const { user, isAdmin, promptSignIn } = useIdentity();
   const configured = isSupabaseConfigured;
 
@@ -524,12 +524,16 @@ export function PostsView({ seed }: { seed: Post[] }) {
   const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   return (
-    <div className="space-y-5 pt-2">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
-        <p className="text-sm text-foreground/60">Share photos &amp; videos with everyone — and out to the family Facebook group.</p>
-        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press inline-block text-xs font-medium text-primary">
-          Open the family Facebook group ↗
+    <div className="space-y-3 pt-1">
+      {/* One tidy row instead of a stacked title + wordy subtitle + link. The
+          verbose blurb is dropped (the composer's placeholder is instruction
+          enough); the title shows only when FeedView isn't already labelling
+          this view with its "Posts" pill (i.e. the member is in no committees),
+          so we never double up or leave the feed unlabelled. */}
+      <header className="flex items-center gap-3">
+        {showHeading && <h1 className="text-2xl font-bold tracking-tight">Posts</h1>}
+        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary">
+          📘 Facebook group ↗
         </a>
       </header>
 
