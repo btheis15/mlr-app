@@ -97,13 +97,19 @@ async function callModel(url: string, args: GenerateAssistantAnswerArgs): Promis
   }
 }
 
-// Bound what the model sees. The on-device M1 model is prefill-bound, so a broad
-// question that retrieves many verbose records (e.g. "what's the schedule" pulls
-// the whole week) otherwise blows past the timeout. Cap the record count and trim
-// each to its front-loaded facts. The grounded-stub fallback still uses the full
-// records, so the displayed answer for list questions stays complete.
-const MODEL_MAX_RECORDS = 8;
-const MODEL_MAX_RECORD_CHARS = 200;
+// Bound what the model sees. Defaults are sized for the small on-device model,
+// which is prefill-bound (~5–15s) — a broad question that retrieves many verbose
+// records otherwise blows past FM_TIMEOUT_MS. The grounded-stub fallback still
+// uses the full records, so list answers stay complete.
+//
+// The mini's FM service can run Apple's Private Cloud Compute model instead
+// (~32K-token context window) once it's code-signed with the Foundation Models
+// entitlement — see media-server/fm-service/README.md. When PCC is live you can
+// feed it much more: raise ASSISTANT_MODEL_MAX_RECORDS (retrieval caps at 12) and
+// ASSISTANT_MODEL_MAX_RECORD_CHARS for richer, better-grounded answers. Kept
+// conservative by default so today's on-device path doesn't time out.
+const MODEL_MAX_RECORDS = Number(process.env.ASSISTANT_MODEL_MAX_RECORDS) || 8;
+const MODEL_MAX_RECORD_CHARS = Number(process.env.ASSISTANT_MODEL_MAX_RECORD_CHARS) || 200;
 function formatContext(records: ContextRecord[]): string {
   return records
     .slice(0, MODEL_MAX_RECORDS)
