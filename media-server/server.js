@@ -30,6 +30,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
+const { moderateMedia } = require("./moderation");
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
@@ -273,6 +274,31 @@ app.post("/admin/set-email", express.json(), requireAdmin, async (req, res) => {
   }
 });
 
+// Tier-2 AI moderation toggle (default on). Set MOD_ENABLED=0 to disable.
+const MOD_ENABLED = process.env.MOD_ENABLED !== "0" && process.env.MOD_ENABLED !== "false";
+
+// Record an AI moderation verdict for a flagged upload, keyed by its public URL
+// (the value the app stores as post_media.storage_path). Service-role write; the
+// 0043 trigger reads it on post_media insert to hold the parent post for review.
+async function recordMediaModeration(fileUrl, v) {
+  if (!SUPABASE_URL || !SERVICE_KEY) return;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/media_moderation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        apikey: SERVICE_KEY,
+        authorization: `Bearer ${SERVICE_KEY}`,
+        prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ storage_path: fileUrl, flagged: true, category: v.category, reason: v.reason, model: v.model }),
+    });
+    if (!resp.ok) console.error(`[moderate] record HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  } catch (e) {
+    console.error(`[moderate] record failed: ${e.message}`);
+  }
+}
+
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
@@ -307,10 +333,36 @@ app.post("/upload", requireUser, (req, res) => {
     }
 
     const rel = path.relative(MEDIA_DIR, served).split(path.sep).join("/");
+    const fileUrl = `${PUBLIC_URL}/f/${rel}`;
     let size = req.file.size;
     try { size = fs.statSync(served).size; } catch {}
     console.log(`[upload] saved ${rel} (${size} bytes)`);
-    res.json({ url: `${PUBLIC_URL}/f/${rel}`, name: path.basename(served), path: rel });
+
+    // Tier-2 guard: AI moderation. A flagged image/video → record a verdict
+    // keyed by the public URL (== post_media.storage_path) so the 0043 trigger
+    // holds the parent post for admin review. FAIL-OPEN: any error/unavailability
+    // just lets the upload through (the Flag-as-inappropriate reports + admin
+    // queue are the backstop).
+    let moderation = null;
+    if (MOD_ENABLED) {
+      try {
+        const v = await moderateMedia(served, kind);
+        if (v) {
+          console.log(`[moderate] ${rel} → ${v.flagged ? `FLAGGED ${v.category} (${v.reason})` : "ok"} via ${v.model}`);
+          if (v.flagged) {
+            await recordMediaModeration(fileUrl, v);
+            moderation = { flagged: true, category: v.category };
+          } else {
+            moderation = { flagged: false };
+          }
+        } else {
+          console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open)`);
+        }
+      } catch (e) {
+        console.error(`[moderate] error (fail-open): ${e.message}`);
+      }
+    }
+    res.json({ url: fileUrl, name: path.basename(served), path: rel, moderation });
   });
 });
 
