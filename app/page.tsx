@@ -1,6 +1,7 @@
 import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
+import { TshirtCallout } from "@/components/TshirtCallout";
 import { HomeGetInvolved, HomeAroundResort } from "@/components/HomeResortGroups";
 import { HomeHelpPeople } from "@/components/HomeHelpPeople";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
@@ -39,6 +40,12 @@ export default function HomePage() {
         endDate={FAMILY_FEST.endDate}
         schedule={SCHEDULE}
       />
+
+      {/* New call-outs that come up during the season (e.g. "vote on the shirt")
+          surface right here under the spotlight, then self-hide when they're
+          done. Self-gated: shows only during the planning run-up + before the
+          vote closes. */}
+      <TshirtCallout />
 
       <UpcomingEvents />
 

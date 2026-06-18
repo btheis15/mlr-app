@@ -48,7 +48,7 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 |---|---|---|
 | `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: the hero MLR logo, Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), **Get involved** ([`HomeGetInvolved`](components/HomeResortGroups.tsx) — Events/Work Weekends · Committees), **Ask for Help + People** side-by-side tiles ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)), **Around the resort** ([`HomeAroundResort`](components/HomeResortGroups.tsx) — Cabin Stay · Local Places), an "App & help" group, one-line heritage |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) · `shirts` (the t-shirt design vote — [`ShirtVoteView`](components/ShirtVoteView.tsx), see **T-shirt vote**) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
 
 **Posts feed** ([`PostsView`](components/PostsView.tsx)) supports `@mentions` in
@@ -201,6 +201,32 @@ not a separate app — no backend needed:
 - Dates come from `FAMILY_FEST.startDate` / `.endDate` in `lib/data.ts`.
 - The §0b full code merge is unchanged/deferred; this is the lighter-touch
   "feels like one app" layer that ships before the backend.
+
+## T-shirt vote
+
+A planning-season surface for the year's t-shirt design vote. **The app is a
+front door, not a poll** — it lets the family *see* the designs big and
+understand the rules, then hands off to the committee's **existing Google Form**
+where the vote + RSVP is actually cast (one source of truth stays the form). No
+in-app vote capture, no DB, no migration.
+
+- **Source of truth:** `TSHIRT_VOTE` in [`lib/data.ts`](lib/data.ts) — `formUrl`
+  (the family's `forms.gle` poll), `deadline` (ISO date, inclusive), `rankedChoice`,
+  `minVoterAge`, and the `designs[]` (id · name · artist · `img` · blurb). Swap
+  these when next year's vote opens.
+- **Images** are bundled in [`public/ff/shirts/`](public/ff/shirts/) (resized web
+  JPEGs) so the gallery works offline / even if the mini is down — referenced
+  root-relative like `FestCover`'s `/public` fallback.
+- **Surfaces** (all self-hide outside `isPlanning` and the day after `deadline`,
+  via [`useFestSeason`](lib/useFestSeason.ts) + the demo-date `today`):
+  [`TshirtCallout`](components/TshirtCallout.tsx) (Home — a heraldic-wine
+  "🗳️ Vote · New" card with the four design thumbnails, under the Family Fest
+  spotlight; this is the pattern for any "a new thing needs you" Home call-out),
+  the **Vote on Shirts** tile in [`FestDuesShirts`](components/FestDuesShirts.tsx)
+  (Family Fest hub), and the gallery page
+  [`/family-fest/shirts`](app/family-fest/shirts/page.tsx) →
+  [`ShirtVoteView`](components/ShirtVoteView.tsx) (tap any design → `Lightbox`;
+  the "Open the poll to vote & RSVP" button opens `formUrl` in a new tab).
 
 ## Resort events & attendance
 

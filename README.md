@@ -75,6 +75,16 @@ public/         manifest.webmanifest, icon.svg
   [`0037_help_requests.sql`](supabase/migrations/0037_help_requests.sql);
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
+- **Family Fest t-shirt vote** — during the planning run-up, Home shows a
+  call-out ([`components/TshirtCallout.tsx`](components/TshirtCallout.tsx)) and the
+  Family Fest hub a "Vote on Shirts" tile, both linking to an in-app design
+  gallery at `/family-fest/shirts`
+  ([`components/ShirtVoteView.tsx`](components/ShirtVoteView.tsx)) — tap any design
+  to see it full-screen. The app is the friendly front door; the actual vote +
+  RSVP is cast in the family's **existing Google Form**, not in-app. Edit the form
+  URL / deadline / designs in `TSHIRT_VOTE` ([`lib/data.ts`](lib/data.ts)); all
+  surfaces self-hide once the deadline passes. Design images live in
+  [`public/ff/shirts/`](public/ff/shirts/).
 - **Content safeguards (feed moderation)** — layered checks on the Posts feed so
   sensitive/inappropriate/illegal content doesn't sit in front of the family.
   The mini rejects non-image/video uploads by magic bytes; an admin-managed
