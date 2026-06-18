@@ -145,6 +145,63 @@ export const FAMILY_FEST = {
 };
 
 /**
+ * The 2026 t-shirt design vote. Four designs from three family artists; the
+ * family ranks them (ranked choice) in a Google Form that also locks in the
+ * final headcount + dietary restrictions. Surfaced during the planning run-up:
+ *   - a Home call-out (components/TshirtCallout.tsx),
+ *   - the in-app preview gallery (app/family-fest/shirts/page.tsx — tap any
+ *     design to see it full-screen before voting),
+ *   - the "Order T-Shirts" tile on the Family Fest hub (FestDuesShirts).
+ * Self-hides everywhere once `deadline` passes. Images are bundled in
+ * /public/ff/shirts so the gallery works offline / even if the mini is down.
+ * When the next year's vote opens, swap the form URL, deadline, and designs.
+ */
+export const TSHIRT_VOTE = {
+  /** "Vote & RSVP" Google Form (ranked choice + headcount + dietary). */
+  formUrl: "https://forms.gle/8aVV4b7vtkpKUm7N7",
+  /** Last day to vote, inclusive (ISO "YYYY-MM-DD"). Saturday, June 27 2026. */
+  deadline: "2026-06-27",
+  /** Ranked-choice vote — the family ranks the four designs. */
+  rankedChoice: true,
+  /** Kids this age and up may vote too (per the committee's note). */
+  minVoterAge: 6,
+  designs: [
+    {
+      id: "olde-fantasy",
+      name: "Olde Fantasy",
+      artist: "Rick G",
+      img: "/ff/shirts/olde-fantasy.jpg",
+      blurb:
+        "A hand-inked treasure map of Ye Olde Family Feste — sea serpent, castle, and a compass-rose crest, in heritage navy. Front pocket mark with the full map across the back.",
+    },
+    {
+      id: "swordstone",
+      name: "SwordStone",
+      artist: "Rick G",
+      img: "/ff/shirts/swordstone.jpg",
+      blurb:
+        "Woodcut-style sword in the stone, a hoarding dragon, and a knight riding out on the quest, under a smiling sun. Shown on maroon and forest green.",
+    },
+    {
+      id: "tomahawk-quest",
+      name: "Tomahawk Quest",
+      artist: "Abbie",
+      img: "/ff/shirts/tomahawk-quest.jpg",
+      blurb:
+        "An ornate dragon crest up front and a detailed Muskellunge Lake quest map — with a numbered key — across the back. Inky black line art.",
+    },
+    {
+      id: "toon-knight",
+      name: "ToonKnight",
+      artist: "Evan",
+      img: "/ff/shirts/toon-knight.jpg",
+      blurb:
+        "A friendly cartoon knight raising sword and banner in hand-lettered script — the playful, kid-favorite option. Comes in a red and a grey knight.",
+    },
+  ],
+} as const;
+
+/**
  * Seed resort events that live in CODE rather than the database: Family Fest
  * (synthesized from the FAMILY_FEST window above so its dates have one source of
  * truth and stay tied to the season model) and the 4th of July weekend.
