@@ -6,6 +6,7 @@ import { type Session } from "@supabase/supabase-js";
 import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { WelcomeIntro } from "@/components/WelcomeIntro";
 
 /**
  * Admin "view as" preview. Device-local, UI-only: it changes what the app shows
@@ -63,6 +64,14 @@ interface IdentityValue {
   /** Open the sign-in sheet on demand — call from any action that needs an
    *  identity (post, RSVP, …). No-op if already signed in or backend absent. */
   promptSignIn: () => void;
+  /** True for a brand-new member whose profile is still essentially empty
+   *  (only their name) and who hasn't seen the first-run Welcome intro yet
+   *  (`profiles.intro_seen` false). Drives the one-time onboarding sheet; forced
+   *  false while previewing. */
+  needsIntro: boolean;
+  /** Mark the Welcome intro as seen (`profiles.intro_seen = true`) so it never
+   *  shows again, and clear `needsIntro` for this session. */
+  completeIntro: () => void;
   signOut: () => void;
 }
 
@@ -80,6 +89,8 @@ const IdentityContext = createContext<IdentityValue>({
   startEmailChange: async () => ({ error: "Sign-in isn't available." }),
   confirmEmailChange: async () => ({ error: "Sign-in isn't available." }),
   promptSignIn: () => {},
+  needsIntro: false,
+  completeIntro: () => {},
   signOut: () => {},
 });
 
@@ -122,6 +133,8 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   // stored session (+ profile) is loaded, or immediately if there's no backend.
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const [prompting, setPrompting] = useState(false);
+  // True for a brand-new member who should see the first-run Welcome intro.
+  const [needsIntro, setNeedsIntro] = useState(false);
   const [previewMode, setPreviewState] = useState<PreviewMode>("off");
   const [previewMember, setPreviewMemberState] = useState<PreviewMember | null>(null);
 
@@ -153,6 +166,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setAdminFlag(false);
           setBetaFlag(false);
+          setNeedsIntro(false);
         }
         return;
       }
@@ -169,6 +183,35 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, willingToHelp: profile?.willing_to_help ?? false, avatarUrl: profile?.avatar_url ?? null });
       setAdminFlag(Boolean(profile?.is_admin));
       setBetaFlag(Boolean(profile?.beta_tester));
+
+      // Assess whether to show the first-run Welcome intro: a separate, GUARDED
+      // read so a missing `intro_seen` column (migration 0045 not run yet) can
+      // never break sign-in — it just leaves the intro dormant. Show it only for
+      // a member who hasn't seen it AND whose profile is still essentially empty
+      // (no phone / birthday / preferred-pay — i.e. nothing but the name they
+      // typed at signup).
+      try {
+        const { data: extra, error } = await sb
+          .from("profiles")
+          .select("intro_seen, phone, birthday, pay_preferred")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        if (!active) return;
+        if (error || !extra) {
+          setNeedsIntro(false);
+        } else {
+          const e = extra as {
+            intro_seen: boolean | null;
+            phone: string | null;
+            birthday: string | null;
+            pay_preferred: string | null;
+          };
+          const sparse = !e.phone?.trim() && !e.birthday && !e.pay_preferred;
+          setNeedsIntro(!e.intro_seen && sparse);
+        }
+      } catch {
+        if (active) setNeedsIntro(false);
+      }
     };
 
     // Resolve the stored session and its profile, then mark auth settled. The
@@ -239,6 +282,23 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (!user && isSupabaseConfigured) setPrompting(true);
   };
 
+  // Mark the first-run Welcome intro as seen so it never shows again. Clears the
+  // flag locally right away, then persists `intro_seen` (guarded — a no-op if the
+  // 0045 column isn't there yet).
+  const completeIntro = async () => {
+    setNeedsIntro(false);
+    const sb = supabase;
+    if (!sb) return;
+    const { data: sess } = await sb.auth.getSession();
+    const id = sess.session?.user.id;
+    if (!id) return;
+    try {
+      await sb.from("profiles").update({ intro_seen: true }).eq("id", id);
+    } catch {
+      /* pre-migration: nothing to persist */
+    }
+  };
+
   const setPreviewMode = (mode: PreviewMode) => {
     // Entering a preview is admin-only; exiting ("off") is always allowed.
     if (mode !== "off" && !adminFlag) return;
@@ -272,6 +332,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAdminFlag(false);
     setBetaFlag(false);
+    setNeedsIntro(false);
     setPreviewState("off");
     setPreviewMemberState(null);
     try {
@@ -307,12 +368,17 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         startEmailChange,
         confirmEmailChange,
         promptSignIn,
+        needsIntro: previewMode === "off" ? needsIntro : false,
+        completeIntro,
         signOut,
       }}
     >
       {children}
       {prompting && !user && isSupabaseConfigured && (
         <SignInGate onClose={() => setPrompting(false)} />
+      )}
+      {needsIntro && user && previewMode === "off" && isSupabaseConfigured && (
+        <WelcomeIntro />
       )}
     </IdentityContext.Provider>
   );

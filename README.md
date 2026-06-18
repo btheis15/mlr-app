@@ -85,6 +85,15 @@ public/         manifest.webmanifest, icon.svg
   URL / deadline / designs in `TSHIRT_VOTE` ([`lib/data.ts`](lib/data.ts)); all
   surfaces self-hide once the deadline passes. Design images live in
   [`public/ff/shirts/`](public/ff/shirts/).
+- **New-member onboarding** — the first time a brand-new member verifies their
+  sign-in code (and their profile is still empty), a guided two-step Welcome sheet
+  ([`components/WelcomeIntro.tsx`](components/WelcomeIntro.tsx)) collects the basics
+  (phone, birthday, preferred payment) and then the push-notification settings, so
+  newcomers set up without hunting through Settings. Gated by `IdentityProvider`
+  `needsIntro`; backed by migration
+  [`0045_member_intro.sql`](supabase/migrations/0045_member_intro.sql)
+  (`profiles.intro_seen` — run it in the Supabase SQL editor). See CLAUDE.md →
+  **Non-technical / accessibility UX**.
 - **Content safeguards (feed moderation)** — layered checks on the Posts feed so
   sensitive/inappropriate/illegal content doesn't sit in front of the family.
   The mini rejects non-image/video uploads by magic bytes; an admin-managed
