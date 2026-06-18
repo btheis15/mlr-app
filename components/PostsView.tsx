@@ -6,7 +6,7 @@ import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { dayKey, formatDayHeading, formatClock, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage } from "@/lib/media";
+import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
 import { useMediaPicker, useDebouncedCallback } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
@@ -124,6 +124,24 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   const [members, setMembers] = useState<Member[]>([]);
   const [feedLoaded, setFeedLoaded] = useState(false);
   const [added, setAdded] = useState<FeedPost[]>([]); // local fallback only
+  // Posts this device flagged as inappropriate — hidden locally for the flagger
+  // immediately (persisted), while the 2-flag→hidden-for-everyone auto-hold (RLS)
+  // handles public removal. content_reports is admin-read-only, so this is
+  // device-local by design ("hidden at least for them in the meantime").
+  const [flaggedByMe, setFlaggedByMe] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const ids = JSON.parse(localStorage.getItem("mlr.flaggedPosts") || "[]");
+      if (Array.isArray(ids)) setFlaggedByMe(new Set(ids));
+    } catch {}
+  }, []);
+  const hidePostLocally = (id: string) =>
+    setFlaggedByMe((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try { localStorage.setItem("mlr.flaggedPosts", JSON.stringify([...next])); } catch {}
+      return next;
+    });
   // Whether the DB has the occurred_at column yet (migration 0005). Until then
   // we fall back to created_at and hide the backdate controls.
   const [hasOccurredAt, setHasOccurredAt] = useState(false);
@@ -404,9 +422,12 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // it). Otherwise the column default now() lands the post today.
         const occurredAt =
           hasOccurredAt && customWhen && whenValue ? new Date(whenValue).toISOString() : null;
+        // AI text screen (fail-open): photos/videos are screened server-side at
+        // /upload; this covers the caption. Flagged → create it held for review.
+        const heldForText = caption ? await moderatePostText(caption, token) : false;
         const { data: np, error: insErr } = await supabase
           .from("posts")
-          .insert({ author_id: uid, text: caption || null, ...(occurredAt ? { occurred_at: occurredAt } : {}) })
+          .insert({ author_id: uid, text: caption || null, ...(heldForText ? { status: "pending" } : {}), ...(occurredAt ? { occurred_at: occurredAt } : {}) })
           .select("id")
           .single();
         if (insErr) throw insErr;
@@ -504,7 +525,8 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     else setHidden((prev) => [...prev, p.id]);
   };
 
-  const shownPosts = configured && filterTaggedMe && uid ? dbPosts.filter((p) => p.tags.some((t) => t.id === uid)) : dbPosts;
+  const visibleDbPosts = dbPosts.filter((p) => !flaggedByMe.has(p.id));
+  const shownPosts = configured && filterTaggedMe && uid ? visibleDbPosts.filter((p) => p.tags.some((t) => t.id === uid)) : visibleDbPosts;
   const feed: { post: FeedPost; isAdded: boolean }[] = configured
     ? shownPosts.map((p) => ({ post: p, isAdded: false }))
     : [
@@ -742,7 +764,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                 </button>
                 <div className="flex shrink-0 items-center gap-0.5">
                   {configured && !isAdded && p.authorId !== uid && (
-                    <ReportButton entity="post" entityId={p.id} needsSignIn={requireSignIn} />
+                    <ReportButton entity="post" entityId={p.id} needsSignIn={requireSignIn} onReported={hidePostLocally} />
                   )}
                   {canEditPost(p) ? (
                     <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">

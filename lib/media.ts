@@ -20,6 +20,27 @@ export interface UploadOptions {
   onProgress?: (loaded: number, total: number) => void;
 }
 
+// Ask the mini to AI-grade a caption/post's text for inappropriate language.
+// Returns true if the post should be HELD for admin review. FAIL-OPEN: any
+// error/unavailability returns false (the word-list gate + Flag-as-inappropriate
+// are the backstops). Backed by the media-server's POST /moderate/text.
+export async function moderatePostText(text: string, token: string): Promise<boolean> {
+  const t = (text || "").trim();
+  if (!t) return false;
+  try {
+    const res = await fetch(`${MEDIA_URL}/moderate/text`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ text: t }),
+    });
+    if (!res.ok) return false;
+    const j = (await res.json()) as { flagged?: boolean };
+    return !!j.flagged;
+  } catch {
+    return false;
+  }
+}
+
 // XMLHttpRequest (not fetch) so we get real upload progress for the bar.
 export function uploadToMini(file: File, token: string, opts: UploadOptions = {}): Promise<string> {
   const params = new URLSearchParams();

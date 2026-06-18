@@ -17,11 +17,13 @@ export function ReportButton({
   entityId,
   needsSignIn,
   variant = "post",
+  onReported,
 }: {
   entity: ReportEntity;
   entityId: string;
   needsSignIn: () => boolean; // returns true if it handled a guest (stop)
   variant?: "post" | "comment";
+  onReported?: (entityId: string) => void; // hide it locally for the flagger
 }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -39,12 +41,13 @@ export function ReportButton({
     }
     setOpen(false);
     setDone(true);
+    onReported?.(entityId);
   };
 
   if (done) {
     return (
       <span className={variant === "comment" ? "shrink-0 text-[11px] text-foreground/40" : "px-3 py-1.5 text-xs text-foreground/45"}>
-        Reported ✓
+        Flagged ✓
       </span>
     );
   }
@@ -56,14 +59,14 @@ export function ReportButton({
         if (needsSignIn()) return;
         setOpen((o) => !o);
       }}
-      aria-label="Report this"
+      aria-label="Flag as inappropriate"
       className={
         variant === "comment"
           ? "press shrink-0 text-foreground/30 hover:text-accent"
           : "press rounded-full px-3 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent"
       }
     >
-      {variant === "comment" ? "⚑" : "⚑ Report"}
+      {variant === "comment" ? "⚑" : "⚑ Flag"}
     </button>
   );
 
@@ -73,7 +76,7 @@ export function ReportButton({
     <div className="relative inline-block">
       {trigger}
       <div className="absolute right-0 z-10 mt-1 w-52 space-y-1 rounded-xl bg-card p-1.5 text-left shadow-lg ring-1 ring-border">
-        <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">Report — why?</p>
+        <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">Flag as inappropriate — why?</p>
         {REPORT_REASONS.map((r) => (
           <button
             key={r}
