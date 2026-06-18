@@ -30,7 +30,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
-const { moderateMedia } = require("./moderation");
+const { moderateMedia, moderateText } = require("./moderation");
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
@@ -364,6 +364,22 @@ app.post("/upload", requireUser, (req, res) => {
     }
     res.json({ url: fileUrl, name: path.basename(served), path: rel, moderation });
   });
+});
+
+// Tier-2 text moderation: grade a caption/post's text for inappropriate
+// language. The app calls this before publishing; flagged → the app creates the
+// post as `pending` (held for admin review). FAIL-OPEN: returns {flagged:false}
+// on any error/unavailability.
+app.post("/moderate/text", requireUser, express.json({ limit: "64kb" }), async (req, res) => {
+  try {
+    if (!MOD_ENABLED) return res.json({ flagged: false });
+    const v = await moderateText((req.body && req.body.text) || "");
+    if (!v) return res.json({ flagged: false });
+    res.json({ flagged: !!v.flagged, category: v.category, reason: v.reason });
+  } catch (e) {
+    console.error(`[moderate/text] ${e.message}`);
+    res.json({ flagged: false });
+  }
 });
 
 app.listen(PORT, () => {

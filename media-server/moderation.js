@@ -143,4 +143,43 @@ async function moderateMedia(filePath, kind) {
   return kind === "video" ? moderateVideoFile(filePath) : moderateImageFile(filePath);
 }
 
-module.exports = { moderateMedia };
+const TEXT_PROMPT =
+  "You are a content-safety filter for a family resort community app used by all ages. " +
+  "Decide whether the user-submitted text below contains vulgar, profane, hateful, sexual, " +
+  "threatening, or otherwise clearly inappropriate language for a family audience. " +
+  "Ordinary friendly, neutral, or mildly negative text is NOT flagged. " +
+  "Respond with ONLY a compact JSON object and nothing else: " +
+  '{"flagged": true|false, "category": "profanity|hate|sexual|threat|other|none", "reason": "brief phrase"}.';
+
+// Returns { flagged, category, reason, model } or null (null = couldn't check).
+async function moderateText(text) {
+  const t = String(text || "").trim();
+  if (!t) return { flagged: false, category: "none", reason: "" };
+  const base = {
+    stream: false,
+    // The permissive guardrail lets the model actually read sensitive text to
+    // classify it (the default guardrail 500s on strong profanity). The word
+    // list is the deterministic catch for explicit terms regardless.
+    guardrails: "permissive-content-transformations",
+    messages: [{ role: "user", content: `${TEXT_PROMPT}\n\nText:\n${t.slice(0, 4000)}` }],
+  };
+  for (const model of MOD_MODELS) {
+    try {
+      const resp = await fetch(FM_SERVE_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...base, model }),
+        signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+      if (v) return { ...v, model };
+    } catch (e) {
+      console.warn(`[moderate:text] ${model} failed: ${e.message}`);
+    }
+  }
+  return null; // fail-open
+}
+
+module.exports = { moderateMedia, moderateText };
