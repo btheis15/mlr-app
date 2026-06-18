@@ -19,12 +19,15 @@ import { DEFAULT_PUSH_TYPES } from "@/lib/types";
  * next time the app is opened standalone.
  */
 export function PushPrompt() {
-  const { user, updateUser } = useIdentity();
+  const { user, updateUser, needsIntro } = useIdentity();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const pending = Boolean(user) && user?.pushPrompted === false;
+  // Hold off while the first-run Welcome intro is up — it runs its own push step,
+  // so this standalone prompt would be a duplicate. Once the intro finishes it
+  // marks `push_prompted`, so this never fires for someone who completed it.
+  const pending = Boolean(user) && user?.pushPrompted === false && !needsIntro;
 
   useEffect(() => {
     if (!pending) {
