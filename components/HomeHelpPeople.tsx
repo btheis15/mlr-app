@@ -1,39 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useIdentity } from "@/components/IdentityProvider";
 
 /**
  * "Ask for Help" + "People" as side-by-side square tiles, sitting just under
- * Get involved on Home. People (the member directory) lives here now that it's
- * off the tab bar. "Ask for Help" is BETA-gated (migration 0037) — it self-hides
- * for everyone who isn't a beta tester, in which case People spans the full
- * width so the row never looks half-empty.
+ * Get involved on Home.
  *
  * Tagged `data-fit-anchor` so AppHeader sizes the hero logo to land this row as
  * the last fully-visible thing above the tab bar (Around the resort + below sit
  * just past the fold).
  */
 export function HomeHelpPeople() {
-  const { isBetaTester } = useIdentity();
   return (
     <div data-fit-anchor className="grid grid-cols-2 gap-3">
-      {isBetaTester && (
-        <Tile
-          href="/help-requests"
-          emoji="🙌"
-          tile="bg-primary/12"
-          title="Ask for Help"
-          body="Need a hand at the resort? Ask — or help out."
-        />
-      )}
+      <Tile
+        href="/help-requests"
+        emoji="🙌"
+        tile="bg-primary/12"
+        title="Ask for Help"
+        body="Need a hand at the resort? Ask — or help out."
+      />
       <Tile
         href="/people"
         emoji="👥"
         tile="bg-lake/12"
         title="People"
         body="Find & contact everyone at the resort."
-        className={isBetaTester ? "" : "col-span-2"}
       />
     </div>
   );

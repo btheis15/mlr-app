@@ -249,22 +249,28 @@ export default function ProfilePage() {
         </>
       )}
 
+      <div className="space-y-2">
+        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          Ask for Help
+        </p>
+        <WillingToHelpToggle />
+        <Link
+          href="/help-requests"
+          className="press flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border"
+        >
+          <span className="flex items-center gap-3 text-sm font-medium">
+            <span className="text-lg" aria-hidden>🙌</span> Ask for Help log
+          </span>
+          <span className="text-foreground/40" aria-hidden>›</span>
+        </Link>
+      </div>
+
       {isBetaTester && (
         <div className="space-y-2">
           <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
             Beta features
           </p>
           <AssistantToggle />
-          <WillingToHelpToggle />
-          <Link
-            href="/help-requests"
-            className="press flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border"
-          >
-            <span className="flex items-center gap-3 text-sm font-medium">
-              <span className="text-lg" aria-hidden>🙌</span> Ask for Help
-            </span>
-            <span className="text-foreground/40" aria-hidden>›</span>
-          </Link>
         </div>
       )}
 
