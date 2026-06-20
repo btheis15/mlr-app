@@ -140,7 +140,7 @@ export function HelpRequestsView() {
             Add your name &amp; email
           </button>
         </div>
-      ) : canAsk ? (
+      ) : (
         <div className="space-y-2">
           <button
             type="button"
@@ -155,17 +155,13 @@ export function HelpRequestsView() {
               <span className="font-medium">&ldquo;Notify everyone willing to help&rdquo;</span> in the form so it reaches testers.
             </p>
           )}
-        </div>
-      ) : (
-        <div className="space-y-1 rounded-2xl bg-card p-4 ring-1 ring-border">
-          <p className="text-sm font-semibold">You can ask once you&rsquo;re at the resort</p>
-          <p className="text-xs text-foreground/55">
-            This turns on when you&rsquo;re RSVP&rsquo;d <span className="font-medium">going</span> to a current
-            event (or have an approved stay). It keeps requests going only to people who are actually up here.
-          </p>
-          <a href="/events" className="press mt-1 inline-block text-xs font-semibold text-primary">
-            See current events →
-          </a>
+          {!canAsk && !isAdmin && (
+            <p className="px-1 text-xs text-foreground/55">
+              Requests only reach people when you&rsquo;re RSVP&rsquo;d{" "}
+              <span className="font-medium">going</span> to a current event (or have an approved cabin stay). Feel
+              free to explore the form — it&rsquo;ll go live automatically once you&rsquo;re checked in.
+            </p>
+          )}
         </div>
       )}
 
