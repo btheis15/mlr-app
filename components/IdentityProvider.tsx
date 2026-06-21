@@ -436,15 +436,13 @@ function friendlyAuthError(raw: string | undefined | null): string {
 const RESEND_COOLDOWN = 30;
 
 /**
- * Two-step passwordless sign-in: email → 6-digit code. Keeps the member in the
- * app (no browser hop), which matters for an installed PWA. The signup trigger
- * seeds `profiles.display_name` from the name entered here.
+ * Two-step passwordless sign-in: email → OTP code. Works for both new and
+ * returning members — new members get the WelcomeIntro after first verify to
+ * fill in their name and other basics.
  */
 function SignInGate({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<"email" | "code">("email");
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [emailAlerts, setEmailAlerts] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -471,17 +469,16 @@ function SignInGate({ onClose }: { onClose: () => void }) {
   };
 
   const emailValid = /\S+@\S+\.\S+/.test(email);
-  const nameValid = name.trim().length > 1;
   const normEmail = email.trim().toLowerCase();
 
   const sendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !emailValid || !nameValid) return;
+    if (!supabase || !emailValid) return;
     setBusy(true);
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email: normEmail,
-      options: { shouldCreateUser: true, data: { display_name: name.trim() } },
+      options: { shouldCreateUser: true },
     });
     setBusy(false);
     if (error) {
@@ -502,7 +499,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
     setResent(false);
     const { error } = await supabase.auth.signInWithOtp({
       email: normEmail,
-      options: { shouldCreateUser: true, data: { display_name: name.trim() } },
+      options: { shouldCreateUser: true },
     });
     setBusy(false);
     if (error) {
@@ -520,7 +517,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
     if (!supabase || token.length < 6) return;
     setBusy(true);
     setError(null);
-    const { data, error } = await supabase.auth.verifyOtp({
+    const { error } = await supabase.auth.verifyOtp({
       email: normEmail,
       token,
       type: "email",
@@ -529,11 +526,6 @@ function SignInGate({ onClose }: { onClose: () => void }) {
       setBusy(false);
       setError(friendlyAuthError(error.message));
       return;
-    }
-    // Save the email-alerts choice (display_name is set by the signup trigger).
-    const id = data.session?.user.id;
-    if (id) {
-      await supabase.from("profiles").update({ email_alerts: emailAlerts }).eq("id", id);
     }
     setBusy(false);
     onClose(); // onAuthStateChange picks up the new session
@@ -558,24 +550,17 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             🌲
           </div>
           <h1 className="text-xl font-bold">
-            {step === "email" ? "Join in" : "Check your email"}
+            {step === "email" ? "Sign in" : "Check your email"}
           </h1>
           <p className="text-sm text-foreground/60">
             {step === "email"
-              ? "Browsing is open to everyone. Add your name and email to post, RSVP, and get updates — we'll email you a code to confirm it's you. No password to create or remember."
+              ? "Browsing is open to everyone. Enter your email to post, RSVP, and get updates — we'll send you a code to confirm it's you. No password needed."
               : `We emailed an 8-digit code to ${normEmail} — enter it below.`}
           </p>
         </div>
 
         {step === "email" ? (
           <>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              autoComplete="name"
-              className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-            />
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -584,23 +569,9 @@ function SignInGate({ onClose }: { onClose: () => void }) {
               autoComplete="email"
               className="w-full rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
-            <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
-              <input
-                type="checkbox"
-                checked={emailAlerts}
-                onChange={(e) => setEmailAlerts(e.target.checked)}
-                className="h-4 w-4 accent-[var(--color-primary)]"
-              />
-              <span className="text-foreground/80">
-                Email me important alerts
-                <span className="block text-xs text-foreground/40">
-                  In case you miss them in the app. Change this anytime.
-                </span>
-              </span>
-            </label>
             <button
               type="submit"
-              disabled={!nameValid || !emailValid || busy}
+              disabled={!emailValid || busy}
               className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40"
             >
               {busy ? "Sending…" : "Email me a code"}
