@@ -21,9 +21,11 @@ import {
  * call-outs pushing the page down.
  *
  * Pass `items` front-to-back: the swipeable call-outs first (newest first), the
- * permanent base last. Dismissals persist per-device in `localStorage`, keyed by
- * each item's `id` — so give temporary cards a **versioned** id (e.g. tied to a
- * deadline) so a brand-new alert reappears even after an old one was swiped.
+ * permanent base last. Dismissals are kept in `sessionStorage`, keyed by each
+ * item's `id` — so a swiped card stays gone while you move between tabs, but
+ * **comes back the next time the app is opened** (a fresh session). Give
+ * temporary cards a **versioned** id (e.g. tied to a deadline) so a brand-new
+ * alert reappears even within a session where an old one was swiped.
  */
 export type StackItem = {
   id: string;
@@ -44,12 +46,14 @@ export function CalloutStack({
   items: StackItem[];
   storageKey?: string;
 }) {
-  // Read prior dismissals synchronously so a previously-swiped card never
-  // flashes in on first paint (window is absent only during prerender).
+  // Read this session's dismissals synchronously so a card swiped earlier in
+  // the session never flashes in on first paint (window is absent only during
+  // prerender). sessionStorage (not localStorage) is deliberate: dismissals
+  // survive tab navigation but reset when the app is reopened.
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
-      const raw = window.localStorage.getItem(storageKey);
+      const raw = window.sessionStorage.getItem(storageKey);
       return new Set<string>(raw ? JSON.parse(raw) : []);
     } catch {
       return new Set();
@@ -69,7 +73,7 @@ export function CalloutStack({
   const persist = useCallback(
     (next: Set<string>) => {
       try {
-        window.localStorage.setItem(storageKey, JSON.stringify([...next]));
+        window.sessionStorage.setItem(storageKey, JSON.stringify([...next]));
       } catch {
         /* private mode / no storage — dismissal just won't persist */
       }
