@@ -8,10 +8,10 @@ import { SkeletonList } from "@/components/Skeleton";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useBusyAction, useEvents, useHelpRequests } from "@/lib/hooks";
-import { amIPresent, helpType, mapsUrl, respondToHelp, setHelpStatus, withdrawHelp } from "@/lib/helpRequests";
+import { amIPresent, claimHelpItem, helpType, mapsUrl, respondToHelp, setHelpStatus, withdrawHelp } from "@/lib/helpRequests";
 import { fetchMyBookings } from "@/lib/cabins";
 import { supabase } from "@/lib/supabase";
-import type { HelpRequest } from "@/lib/types";
+import type { BringItem, HelpRequest } from "@/lib/types";
 
 // The "Ask for Help" log (migration 0037). Shows open requests from members at
 // the resort, lets you say "On my way" (the only response), and gives anyone
@@ -112,6 +112,13 @@ export function HelpRequestsView() {
       await reload();
     });
 
+  // Claim / release a "what to bring" item (keyed per-item, independent of the
+  // per-request busy lock so checking off an item doesn't disable the card).
+  const claimItem = async (itemId: string, claim: boolean) => {
+    await claimHelpItem(itemId, claim);
+    await reload();
+  };
+
   return (
     <div className="space-y-5 pt-2">
       <BackLink href="/" label="Home" />
@@ -188,6 +195,7 @@ export function HelpRequestsView() {
               onToggleOnWay={() => toggleOnWay(r)}
               onResolve={() => resolve(r)}
               onCancel={() => cancel(r)}
+              onClaimItem={claimItem}
             />
           ))}
         </section>
@@ -241,6 +249,7 @@ function HelpCard({
   onToggleOnWay,
   onResolve,
   onCancel,
+  onClaimItem,
 }: {
   req: HelpRequest;
   myId: string | null;
@@ -250,7 +259,19 @@ function HelpCard({
   onToggleOnWay: () => void;
   onResolve: () => void;
   onCancel: () => void;
+  onClaimItem: (itemId: string, claim: boolean) => Promise<void>;
 }) {
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const toggleItem = async (it: BringItem) => {
+    if (claimingId) return;
+    const mineItem = myId != null && it.claimedBy === myId;
+    setClaimingId(it.id);
+    try {
+      await onClaimItem(it.id, !mineItem);
+    } finally {
+      setClaimingId(null);
+    }
+  };
   const mine = myId != null && req.userId === myId;
   const onWay = req.responses; // every response means "on my way"
   const iAmOnWay = myId != null && onWay.some((x) => x.userId === myId);
@@ -310,6 +331,52 @@ function HelpCard({
             </a>
           )}
         </p>
+      )}
+
+      {/* What to bring — helpers check off the items they're bringing */}
+      {req.items.length > 0 && (
+        <div className="space-y-1.5 rounded-xl bg-background px-3 py-2.5 ring-1 ring-border">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
+            What to bring · {req.items.filter((it) => it.claimedBy).length}/{req.items.length} covered
+          </p>
+          <ul className="space-y-1">
+            {req.items.map((it) => {
+              const mineItem = myId != null && it.claimedBy === myId;
+              const takenByOther = it.claimedBy != null && !mineItem;
+              const itemBusy = claimingId === it.id;
+              return (
+                <li key={it.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleItem(it)}
+                    disabled={takenByOther || itemBusy}
+                    aria-pressed={Boolean(it.claimedBy)}
+                    className={`press flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm disabled:opacity-100 ${
+                      mineItem ? "bg-primary/10" : "bg-card"
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs text-white ring-1 ${
+                        it.claimedBy ? "bg-primary ring-primary" : "ring-border"
+                      }`}
+                    >
+                      {it.claimedBy ? "✓" : ""}
+                    </span>
+                    <span className={`min-w-0 flex-1 ${it.claimedBy ? "text-foreground/70" : "text-foreground/85"}`}>
+                      {it.label}
+                    </span>
+                    {it.claimedBy && (
+                      <span className="shrink-0 text-[11px] font-medium text-foreground/45">
+                        {mineItem ? "You're bringing" : `${(it.claimedByName ?? "Someone").split(" ")[0]}'s bringing`}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {/* Who's helping / progress */}

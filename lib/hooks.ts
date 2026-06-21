@@ -484,6 +484,7 @@ export function useHelpRequests(): {
       .channel("help-requests-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "help_requests" }, () => schedule(reload))
       .on("postgres_changes", { event: "*", schema: "public", table: "help_responses" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "help_request_items" }, () => schedule(reload))
       .subscribe();
     return () => {
       cancelled = true;

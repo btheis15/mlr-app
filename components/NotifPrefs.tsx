@@ -15,6 +15,7 @@ const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: bo
   { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
   { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "help_request", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },
+  { value: "help_urgent", label: "Urgent help (emergencies)", desc: "When someone marks a request Urgent — goes to everyone, not just people here. We recommend leaving this on." },
   { value: "help_response", label: "Responses to my request", desc: "When someone’s on the way to help with your request" },
   { value: "cabin_request", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
   { value: "committee_join_request", label: "New committee join requests", desc: "When a member asks to join a committee (leads of that committee see these too)", adminOnly: true },

@@ -90,6 +90,7 @@ export type NotifType =
   | "event_rsvp"
   | "help_request"
   | "help_response"
+  | "help_urgent"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -114,6 +115,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "event_rsvp",
   "help_request",
   "help_response",
+  "help_urgent",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
@@ -411,6 +413,17 @@ export interface HelpResponse {
   createdAt: string;
 }
 
+/** A single line on a request's "what to bring" checklist (migration 0046).
+ *  `claimedBy` is the helper bringing it (null = still up for grabs); the name is
+ *  joined from their profile when the log loads. */
+export interface BringItem {
+  id: string;
+  label: string;
+  claimedBy: string | null;
+  claimedByName: string | null;
+  claimedAt: string | null;
+}
+
 /** One help request in the shared log. `responses` is filled in when the log
  *  loads (joined from help_responses). `lat`/`lng` are present only if the
  *  requester chose to share their precise location. */
@@ -439,4 +452,7 @@ export interface HelpRequest {
   /** ISO timestamp; past it the request reads as "expired" in the log. */
   expiresAt: string | null;
   responses: HelpResponse[];
+  /** Optional "what to bring" checklist (empty if the requester listed nothing).
+   *  Joined from help_request_items when the log loads. */
+  items: BringItem[];
 }

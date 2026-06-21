@@ -302,29 +302,40 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   fan out via `_notify` (so it rides the in-app feed + the mini's push-sender once
   `help_request`/`help_response` are in `notif_types`/`push_types`/`PUSHABLE_FEED_TYPES`),
   a realtime [`useHelpRequests`](lib/hooks.ts) hook, and the
-  [`AskForHelpSheet`](components/AskForHelpSheet.tsx) form (type · what · how many ·
-  where + optional one-tap GPS pin · optional time · "notify everyone willing"
-  escape hatch). Fulfillment is **race-safe** (conditional `update … where
-  fulfilled_at is null` + `FOUND`). **Data model:** migration
+  [`AskForHelpSheet`](components/AskForHelpSheet.tsx) form (type · what · **what to
+  bring** · how many · where + optional one-tap GPS pin · optional time · "notify
+  everyone willing" escape hatch). Fulfillment is **race-safe** (conditional
+  `update … where fulfilled_at is null` + `FOUND`). **Data model:** migration
   [`0037`](supabase/migrations/0037_help_requests.sql) (`profiles.willing_to_help`,
   `help_requests`, `help_responses`, the RPCs/triggers, + `help_request`/`help_response`
   added to `notif_types`/`push_types`). An open-request cap (10) is the only
   anti-spam guard for now.
+- **"What to bring" checklist** (migration [`0046`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql)):
+  a request can carry an optional list of things to bring (e.g. "2 long tables, 6
+  chairs, 3 coolers") in `help_request_items`. Each line is a checkbox in the log;
+  a helper taps the ones they're bringing (`claim_help_item()`, race-safe, one
+  bringer per item), and claiming an item also records an "on my way" response so
+  it counts toward the head-count. Shown in [`HelpCard`](components/HelpRequestsView.tsx)
+  with a "n/N covered" tally.
 - **Beta testing affordances** (migration [`0038`](supabase/migrations/0038_help_test_affordances.sql)):
   **admins bypass the requester presence gate** (post from anywhere to test/demo —
   the beta gate + recipient presence still apply, so use "Notify everyone willing"
   to reach people when off-season), and **beta-tester requesters get a self-ping**
   for their own request (`_notify` normally skips the actor) so it can be verified
   solo. Both fall away at GA (they key on `is_admin` / `beta_tester`).
-- **GA plan — Urgent/SOS goes to EVERYONE.** While in beta the whole feature is
-  beta-gated and routed only to willing + present members. **Once out of beta**, an
-  **Urgent** request (`category = 'urgent'`) must alert **every member who has
-  notifications on**, regardless of `willing_to_help` or presence — emergencies are
-  for everyone. Non-urgent types keep the willing + present targeting. Implementation
-  sketch: in `notif_on_help_request`, when `NEW.category = 'urgent'`, fan out to all
-  members with `'help_request' = any(notif_types)` (skip the willing/present filter);
-  otherwise use `_help_recipients` as today. (Deferred until GA — don't enable while
-  beta-gated.)
+- **Urgent goes to EVERYONE** (migration [`0046`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql)).
+  A request with `category = 'urgent'` is an emergency, so it bypasses the
+  willing + present + beta filters and alerts **every member app-wide** via a new
+  `help_urgent` notification kind (default on, mutable in Profile → Notifications;
+  `NotifPrefs`). `notif_on_help_request` branches: urgent fans `help_urgent` out to
+  all profiles (gated only by their `help_urgent` pref); everything else still uses
+  `_help_recipients` (willing + present). The "✅ covered" fan-out branches the same
+  way. The mini's push-sender treats `help_urgent` as an **override push** — anyone
+  whose phone push is on (non-empty `push_types`) gets buzzed regardless of their
+  per-category picks (so it isn't gated on `push_types` membership like the other
+  feed pushes). Non-beta members can also **respond to / help with** an urgent
+  request (`respond_to_help` + `claim_help_item` waive the beta gate for urgent).
+  Non-urgent types keep the willing + present targeting and the beta gate.
 
 ## Content safeguards (feed moderation)
 

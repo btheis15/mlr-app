@@ -211,6 +211,10 @@ async function start() {
     // ride the feed-mirror path (the trigger fans out notifications rows; we relay
     // each to a phone push, gated on push_types).
     "help_request", "help_response",
+    // URGENT help (migration 0046): an emergency goes to EVERY member. It's an
+    // OVERRIDE push — anyone with phone push on gets buzzed regardless of their
+    // per-category picks (handled below), so it isn't gated on push_types[type].
+    "help_urgent",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
@@ -222,7 +226,15 @@ async function start() {
       .select("push_types")
       .eq("id", n.recipient_id)
       .maybeSingle();
-    if (!((prof && prof.push_types) || []).includes(n.type)) return;
+    const pushTypes = (prof && prof.push_types) || [];
+    if (n.type === "help_urgent") {
+      // Emergency override: buzz anyone whose phone push is ON (push_types is
+      // non-empty = the master switch is on), even if they muted routine help
+      // pushes. Push OFF (empty / no subscription) still gets nothing.
+      if (pushTypes.length === 0) return;
+    } else if (!pushTypes.includes(n.type)) {
+      return;
+    }
 
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
