@@ -9,6 +9,31 @@ backend. No wrapper, no React Native bridge — real UIKit/SwiftUI using every
 native capability Apple exposes. The two apps share one database, one auth system,
 and one media server; they diverge only at the UI layer.
 
+The iOS app targets **iOS 26**, adopting the **Liquid Glass** design language, and
+leans into the Apple ecosystem: **WidgetKit** widgets, **ActivityKit** Live
+Activities, **App Intents** for Siri, and **WeatherKit** forecasts on events.
+
+> ### The web app is not going away — iOS is additive, and they stay in sync
+>
+> This is the load-bearing constraint of the whole project:
+>
+> - **The Next.js PWA stays live and unchanged.** Android users, desktop
+>   browsers, and anyone who hasn't installed the iOS app keep using it exactly as
+>   today. No web features are removed.
+> - **The iOS app is a second client, not a replacement.** A family member can use
+>   the web on their laptop and the native app on their phone interchangeably.
+> - **They are synced for free because there is only ONE backend.** Both clients
+>   talk to the *same* Supabase project — same Postgres tables, same RLS policies,
+>   same `security definer` RPCs, same Storage buckets, same realtime channels. The
+>   Swift `supabase-swift` client points at the identical project URL + anon key as
+>   the web app's `@supabase/supabase-js` client. An RSVP made on iPhone appears
+>   instantly on the web; a photo posted on the web flows into the iOS feed's
+>   realtime subscription. There is **no separate iOS database and no sync layer to
+>   build or maintain** — a single source of truth means "sync" is inherent.
+> - **The only backend *addition* (not a change)** is APNs delivery for iOS: a new
+>   `apns_subscriptions` table + an `apns-sender.js` on the Mac mini, running
+>   alongside the existing Web Push sender. Everything else is shared verbatim.
+
 ---
 
 ## Why Full Native (Not a Web Wrapper)
@@ -27,6 +52,78 @@ and one media server; they diverge only at the UI layer.
 | Smooth scrolling | JS jank | Native list performance |
 | App Store distribution | No | Yes — you're a paid member |
 | Camera / Photos integration | Web API (limited) | PhotosUI, AVFoundation |
+| Weather on events | ❌ (no first-party API) | WeatherKit forecasts on event dates |
+| Design language | Web CSS approximation | Native Liquid Glass (iOS 26) |
+
+---
+
+## iOS 26 / Apple Ecosystem Features
+
+The app targets **iOS 26** so it can use the latest platform capabilities as
+first-class features (not "someday" extras). Scaffolding for all of these is
+already in the repo under `ios/`.
+
+### Liquid Glass design language
+- `ios/MLRApp/Shared/Design/LiquidGlass.swift` — brand glass button styles
+  (`.glassPrimary`, `.glassSecondary`, `.glassFest`, `.glassCircle()`), a
+  `.glassCard()` surface modifier, and `PulsingLiveDot`, all built on the iOS 26
+  `.glassEffect(_:in:)` API and `Glass` config (`.regular.tint(_:).interactive()`).
+- System chrome (TabView, toolbars, sheets, navigation bars) adopts Liquid Glass
+  **automatically** on iOS 26 — we don't restyle those. The custom styles are for
+  our own CTAs, floating buttons, and layered cards so they match the system
+  material. Prominent CTAs use glass; we deliberately don't glassify every button.
+
+### WidgetKit (Home Screen + Lock Screen widgets)
+- `ios/MLRWidget/` is a **Widget Extension target**. It ships:
+  - **Family Fest Countdown** — `systemSmall`, `systemMedium`, plus Lock Screen
+    `accessoryRectangular` / `accessoryCircular`. Recomputes the season phase on
+    each timeline refresh from `FamilyFestConfig` (no network); shows "N days to
+    go" → "Day n of N" during the live week.
+  - **Next at the Resort** — the nearest upcoming event, read from the App Group
+    snapshot the app writes (`SharedStore`), falling back to seed events offline.
+- Widgets and the app share data via an **App Group**
+  (`group.com.muskellungelakeresort.mlr`) — `ios/Shared/SharedStore.swift`.
+
+### Live Activities (ActivityKit)
+- `ios/Shared/FestActivityAttributes.swift` (shared with the widget target) +
+  `ios/MLRWidget/FestLiveActivity.swift` (Lock Screen banner + Dynamic Island).
+- During Fest week, a Live Activity shows "Day n of N" and the next scheduled
+  event on the Lock Screen and in the Dynamic Island.
+  `ios/MLRApp/LiveActivities/FestLiveActivityController.swift` starts/updates/ends
+  it from the app, driven by `FestSeason` + the schedule. Requires
+  `NSSupportsLiveActivities = YES` in Info.plist.
+
+### App Intents (Siri + Shortcuts + Spotlight)
+- `ios/MLRApp/Intents/` — `NextEventIntent` ("what's next at MLR"),
+  `FestCountdownIntent` ("how many days until Family Fest"), and `AskForHelpIntent`
+  (opens the ask-for-help flow), registered with spoken phrases via
+  `MLRAppShortcuts: AppShortcutsProvider`. The two read-only intents answer from
+  the App Group snapshot / local season math, so they work without launching the
+  app or signing in (events + fest dates are public).
+
+### WeatherKit (forecasts on events)
+- `ios/MLRApp/Weather/WeatherService.swift` fetches the **daily forecast for an
+  event's date**, anchored to the resort's fixed coordinate (so no location
+  permission is needed). WeatherKit's daily forecast reaches ~10 days out, so:
+  **upcoming events show a forecast; far-out events simply don't** — the badge
+  hides itself when `forecast(for:)` returns nil.
+- `ios/MLRApp/Weather/EventWeatherBadge.swift` — a compact badge (icon + hi/lo)
+  for cards and a full badge (condition + precip %) for the event detail, plus
+  `WeatherAttributionView` (Apple **requires** attribution on any screen showing
+  WeatherKit data). Wired into `EventCard`, `UpcomingEventCard`, `EventSheet`, and
+  the Family Fest day rows.
+- **Setup:** enable the **WeatherKit** capability on the App ID
+  (developer.apple.com) and on the Xcode target. No API key in code — entitlement-based.
+
+### New capabilities checklist (Xcode → Signing & Capabilities)
+- Push Notifications + Background Modes (remote notifications)
+- App Groups (`group.com.muskellungelakeresort.mlr`) — app + widget targets
+- WeatherKit
+- Live Activities (Info.plist `NSSupportsLiveActivities = YES`)
+- Associated Domains (Universal Links)
+- Widget Extension target (`MLRWidget`) with the shared files' target membership
+  checked: `FestActivityAttributes.swift`, `SharedStore.swift`, `FestSeason.swift`,
+  `SeedData.swift`, `Colors.swift`, `LiquidGlass.swift`, `Formatters.swift`.
 
 ---
 
@@ -48,10 +145,14 @@ layer — schema migrations, RLS policies, and RPC functions apply to both.
 
 | Concern | Choice | Notes |
 |---|---|---|
-| UI framework | **SwiftUI** | iOS 17+ minimum recommended |
-| Backend | **supabase-swift** (`github.com/supabase/supabase-swift`) | Mirrors the TS client API; auth + database + realtime + storage |
+| UI framework | **SwiftUI** | **iOS 26 minimum** (Liquid Glass design language) |
+| Backend | **supabase-swift** (`github.com/supabase/supabase-swift`) | Mirrors the TS client API; **same project as the web app** — auth + database + realtime + storage |
 | Realtime | Supabase Realtime via supabase-swift | Chat, notifications, help requests — same channels as web |
 | Push notifications | **APNs** via `UNUserNotificationCenter` | Device token stored in `apns_subscriptions` table (new) |
+| Widgets | **WidgetKit** | Fest countdown + next-event, fed via App Group |
+| Live Activities | **ActivityKit** | Fest day-of on Lock Screen + Dynamic Island |
+| Siri / Shortcuts | **App Intents** | Next event, fest countdown, ask for help |
+| Weather | **WeatherKit** | Forecast on event dates (≤10-day horizon) |
 | Image loading/caching | **Kingfisher** | Async image loading + disk cache |
 | Photo picker | **PhotosUI** (`PhotosPicker`) | iOS 16+ native, no permissions nag |
 | Video playback | **AVKit** (`VideoPlayer`) | For transcoded uploads from the media server |
@@ -392,8 +493,27 @@ The Yellowtail script font (`.font-script` in the web) is available as a Google
 Font — embed it in the app bundle for the resort wordmark. Cinzel (Family Fest
 serif) also embeds for the `.ff-section` equivalent. Both are free and OFL-licensed.
 
-**Light mode only** — the app sets `overrideUserInterfaceStyle = .light` at the
-window level, mirroring the web app's design decision.
+**Adaptive light + dark mode** — unlike the web app (which is light-only), the iOS
+app supports **both appearances**. It follows the system setting by default, with a
+per-device override (System / Light / Dark) in Profile → Appearance
+(`AppearanceManager`, persisted in `UserDefaults`, applied via `.preferredColorScheme`).
+
+The palette is built to adapt cleanly:
+- **Surface + text tokens** use Apple's semantic system colors
+  (`Color(.systemBackground)`, `.secondarySystemBackground`, `.label`, …) which
+  adapt automatically.
+- **Brand tokens** (`mlrPrimary`, `mlrAccent`, `mlrFest`, `mlrFestParchment`, …) are
+  defined as **adaptive colors** in `Colors.swift` via a `Color(light:dark:)`
+  dynamic `UIColor` provider — e.g. the Family Fest parchment becomes a dark warm
+  brown in dark mode so the section keeps its distinct "Renaissance" identity
+  instead of collapsing onto the resort's black canvas. Because views reference
+  tokens (never raw hex), the whole app flips by changing one file.
+- **Transparency discipline** (the recurring footgun): card backgrounds use opaque
+  adaptive tokens (`mlrCard`) or `Material`, never a translucent solid color (which
+  goes muddy grey on light and washed-out on dark). `Color.black.opacity(...)` is
+  used only for modal scrims / the photo lightbox. The Apple-logo pay icon uses the
+  adaptive label color so it doesn't vanish on dark. Liquid Glass surfaces sit over
+  real content, never over a literal white.
 
 ---
 
@@ -441,7 +561,7 @@ You are a paid Apple Developer Program member, so:
 - [ ] Stub `TabView` with placeholder tabs
 - [ ] Add `Colors.swift` and `Typography.swift` with design tokens
 - [ ] Embed Yellowtail + Cinzel fonts
-- [ ] Force light mode at window level
+- [ ] Adaptive light/dark palette + appearance override (System/Light/Dark)
 
 **Deliverable:** Sign in with email OTP works. APNs token saves to DB.
 
