@@ -56,7 +56,8 @@ struct UpcomingEventCard: View {
                         onSelect: { status in onAttendanceChange(status) }
                     )
                 } else {
-                    SignInChip(label: "RSVP") { }
+                    // Shared SignInChip (GuardView.swift) — calls authService.promptSignIn()
+                    SignInChip()
                 }
 
                 Spacer()
@@ -112,74 +113,5 @@ struct EventKindBadge: View {
     }
 }
 
-// MARK: - AttendanceControl
-// Three-segment going / maybe / can't-make-it picker.
-// Used here and on the Events tab.
-
-struct AttendanceControl: View {
-    let currentStatus: AttendanceStatus?
-    let onSelect: (AttendanceStatus) async -> Void
-
-    @State private var isUpdating = false
-
-    private let statuses: [AttendanceStatus] = [.going, .maybe, .notGoing]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(statuses, id: \.rawValue) { status in
-                Button {
-                    guard !isUpdating else { return }
-                    Task {
-                        isUpdating = true
-                        await onSelect(status)
-                        isUpdating = false
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(status.emoji)
-                            .font(.system(size: 13))
-                        Text(status.label)
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(currentStatus == status ? Color.mlrPrimary : Color.clear)
-                    .foregroundStyle(currentStatus == status ? Color.white : Color.mlrTextMuted)
-                }
-            }
-        }
-        .background(Color.mlrCard)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.mlrBorder, lineWidth: 1)
-        )
-        .opacity(isUpdating ? 0.6 : 1)
-        .animation(.easeInOut(duration: 0.15), value: currentStatus)
-    }
-}
-
-// MARK: - SignInChip
-// Inline sign-in prompt used in place of gated actions.
-
-struct SignInChip: View {
-    let label: String
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Label(label, systemImage: "lock.fill")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.mlrTextMuted)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color.mlrCard)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.mlrBorder, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
+// AttendanceControl and SignInChip are defined in Shared/Components/
+// (AttendanceControl.swift and GuardView.swift respectively).
