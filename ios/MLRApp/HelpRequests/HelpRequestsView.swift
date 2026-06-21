@@ -154,6 +154,7 @@ struct HelpRequestsView: View {
         defer { actionInFlight.remove(request.id) }
         do {
             try await env.helpService.respondToHelp(requestId: request.id)
+            Haptics.success()
         } catch {
             actionError = "Couldn't mark you on the way. Try again."
         }
@@ -224,6 +225,13 @@ private struct HelpRequestCard: View {
                 Label(location, systemImage: "mappin.and.ellipse")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.mlrTextMuted)
+            }
+
+            // GPS-pinned requests get a map + one-tap navigate (Directions button
+            // lives inside HelpRequestMap's overlay).
+            if let coordinate = request.coordinate {
+                HelpRequestMap(coordinate: coordinate,
+                               title: request.whereDescription ?? request.what)
             }
 
             if let when = request.scheduledFor {

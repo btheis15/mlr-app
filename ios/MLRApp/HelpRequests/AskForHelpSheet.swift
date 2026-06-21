@@ -83,6 +83,7 @@ struct AskForHelpSheet: View {
                 HStack(spacing: 8) {
                     ForEach(HelpCategory.allCases, id: \.self) { cat in
                         Button {
+                            Haptics.tap()
                             category = cat
                         } label: {
                             Text("\(cat.emoji) \(cat.label)")
@@ -235,6 +236,7 @@ struct AskForHelpSheet: View {
                 scheduledFor: hasSchedule ? scheduledFor : nil,
                 notifyAll: notifyAll
             )
+            Haptics.success()
             dismiss()
         } catch {
             submitError = "Couldn't send your request. Check your connection and try again."

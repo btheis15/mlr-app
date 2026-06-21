@@ -131,6 +131,7 @@ struct ShirtVoteView: View {
                 // CTA button
                 Button {
                     if let url = URL(string: TshirtVoteConfig.formUrl) {
+                        Haptics.success()
                         UIApplication.shared.open(url)
                     }
                 } label: {

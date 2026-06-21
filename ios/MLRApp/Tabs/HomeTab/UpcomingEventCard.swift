@@ -61,6 +61,7 @@ struct UpcomingEventCard: View {
                         selection: displayStatus,
                         isEnabled: true,
                         onSelect: { status in
+                            Haptics.select()
                             Task { await onAttendanceChange(status) }
                         }
                     )

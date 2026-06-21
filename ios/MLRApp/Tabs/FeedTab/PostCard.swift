@@ -23,6 +23,7 @@ struct PostCard: View {
     @State private var showLightbox = false
     @State private var comments: [PostComment] = []
     @State private var commentsLoaded = false
+    @State private var shareState: ShareState?
 
     // Standard reaction emojis
     private let reactionEmojis = ["❤️", "👍", "😂", "🙌", "🎉"]
@@ -49,6 +50,7 @@ struct PostCard: View {
                 LightboxView(imageUrl: url)
             }
         }
+        .shareSheet($shareState)
         .task {
             // Load comments eagerly so we can show the comment count without an extra fetch.
             if !commentsLoaded {
@@ -78,7 +80,13 @@ struct PostCard: View {
 
             // ⋯ overflow menu
             Menu {
+                Button {
+                    shareState = ShareState(items: shareItems)
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
                 if env.isSignedIn {
+                    Divider()
                     Button(role: .destructive) {
                         Task { await onReport() }
                     } label: {
@@ -155,6 +163,7 @@ struct PostCard: View {
                         count: reactionCount(for: emoji),
                         isSelected: isMineReaction(emoji: emoji),
                         onTap: {
+                            Haptics.tap()
                             Task { await onReactionToggle(emoji) }
                         }
                     )
@@ -182,6 +191,21 @@ struct PostCard: View {
     }
 
     // MARK: - Helpers
+
+    private var shareItems: [Any] {
+        var items: [Any] = []
+        if let text = post.text, !text.isEmpty {
+            items.append(text)
+        }
+        if let urlString = post.imageUrl, let url = URL(string: urlString) {
+            items.append(url)
+        }
+        // Always share something even if the post is text- or image-less.
+        if items.isEmpty {
+            items.append("Shared from the MLR app 🌲")
+        }
+        return items
+    }
 
     private var displayName: String {
         if !env.isSignedIn {

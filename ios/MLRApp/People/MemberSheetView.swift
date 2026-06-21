@@ -11,6 +11,11 @@ struct MemberSheetView: View {
 
     let member: Profile
 
+    @State private var composeState: MessageComposeState?
+    @State private var showAddContact = false
+    @State private var birthdayAdded = false
+    @State private var birthdayError: String?
+
     private var isOwnProfile: Bool {
         env.currentProfile?.id == member.id
     }
@@ -52,6 +57,14 @@ struct MemberSheetView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
+        .messageComposer($composeState)
+        .sheet(isPresented: $showAddContact) {
+            AddToContactsView(name: member.name,
+                              phone: member.phone,
+                              email: member.email.isEmpty ? nil : member.email,
+                              imageData: nil)
+                .ignoresSafeArea()
+        }
     }
 
     // MARK: - Header
@@ -109,12 +122,28 @@ struct MemberSheetView: View {
                         let digits = phone.filter(\.isNumber)
                         contactRow("Call", MLRFormat.phone(phone), "phone.fill",
                                    url: "tel://\(digits)")
-                        contactRow("Text", MLRFormat.phone(phone), "message.fill",
-                                   url: "sms://\(digits)")
+                        Button {
+                            composeState = MessageComposeState(recipients: [phone], body: "")
+                        } label: {
+                            contactRowLabel("Text", MLRFormat.phone(phone),
+                                            "message.fill", showsChevron: true)
+                        }
+                        .buttonStyle(.plain)
                     }
                     if !member.email.isEmpty {
                         contactRow("Email", member.email, "envelope.fill",
                                    url: "mailto:\(member.email)")
+                    }
+
+                    let hasPhone = !(member.phone?.isEmpty ?? true)
+                    if hasPhone || !member.email.isEmpty {
+                        Button {
+                            showAddContact = true
+                        } label: {
+                            contactRowLabel("Add to Contacts", member.name,
+                                            "person.crop.circle.badge.plus", showsChevron: true)
+                        }
+                        .buttonStyle(.plain)
                     }
                     if (member.phone?.isEmpty ?? true) && member.email.isEmpty {
                         Text("No contact info on file.")
@@ -165,10 +194,29 @@ struct MemberSheetView: View {
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel(text: "Birthday")
                 Protected {
-                    Label(display, systemImage: "gift.fill")
-                        .font(.mlrBody)
-                        .foregroundStyle(Color.mlrText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(display, systemImage: "gift.fill")
+                            .font(.mlrBody)
+                            .foregroundStyle(Color.mlrText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button {
+                            Task { await addBirthday(birthday) }
+                        } label: {
+                            Label(birthdayAdded ? "Added to Calendar ✓" : "Add birthday to Calendar",
+                                  systemImage: birthdayAdded ? "checkmark.circle.fill" : "calendar.badge.plus")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(birthdayAdded ? Color.mlrSuccess : Color.mlrPrimary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(birthdayAdded)
+
+                        if let birthdayError {
+                            Text(birthdayError)
+                                .font(.mlrCaption)
+                                .foregroundStyle(Color.mlrDanger)
+                        }
+                    }
                 }
             }
             .padding(16)
@@ -180,7 +228,18 @@ struct MemberSheetView: View {
 
     @ViewBuilder
     private func contactRow(_ label: String, _ value: String, _ icon: String, url: String?) -> some View {
-        let row = HStack(spacing: 12) {
+        let row = contactRowLabel(label, value, icon, showsChevron: url != nil)
+
+        if let url, let link = URL(string: url) {
+            Link(destination: link) { row }
+        } else {
+            row
+        }
+    }
+
+    private func contactRowLabel(_ label: String, _ value: String, _ icon: String,
+                                 showsChevron: Bool) -> some View {
+        HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16))
                 .foregroundStyle(Color.mlrPrimary)
@@ -194,18 +253,36 @@ struct MemberSheetView: View {
                     .foregroundStyle(Color.mlrText)
             }
             Spacer()
-            if url != nil {
+            if showsChevron {
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.mlrTextSubtle)
             }
         }
         .contentShape(Rectangle())
+    }
 
-        if let url, let link = URL(string: url) {
-            Link(destination: link) { row }
+    // MARK: - Add birthday to Calendar
+
+    private func addBirthday(_ iso: String) async {
+        birthdayError = nil
+        // CalendarService wants a full yyyy-MM-dd. If only MM-dd is stored,
+        // anchor it to the current year (the yearly recurrence rule repeats it).
+        let normalized: String
+        if iso.count == 5 { // "MM-dd"
+            let year = Calendar.current.component(.year, from: Date())
+            normalized = "\(year)-\(iso)"
         } else {
-            row
+            normalized = iso
+        }
+        do {
+            _ = try await CalendarService.shared.addBirthday(memberName: member.name,
+                                                             birthdayISO: normalized)
+            Haptics.success()
+            birthdayAdded = true
+        } catch {
+            Haptics.error()
+            birthdayError = "Couldn't add to Calendar. Check Calendar access in Settings."
         }
     }
 

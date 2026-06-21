@@ -15,6 +15,7 @@ struct PeopleDirectoryView: View {
     @State private var searchText = ""
     @State private var selectedMember: Profile?
     @State private var showEmailGroup = false
+    @State private var composeState: MessageComposeState?
 
     private var filteredMembers: [Profile] {
         guard !searchText.isEmpty else { return members }
@@ -60,6 +61,7 @@ struct PeopleDirectoryView: View {
         .sheet(isPresented: $showEmailGroup) {
             EmailGroupSheet(members: members)
         }
+        .messageComposer($composeState)
         .task { await load() }
     }
 
@@ -68,9 +70,11 @@ struct PeopleDirectoryView: View {
     private var memberList: some View {
         List {
             ForEach(filteredMembers) { member in
-                MemberRow(member: member) {
+                MemberRow(member: member, onTap: {
                     selectedMember = member
-                }
+                }, onText: { phone in
+                    composeState = MessageComposeState(recipients: [phone], body: "")
+                })
             }
         }
         .listStyle(.plain)
@@ -126,6 +130,7 @@ private struct MemberRow: View {
     @Environment(AppEnvironment.self) private var env
     let member: Profile
     let onTap: () -> Void
+    let onText: (String) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
@@ -163,7 +168,7 @@ private struct MemberRow: View {
 
             // Quick action bar — gated for guests
             Protected {
-                QuickActionBar(member: member)
+                QuickActionBar(member: member, onText: onText)
             }
         }
         .padding(.vertical, 4)
@@ -174,12 +179,16 @@ private struct MemberRow: View {
 
 private struct QuickActionBar: View {
     let member: Profile
+    let onText: (String) -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             if let phone = member.phone, !phone.isEmpty {
                 let digits = phone.filter(\.isNumber)
-                actionChip("Text", "message.fill", url: "sms://\(digits)")
+                Button { onText(phone) } label: {
+                    chipLabel("Text", "message.fill")
+                }
+                .buttonStyle(.plain)
                 actionChip("Call", "phone.fill", url: "tel://\(digits)")
             }
             if let venmo = member.venmoHandle, !venmo.isEmpty {
@@ -195,15 +204,19 @@ private struct QuickActionBar: View {
     private func actionChip(_ label: String, _ icon: String, url: String) -> some View {
         if let link = URL(string: url) {
             Link(destination: link) {
-                Label(label, systemImage: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.mlrPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.mlrPrimaryLight)
-                    .clipShape(Capsule())
+                chipLabel(label, icon)
             }
         }
+    }
+
+    private func chipLabel(_ label: String, _ icon: String) -> some View {
+        Label(label, systemImage: icon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.mlrPrimary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.mlrPrimaryLight)
+            .clipShape(Capsule())
     }
 }
 

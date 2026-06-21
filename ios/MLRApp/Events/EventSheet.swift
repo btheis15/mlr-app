@@ -19,6 +19,9 @@ struct EventSheet: View {
     @State private var showEditor = false
     @State private var showDeleteConfirm = false
     @State private var actionError: String?
+    @State private var shareState: ShareState?
+    @State private var calendarAdded = false
+    @State private var calendarError: String?
 
     // Family Fest day labels (Mon–Sat across the fest window)
     private let festDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -43,6 +46,8 @@ struct EventSheet: View {
 
                     // WeatherKit forecast for the event date (self-hides if none)
                     EventWeatherBadge(isoDate: event.startDate, compact: false)
+
+                    nativeActions
 
                     rsvpSection
                     whoIsGoingSection
@@ -75,6 +80,7 @@ struct EventSheet: View {
         .sheet(isPresented: $showEditor) {
             EventComposer(existing: event)
         }
+        .shareSheet($shareState)
         .confirmationDialog("Delete this event?",
                             isPresented: $showDeleteConfirm,
                             titleVisibility: .visible) {
@@ -124,6 +130,96 @@ struct EventSheet: View {
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.mlrText)
             Spacer()
+        }
+    }
+
+    // MARK: - Native actions (Add to Calendar / Share / Directions)
+
+    private var nativeActions: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await addToCalendar() }
+                } label: {
+                    Label(calendarAdded ? "Added ✓" : "Add to Calendar",
+                          systemImage: calendarAdded ? "checkmark.circle.fill" : "calendar.badge.plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(calendarAdded ? Color.mlrSuccess : accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background((calendarAdded ? Color.mlrSuccess : accent).opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(calendarAdded)
+
+                Button {
+                    shareState = ShareState(items: shareItems)
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(accent.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let location = event.location, !location.isEmpty {
+                Button {
+                    let lower = location.lowercased()
+                    if lower.contains("resort") || lower.contains("muskellunge") {
+                        MapsHelper.directionsToResort()
+                    } else {
+                        MapsHelper.directions(toAddress: location)
+                    }
+                } label: {
+                    Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(accent.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let calendarError {
+                Text(calendarError)
+                    .font(.mlrCaption)
+                    .foregroundStyle(Color.mlrDanger)
+            }
+        }
+    }
+
+    private var shareItems: [Any] {
+        let dateLabel = MLRFormat.dateRange(start: event.startDate, end: event.endDate)
+        var text = "\(event.title) · \(dateLabel)"
+        if let link = URL(string: "mlr://events?id=\(event.id)") {
+            return [text, link]
+        }
+        text += "\nmlr://events?id=\(event.id)"
+        return [text]
+    }
+
+    private func addToCalendar() async {
+        calendarError = nil
+        do {
+            _ = try await CalendarService.shared.addEvent(
+                title: event.title,
+                startISO: event.startDate,
+                endISO: event.endDate,
+                location: event.location,
+                notes: event.description
+            )
+            Haptics.success()
+            calendarAdded = true
+        } catch {
+            Haptics.error()
+            calendarError = "Couldn't add to Calendar. Check Calendar access in Settings."
         }
     }
 
@@ -283,6 +379,7 @@ struct EventSheet: View {
         defer { isSaving = false }
         do {
             try await env.eventsService.upsertAttendance(eventId: event.id, status: status)
+            Haptics.success()
             await refreshAfterRSVP()
         } catch {
             actionError = "Couldn't save your RSVP. Try again."
@@ -297,6 +394,7 @@ struct EventSheet: View {
         do {
             try await env.eventsService.upsertAttendance(
                 eventId: event.id, status: effective, days: dayStatuses)
+            Haptics.success()
             await refreshAfterRSVP()
         } catch {
             actionError = "Couldn't save your days. Try again."

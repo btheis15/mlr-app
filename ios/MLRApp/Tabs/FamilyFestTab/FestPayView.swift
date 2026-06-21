@@ -104,6 +104,11 @@ struct FestPayView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
+                // Apple Pay dues button — self-hides until a merchant + processor
+                // is configured (PaymentsConfig.applePayEnabled).
+                ApplePayDuesButton(amount: Decimal(dueAmount), label: "Family Fest Dues")
+                    .padding(.horizontal, 16)
+
                 // Payment methods
                 VStack(spacing: 10) {
                     ForEach(paymentMethods) { method in
@@ -123,6 +128,7 @@ struct FestPayView: View {
 private struct PaymentMethodCard: View {
     let method: PaymentMethod
     @State private var copied = false
+    @State private var composeState: MessageComposeState?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -172,7 +178,32 @@ private struct PaymentMethodCard: View {
                 .animation(.easeInOut(duration: 0.2), value: copied)
             }
 
-            // Deep link button (Venmo / Apple Cash)
+            // Apple Cash → hand off to Messages (Apple Cash has no programmatic
+            // send API; the sender attaches the cash in the Messages thread).
+            if method.id == "applepay" {
+                Button {
+                    composeState = ApplePayHandoff.appleCashHandoff(
+                        recipient: method.handle,
+                        amount: "$\(method.amount)",
+                        note: "Family Fest dues"
+                    )
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "applelogo")
+                            .font(.system(size: 14))
+                        Text("Send with Apple Cash")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.mlrFest)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Deep link button (Venmo / Cash App)
             if let deepLink = method.deepLink {
                 Link(destination: deepLink) {
                     HStack(spacing: 6) {
@@ -201,5 +232,6 @@ private struct PaymentMethodCard: View {
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(Color.mlrFest.opacity(0.2), lineWidth: 1)
         )
+        .messageComposer($composeState)
     }
 }
