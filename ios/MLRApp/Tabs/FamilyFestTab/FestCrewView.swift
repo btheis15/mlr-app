@@ -25,7 +25,7 @@ struct FestCrewView: View {
 
     var body: some View {
         if !env.isSignedIn {
-            SignInWall(message: "Sign in to see the crew and sign up your household.")
+            FestSignInNotice(message: "Sign in to see the crew and sign up your household.")
         } else {
             crewContent
         }
@@ -271,9 +271,12 @@ private struct CrewSignupSheet: View {
     }
 }
 
-// MARK: - Sign-In Wall
+// MARK: - Fest Sign-In Notice
+// A parchment-styled, message-only sign-in placeholder for the Family Fest
+// section. (The project-wide generic `SignInWall<Content>` lives in
+// Shared/Components/GuardView.swift — this is the FF-themed sibling.)
 
-struct SignInWall: View {
+struct FestSignInNotice: View {
     let message: String
 
     var body: some View {

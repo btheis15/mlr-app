@@ -62,7 +62,7 @@ struct FestPayView: View {
 
     var body: some View {
         if !env.isSignedIn {
-            SignInWall(message: "Sign in to see payment details and handles.")
+            FestSignInNotice(message: "Sign in to see payment details and handles.")
         } else {
             payContent
         }

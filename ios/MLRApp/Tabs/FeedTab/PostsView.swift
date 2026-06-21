@@ -134,8 +134,8 @@ struct PostsView: View {
                     showComposer = true
                 } label: {
                     Text("Write a post")
-                        .primaryButton()
                 }
+                .buttonStyle(.glassPrimary)
                 .padding(.horizontal, 40)
             }
             Spacer()
@@ -147,13 +147,8 @@ struct PostsView: View {
             showComposer = true
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.mlrPrimary)
-                .clipShape(Circle())
-                .shadow(color: Color.mlrPrimary.opacity(0.35), radius: 8, x: 0, y: 4)
         }
+        .buttonStyle(.glassCircle())
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }

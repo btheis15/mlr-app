@@ -40,12 +40,20 @@ struct EventSheet: View {
                     }
 
                     detailRows
+
+                    // WeatherKit forecast for the event date (self-hides if none)
+                    EventWeatherBadge(isoDate: event.startDate, compact: false)
+
                     rsvpSection
                     whoIsGoingSection
 
                     if env.isAdmin {
                         adminActions
                     }
+
+                    // Apple requires attribution on any screen showing WeatherKit data
+                    WeatherAttributionView()
+                        .padding(.top, 4)
                 }
                 .padding(20)
             }

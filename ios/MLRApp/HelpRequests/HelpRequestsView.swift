@@ -269,9 +269,13 @@ private struct HelpRequestCard: View {
             .disabled(isWorking)
         } else if !request.isCovered {
             Button(action: onRespond) {
-                buttonLabel("On my way", color: .mlrFest, filled: true)
+                if isWorking {
+                    ProgressView().tint(.white)
+                } else {
+                    Text("On my way")
+                }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glassFest)
             .disabled(isWorking)
         }
     }

@@ -19,6 +19,16 @@ struct FestScheduleView: View {
         ScheduleItem.seed.filter { $0.day == "Anytime" }
     }
 
+    /// ISO date (yyyy-MM-dd) for a fest day name, derived from the fest start
+    /// date + the day's offset in `festDays`. Returns nil for "Anytime" / unknowns.
+    private func isoDate(forDay day: String) -> String? {
+        guard let offset = festDays.firstIndex(of: day),
+              let start = WeatherService.isoFormatter.date(from: FamilyFestConfig.startDate),
+              let date = Calendar.current.date(byAdding: .day, value: offset, to: start)
+        else { return nil }
+        return WeatherService.isoFormatter.string(from: date)
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
@@ -43,7 +53,7 @@ struct FestScheduleView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                     } header: {
-                        DayHeader(day: group.day)
+                        DayHeader(day: group.day, isoDate: isoDate(forDay: group.day))
                     }
                 }
 
@@ -81,16 +91,24 @@ struct FestScheduleView: View {
 
 private struct DayHeader: View {
     let day: String
+    var isoDate: String? = nil
 
     var body: some View {
-        Text(day.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Color.mlrFest.opacity(0.65))
-            .tracking(1.2)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.mlrFestParchment)
+        HStack {
+            Text(day.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.mlrFest.opacity(0.65))
+                .tracking(1.2)
+            Spacer()
+            // Self-hides when WeatherKit has no forecast for the date (e.g. far out).
+            if let isoDate {
+                EventWeatherBadge(isoDate: isoDate)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.mlrFestParchment)
     }
 }
 

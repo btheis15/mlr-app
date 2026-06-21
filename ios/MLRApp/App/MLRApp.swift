@@ -1,9 +1,16 @@
 import SwiftUI
+import AppIntents
 
 @main
 struct MLRApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var env = AppEnvironment()
+
+    init() {
+        // Make the in-app navigation router available to App Intents (Siri /
+        // Shortcuts) so an opened intent can drive tab selection + sheets.
+        AppDependencyManager.shared.add(dependency: IntentRouter.shared)
+    }
 
     var body: some Scene {
         WindowGroup {

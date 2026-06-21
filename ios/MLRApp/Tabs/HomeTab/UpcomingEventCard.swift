@@ -33,6 +33,7 @@ struct UpcomingEventCard: View {
                     Text(MLRFormat.dateRange(start: event.startDate, end: event.endDate))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.mlrPrimary)
+                    EventWeatherBadge(isoDate: event.startDate)
                     if let location = event.location {
                         Text(location)
                             .font(.caption)
@@ -82,7 +83,7 @@ struct UpcomingEventCard: View {
         .padding(16)
         .cardStyle()
         .sheet(isPresented: $showEventSheet) {
-            EventSheet(event: event, attendance: attendance)
+            EventSheet(event: event)
         }
     }
 }

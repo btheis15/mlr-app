@@ -81,7 +81,7 @@ struct FestPhotosView: View {
             Task { await uploadPhoto(item) }
         }
         .sheet(item: $lightboxPhoto) { photo in
-            LightboxView(url: photo.url)
+            LightboxView(imageUrl: photo.url.absoluteString)
         }
         .alert("Upload Error", isPresented: .constant(uploadError != nil)) {
             Button("OK") { uploadError = nil }
@@ -202,53 +202,5 @@ struct FestPhotosView: View {
     }
 }
 
-// MARK: - Lightbox View
-
-struct LightboxView: View {
-    let url: URL
-    @Environment(\.dismiss) private var dismiss
-    @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { value in scale = max(1, value) }
-                            .onEnded { _ in
-                                withAnimation(.spring()) { scale = max(1, scale) }
-                            }
-                    )
-                    .simultaneousGesture(
-                        DragGesture()
-                            .onChanged { value in
-                                if scale > 1 { offset = value.translation }
-                            }
-                            .onEnded { _ in
-                                if scale <= 1 { withAnimation(.spring()) { offset = .zero } }
-                            }
-                    )
-            } placeholder: {
-                ProgressView().tint(.white)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .padding(20)
-            }
-        }
-    }
-}
+// LightboxView — canonical full-screen viewer lives in
+// Tabs/FeedTab/LightboxView.swift (init: `LightboxView(imageUrl: String)`).

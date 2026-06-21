@@ -138,15 +138,9 @@ struct ShirtVoteView: View {
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 15))
                         Text("Open the Poll to Vote & RSVP")
-                            .font(.system(size: 15, weight: .semibold))
                     }
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.mlrFest)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassFest)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 32)
             }

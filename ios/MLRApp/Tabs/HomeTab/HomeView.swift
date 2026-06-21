@@ -81,6 +81,7 @@ struct HomeView: View {
             if let userId = env.currentProfile?.id {
                 await env.eventsService.fetchAttendance(userId: userId)
             }
+            publishNextEventToWidgets()
         }
         .refreshable {
             festSeason = FestSeason.current()
@@ -88,6 +89,7 @@ struct HomeView: View {
             if let userId = env.currentProfile?.id {
                 await env.eventsService.fetchAttendance(userId: userId)
             }
+            publishNextEventToWidgets()
         }
     }
 
@@ -120,7 +122,7 @@ struct HomeView: View {
                         tint: Color.mlrPrimary
                     )
                 }
-                NavigationLink(destination: EventsView(filter: .workWeekend)) {
+                NavigationLink(destination: EventsView()) {
                     HomeTile(
                         icon: "hammer.fill",
                         title: "Work Weekends",
@@ -216,6 +218,32 @@ struct HomeView: View {
         } catch {
             // Roll back on failure
             nearestEventStatus = env.eventsService.attendances[event.id]?.effectiveStatus()
+        }
+    }
+
+    /// Write the next upcoming event to the App Group store so the NextEvent
+    /// widget + Siri intents can read it, then nudge the widget timelines.
+    private func publishNextEventToWidgets() {
+        guard let next = env.eventsService.upcomingEvents.first else {
+            SharedStore.shared.nextEvent = nil
+            SharedStore.shared.reloadWidgets()
+            return
+        }
+        SharedStore.shared.nextEvent = EventSnapshot(
+            title: next.title,
+            startDate: next.startDate,
+            emoji: emoji(forKind: next.kind),
+            location: next.location
+        )
+        SharedStore.shared.reloadWidgets()
+    }
+
+    private func emoji(forKind kind: EventKind) -> String {
+        switch kind {
+        case .familyFest:  return "🎉"
+        case .workWeekend: return "🔨"
+        case .holiday:     return "🎄"
+        case .custom:      return "📅"
         }
     }
 

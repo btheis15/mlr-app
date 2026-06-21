@@ -50,7 +50,9 @@ struct CabinBooking: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
     }
 
-    var cabin: Cabin?
+    // Optionally hydrated from a joined `cabins` row; excluded from CodingKeys
+    // above so it isn't required when decoding a bare booking row.
+    var cabin: Cabin? = nil
 
     var checkInDate: Date? {
         isoFormatter.date(from: checkIn)

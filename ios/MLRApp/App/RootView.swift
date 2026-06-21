@@ -7,6 +7,10 @@ struct RootView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var selectedTab: Tab = .home
     @State private var showSplash = true
+    @State private var showAskForHelp = false
+
+    // Siri / Shortcuts → in-app navigation bridge.
+    private var router = IntentRouter.shared
 
     var body: some View {
         ZStack {
@@ -24,6 +28,25 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .notificationTapped)) { note in
             handleNotificationTap(note.userInfo)
         }
+        .sheet(isPresented: $showAskForHelp) {
+            AskForHelpSheet()
+        }
+        // Drive navigation when an App Intent opens the app.
+        .onChange(of: router.pendingRoute) { _, _ in
+            handlePendingRoute()
+        }
+        .task {
+            // Show/refresh the Family Fest Live Activity once the season is known.
+            FestLiveActivityController.shared.refresh(
+                season: FestSeason.current(),
+                schedule: ScheduleItem.seed
+            )
+            // Stash the member's first name for personalized Siri responses.
+            if let name = env.currentProfile?.name.split(separator: " ").first {
+                SharedStore.shared.memberFirstName = String(name)
+            }
+            handlePendingRoute()
+        }
     }
 
     private func handleNotificationTap(_ info: [AnyHashable: Any]?) {
@@ -34,6 +57,20 @@ struct RootView: View {
         case "notification":    selectedTab = .activity
         case "committee_chat":  selectedTab = .home
         default:                selectedTab = .home
+        }
+    }
+
+    private func handlePendingRoute() {
+        guard let route = router.consume() else { return }
+        switch route {
+        case .askForHelp:
+            // Land on Home, then present the Ask-for-Help compose sheet.
+            selectedTab = .home
+            showAskForHelp = true
+        case .familyFest:
+            selectedTab = .fest
+        case .events:
+            selectedTab = .home
         }
     }
 }

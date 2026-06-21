@@ -46,6 +46,8 @@ struct EventCard: View {
                             .foregroundStyle(Color.mlrTextMuted)
                             .lineLimit(1)
                     }
+
+                    EventWeatherBadge(isoDate: event.startDate)
                 }
 
                 HStack {
