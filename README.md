@@ -127,10 +127,15 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
 - **Ask for Help (BETA)** — at `/help-requests`, a member who's at the resort posts
   a short request for a hand (moving, setup, a ride, supplies, or 🚨 urgent); willing
   members who are *also* at the resort get a push, tap **On my way**, and the request
-  reads **✅ Covered** once enough are coming. "At the resort" is derived from event
-  attendance (±2 days) / approved cabin stays — no geolocation. Beta-gated behind
-  `profiles.beta_tester`. Migration
-  [`0037_help_requests.sql`](supabase/migrations/0037_help_requests.sql);
+  reads **✅ Covered** once enough are coming. A request can also carry an optional
+  **"what to bring" checklist** (tables, chairs, coolers…) that helpers tick off as
+  they commit to bringing each item. **Urgent** requests are an exception: they alert
+  **every member app-wide** (and override per-category phone-push settings), since an
+  emergency isn't really "help" — it's everyone's business. "At the resort" is derived
+  from event attendance (±2 days) / approved cabin stays — no geolocation. Beta-gated
+  behind `profiles.beta_tester` (urgent is open to everyone). Migrations
+  [`0037_help_requests.sql`](supabase/migrations/0037_help_requests.sql) +
+  [`0046_help_bring_items_and_urgent_broadcast.sql`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql);
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
 - **Family Fest t-shirt vote** — during the planning run-up, Home shows a

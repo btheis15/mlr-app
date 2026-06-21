@@ -27,6 +27,7 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   event_rsvp: "📅",
   help_request: "🙌",
   help_response: "🚶",
+  help_urgent: "🚨",
   broadcast: "📣",
 };
 

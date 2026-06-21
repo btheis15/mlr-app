@@ -30,6 +30,9 @@ export function AskForHelpSheet({
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<string>(DEFAULT_HELP_TYPE);
   const [neededCount, setNeededCount] = useState(1);
+  // Optional "what to bring" lines (e.g. "2 long tables", "6 chairs"). Helpers
+  // check these off as they commit to bringing them.
+  const [items, setItems] = useState<string[]>([]);
   const [whereText, setWhereText] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
@@ -82,6 +85,7 @@ export function AskForHelpSheet({
       eligible,
       strict,
       today,
+      items: items.map((s) => s.trim()).filter(Boolean),
     });
     setPending(false);
     if (err) {
@@ -162,6 +166,48 @@ export function AskForHelpSheet({
           placeholder="e.g. Need 2–3 people to move logs from the lot to the pavilion."
           className={`${FIELD} w-full resize-none`}
         />
+      </div>
+
+      {/* What to bring (optional checklist) */}
+      <div className="space-y-2">
+        <SectionLabel>
+          Anything to bring? <span className="font-normal normal-case text-foreground/40">(optional)</span>
+        </SectionLabel>
+        {items.length > 0 && (
+          <div className="space-y-2">
+            {items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={it}
+                  onChange={(e) =>
+                    setItems((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+                  }
+                  maxLength={80}
+                  placeholder="e.g. 2 long tables"
+                  className={`${FIELD} w-full`}
+                />
+                <button
+                  type="button"
+                  aria-label="Remove item"
+                  onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
+                  className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card text-lg text-foreground/50 ring-1 ring-border"
+                >
+                  −
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setItems((prev) => [...prev, ""])}
+          className="press flex w-full items-center justify-center gap-2 rounded-xl bg-card py-2.5 text-xs font-semibold text-foreground/75 ring-1 ring-border"
+        >
+          + Add something to bring
+        </button>
+        <p className="px-0.5 text-[11px] text-foreground/45">
+          List what you need (tables, chairs, coolers…). Helpers check off the ones they&rsquo;re bringing.
+        </p>
       </div>
 
       {/* How many */}

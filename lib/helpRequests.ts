@@ -18,6 +18,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { addDays } from "@/lib/cabins";
 import { effectiveStatus, isOngoing } from "@/lib/events";
 import type {
+  BringItem,
   EventAttendance,
   HelpRequest,
   HelpRequestStatus,
@@ -123,6 +124,8 @@ export async function requestHelp(input: {
   strict: string[];
   /** Resort-local ISO date (YYYY-MM-DD) for day-aware matching. */
   today: string;
+  /** Optional "what to bring" lines — helpers check off the ones they're bringing. */
+  items?: string[];
 }): Promise<{ id?: string; notified?: number; error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Sign-in isn't available yet." };
@@ -138,10 +141,19 @@ export async function requestHelp(input: {
     p_eligible: input.eligible,
     p_strict: input.strict,
     p_today: input.today,
+    p_items: input.items ?? [],
   });
   if (error) return { error: error.message };
   const row = (Array.isArray(data) ? data[0] : data) as { id: string; notified: number } | null;
   return { id: row?.id, notified: row?.notified ?? 0 };
+}
+
+/** Claim or release a "what to bring" item. Claiming also marks you on the way. */
+export async function claimHelpItem(itemId: string, claim: boolean): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.rpc("claim_help_item", { p_item: itemId, p_claim: claim });
+  return error ? { error: error.message } : {};
 }
 
 /** Say "on my way" to an open request (the only response). Idempotent. */
@@ -181,7 +193,8 @@ export async function fetchHelpRequests(): Promise<HelpRequest[]> {
       .select(
         "id, user_id, description, category, where_text, lat, lng, needed_at, needed_count, status, fulfilled_at, notified_count, created_at, expires_at, " +
           "requester:profiles!help_requests_user_id_fkey(display_name, avatar_url), " +
-          "help_responses(user_id, note, created_at, responder:profiles!help_responses_user_id_fkey(display_name, avatar_url))",
+          "help_responses(user_id, note, created_at, responder:profiles!help_responses_user_id_fkey(display_name, avatar_url)), " +
+          "help_request_items(id, label, position, claimed_by, claimed_at, claimer:profiles!help_request_items_claimed_by_fkey(display_name))",
       )
       .order("created_at", { ascending: false });
     return ((data ?? []) as unknown as HelpRequestRow[]).map(mapHelpRequestRow);
@@ -203,6 +216,15 @@ interface HelpResponseRow {
   responder?: ProfileEmbed;
 }
 
+interface HelpRequestItemRow {
+  id: string;
+  label: string;
+  position: number;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  claimer?: ProfileEmbed;
+}
+
 interface HelpRequestRow {
   id: string;
   user_id: string;
@@ -220,6 +242,7 @@ interface HelpRequestRow {
   expires_at: string | null;
   requester?: ProfileEmbed;
   help_responses?: HelpResponseRow[] | null;
+  help_request_items?: HelpRequestItemRow[] | null;
 }
 
 function nameOf(p: ProfileEmbed | undefined): { name: string; avatarUrl: string | null } {
@@ -238,6 +261,17 @@ function mapHelpResponseRow(r: HelpResponseRow): HelpResponse {
     avatarUrl: who.avatarUrl,
     note: r.note,
     createdAt: r.created_at,
+  };
+}
+
+function mapHelpRequestItemRow(r: HelpRequestItemRow): BringItem {
+  const claimer = Array.isArray(r.claimer) ? r.claimer[0] : r.claimer;
+  return {
+    id: r.id,
+    label: r.label,
+    claimedBy: r.claimed_by,
+    claimedByName: (claimer?.display_name && claimer.display_name.trim()) || null,
+    claimedAt: r.claimed_at,
   };
 }
 
@@ -263,5 +297,9 @@ function mapHelpRequestRow(r: HelpRequestRow): HelpRequest {
     responses: (r.help_responses ?? [])
       .map(mapHelpResponseRow)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    items: (r.help_request_items ?? [])
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map(mapHelpRequestItemRow),
   };
 }
