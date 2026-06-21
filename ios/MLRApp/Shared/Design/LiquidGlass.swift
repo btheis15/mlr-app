@@ -104,28 +104,5 @@ extension View {
     }
 }
 
-// MARK: - Pulsing live dot (reused by spotlight + live activity)
-
-struct PulsingLiveDot: View {
-    var color: Color = .mlrSuccess
-    @State private var pulse = false
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 10, height: 10)
-            .overlay(
-                Circle()
-                    .stroke(color, lineWidth: 2)
-                    .scaleEffect(pulse ? 2.2 : 1)
-                    .opacity(pulse ? 0 : 0.8)
-            )
-            .onAppear {
-                guard !UIAccessibility.isReduceMotionEnabled else { return }
-                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-                    pulse = true
-                }
-            }
-            .accessibilityHidden(true)
-    }
-}
+// NOTE: `PulsingLiveDot` lives in `ios/Shared/PulsingLiveDot.swift` so it can be
+// shared with the widget extension target (Live Activity + countdown widget).

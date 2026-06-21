@@ -39,7 +39,7 @@ struct FestPayView: View {
                 id: "applepay",
                 name: "Apple Cash",
                 icon: "applelogo",
-                iconColor: Color.black,
+                iconColor: Color.mlrText, // adaptive: black in light, white in dark
                 handle: "cash.app/$MLRFamilyFest",
                 amount: dueAmount,
                 description: "Send with Apple Cash",

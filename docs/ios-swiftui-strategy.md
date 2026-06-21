@@ -493,8 +493,27 @@ The Yellowtail script font (`.font-script` in the web) is available as a Google
 Font — embed it in the app bundle for the resort wordmark. Cinzel (Family Fest
 serif) also embeds for the `.ff-section` equivalent. Both are free and OFL-licensed.
 
-**Light mode only** — the app sets `overrideUserInterfaceStyle = .light` at the
-window level, mirroring the web app's design decision.
+**Adaptive light + dark mode** — unlike the web app (which is light-only), the iOS
+app supports **both appearances**. It follows the system setting by default, with a
+per-device override (System / Light / Dark) in Profile → Appearance
+(`AppearanceManager`, persisted in `UserDefaults`, applied via `.preferredColorScheme`).
+
+The palette is built to adapt cleanly:
+- **Surface + text tokens** use Apple's semantic system colors
+  (`Color(.systemBackground)`, `.secondarySystemBackground`, `.label`, …) which
+  adapt automatically.
+- **Brand tokens** (`mlrPrimary`, `mlrAccent`, `mlrFest`, `mlrFestParchment`, …) are
+  defined as **adaptive colors** in `Colors.swift` via a `Color(light:dark:)`
+  dynamic `UIColor` provider — e.g. the Family Fest parchment becomes a dark warm
+  brown in dark mode so the section keeps its distinct "Renaissance" identity
+  instead of collapsing onto the resort's black canvas. Because views reference
+  tokens (never raw hex), the whole app flips by changing one file.
+- **Transparency discipline** (the recurring footgun): card backgrounds use opaque
+  adaptive tokens (`mlrCard`) or `Material`, never a translucent solid color (which
+  goes muddy grey on light and washed-out on dark). `Color.black.opacity(...)` is
+  used only for modal scrims / the photo lightbox. The Apple-logo pay icon uses the
+  adaptive label color so it doesn't vanish on dark. Liquid Glass surfaces sit over
+  real content, never over a literal white.
 
 ---
 
@@ -542,7 +561,7 @@ You are a paid Apple Developer Program member, so:
 - [ ] Stub `TabView` with placeholder tabs
 - [ ] Add `Colors.swift` and `Typography.swift` with design tokens
 - [ ] Embed Yellowtail + Cinzel fonts
-- [ ] Force light mode at window level
+- [ ] Adaptive light/dark palette + appearance override (System/Light/Dark)
 
 **Deliverable:** Sign in with email OTP works. APNs token saves to DB.
 

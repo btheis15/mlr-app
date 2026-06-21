@@ -7,6 +7,7 @@ import PhotosUI
 
 struct ProfileView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(AppearanceManager.self) private var appearance
 
     // Form state — mirrors Profile fields
     @State private var name: String = ""
@@ -101,6 +102,9 @@ struct ProfileView: View {
 
             // 4. Notifications
             notificationsSection
+
+            // 4b. Appearance (light / dark / system)
+            appearanceSection
 
             // 5. Beta features (beta testers only)
             if env.isBetaTester {
@@ -282,6 +286,25 @@ struct ProfileView: View {
                 Label("Push notifications", systemImage: "app.badge.fill")
                     .foregroundStyle(Color.mlrText)
             }
+        }
+    }
+
+    // MARK: - Appearance section
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker(selection: Binding(
+                get: { appearance.appearance },
+                set: { appearance.appearance = $0 }
+            )) {
+                ForEach(AppAppearance.allCases) { mode in
+                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+                }
+            } label: {
+                Label("Theme", systemImage: "paintbrush.fill")
+                    .foregroundStyle(Color.mlrText)
+            }
+            .pickerStyle(.menu)
         }
     }
 

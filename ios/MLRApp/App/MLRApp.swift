@@ -5,6 +5,7 @@ import AppIntents
 struct MLRApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var env = AppEnvironment()
+    @State private var appearance = AppearanceManager.shared
 
     init() {
         // Make the in-app navigation router available to App Intents (Siri /
@@ -16,7 +17,10 @@ struct MLRApp: App {
         WindowGroup {
             RootView()
                 .environment(env)
-                .preferredColorScheme(.light) // light mode only
+                .environment(appearance)
+                // Follows the system appearance by default; honors a per-device
+                // override (System / Light / Dark) from Profile → Appearance.
+                .preferredColorScheme(appearance.appearance.colorScheme)
                 .task {
                     await env.authService.restoreSession()
                     if env.authService.isSignedIn {
