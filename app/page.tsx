@@ -1,7 +1,6 @@
-import { FAMILY_FEST, RESORT, SCHEDULE } from "@/lib/data";
+import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
-import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
-import { TshirtCallout } from "@/components/TshirtCallout";
+import { HomeSpotlight } from "@/components/HomeSpotlight";
 import { HomeGetInvolved, HomeAroundResort } from "@/components/HomeResortGroups";
 import { HomeHelpPeople } from "@/components/HomeHelpPeople";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
@@ -31,21 +30,11 @@ export default function HomePage() {
       <HomeSignInCTA />
 
       {/* ── What's happening — kept front & center ──────────────────────────── */}
-      {/* Family Fest: quiet banner most of the year, a takeover hero during the
-          week. The nearest event + inline RSVP sits right below it. */}
-      <FamilyFestSpotlight
-        name={FAMILY_FEST.name}
-        tagline={FAMILY_FEST.tagline}
-        startDate={FAMILY_FEST.startDate}
-        endDate={FAMILY_FEST.endDate}
-        schedule={SCHEDULE}
-      />
-
-      {/* New call-outs that come up during the season (e.g. "vote on the shirt")
-          surface right here under the spotlight, then self-hide when they're
-          done. Self-gated: shows only during the planning run-up + before the
-          vote closes. */}
-      <TshirtCallout />
+      {/* Family Fest spotlight (quiet banner → planning → live takeover) is the
+          permanent base; temporary call-outs (e.g. "vote on the shirt") stack
+          ON TOP as swipe-away cards. Stacking keeps this to one card tall so the
+          Ask-for-Help row below stays in view. See HomeSpotlight / CalloutStack. */}
+      <HomeSpotlight />
 
       <UpcomingEvents />
 

@@ -148,6 +148,14 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   URL / deadline / designs in `TSHIRT_VOTE` ([`lib/data.ts`](lib/data.ts)); all
   surfaces self-hide once the deadline passes. Design images live in
   [`public/ff/shirts/`](public/ff/shirts/).
+- **Home call-out stack** — temporary Home call-outs (the t-shirt vote, future
+  news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
+  spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →
+  [`components/CalloutStack.tsx`](components/CalloutStack.tsx)), Robinhood-style:
+  swipe (or ✕) to dismiss, the next slides up, and the spotlight base can't be
+  swiped — so the slot stays one card tall and Ask for Help below stays in view.
+  Dismissals persist per-device (`localStorage`). See CLAUDE.md → **Home call-out
+  stack**.
 - **New-member onboarding** — the first time a brand-new member verifies their
   sign-in code (and their profile is still empty), a guided two-step Welcome sheet
   ([`components/WelcomeIntro.tsx`](components/WelcomeIntro.tsx)) collects the basics
