@@ -10,6 +10,10 @@ final class AuthService {
     var isLoading: Bool = false
     var error: String? = nil
 
+    /// Set to true to trigger the sign-in sheet presentation.
+    /// Observed by the root view (or sheet host) to present `SignInView`.
+    var showSignIn: Bool = false
+
     // MARK: - Computed
 
     /// The current user's UUID, or nil when signed out.
@@ -17,6 +21,14 @@ final class AuthService {
         get async {
             try? await supabase.auth.session.user.id
         }
+    }
+
+    // MARK: - Sign-in sheet trigger
+
+    /// Signals that the sign-in sheet should be presented.
+    /// RootView (or any sheet host) should observe `showSignIn` and present `SignInView`.
+    func promptSignIn() {
+        showSignIn = true
     }
 
     // MARK: - Session restore

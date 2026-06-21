@@ -1,0 +1,358 @@
+import SwiftUI
+
+// MARK: - PostCard
+// A single post in the Feed. Mirrors the PostCard component in the web app.
+//
+// Layout:
+//   avatar + author name (PrivateName masked for guests) + timestamp
+//   optional image (AsyncImage + tap → Lightbox)
+//   text body with @mention highlights
+//   reaction row (emoji buttons + counts, optimistic toggle)
+//   comment count button → CommentsView sheet
+//   ⋯ menu → Report / admin Remove
+
+struct PostCard: View {
+    let post: Post
+    let reactions: [PostReaction]
+    let onReactionToggle: (String) async -> Void
+    let onReport: () async -> Void
+    let onAdminRemove: (() async -> Void)?
+
+    @Environment(AppEnvironment.self) private var env
+    @State private var showComments = false
+    @State private var showLightbox = false
+    @State private var commentCount: Int = 0
+
+    // Standard reaction emojis
+    private let reactionEmojis = ["❤️", "👍", "😂", "🙌", "🎉"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            authorRow
+            if let imageUrl = post.imageUrl {
+                postImage(url: imageUrl)
+            }
+            if let text = post.text, !text.isEmpty {
+                MentionText(text: text)
+                    .font(.body)
+                    .foregroundStyle(Color.mlrText)
+            }
+            reactionRow
+            actionRow
+        }
+        .sheet(isPresented: $showComments) {
+            CommentsView(post: post)
+        }
+        .sheet(isPresented: $showLightbox) {
+            if let url = post.imageUrl {
+                LightboxView(imageUrl: url)
+            }
+        }
+        .task {
+            commentCount = (try? await env.postsService.fetchCommentCount(postId: post.id)) ?? 0
+        }
+    }
+
+    // MARK: - Author row
+
+    private var authorRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            AvatarView(
+                url: post.authorAvatarUrl,
+                name: post.authorName,
+                size: 36
+            )
+
+            VStack(alignment: .leading, spacing: 1) {
+                // PrivateName: guests see first name only
+                Text(displayName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.mlrText)
+                Text(MLRFormat.relativeTime(post.createdAt))
+                    .font(.caption)
+                    .foregroundStyle(Color.mlrTextMuted)
+            }
+
+            Spacer()
+
+            // ⋯ overflow menu
+            Menu {
+                if env.isSignedIn {
+                    Button(role: .destructive) {
+                        Task { await onReport() }
+                    } label: {
+                        Label("Report post", systemImage: "flag")
+                    }
+                }
+                if let adminRemove = onAdminRemove {
+                    Divider()
+                    Button(role: .destructive) {
+                        Task { await adminRemove() }
+                    } label: {
+                        Label("Remove post", systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.mlrTextMuted)
+                    .padding(8)
+                    .contentShape(Rectangle())
+            }
+        }
+    }
+
+    // MARK: - Post image
+
+    @ViewBuilder
+    private func postImage(url: String) -> some View {
+        if let imageURL = URL(string: url) {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .empty:
+                    Rectangle()
+                        .fill(Color.mlrCard)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(ProgressView())
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                        .onTapGesture { showLightbox = true }
+                case .failure:
+                    Rectangle()
+                        .fill(Color.mlrCard)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            Label("Image unavailable", systemImage: "photo.slash")
+                                .font(.caption)
+                                .foregroundStyle(Color.mlrTextMuted)
+                        )
+                @unknown default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    // MARK: - Reaction row
+
+    private var reactionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(reactionEmojis, id: \.self) { emoji in
+                    ReactionButton(
+                        emoji: emoji,
+                        count: reactionCount(for: emoji),
+                        isSelected: isMineReaction(emoji: emoji),
+                        onTap: {
+                            Task { await onReactionToggle(emoji) }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Action row (comment count + comment button)
+
+    private var actionRow: some View {
+        Button {
+            showComments = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: commentCount > 0 ? "bubble.left.fill" : "bubble.left")
+                    .font(.system(size: 14))
+                    .foregroundStyle(commentCount > 0 ? Color.mlrPrimary : Color.mlrTextMuted)
+                Text(commentCount == 0
+                     ? "Comment"
+                     : commentCount == 1 ? "1 comment" : "\(commentCount) comments")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.mlrTextMuted)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Helpers
+
+    private var displayName: String {
+        // Guests see first name only (PrivateName pattern)
+        if !env.isSignedIn {
+            return post.authorName.components(separatedBy: " ").first ?? post.authorName
+        }
+        return post.authorName
+    }
+
+    private func reactionCount(for emoji: String) -> Int {
+        reactions.filter { $0.emoji == emoji }.count
+    }
+
+    private func isMineReaction(emoji: String) -> Bool {
+        guard let userId = env.currentProfile?.id else { return false }
+        return reactions.contains(where: { $0.userId == userId && $0.emoji == emoji })
+    }
+}
+
+// MARK: - ReactionButton
+
+struct ReactionButton: View {
+    let emoji: String
+    let count: Int
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 4) {
+                Text(emoji)
+                    .font(.system(size: 15))
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isSelected ? Color.mlrPrimary : Color.mlrTextMuted)
+                }
+            }
+            .padding(.horizontal, count > 0 ? 10 : 8)
+            .padding(.vertical, 5)
+            .background(isSelected ? Color.mlrPrimaryLight : Color.mlrCard)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        isSelected ? Color.mlrPrimary.opacity(0.4) : Color.mlrBorder,
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.12), value: isSelected)
+        .animation(.easeInOut(duration: 0.12), value: count)
+    }
+}
+
+// MARK: - AvatarView
+// Shared circular avatar — falls back to initials if no image URL.
+
+struct AvatarView: View {
+    let url: String?
+    let name: String
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let urlString = url, let imageURL = URL(string: urlString) {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        initialsView
+                    }
+                }
+            } else {
+                initialsView
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private var initialsView: some View {
+        ZStack {
+            Circle()
+                .fill(Color.mlrPrimaryLight)
+            Text(initials)
+                .font(.system(size: size * 0.38, weight: .semibold))
+                .foregroundStyle(Color.mlrPrimary)
+        }
+    }
+
+    private var initials: String {
+        let parts = name.components(separatedBy: " ")
+        let first = parts.first?.first.map(String.init) ?? ""
+        let last = parts.count > 1 ? parts.last?.first.map(String.init) ?? "" : ""
+        return (first + last).uppercased()
+    }
+}
+
+// MARK: - MentionText
+// Renders text with @mention highlights.
+// @mentions appear in mlrPrimary; the rest is the default foreground.
+
+struct MentionText: View {
+    let text: String
+
+    var body: some View {
+        // Build an AttributedString that highlights @word tokens
+        let attributed = buildAttributed(text)
+        Text(attributed)
+    }
+
+    private func buildAttributed(_ raw: String) -> AttributedString {
+        var result = AttributedString()
+        // Split on spaces — preserving them — so we can test @-tokens
+        let words = raw.components(separatedBy: " ")
+        for (i, word) in words.enumerated() {
+            var segment = AttributedString(word)
+            if word.hasPrefix("@") && word.count > 1 {
+                segment.foregroundColor = Color.mlrPrimary
+                segment.font = .system(size: 16, weight: .semibold)
+            }
+            result += segment
+            if i < words.count - 1 {
+                result += AttributedString(" ")
+            }
+        }
+        return result
+    }
+}
+
+// MARK: - PostCardSkeleton
+// Pulsing loading placeholder for a post card.
+
+struct PostCardSkeleton: View {
+    @State private var opacity: Double = 0.4
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(Color.mlrCard)
+                    .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.mlrCard)
+                        .frame(width: 120, height: 12)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.mlrCard)
+                        .frame(width: 60, height: 10)
+                }
+            }
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.mlrCard)
+                .frame(maxWidth: .infinity)
+                .frame(height: 14)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.mlrCard)
+                .frame(maxWidth: .infinity * 0.75)
+                .frame(height: 14)
+        }
+        .opacity(opacity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                opacity = 1.0
+            }
+        }
+    }
+}
