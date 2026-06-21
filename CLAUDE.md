@@ -251,10 +251,12 @@ page down — keeping the **Ask for Help** row below always in view.
   swipeable. The cards still **behind** the front are implied by decorative
   "plates" (absolute `inset-0`, peeking a fixed sliver) so the stacked look is
   height-independent; only the front card's content is mounted.
-- **Dismissals persist** per-device in `localStorage` (`mlr.callouts.dismissed`),
-  keyed by each item's **id** — so give a temporary call-out a *versioned* id
-  (e.g. `` `tshirt:${TSHIRT_VOTE.deadline}` ``) so a brand-new alert reappears
-  even after an old, same-purpose card was swiped.
+- **Dismissals are session-scoped** — kept in `sessionStorage`
+  (`mlr.callouts.dismissed`), keyed by each item's **id**. A swiped card stays
+  gone while you move between tabs but **comes back the next time the app is
+  opened** (a fresh session). Give a temporary call-out a *versioned* id (e.g.
+  `` `tshirt:${TSHIRT_VOTE.deadline}` ``) so a brand-new alert reappears even
+  within a session where an old, same-purpose card was swiped.
 - **Add a future call-out** by pushing another swipeable `StackItem` above the
   base in `HomeSpotlight`, gated by whatever decides it should show.
 

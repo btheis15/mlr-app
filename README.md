@@ -154,8 +154,9 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`components/CalloutStack.tsx`](components/CalloutStack.tsx)), Robinhood-style:
   swipe (or ✕) to dismiss, the next slides up, and the spotlight base can't be
   swiped — so the slot stays one card tall and Ask for Help below stays in view.
-  Dismissals persist per-device (`localStorage`). See CLAUDE.md → **Home call-out
-  stack**.
+  Dismissals are session-scoped (`sessionStorage`): a swiped card stays gone
+  while moving between tabs but comes back the next time the app is opened. See
+  CLAUDE.md → **Home call-out stack**.
 - **New-member onboarding** — the first time a brand-new member verifies their
   sign-in code (and their profile is still empty), a guided two-step Welcome sheet
   ([`components/WelcomeIntro.tsx`](components/WelcomeIntro.tsx)) collects the basics
