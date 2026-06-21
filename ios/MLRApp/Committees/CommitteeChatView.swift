@@ -319,7 +319,7 @@ private struct MessageBubble: View {
         } else {
             VStack(alignment: .trailing, spacing: 2) {
                 MentionText(
-                    text: message.text,
+                    message.text,
                     baseColor: isOwn ? .white : Color.mlrText,
                     mentionColor: isOwn ? Color.mlrPrimaryLight : Color.mlrPrimary
                 )

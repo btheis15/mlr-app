@@ -47,10 +47,6 @@ struct CommitteesView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Committees")
-            .sheet(item: Binding(
-                get: { actionError.map { ErrorMessage(text: $0) } },
-                set: { if $0 == nil { actionError = nil } }
-            )) { _ in EmptyView() }
             .alert("Couldn't join", isPresented: .constant(actionError != nil)) {
                 Button("OK") { actionError = nil }
             } message: {
@@ -237,9 +233,3 @@ private struct CommitteeRowCard: View {
     }
 }
 
-// MARK: - Error wrapper for alert plumbing
-
-private struct ErrorMessage: Identifiable {
-    let id = UUID()
-    let text: String
-}
