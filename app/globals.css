@@ -205,6 +205,22 @@ body {
   animation-delay: calc(var(--i, 0) * 45ms);
 }
 
+/* One gentle nudge that hints a Home call-out card can be swiped away
+   (components/CalloutStack.tsx). Played once per session on the front card;
+   skipped under reduce-motion. */
+@keyframes mlr-callout-wiggle {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-7px); }
+  32% { transform: translateX(5px); }
+  48% { transform: translateX(-4px); }
+  64% { transform: translateX(3px); }
+  80% { transform: translateX(-2px); }
+}
+.callout-wiggle { animation: mlr-callout-wiggle 800ms ease-in-out 400ms 1; }
+@media (prefers-reduced-motion: reduce) {
+  .callout-wiggle { animation: none; }
+}
+
 /* App-open splash (see components/SplashIntro.tsx): the logo pops in with a
    little spring, the motto rises a beat later. */
 @keyframes mlr-splash-logo {

@@ -46,7 +46,7 @@ deliberately scaffolded with a clean seam for a backend — see **Backend seams*
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: the hero MLR logo, Family Fest season spotlight ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), **Get involved** ([`HomeGetInvolved`](components/HomeResortGroups.tsx) — Events/Work Weekends · Committees), **Ask for Help + People** side-by-side tiles ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)), **Around the resort** ([`HomeAroundResort`](components/HomeResortGroups.tsx) — Cabin Stay · Local Places), an "App & help" group, one-line heritage |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: the hero MLR logo, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs like the t-shirt vote stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), **Get involved** ([`HomeGetInvolved`](components/HomeResortGroups.tsx) — Events/Work Weekends · Committees), **Ask for Help + People** side-by-side tiles ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)), **Around the resort** ([`HomeAroundResort`](components/HomeResortGroups.tsx) — Cabin Stay · Local Places), an "App & help" group, one-line heritage |
 | `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
 | `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) · `shirts` (the t-shirt design vote — [`ShirtVoteView`](components/ShirtVoteView.tsx), see **T-shirt vote**) |
 | `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
@@ -222,13 +222,41 @@ in-app vote capture, no DB, no migration.
 - **Surfaces** (all self-hide outside `isPlanning` and the day after `deadline`,
   via [`useFestSeason`](lib/useFestSeason.ts) + the demo-date `today`):
   [`TshirtCallout`](components/TshirtCallout.tsx) (Home — a heraldic-wine
-  "🗳️ Vote · New" card with the four design thumbnails, under the Family Fest
-  spotlight; this is the pattern for any "a new thing needs you" Home call-out),
-  the **Vote on Shirts** tile in [`FestDuesShirts`](components/FestDuesShirts.tsx)
+  "🗳️ Vote · New" card with the four design thumbnails, surfaced as a swipe-away
+  card **on top of** the Family Fest spotlight via the Home call-out stack —
+  see **Home call-out stack**; this is the pattern for any "a new thing needs
+  you" Home call-out), the **Vote on Shirts** tile in [`FestDuesShirts`](components/FestDuesShirts.tsx)
   (Family Fest hub), and the gallery page
   [`/family-fest/shirts`](app/family-fest/shirts/page.tsx) →
   [`ShirtVoteView`](components/ShirtVoteView.tsx) (tap any design → `Lightbox`;
   the "Open the poll to vote & RSVP" button opens `formUrl` in a new tab).
+
+## Home call-out stack
+
+The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**
+so temporary call-outs (the t-shirt vote, future news/alerts) don't push the
+page down — keeping the **Ask for Help** row below always in view.
+[`HomeSpotlight`](components/HomeSpotlight.tsx) assembles the stack and
+[`CalloutStack`](components/CalloutStack.tsx) renders + animates it.
+
+- **The base never moves.** Items are passed front-to-back: swipeable call-outs
+  first (newest first), then the **permanent base** ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx),
+  `swipeable: false`). You can swipe/✕ away every call-out but the base always
+  stays — so the slot is one card tall no matter how many call-outs are active.
+- **Swipe to dismiss.** The front card tracks a horizontal drag (axis-locked so
+  vertical still scrolls the page, `touch-action: pan-y`); past ~72px it flings
+  off and the next card slides up. A small **✕** is the tap fallback, and a
+  one-per-session **wiggle** (`.callout-wiggle` keyframe in
+  [`globals.css`](app/globals.css), skipped under reduce-motion) hints it's
+  swipeable. The cards still **behind** the front are implied by decorative
+  "plates" (absolute `inset-0`, peeking a fixed sliver) so the stacked look is
+  height-independent; only the front card's content is mounted.
+- **Dismissals persist** per-device in `localStorage` (`mlr.callouts.dismissed`),
+  keyed by each item's **id** — so give a temporary call-out a *versioned* id
+  (e.g. `` `tshirt:${TSHIRT_VOTE.deadline}` ``) so a brand-new alert reappears
+  even after an old, same-purpose card was swiped.
+- **Add a future call-out** by pushing another swipeable `StackItem` above the
+  base in `HomeSpotlight`, gated by whatever decides it should show.
 
 ## Resort events & attendance
 
