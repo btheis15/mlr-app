@@ -7,6 +7,8 @@ import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { WelcomeIntro } from "@/components/WelcomeIntro";
+import { isIos, isStandalone } from "@/lib/push";
+import { InstallFirstNudge } from "@/components/InstallFirstNudge";
 
 /**
  * Admin "view as" preview. Device-local, UI-only: it changes what the app shows
@@ -135,6 +137,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [prompting, setPrompting] = useState(false);
   // True for a brand-new member who should see the first-run Welcome intro.
   const [needsIntro, setNeedsIntro] = useState(false);
+  // The iOS "add it first, sign in once" reminder (see promptSignIn): an
+  // interstitial shown instead of the sign-in sheet when a guest taps Sign in
+  // while browsing in Safari (not the installed Home-Screen app).
+  const [installNudge, setInstallNudge] = useState(false);
   const [previewMode, setPreviewState] = useState<PreviewMode>("off");
   const [previewMember, setPreviewMemberState] = useState<PreviewMember | null>(null);
 
@@ -279,7 +285,17 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   };
 
   const promptSignIn = () => {
-    if (!user && isSupabaseConfigured) setPrompting(true);
+    if (user || !isSupabaseConfigured) return;
+    // iOS only: Safari and the installed Home-Screen app keep SEPARATE logins,
+    // so signing in here and adding MLR to the Home Screen later means signing
+    // in a second time inside the icon app. Remind them to add it first (sign in
+    // once) before opening the sign-in sheet. On Android/desktop an installed PWA
+    // reuses the browser's session — no double sign-in — so skip straight to it.
+    if (isIos() && !isStandalone()) {
+      setInstallNudge(true);
+      return;
+    }
+    setPrompting(true);
   };
 
   // Mark the first-run Welcome intro as seen so it never shows again. Clears the
@@ -374,6 +390,15 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+      {installNudge && !user && isSupabaseConfigured && (
+        <InstallFirstNudge
+          onClose={() => setInstallNudge(false)}
+          onSignInAnyway={() => {
+            setInstallNudge(false);
+            setPrompting(true);
+          }}
+        />
+      )}
       {prompting && !user && isSupabaseConfigured && (
         <SignInGate onClose={() => setPrompting(false)} />
       )}
