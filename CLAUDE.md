@@ -244,8 +244,10 @@ page down — keeping the **Ask for Help** row below always in view.
   `swipeable: false`). You can swipe/✕ away every call-out but the base always
   stays — so the slot is one card tall no matter how many call-outs are active.
 - **Swipe to dismiss.** The front card tracks a horizontal drag (axis-locked so
-  vertical still scrolls the page, `touch-action: pan-y`); past ~72px it flings
-  off and the next card slides up. A small **✕** is the tap fallback, and a
+  vertical still scrolls the page, `touch-action: pan-y`); past a deliberately
+  long ~140px throw it flings off and the next card slides up (the long
+  threshold keeps a small drag/scroll jitter from dismissing). A small **✕** is
+  the tap fallback, and a
   one-per-session **wiggle** (`.callout-wiggle` keyframe in
   [`globals.css`](app/globals.css), skipped under reduce-motion) hints it's
   swipeable. The cards still **behind** the front are implied by decorative

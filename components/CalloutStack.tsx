@@ -34,7 +34,8 @@ export type StackItem = {
   swipeable: boolean;
 };
 
-const SWIPE_THRESHOLD = 72; // px of horizontal travel that counts as a dismiss
+const SWIPE_THRESHOLD = 140; // px of horizontal travel that counts as a dismiss
+// — deliberately long so a small drag/scroll jitter never flings a card away.
 const PEEK = 8; // px each card behind the front peeks out at the bottom
 const MAX_PEEK = 2; // cap how many cards visibly stack behind the front
 const FLY_MS = 260; // off-screen fling duration (kept in sync with the CSS below)
