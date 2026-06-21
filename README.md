@@ -45,7 +45,65 @@ app/            App Router routes (page.tsx per tab) + layout + globals.css
 components/     TabBar, InstallHint, shared UI
 lib/            format.ts and other pure helpers
 public/         manifest.webmanifest, icon.svg
+media-server/   Mac-mini side: uploads, transcode, push + APNs senders, fm-service
+ios/            Native SwiftUI app (see "iOS app" below) — shares this Supabase backend
+docs/           ios-swiftui-strategy.md, ai-assistant.md, content-moderation.md
 ```
+
+## iOS app (native SwiftUI) — additive, and synced with the web
+
+The web PWA above is **not going away.** Alongside it lives a **native SwiftUI iOS
+app** in [`ios/`](ios/), built from scratch for **iOS 26** with the **Liquid Glass**
+design language. The full plan is in
+[`docs/ios-swiftui-strategy.md`](docs/ios-swiftui-strategy.md).
+
+**Two clients, one backend — synced for free.** The web app and the iOS app talk to
+the **same Supabase project**: same Postgres tables, RLS policies, `security
+definer` RPCs, Storage buckets, and realtime channels. There is **no separate iOS
+database and no sync layer** — a single source of truth means an RSVP made on
+iPhone shows on the web instantly, and a photo posted on the web flows into the iOS
+feed's realtime subscription. Android + desktop keep using the web; iOS users get a
+native app; everyone sees the same data.
+
+- **Web (Android / desktop / not-yet-installed):** Next.js PWA on Vercel + Pages — unchanged.
+- **iOS:** native SwiftUI via [`supabase-swift`](https://github.com/supabase/supabase-swift),
+  pointed at the identical project URL + anon key.
+- **Only backend *addition*:** APNs push for iOS — a new `apns_subscriptions` table
+  + an `apns-sender.js` on the Mac mini, running beside the existing Web Push sender.
+
+### Platform-native features (built into `ios/`)
+
+The app leans into the Apple ecosystem, mapping what already exists in the data
+model onto native capabilities:
+
+| Area | Native integration | Where |
+|---|---|---|
+| **Design** | Liquid Glass buttons/cards; adaptive **light + dark** mode (System/Light/Dark in Profile) | `Shared/Design/LiquidGlass.swift`, `Colors.swift`, `AppearanceManager.swift` |
+| **Push** | APNs, with **actionable notifications** — RSVP Going/Maybe, "On my way" to a help request, **inline text Reply** to chat mentions, and birthday "Send wishes / Send a gift" — all answered from the notification without opening the app | `Native/NotificationActions.swift` |
+| **Widgets** | Home/Lock-Screen **Family Fest countdown** + **Next event** widgets | `MLRWidget/` |
+| **Live Activities** | Fest week "Day n of N" + next event on Lock Screen / Dynamic Island | `MLRWidget/FestLiveActivity.swift`, `LiveActivities/` |
+| **Siri / Shortcuts** | "What's next at MLR", "How many days until Family Fest", "Ask for help" | `Intents/` |
+| **Weather** | **WeatherKit** forecast on each event's date (shows when within ~10-day horizon, hides otherwise) | `Weather/` |
+| **Messages** | **In-app text composer** — text a member (or a dinner crew, or birthday wishes) prefilled, without leaving the app to find them in Messages | `Native/MessageComposer.swift` |
+| **Calendar** | One-tap **Add to Apple Calendar** for events / Family Fest / a member's **birthday** (recurring, with a reminder) | `Native/CalendarService.swift` |
+| **Contacts** | **Add to Contacts** card from a member's profile (phone, email, avatar) | `Native/ContactsService.swift` |
+| **Maps** | **Directions** to the resort / local places; help requests with a GPS pin show a map + "navigate to whoever needs a hand" | `Native/MapsHelper.swift` |
+| **Payments** | **Apple Cash via Messages** handoff for dues + Apple Pay (PassKit) scaffold for when dues move to a real processor; existing Venmo/Zelle/Cash App deep links stay | `Native/Payments.swift`, `FestPayView` |
+| **Spotlight** | Events, members, and committees **searchable from the phone** (swipe-down) with deep links back into the app | `Native/SpotlightIndexer.swift` |
+| **Polish** | Tasteful **haptics** on RSVP / reactions / votes / help responses; native **share sheet** for posts, photos, events | `Native/HapticsAndShare.swift` |
+
+> **Distribution:** App Store + TestFlight (paid Apple Developer membership). Build
+> from Xcode on a Mac. The Xcode-only setup (target memberships, capabilities like
+> App Group / WeatherKit / Live Activities) is checklisted in the strategy doc.
+
+### Ideas still on the table (creative, not yet built)
+Apple Wallet **Family Fest pass** (add the week to Wallet like a ticket) ·
+**Critical Alerts** for 🚨 Urgent help requests (bypass Do Not Disturb — ties into
+the GA "Urgent goes to everyone" plan, needs an Apple entitlement) ·
+**Communication Notifications** so chat/mention pushes render with the sender's
+avatar like Messages · **interactive widget** RSVP buttons · **SharePlay** group
+photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
+**Sign in with Apple**.
 
 ## Where to make changes
 
