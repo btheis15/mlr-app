@@ -189,16 +189,20 @@ struct AskForHelpSheet: View {
     }
 
     private func submit() async {
-        guard let profile = env.currentProfile else { return }
+        // Require sign-in
+        guard env.currentProfile != nil else { return }
         isSubmitting = true
         submitError = nil
         do {
             try await env.helpService.requestHelp(
-                requesterId: profile.id,
                 category: category,
                 what: whatText,
-                howMany: howMany,
-                where: whereText.isEmpty ? nil : whereText
+                neededCount: howMany,
+                whereDescription: whereText.isEmpty ? nil : whereText,
+                latitude: nil,
+                longitude: nil,
+                scheduledFor: nil,
+                notifyAll: false
             )
             dismiss()
         } catch {

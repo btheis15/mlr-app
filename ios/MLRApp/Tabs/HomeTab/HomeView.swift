@@ -27,13 +27,8 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 20) {
 
                             // ── 2. Announcement banner ────────────────────
-                            AnnouncementBanner(
-                                announcements: Announcement.seed,
-                                dismissedIds: env.dismissedAnnouncementIds,
-                                onDismiss: { id in
-                                    env.dismissedAnnouncementIds.insert(id)
-                                }
-                            )
+                            // AnnouncementBannerStack manages its own fetch + dismiss via env
+                            AnnouncementBannerStack()
 
                             // ── 3. Family Fest spotlight ──────────────────
                             FamilyFestSpotlight(season: festSeason)
