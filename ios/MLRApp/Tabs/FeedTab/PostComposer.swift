@@ -44,8 +44,8 @@ struct PostComposer: View {
                     VStack {
                         Spacer().frame(height: 56) // below the compose header
                         MentionAutocomplete(
+                            members: allProfiles,
                             query: mentionQuery,
-                            profiles: allProfiles,
                             onSelect: { profile in
                                 insertMention(profile)
                             }
@@ -290,48 +290,4 @@ struct PostComposer: View {
     }
 }
 
-// MARK: - MentionAutocomplete
-// Floating suggestion list for @mention insertion.
-
-struct MentionAutocomplete: View {
-    let query: String
-    let profiles: [Profile]
-    let onSelect: (Profile) -> Void
-
-    private var filtered: [Profile] {
-        guard !query.isEmpty else { return [] }
-        return profiles
-            .filter { $0.name.localizedCaseInsensitiveContains(query) }
-            .prefix(5)
-            .map { $0 }
-    }
-
-    var body: some View {
-        if filtered.isEmpty { return AnyView(EmptyView()) }
-        return AnyView(
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(filtered) { profile in
-                    Button {
-                        onSelect(profile)
-                    } label: {
-                        HStack(spacing: 10) {
-                            AvatarView(url: profile.avatarUrl, name: profile.name, size: 28)
-                            Text(profile.name)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(Color.mlrText)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.plain)
-                    Divider()
-                }
-            }
-            .background(Color.mlrSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
-            .padding(.horizontal, 16)
-        )
-    }
-}
+// MentionAutocomplete is defined in Shared/Components/MentionText.swift.

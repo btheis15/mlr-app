@@ -149,8 +149,8 @@ struct CommentsView: View {
                 // @mention overlay above the input
                 if showMentionSuggestions && !mentionQuery.isEmpty {
                     MentionAutocomplete(
+                        members: allProfiles,
                         query: mentionQuery,
-                        profiles: allProfiles,
                         onSelect: { insertMention($0) }
                     )
                     .padding(.horizontal, 8)
