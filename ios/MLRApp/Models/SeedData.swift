@@ -63,6 +63,238 @@ struct ResortActivity: Identifiable {
     let icon: String
 }
 
+// MARK: - Schedule Item Seed Data
+
+extension ScheduleItem {
+    static let seed: [ScheduleItem] = [
+        // Sunday Aug 2 — Arrival Day
+        ScheduleItem(
+            id: "sun-bonfire",
+            day: "Sunday",
+            time: "7:00 PM",
+            title: "Opening Bonfire & Potluck",
+            location: "Main Fire Pit · Lakeside",
+            description: "Kick off the week together around the fire. Bring a dish to share — drinks provided. This is the unofficial start of everything.",
+            isPrivate: false,
+            leads: ["Mark Henderson", "Sue Garcia"]
+        ),
+        // Monday Aug 3
+        ScheduleItem(
+            id: "mon-fishing",
+            day: "Monday",
+            time: "6:00 AM",
+            title: "Fishing Tournament",
+            location: "Dock A · Muskellunge Lake",
+            description: "Annual muskellunge fishing tournament. All ages welcome. Prizes for biggest catch and youngest angler. Bring your own gear or borrow from the resort.",
+            isPrivate: false,
+            leads: ["Jim Peterson", "Ray Theis"]
+        ),
+        ScheduleItem(
+            id: "mon-kayak",
+            day: "Monday",
+            time: "2:00 PM",
+            title: "Kayak & Canoe Relay",
+            location: "Beach Area",
+            description: "Team relay race across the cove. Sign up at the beach — teams of 3.",
+            isPrivate: false,
+            leads: ["Amy Murphy"]
+        ),
+        // Tuesday Aug 4
+        ScheduleItem(
+            id: "tue-scavenger",
+            day: "Tuesday",
+            time: "10:00 AM",
+            title: "Scavenger Hunt",
+            location: "Resort Grounds — meet at Pavilion",
+            description: "The annual family scavenger hunt across the resort. Teams of 4–6, mixed ages. Clues hidden throughout the grounds, woods, and lakefront. Prizes for the top 3 teams.",
+            isPrivate: false,
+            leads: ["Lisa Garcia", "Tom Henderson"]
+        ),
+        ScheduleItem(
+            id: "tue-golf",
+            day: "Tuesday",
+            time: "1:00 PM",
+            title: "Golf Outing",
+            location: "Tomahawk Golf Club · 15 min from resort",
+            description: "Optional golf outing for those who want to get a round in. Contact the lead to carpool.",
+            isPrivate: true,
+            leads: ["Dan Peterson"]
+        ),
+        // Wednesday Aug 5
+        ScheduleItem(
+            id: "wed-olympics",
+            day: "Wednesday",
+            time: "11:00 AM",
+            title: "Family Olympics",
+            location: "Back Field & Beach",
+            description: "Annual Family Olympics — tug of war, egg toss, three-legged race, and more. All ages compete. Medals awarded. Teams TBD morning of.",
+            isPrivate: false,
+            leads: ["Mark Henderson", "Amy Murphy", "Lisa Garcia"]
+        ),
+        // Thursday Aug 6
+        ScheduleItem(
+            id: "thu-boat",
+            day: "Thursday",
+            time: "9:00 AM",
+            title: "Pontoon Cruise",
+            location: "Dock B — all pontoons",
+            description: "Morning lake cruise on the pontoons. Snacks and coolers welcome. Back by noon.",
+            isPrivate: true,
+            leads: ["Ray Theis"]
+        ),
+        ScheduleItem(
+            id: "thu-talent",
+            day: "Thursday",
+            time: "7:30 PM",
+            title: "Talent Show",
+            location: "Pavilion Stage",
+            description: "Family talent show — sign up by dinner. All acts welcome: music, comedy, impersonations, skits. Judges are the under-10 crew.",
+            isPrivate: false,
+            leads: ["Sue Garcia", "Amy Murphy"]
+        ),
+        // Friday Aug 7
+        ScheduleItem(
+            id: "fri-photo",
+            day: "Friday",
+            time: "10:00 AM",
+            title: "Family Portrait Session",
+            location: "Lakefront Dock",
+            description: "Annual family photo — whole group and by household. Wear your Fest shirt if you have one. A professional photographer will be on-site.",
+            isPrivate: false,
+            leads: ["Lisa Garcia"]
+        ),
+        ScheduleItem(
+            id: "fri-auction",
+            day: "Friday",
+            time: "4:00 PM",
+            title: "Silent Auction & Raffle",
+            location: "Pavilion",
+            description: "Raise funds for next year's Fest. Donated items and experiences up for bid. Raffle tickets $5 each.",
+            isPrivate: false,
+            leads: ["Mark Henderson", "Tom Henderson"]
+        ),
+        // Saturday Aug 8 — Last Day
+        ScheduleItem(
+            id: "sat-breakfast",
+            day: "Saturday",
+            time: "9:00 AM",
+            title: "Grand Farewell Breakfast",
+            location: "Pavilion — main hall",
+            description: "Last morning together — a big spread before everyone hits the road. Lingerers welcome through noon.",
+            isPrivate: false,
+            leads: ["Sue Garcia", "Ray Theis"]
+        ),
+        // Anytime
+        ScheduleItem(
+            id: "anytime-scavenger",
+            day: "Anytime",
+            time: "Any time",
+            title: "Mini Scavenger Hunt",
+            location: nil,
+            description: "A solo or small-group hunt you can do any time during the week. Pick up a clue sheet at the check-in table.",
+            isPrivate: false,
+            leads: []
+        ),
+        ScheduleItem(
+            id: "anytime-volleyball",
+            day: "Anytime",
+            time: "Any time",
+            title: "Volleyball & Horseshoes",
+            location: "Back Field",
+            description: "Nets and horseshoe pits are set up all week. Grab whoever's around and play.",
+            isPrivate: false,
+            leads: []
+        ),
+        ScheduleItem(
+            id: "anytime-smores",
+            day: "Anytime",
+            time: "After dark",
+            title: "S'mores at the Fire Pit",
+            location: "Main Fire Pit",
+            description: "Supplies are at the fire pit shelter every evening. Help yourself.",
+            isPrivate: false,
+            leads: []
+        ),
+    ]
+}
+
+// MARK: - Fest Dinner Seed Data
+
+extension FestDinner {
+    static let seed: [FestDinner] = [
+        FestDinner(
+            id: "dinner-sun",
+            day: "Sunday",
+            title: "Arrival Potluck",
+            chef: "Everyone",
+            menu: "Bring a dish to share\nGrilled brats & burgers (provided)\nLemonade & iced tea\nWatermelon",
+            location: "Pavilion Tables",
+            time: "6:30 PM",
+            crew: []
+        ),
+        FestDinner(
+            id: "dinner-mon",
+            day: "Monday",
+            title: "Shore Lunch Cookout",
+            chef: "Jim Peterson",
+            menu: "Fresh-caught fish (from the tournament)\nColeslaw\nCorn on the cob\nBaked beans\nCornbread",
+            location: "Lakeside Grill Area",
+            time: "5:30 PM",
+            crew: ["Ray Theis", "Dan Peterson", "Tom Henderson"]
+        ),
+        FestDinner(
+            id: "dinner-tue",
+            day: "Tuesday",
+            title: "Italian Night",
+            chef: "Sue Garcia",
+            menu: "Lasagna (meat & veggie)\nCaesar salad\nGarlic bread\nTiramisu",
+            location: "Pavilion Main Hall",
+            time: "6:00 PM",
+            crew: ["Lisa Garcia", "Amy Murphy"]
+        ),
+        FestDinner(
+            id: "dinner-wed",
+            day: "Wednesday",
+            title: "Wisconsin Bratwurst Fest",
+            chef: "Mark Henderson",
+            menu: "Beer brats & Johnsonville links\nKraut & grilled onions\nPotato salad\nPretzel rolls\nKey lime pie",
+            location: "Back Field Grills",
+            time: "5:30 PM",
+            crew: ["Tom Henderson", "Dan Peterson"]
+        ),
+        FestDinner(
+            id: "dinner-thu",
+            day: "Thursday",
+            title: "Taco Bar Night",
+            chef: "Amy Murphy",
+            menu: "Beef & chicken tacos\nAll the toppings bar\nRice & black beans\nChips & guacamole\nChurros",
+            location: "Pavilion Main Hall",
+            time: "6:00 PM",
+            crew: ["Lisa Garcia", "Sue Garcia"]
+        ),
+        FestDinner(
+            id: "dinner-fri",
+            day: "Friday",
+            title: "Farewell Fish Fry",
+            chef: "Ray Theis",
+            menu: "Friday fish fry — walleye & perch\nFrench fries\nColeslaw\nRye bread & lemon\nFunnel cake for dessert",
+            location: "Lakeside Pavilion",
+            time: "6:30 PM",
+            crew: ["Jim Peterson", "Mark Henderson", "Tom Henderson"]
+        ),
+        FestDinner(
+            id: "dinner-sat",
+            day: "Saturday",
+            title: "Farewell Breakfast (Dinner Leftover Brunch)",
+            chef: "Sue Garcia",
+            menu: "Pancakes & French toast\nScrambled eggs & bacon\nFresh fruit\nJuice & coffee",
+            location: "Pavilion Main Hall",
+            time: "9:00 AM",
+            crew: ["Amy Murphy", "Lisa Garcia"]
+        ),
+    ]
+}
+
 // MARK: - T-Shirt Vote
 
 struct TshirtVoteConfig {

@@ -50,11 +50,10 @@ struct UpcomingEventCard: View {
             // Attendance control + "see who's going"
             HStack {
                 if env.isSignedIn {
-                    AttendanceControl(
-                        currentStatus: attendance?.effectiveStatus(),
-                        onSelect: { status in
-                            await onAttendanceChange(status)
-                        }
+                    AttendanceControlStateless(
+                        selection: attendance?.effectiveStatus(),
+                        isEnabled: true,
+                        onSelect: { status in onAttendanceChange(status) }
                     )
                 } else {
                     SignInChip(label: "RSVP") { }

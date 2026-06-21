@@ -57,11 +57,7 @@ struct PostCard: View {
 
     private var authorRow: some View {
         HStack(alignment: .center, spacing: 10) {
-            AvatarView(
-                url: post.authorAvatarUrl,
-                name: post.authorName,
-                size: 36
-            )
+            AvatarView(url: post.authorAvatarUrl, size: .small)
 
             VStack(alignment: .leading, spacing: 1) {
                 // PrivateName: guests see first name only
@@ -236,85 +232,6 @@ struct ReactionButton: View {
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.12), value: isSelected)
         .animation(.easeInOut(duration: 0.12), value: count)
-    }
-}
-
-// MARK: - AvatarView
-// Shared circular avatar — falls back to initials if no image URL.
-
-struct AvatarView: View {
-    let url: String?
-    let name: String
-    let size: CGFloat
-
-    var body: some View {
-        Group {
-            if let urlString = url, let imageURL = URL(string: urlString) {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        initialsView
-                    }
-                }
-            } else {
-                initialsView
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-    }
-
-    private var initialsView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.mlrPrimaryLight)
-            Text(initials)
-                .font(.system(size: size * 0.38, weight: .semibold))
-                .foregroundStyle(Color.mlrPrimary)
-        }
-    }
-
-    private var initials: String {
-        let parts = name.components(separatedBy: " ")
-        let first = parts.first?.first.map(String.init) ?? ""
-        let last = parts.count > 1 ? parts.last?.first.map(String.init) ?? "" : ""
-        return (first + last).uppercased()
-    }
-}
-
-// MARK: - MentionText
-// Renders text with @mention highlights.
-// @mentions appear in mlrPrimary; the rest is the default foreground.
-
-struct MentionText: View {
-    let text: String
-
-    var body: some View {
-        // Build an AttributedString that highlights @word tokens
-        let attributed = buildAttributed(text)
-        Text(attributed)
-    }
-
-    private func buildAttributed(_ raw: String) -> AttributedString {
-        var result = AttributedString()
-        // Split on spaces — preserving them — so we can test @-tokens
-        let words = raw.components(separatedBy: " ")
-        for (i, word) in words.enumerated() {
-            var segment = AttributedString(word)
-            if word.hasPrefix("@") && word.count > 1 {
-                segment.foregroundColor = Color.mlrPrimary
-                segment.font = .system(size: 16, weight: .semibold)
-            }
-            result += segment
-            if i < words.count - 1 {
-                result += AttributedString(" ")
-            }
-        }
-        return result
     }
 }
 
