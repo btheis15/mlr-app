@@ -44,6 +44,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // APNs registration happens via PushService when the user enables push;
         // pre-register here so the system is ready.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        // Actionable categories (RSVP / On my way / Reply / Birthday).
+        UNUserNotificationCenter.current().registerMLRCategories()
         return true
     }
 
@@ -80,7 +82,25 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let userInfo = response.notification.request.content.userInfo
+        var userInfo = response.notification.request.content.userInfo
+
+        // An action button was tapped (RSVP / On my way / Reply / Birthday).
+        if response.actionIdentifier != UNNotificationDefaultActionIdentifier,
+           response.actionIdentifier != UNNotificationDismissActionIdentifier {
+            // Capture inline "Reply" text if present.
+            if let textResponse = response as? UNTextInputNotificationResponse {
+                userInfo["reply_text"] = textResponse.userText
+            }
+            let actionId = response.actionIdentifier
+            let info = userInfo
+            Task { @MainActor in
+                await NotificationActionHandler.handle(actionId: actionId, userInfo: info)
+                completionHandler()
+            }
+            return
+        }
+
+        // Plain tap on the notification body → deep-link into the app.
         if let targetType = userInfo["target_type"] as? String,
            let targetId = userInfo["target_id"] as? String {
             NotificationCenter.default.post(

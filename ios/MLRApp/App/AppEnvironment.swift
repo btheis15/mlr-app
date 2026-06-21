@@ -43,6 +43,12 @@ final class AppEnvironment {
         }
     }
 
+    // Static hooks so background notification-action handlers (which run without
+    // the SwiftUI environment) can reach the live services. Set in init().
+    static weak var activeEventsService: EventsService?
+    static weak var activeHelpService: HelpService?
+    static weak var activeCommitteeService: CommitteeService?
+
     init() {
         authService          = AuthService()
         postsService         = PostsService()
@@ -53,6 +59,10 @@ final class AppEnvironment {
         helpService          = HelpService()
         pushService          = PushService()
         mediaService         = MediaService()
+
+        AppEnvironment.activeEventsService    = eventsService
+        AppEnvironment.activeHelpService      = helpService
+        AppEnvironment.activeCommitteeService = committeeService
     }
 
     // Load the signed-in profile after auth
