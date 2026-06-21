@@ -4,31 +4,25 @@ import SwiftUI
 // The main Feed tab. Mirrors components/PostsView.tsx.
 //
 // Layout:
-//   • ScrollView + LazyVStack of PostCard rows
+//   • Driven by env.postsService.posts (an @Observable array)
 //   • Pull-to-refresh (.refreshable)
-//   • Load-more on scroll to bottom (offset pagination)
 //   • Floating "new post" pencil button (signed-in only)
-//   • SignInWall guards compose only — the feed is browsable by guests
+//   • SignInWall is not used here — the feed is fully browsable;
+//     compose is conditionally shown when signed in
 //   • Realtime subscription fires in .task
 
 struct PostsView: View {
     @Environment(AppEnvironment.self) private var env
 
-    @State private var posts: [Post] = []
-    @State private var isLoading = false
-    @State private var hasMore = true
     @State private var showComposer = false
     @State private var showSignIn = false
     @State private var reactionMap: [UUID: [PostReaction]] = [:]
-
-    private let pageSize = 20
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 content
 
-                // Floating compose button
                 if env.isSignedIn {
                     composeButton
                 }
@@ -38,17 +32,15 @@ struct PostsView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !env.isSignedIn {
-                        Button("Sign in") {
-                            showSignIn = true
-                        }
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color.mlrPrimary)
+                        Button("Sign in") { showSignIn = true }
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color.mlrPrimary)
                     }
                 }
             }
         }
         .sheet(isPresented: $showComposer, onDismiss: {
-            Task { await refresh() }
+            Task { await env.postsService.fetchPosts(userId: env.currentProfile?.id) }
         }) {
             PostComposer()
         }
@@ -56,8 +48,12 @@ struct PostsView: View {
             SignInView()
         }
         .task {
-            await refresh()
-            subscribeRealtime()
+            await env.postsService.fetchPosts(userId: env.currentProfile?.id)
+            await fetchReactions(for: env.postsService.posts)
+            env.postsService.subscribeToRealtime()
+        }
+        .onChange(of: env.postsService.posts) { _, newPosts in
+            Task { await fetchReactions(for: newPosts) }
         }
     }
 
@@ -65,9 +61,9 @@ struct PostsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && posts.isEmpty {
+        if env.postsService.isLoading && env.postsService.posts.isEmpty {
             loadingState
-        } else if posts.isEmpty {
+        } else if env.postsService.posts.isEmpty {
             emptyState
         } else {
             feedList
@@ -77,7 +73,7 @@ struct PostsView: View {
     private var feedList: some View {
         ScrollView {
             LazyVStack(spacing: 1) {
-                ForEach(posts) { post in
+                ForEach(env.postsService.posts) { post in
                     PostCard(
                         post: post,
                         reactions: reactionMap[post.id] ?? [],
@@ -97,20 +93,11 @@ struct PostsView: View {
                     Divider()
                         .padding(.horizontal, 16)
                 }
-
-                // Load-more trigger
-                if hasMore && !posts.isEmpty {
-                    ProgressView()
-                        .padding(.vertical, 20)
-                        .onAppear {
-                            Task { await loadMore() }
-                        }
-                }
             }
             .padding(.top, 8)
         }
         .refreshable {
-            await refresh()
+            await env.postsService.fetchPosts(userId: env.currentProfile?.id)
         }
     }
 
@@ -171,54 +158,15 @@ struct PostsView: View {
         .padding(.bottom, 24)
     }
 
-    // MARK: - Data
+    // MARK: - Reactions
 
     @MainActor
-    private func refresh() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let fetched = try await env.postsService.fetchPosts(offset: 0, limit: pageSize)
-            posts = fetched
-            hasMore = fetched.count == pageSize
-            await fetchReactions(for: fetched)
-        } catch {
-            print("[PostsView] refresh error: \(error)")
-        }
-    }
-
-    @MainActor
-    private func loadMore() async {
-        guard hasMore else { return }
-        do {
-            let fetched = try await env.postsService.fetchPosts(offset: posts.count, limit: pageSize)
-            let newPosts = fetched.filter { p in !posts.contains(where: { $0.id == p.id }) }
-            posts.append(contentsOf: newPosts)
-            hasMore = fetched.count == pageSize
-            await fetchReactions(for: newPosts)
-        } catch {
-            print("[PostsView] loadMore error: \(error)")
-        }
-    }
-
-    @MainActor
-    private func fetchReactions(for batch: [Post]) async {
-        for post in batch {
+    private func fetchReactions(for posts: [Post]) async {
+        for post in posts {
             if let reactions = try? await env.postsService.fetchReactions(postId: post.id) {
                 reactionMap[post.id] = reactions
             }
         }
-    }
-
-    private func subscribeRealtime() {
-        env.postsService.onNewPost = { post in
-            Task { @MainActor in
-                if !posts.contains(where: { $0.id == post.id }) {
-                    posts.insert(post, at: 0)
-                }
-            }
-        }
-        env.postsService.startRealtime()
     }
 
     private func toggleReaction(post: Post, emoji: String) async {
@@ -237,12 +185,11 @@ struct PostsView: View {
             reactionMap[post.id] = existing + [optimistic]
         }
 
-        // Commit
         do {
             if myReaction != nil {
-                try await env.postsService.removeReaction(postId: post.id, userId: userId, emoji: emoji)
+                try await env.postsService.removeReaction(postId: post.id, emoji: emoji, userId: userId)
             } else {
-                try await env.postsService.addReaction(postId: post.id, userId: userId, emoji: emoji)
+                try await env.postsService.addReaction(postId: post.id, emoji: emoji, userId: userId)
             }
             // Refetch authoritative state
             if let fresh = try? await env.postsService.fetchReactions(postId: post.id) {
@@ -257,22 +204,28 @@ struct PostsView: View {
     }
 
     private func reportPost(_ post: Post) async {
-        guard let userId = env.currentProfile?.id else { return }
         try? await env.postsService.reportContent(
-            reporterId: userId,
             targetType: "post",
-            targetId: post.id
+            targetId: post.id,
+            reason: nil
         )
     }
 
     private func adminRemove(_ post: Post) async {
-        try? await env.postsService.setContentStatus(
-            targetType: "post",
-            targetId: post.id,
-            status: .hidden
-        )
-        await MainActor.run {
-            posts.removeAll { $0.id == post.id }
+        // The web app uses set_content_status RPC; the iOS PostsService doesn't expose it yet.
+        // Call the Supabase RPC directly until PostsService gains this method.
+        struct StatusParams: Encodable {
+            let p_target_type: String
+            let p_target_id: String
+            let p_status: String
         }
+        try? await supabase
+            .rpc("set_content_status", params: StatusParams(
+                p_target_type: "post",
+                p_target_id: post.id.uuidString,
+                p_status: "hidden"
+            ))
+            .execute()
+        await env.postsService.fetchPosts(userId: env.currentProfile?.id)
     }
 }
