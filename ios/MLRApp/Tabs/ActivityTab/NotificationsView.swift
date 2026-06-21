@@ -228,15 +228,16 @@ struct NotificationsView: View {
         error = nil
         defer { isLoading = false }
 
-        do {
-            // Fetch notifications
-            notifications = try await env.notificationsService.fetchNotifications(userId: userId)
-            // Mark all as seen (clears badge)
-            try await env.notificationsService.markAllSeen(userId: userId)
-            await env.notificationsService.fetchUnreadCount(userId: userId)
-        } catch {
+        // fetchNotifications is non-throwing; it sets .error and returns via .notifications
+        await env.notificationsService.fetchNotifications(userId: userId)
+        if env.notificationsService.error != nil {
             self.error = "Couldn't load notifications. Pull to retry."
+            return
         }
+        notifications = env.notificationsService.notifications
+        // Mark all as seen (clears badge) — non-throwing
+        await env.notificationsService.markAllSeen(userId: userId)
+        await env.notificationsService.fetchUnreadCount(userId: userId)
     }
 
     @MainActor
@@ -245,10 +246,11 @@ struct NotificationsView: View {
         do {
             try await env.notificationsService.markAllRead(userId: userId)
             // Optimistically update local state
+            let now = Date.now
             notifications = notifications.map { n in
                 var updated = n
-                updated.readAt = .now
-                updated.seenAt = updated.seenAt ?? .now
+                updated.readAt = updated.readAt ?? now
+                updated.seenAt = updated.seenAt ?? now
                 return updated
             }
             await env.notificationsService.fetchUnreadCount(userId: userId)
@@ -259,21 +261,19 @@ struct NotificationsView: View {
 
     @MainActor
     private func handleTap(_ notification: AppNotification) async {
-        // Mark this individual notification as read
+        // Mark this individual notification as read via existing service method
         if notification.isUnread {
-            do {
-                try await env.notificationsService.markRead(id: notification.id)
-                if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
-                    notifications[idx].readAt = .now
-                }
-                await env.notificationsService.fetchUnreadCount(userId: env.currentProfile?.id)
-            } catch {
-                // Non-fatal — still navigate
+            // markRead(notificationId:) is the existing API — non-throwing
+            await env.notificationsService.markRead(notificationId: notification.id)
+            if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
+                notifications[idx].readAt = .now
+            }
+            if let uid = env.currentProfile?.id {
+                await env.notificationsService.fetchUnreadCount(userId: uid)
             }
         }
 
         // Navigate based on targetType
-        // (In the full app, this posts a notification that RootView handles)
         guard let targetType = notification.targetType else { return }
         NotificationCenter.default.post(
             name: .notificationTapped,
@@ -320,50 +320,19 @@ private struct ShimmerModifier: ViewModifier {
     }
 }
 
-// MARK: - NotificationsService extension
-// These methods must exist on NotificationsService; stubs shown here to
-// document the expected interface used by this view.
+// MARK: - NotificationsService additions
+// Extends the existing service with the mark-all-read and mark-single-read
+// capabilities needed by this view. The existing service already has
+// fetchNotifications(userId:), markAllSeen(userId:), and markRead(notificationId:).
 
 extension NotificationsService {
-    /// Fetch all notifications for `userId`, newest first.
-    func fetchNotifications(userId: UUID) async throws -> [AppNotification] {
-        let result: [AppNotification] = try await supabase
-            .from("notifications")
-            .select("*")
-            .eq("user_id", value: userId.uuidString)
-            .order("created_at", ascending: false)
-            .limit(100)
-            .execute()
-            .value
-        return result
-    }
-
-    /// Stamp `seen_at` on all unseen rows (clears badge).
-    func markAllSeen(userId: UUID) async throws {
-        try await supabase
-            .from("notifications")
-            .update(["seen_at": ISO8601DateFormatter().string(from: .now)])
-            .eq("user_id", value: userId.uuidString)
-            .is("seen_at", value: nil)
-            .execute()
-    }
-
-    /// Stamp `read_at` on all unread rows.
+    /// Stamp `read_at` on all unread rows for `userId`.
     func markAllRead(userId: UUID) async throws {
         try await supabase
             .from("notifications")
             .update(["read_at": ISO8601DateFormatter().string(from: .now)])
             .eq("user_id", value: userId.uuidString)
             .is("read_at", value: nil)
-            .execute()
-    }
-
-    /// Stamp `read_at` on a single notification.
-    func markRead(id: UUID) async throws {
-        try await supabase
-            .from("notifications")
-            .update(["read_at": ISO8601DateFormatter().string(from: .now)])
-            .eq("id", value: id.uuidString)
             .execute()
     }
 }

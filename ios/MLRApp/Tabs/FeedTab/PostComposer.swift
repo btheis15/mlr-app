@@ -84,11 +84,7 @@ struct PostComposer: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Author identity
                 HStack(spacing: 10) {
-                    AvatarView(
-                        url: env.currentProfile?.avatarUrl,
-                        name: env.currentProfile?.name ?? "",
-                        size: 40
-                    )
+                    AvatarView(url: env.currentProfile?.avatarUrl, size: .medium)
                     Text(env.currentProfile?.name ?? "")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.mlrText)

@@ -62,7 +62,7 @@ struct CommentsView: View {
             }
         }
         .sheet(isPresented: $showSignIn) {
-            SignInSheet()
+            SignInView()
         }
         .task {
             await loadComments()
@@ -75,7 +75,7 @@ struct CommentsView: View {
 
     private var postRecap: some View {
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(url: post.authorAvatarUrl, name: post.authorName, size: 32)
+            AvatarView(url: post.authorAvatarUrl, size: .small)
             VStack(alignment: .leading, spacing: 3) {
                 Text(env.isSignedIn ? post.authorName
                      : (post.authorName.components(separatedBy: " ").first ?? post.authorName))
@@ -158,9 +158,7 @@ struct CommentsView: View {
                 }
 
                 HStack(alignment: .bottom, spacing: 10) {
-                    AvatarView(url: env.currentProfile?.avatarUrl,
-                               name: env.currentProfile?.name ?? "",
-                               size: 30)
+                    AvatarView(url: env.currentProfile?.avatarUrl, size: .small)
 
                     ZStack(alignment: .topLeading) {
                         if commentText.isEmpty {
@@ -310,7 +308,7 @@ struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(url: comment.authorAvatarUrl, name: comment.authorName, size: 28)
+            AvatarView(url: comment.authorAvatarUrl, size: .small)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {

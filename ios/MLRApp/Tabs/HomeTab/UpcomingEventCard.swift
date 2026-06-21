@@ -7,14 +7,20 @@ import SwiftUI
 struct UpcomingEventCard: View {
     let event: ResortEvent
     let attendance: EventAttendance?
+    /// Optional caller-managed optimistic status override (Home manages it at top level).
+    var currentStatusOverride: AttendanceStatus? = nil
     let onAttendanceChange: (AttendanceStatus) async -> Void
 
     @Environment(AppEnvironment.self) private var env
     @State private var showEventSheet = false
 
+    private var displayStatus: AttendanceStatus? {
+        currentStatusOverride ?? attendance?.effectiveStatus()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Kind badge + title
+            // Kind badge + title row
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     EventKindBadge(kind: event.kind)
@@ -23,7 +29,6 @@ struct UpcomingEventCard: View {
                         .foregroundStyle(Color.mlrText)
                 }
                 Spacer()
-                // Date
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(MLRFormat.dateRange(start: event.startDate, end: event.endDate))
                         .font(.system(size: 13, weight: .medium))
@@ -50,13 +55,16 @@ struct UpcomingEventCard: View {
             // Attendance control + "see who's going"
             HStack {
                 if env.isSignedIn {
+                    // AttendanceControlStateless (Shared/Components/AttendanceControl.swift)
                     AttendanceControlStateless(
-                        selection: attendance?.effectiveStatus(),
+                        selection: displayStatus,
                         isEnabled: true,
-                        onSelect: { status in onAttendanceChange(status) }
+                        onSelect: { status in
+                            Task { await onAttendanceChange(status) }
+                        }
                     )
                 } else {
-                    // Shared SignInChip (GuardView.swift) — calls authService.promptSignIn()
+                    // Shared SignInChip from GuardView.swift
                     SignInChip()
                 }
 
@@ -113,5 +121,5 @@ struct EventKindBadge: View {
     }
 }
 
-// AttendanceControl and SignInChip are defined in Shared/Components/
-// (AttendanceControl.swift and GuardView.swift respectively).
+// AttendanceControl / AttendanceControlStateless — Shared/Components/AttendanceControl.swift
+// SignInChip — Shared/Components/GuardView.swift

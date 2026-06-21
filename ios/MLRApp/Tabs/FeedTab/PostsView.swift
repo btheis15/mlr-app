@@ -53,7 +53,7 @@ struct PostsView: View {
             PostComposer()
         }
         .sheet(isPresented: $showSignIn) {
-            SignInSheet()
+            SignInView()
         }
         .task {
             await refresh()

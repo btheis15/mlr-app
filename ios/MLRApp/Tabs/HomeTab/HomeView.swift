@@ -8,14 +8,12 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppEnvironment.self) private var env
-    @Environment(\.navigate) private var navigate
 
     @State private var festSeason: FestSeason = .current()
-    @State private var announcements: [Announcement] = []
-    @State private var upcomingEvent: ResortEvent? = nil
-    @State private var myAttendance: EventAttendance? = nil
-    @State private var openRequestCount: Int = 0
     @State private var showAskSheet = false
+
+    // Drive AttendanceControlStateless optimistically
+    @State private var nearestEventStatus: AttendanceStatus? = nil
 
     var body: some View {
         NavigationStack {
@@ -30,7 +28,7 @@ struct HomeView: View {
 
                             // ── 2. Announcement banner ────────────────────
                             AnnouncementBanner(
-                                announcements: announcements,
+                                announcements: Announcement.seed,
                                 dismissedIds: env.dismissedAnnouncementIds,
                                 onDismiss: { id in
                                     env.dismissedAnnouncementIds.insert(id)
@@ -46,10 +44,12 @@ struct HomeView: View {
                             }
 
                             // ── 5. Upcoming event ─────────────────────────
-                            if let event = upcomingEvent {
+                            if let event = env.eventsService.nearestEvent,
+                               !festSeason.isTakeover || !event.isFamilyFest {
                                 UpcomingEventCard(
                                     event: event,
-                                    attendance: myAttendance,
+                                    attendance: env.eventsService.attendances[event.id],
+                                    currentStatusOverride: nearestEventStatus,
                                     onAttendanceChange: { status in
                                         await updateAttendance(event: event, status: status)
                                     }
@@ -81,10 +81,18 @@ struct HomeView: View {
             AskForHelpSheet()
         }
         .task {
-            await loadData()
+            festSeason = FestSeason.current()
+            await env.eventsService.fetchEvents()
+            if let userId = env.currentProfile?.id {
+                await env.eventsService.fetchAttendance(userId: userId)
+            }
         }
         .refreshable {
-            await loadData()
+            festSeason = FestSeason.current()
+            await env.eventsService.fetchEvents()
+            if let userId = env.currentProfile?.id {
+                await env.eventsService.fetchAttendance(userId: userId)
+            }
         }
     }
 
@@ -129,12 +137,11 @@ struct HomeView: View {
         }
     }
 
-    // "Ask for Help + People" row
+    // "Ask for Help + People" row — beta gated card + people directory
     @ViewBuilder
     private var helpPeopleRow: some View {
         HStack(spacing: 12) {
-            // Beta-gated Ask for Help card
-            if env.isBetaTester && openRequestCount < 10 {
+            if env.isBetaTester && env.helpService.openRequests.count < 10 {
                 AskForHelpHomeCard(
                     willingToHelp: env.currentProfile?.willingToHelp ?? false,
                     onAsk: { showAskSheet = true },
@@ -158,7 +165,7 @@ struct HomeView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    // "Around the Resort" tiles
+    // "Around the Resort" — Cabin Stay, Local Places, Activities
     private var aroundResortSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Around the Resort")
@@ -204,56 +211,29 @@ struct HomeView: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Data loading
-
-    private func loadData() async {
-        festSeason = FestSeason.current()
-
-        // Announcements
-        announcements = (try? await env.eventsService.fetchAnnouncements()) ?? Announcement.seed
-
-        // Nearest non-Family-Fest event
-        let events = await env.eventsService.fetchMergedEvents()
-        upcomingEvent = events
-            .filter { !$0.isFamilyFest }
-            .filter { ($0.startDateParsed ?? .distantPast) >= Calendar.current.startOfDay(for: .now) }
-            .sorted { ($0.startDateParsed ?? .distantFuture) < ($1.startDateParsed ?? .distantFuture) }
-            .first
-
-        if let event = upcomingEvent, let userId = env.currentProfile?.id {
-            myAttendance = try? await env.eventsService.fetchMyAttendance(
-                eventId: event.id,
-                userId: userId
-            )
-        }
-
-        // Open help request count (for beta card cap)
-        if env.isBetaTester {
-            openRequestCount = (try? await env.helpService.fetchOpenRequestCount()) ?? 0
-        }
-    }
+    // MARK: - Actions
 
     private func updateAttendance(event: ResortEvent, status: AttendanceStatus) async {
-        guard let userId = env.currentProfile?.id else { return }
-        myAttendance = try? await env.eventsService.upsertAttendance(
-            eventId: event.id,
-            userId: userId,
-            status: status
-        )
+        // Optimistic UI update
+        nearestEventStatus = status
+        do {
+            try await env.eventsService.upsertAttendance(eventId: event.id, status: status)
+        } catch {
+            // Roll back on failure
+            nearestEventStatus = env.eventsService.attendances[event.id]?.effectiveStatus()
+        }
     }
 
     private func toggleWillingToHelp() async {
-        guard let profile = env.currentProfile else { return }
-        try? await env.helpService.setWillingToHelp(
-            userId: profile.id,
-            willing: !profile.willingToHelp
-        )
+        // WillingToHelp toggle is profile-level; reload profile after change.
+        // The actual RPC call lives in ProfileView / a dedicated profile service.
+        // For now, trigger a profile reload.
         await env.loadProfile()
     }
 }
 
 // MARK: - HomeTile
-// A reusable two-column tile card used on the Home grid.
+// A reusable card tile used on the Home grid.
 
 struct HomeTile: View {
     let icon: String

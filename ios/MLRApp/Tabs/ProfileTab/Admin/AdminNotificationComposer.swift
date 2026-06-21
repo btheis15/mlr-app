@@ -1,14 +1,12 @@
 import SwiftUI
 
-// MARK: - BroadcastAudience
-// Mirrors the audience options accepted by `send_broadcast_notification` RPC.
+// MARK: - BroadcastAudience UI extensions
+// BroadcastAudience is defined in NotificationsService.swift.
+// Add CaseIterable + Identifiable conformances and UI helpers here.
 
-enum BroadcastAudience: String, CaseIterable, Identifiable {
-    case everyone    = "everyone"
-    case betaTesters = "beta_testers"
-    case admins      = "admins"
-
-    var id: String { rawValue }
+extension BroadcastAudience: CaseIterable, Identifiable {
+    public static var allCases: [BroadcastAudience] { [.everyone, .betaTesters, .admins] }
+    public var id: String { rawValue }
 
     var label: String {
         switch self {
@@ -220,24 +218,29 @@ struct AdminNotificationComposer: View {
         error = nil
         defer { isSending = false }
 
-        do {
-            // Send the in-app notification
-            try await supabase
-                .rpc("send_broadcast_notification", params: [
-                    "p_title": title.trimmingCharacters(in: .whitespaces),
-                    "p_body": body.trimmingCharacters(in: .whitespaces),
-                    "p_audience": audience.rawValue
-                ])
-                .execute()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
+        let trimmedBody  = body.trimmingCharacters(in: .whitespaces)
+        let postBanner   = audience == .everyone && alsoBanner
 
-            // Optionally also post a banner
-            if audience == .everyone && alsoBanner {
+        do {
+            // Use the existing service method
+            try await env.notificationsService.sendBroadcast(
+                title: trimmedTitle,
+                body: trimmedBody.isEmpty ? nil : trimmedBody,
+                audience: audience,
+                mirrorBanner: postBanner
+            )
+
+            // If mirroring a banner, also insert directly into announcements
+            // (sendBroadcast with mirrorBanner may handle this server-side;
+            //  insert here only if we need a custom expiry)
+            if postBanner {
                 let fmt = ISO8601DateFormatter()
                 try await supabase
                     .from("announcements")
                     .insert([
-                        "title": title.trimmingCharacters(in: .whitespaces),
-                        "body": body.trimmingCharacters(in: .whitespaces),
+                        "title": trimmedTitle,
+                        "body": trimmedBody,
                         "kind": AnnouncementKind.info.rawValue,
                         "expires_at": fmt.string(from: bannerExpiry.expiresAt)
                     ])
