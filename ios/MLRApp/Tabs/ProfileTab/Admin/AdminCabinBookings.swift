@@ -198,16 +198,20 @@ struct AdminCabinBookings: View {
 
     private func subscribeRealtime() {
         Task {
-            let channel = await supabase.realtimeV2.channel("admin-cabin-bookings")
-            let changes = await channel.postgresChange(
-                AnyAction.self,
-                schema: "public",
-                table: "cabin_bookings"
-            )
-            await channel.subscribe()
-            for await _ in changes {
-                await loadBookings()
+            let channel = supabase.channel("admin-cabin-bookings")
+            await channel.on(
+                "postgres_changes",
+                filter: ChannelFilter(
+                    event: "*",
+                    schema: "public",
+                    table: "cabin_bookings"
+                )
+            ) { [self] _ in
+                Task { @MainActor in
+                    await loadBookings()
+                }
             }
+            .subscribe()
         }
     }
 

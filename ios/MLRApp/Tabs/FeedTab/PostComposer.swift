@@ -70,7 +70,7 @@ struct PostComposer: View {
         }
         .task {
             // Pre-load member list for @mention autocomplete
-            allProfiles = (try? await env.postsService.fetchMemberList()) ?? []
+            allProfiles = (try? await fetchMemberList()) ?? []
         }
         .onChange(of: selectedPhoto) { _, newValue in
             Task { await loadSelectedPhoto(newValue) }
@@ -225,17 +225,15 @@ struct PostComposer: View {
 
         var imageUrl: String? = nil
 
-        // Upload image if attached
+        // Upload image if attached — MediaService.uploadPostImage(image:userId:)
         if let image = selectedImage {
             isUploading = true
+            // Simulate progress: Supabase SDK doesn't surface byte-level progress,
+            // so set it to 0.5 while the upload is in flight.
+            uploadProgress = 0.5
             do {
-                imageUrl = try await env.mediaService.uploadPostImage(
-                    image: image,
-                    userId: profile.id,
-                    onProgress: { progress in
-                        self.uploadProgress = progress
-                    }
-                )
+                imageUrl = try await env.mediaService.uploadPostImage(image: image, userId: profile.id)
+                uploadProgress = 1.0
             } catch {
                 errorMessage = "Couldn't upload image. Please try again."
                 isUploading = false
@@ -245,13 +243,12 @@ struct PostComposer: View {
             isUploading = false
         }
 
-        // Create post
+        // Create post — PostsService.createPost(text:imageUrl:authorId:)
         do {
             try await env.postsService.createPost(
-                authorId: profile.id,
-                authorName: profile.name,
                 text: text.trimmingCharacters(in: .whitespacesAndNewlines),
-                imageUrl: imageUrl
+                imageUrl: imageUrl,
+                authorId: profile.id
             )
             dismiss()
         } catch {
@@ -262,27 +259,28 @@ struct PostComposer: View {
     }
 
     // MARK: - @mention detection
+    // Uses the shared helpers detectMentionQuery() and applyMention() from MentionText.swift.
 
     private func detectMentionTrigger(in value: String) {
-        // Find the last @word before the cursor
-        let words = value.components(separatedBy: " ")
-        if let last = words.last, last.hasPrefix("@") {
-            mentionQuery = String(last.dropFirst())
-            showMentionSuggestions = !mentionQuery.isEmpty
-        } else {
-            mentionQuery = ""
-            showMentionSuggestions = false
-        }
+        mentionQuery = detectMentionQuery(in: value) ?? ""
+        showMentionSuggestions = !mentionQuery.isEmpty
     }
 
     private func insertMention(_ profile: Profile) {
-        // Replace the trailing @query with @FirstName
-        let firstName = profile.name.components(separatedBy: " ").first ?? profile.name
-        let words = text.components(separatedBy: " ")
-        var updated = words.dropLast() + ["@\(firstName) "]
-        text = updated.joined(separator: " ")
-        showMentionSuggestions = false
+        text = applyMention(profile, to: text)
         mentionQuery = ""
+        showMentionSuggestions = false
+    }
+
+    // MARK: - Member list for autocomplete
+
+    private func fetchMemberList() async throws -> [Profile] {
+        try await supabase
+            .from("profiles")
+            .select("id, name, avatar_url, is_admin, beta_tester, willing_to_help, intro_seen, email_alerts, push_level, push_types, notif_types, push_prompted, email, created_at")
+            .order("name", ascending: true)
+            .execute()
+            .value
     }
 }
 

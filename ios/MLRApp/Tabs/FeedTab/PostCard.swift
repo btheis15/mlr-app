@@ -6,7 +6,7 @@ import SwiftUI
 // Layout:
 //   avatar + author name (PrivateName masked for guests) + timestamp
 //   optional image (AsyncImage + tap → Lightbox)
-//   text body with @mention highlights
+//   text body with @mention highlights (MentionText from Shared)
 //   reaction row (emoji buttons + counts, optimistic toggle)
 //   comment count button → CommentsView sheet
 //   ⋯ menu → Report / admin Remove
@@ -21,7 +21,8 @@ struct PostCard: View {
     @Environment(AppEnvironment.self) private var env
     @State private var showComments = false
     @State private var showLightbox = false
-    @State private var commentCount: Int = 0
+    @State private var comments: [PostComment] = []
+    @State private var commentsLoaded = false
 
     // Standard reaction emojis
     private let reactionEmojis = ["❤️", "👍", "😂", "🙌", "🎉"]
@@ -33,7 +34,7 @@ struct PostCard: View {
                 postImage(url: imageUrl)
             }
             if let text = post.text, !text.isEmpty {
-                MentionText(text: text)
+                MentionText(text)
                     .font(.body)
                     .foregroundStyle(Color.mlrText)
             }
@@ -49,7 +50,11 @@ struct PostCard: View {
             }
         }
         .task {
-            commentCount = (try? await env.postsService.fetchCommentCount(postId: post.id)) ?? 0
+            // Load comments eagerly so we can show the comment count without an extra fetch.
+            if !commentsLoaded {
+                comments = (try? await env.postsService.fetchComments(postId: post.id)) ?? []
+                commentsLoaded = true
+            }
         }
     }
 
@@ -125,7 +130,7 @@ struct PostCard: View {
                     Rectangle()
                         .fill(Color.mlrCard)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 100)
+                        .frame(height: 80)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             Label("Image unavailable", systemImage: "photo.slash")
@@ -158,19 +163,17 @@ struct PostCard: View {
         }
     }
 
-    // MARK: - Action row (comment count + comment button)
+    // MARK: - Action row (comment count + open CommentsView)
 
     private var actionRow: some View {
         Button {
             showComments = true
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: commentCount > 0 ? "bubble.left.fill" : "bubble.left")
+                Image(systemName: comments.isEmpty ? "bubble.left" : "bubble.left.fill")
                     .font(.system(size: 14))
-                    .foregroundStyle(commentCount > 0 ? Color.mlrPrimary : Color.mlrTextMuted)
-                Text(commentCount == 0
-                     ? "Comment"
-                     : commentCount == 1 ? "1 comment" : "\(commentCount) comments")
+                    .foregroundStyle(comments.isEmpty ? Color.mlrTextMuted : Color.mlrPrimary)
+                Text(commentLabel)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.mlrTextMuted)
             }
@@ -181,11 +184,18 @@ struct PostCard: View {
     // MARK: - Helpers
 
     private var displayName: String {
-        // Guests see first name only (PrivateName pattern)
         if !env.isSignedIn {
             return post.authorName.components(separatedBy: " ").first ?? post.authorName
         }
         return post.authorName
+    }
+
+    private var commentLabel: String {
+        switch comments.count {
+        case 0: return "Comment"
+        case 1: return "1 comment"
+        default: return "\(comments.count) comments"
+        }
     }
 
     private func reactionCount(for emoji: String) -> Int {
@@ -249,21 +259,15 @@ struct PostCardSkeleton: View {
                     .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 4) {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.mlrCard)
-                        .frame(width: 120, height: 12)
+                        .fill(Color.mlrCard).frame(width: 120, height: 12)
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.mlrCard)
-                        .frame(width: 60, height: 10)
+                        .fill(Color.mlrCard).frame(width: 60, height: 10)
                 }
             }
             RoundedRectangle(cornerRadius: 4)
-                .fill(Color.mlrCard)
-                .frame(maxWidth: .infinity)
-                .frame(height: 14)
+                .fill(Color.mlrCard).frame(maxWidth: .infinity).frame(height: 14)
             RoundedRectangle(cornerRadius: 4)
-                .fill(Color.mlrCard)
-                .frame(maxWidth: .infinity * 0.75)
-                .frame(height: 14)
+                .fill(Color.mlrCard).frame(width: 200).frame(height: 14)
         }
         .opacity(opacity)
         .onAppear {
@@ -273,3 +277,6 @@ struct PostCardSkeleton: View {
         }
     }
 }
+
+// AvatarView — Shared/Components/AvatarView.swift
+// MentionText — Shared/Components/MentionText.swift

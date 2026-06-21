@@ -196,7 +196,7 @@ private struct MemberRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(name: member.name, avatarUrl: member.avatarUrl, size: .medium)
+            AvatarView(url: member.avatarUrl, size: .medium, isAdmin: member.isAdmin)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

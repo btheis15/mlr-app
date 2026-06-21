@@ -5,12 +5,11 @@ import SwiftUI
 // Mirrors the comments sheet in the web app.
 //
 // Features:
-//   • Post recap at top (author, text snippet, image thumbnail)
+//   • Post recap at top (author, text snippet, optional image thumbnail)
 //   • List of PostComments with MentionText + relative timestamp
 //   • Sign-in guard on the comment input box
 //   • TextEditor + send button with @mention autocomplete
 //   • Report button (⋯) per comment
-//   • Realtime subscription for new comments
 //   • "Be the first to comment" empty state
 
 struct CommentsView: View {
@@ -25,8 +24,7 @@ struct CommentsView: View {
     @State private var isSending = false
     @State private var sendError: String? = nil
     @State private var showSignIn = false
-    @State private var mentionQuery = ""
-    @State private var showMentionSuggestions = false
+    @State private var mentionQuery: String? = nil
     @State private var allProfiles: [Profile] = []
 
     private let charLimit = 300
@@ -34,19 +32,16 @@ struct CommentsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Post recap
                 postRecap
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
                 Divider()
 
-                // Comment list
                 commentList
 
                 Divider()
 
-                // Input area
                 if env.isSignedIn {
                     commentInput
                 } else {
@@ -66,8 +61,10 @@ struct CommentsView: View {
         }
         .task {
             await loadComments()
-            allProfiles = (try? await env.postsService.fetchMemberList()) ?? []
-            startRealtime()
+            // Pre-load member list for @mention autocomplete
+            if env.isSignedIn {
+                allProfiles = (try? await fetchMemberList()) ?? []
+            }
         }
     }
 
@@ -77,7 +74,8 @@ struct CommentsView: View {
         HStack(alignment: .top, spacing: 10) {
             AvatarView(url: post.authorAvatarUrl, size: .small)
             VStack(alignment: .leading, spacing: 3) {
-                Text(env.isSignedIn ? post.authorName
+                Text(env.isSignedIn
+                     ? post.authorName
                      : (post.authorName.components(separatedBy: " ").first ?? post.authorName))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.mlrText)
@@ -108,6 +106,7 @@ struct CommentsView: View {
         if isLoading {
             List {
                 ForEach(0..<4, id: \.self) { _ in CommentSkeleton() }
+                    .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
         } else if comments.isEmpty {
@@ -144,65 +143,63 @@ struct CommentsView: View {
 
     @ViewBuilder
     private var commentInput: some View {
-        ZStack(alignment: .top) {
-            VStack(spacing: 0) {
-                // @mention overlay above the input
-                if showMentionSuggestions && !mentionQuery.isEmpty {
-                    MentionAutocomplete(
-                        members: allProfiles,
-                        query: mentionQuery,
-                        onSelect: { insertMention($0) }
-                    )
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
-                }
-
-                HStack(alignment: .bottom, spacing: 10) {
-                    AvatarView(url: env.currentProfile?.avatarUrl, size: .small)
-
-                    ZStack(alignment: .topLeading) {
-                        if commentText.isEmpty {
-                            Text("Add a comment…")
-                                .foregroundStyle(Color.mlrTextSubtle)
-                                .font(.subheadline)
-                                .padding(.top, 8)
-                                .padding(.leading, 4)
-                        }
-                        TextEditor(text: $commentText)
-                            .frame(minHeight: 36, maxHeight: 100)
-                            .font(.subheadline)
-                            .onChange(of: commentText) { _, val in
-                                detectMentionTrigger(in: val)
-                            }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.mlrCard)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-
-                    // Send button
-                    Button {
-                        Task { await sendComment() }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(canSend ? Color.mlrPrimary : Color.mlrTextSubtle)
-                    }
-                    .disabled(!canSend || isSending)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-
-                if let err = sendError {
-                    Text(err)
-                        .font(.caption)
-                        .foregroundStyle(Color.mlrDanger)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                }
+        VStack(spacing: 0) {
+            // @mention autocomplete overlay above the input row
+            if let query = mentionQuery, !allProfiles.isEmpty {
+                MentionAutocomplete(
+                    members: allProfiles,
+                    query: query,
+                    onSelect: { insertMention($0) }
+                )
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+                .animation(.easeOut(duration: 0.15), value: mentionQuery)
             }
-            .background(Color.mlrSurface)
+
+            HStack(alignment: .bottom, spacing: 10) {
+                AvatarView(url: env.currentProfile?.avatarUrl, size: .small)
+
+                ZStack(alignment: .topLeading) {
+                    if commentText.isEmpty {
+                        Text("Add a comment…")
+                            .foregroundStyle(Color.mlrTextSubtle)
+                            .font(.subheadline)
+                            .padding(.top, 8)
+                            .padding(.leading, 4)
+                    }
+                    TextEditor(text: $commentText)
+                        .frame(minHeight: 36, maxHeight: 100)
+                        .font(.subheadline)
+                        .onChange(of: commentText) { _, val in
+                            mentionQuery = detectMentionQuery(in: val)
+                        }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.mlrCard)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                Button {
+                    Task { await sendComment() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(canSend ? Color.mlrPrimary : Color.mlrTextSubtle)
+                }
+                .disabled(!canSend || isSending)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            if let err = sendError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(Color.mlrDanger)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
         }
+        .background(Color.mlrSurface)
     }
 
     private var signInPrompt: some View {
@@ -235,18 +232,6 @@ struct CommentsView: View {
         isLoading = false
     }
 
-    private func startRealtime() {
-        env.postsService.onNewComment = { comment in
-            guard comment.postId == post.id else { return }
-            Task { @MainActor in
-                if !comments.contains(where: { $0.id == comment.id }) {
-                    comments.append(comment)
-                }
-            }
-        }
-        env.postsService.startCommentRealtime(postId: post.id)
-    }
-
     @MainActor
     private func sendComment() async {
         guard let profile = env.currentProfile, canSend else { return }
@@ -254,14 +239,14 @@ struct CommentsView: View {
         sendError = nil
         let trimmed = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let comment = try await env.postsService.createComment(
+            let comment = try await env.postsService.addComment(
                 postId: post.id,
-                authorId: profile.id,
-                authorName: profile.name,
-                text: trimmed
+                text: trimmed,
+                authorId: profile.id
             )
             comments.append(comment)
             commentText = ""
+            mentionQuery = nil
         } catch {
             sendError = "Couldn't post comment. Please try again."
         }
@@ -271,30 +256,26 @@ struct CommentsView: View {
     private func reportComment(_ comment: PostComment) async {
         guard let userId = env.currentProfile?.id else { return }
         try? await env.postsService.reportContent(
-            reporterId: userId,
             targetType: "post_comment",
-            targetId: comment.id
+            targetId: comment.id,
+            reason: nil
         )
     }
 
-    private func detectMentionTrigger(in value: String) {
-        let words = value.components(separatedBy: " ")
-        if let last = words.last, last.hasPrefix("@"), last.count > 1 {
-            mentionQuery = String(last.dropFirst())
-            showMentionSuggestions = true
-        } else {
-            mentionQuery = ""
-            showMentionSuggestions = false
-        }
+    private func insertMention(_ profile: Profile) {
+        commentText = applyMention(profile, to: commentText)
+        mentionQuery = nil
     }
 
-    private func insertMention(_ profile: Profile) {
-        let firstName = profile.name.components(separatedBy: " ").first ?? profile.name
-        let words = commentText.components(separatedBy: " ")
-        let updated = words.dropLast() + ["@\(firstName) "]
-        commentText = updated.joined(separator: " ")
-        showMentionSuggestions = false
-        mentionQuery = ""
+    // Fetch the member list via Supabase for @mention autocomplete.
+    private func fetchMemberList() async throws -> [Profile] {
+        let profiles: [Profile] = try await supabase
+            .from("profiles")
+            .select("id, name, avatar_url, is_admin, beta_tester, willing_to_help, intro_seen, email_alerts, push_level, push_types, notif_types, push_prompted, email, created_at")
+            .order("name", ascending: true)
+            .execute()
+            .value
+        return profiles
     }
 }
 
@@ -335,7 +316,7 @@ struct CommentRow: View {
                         }
                     }
                 }
-                MentionText(text: comment.text)
+                MentionText(comment.text)
                     .font(.subheadline)
                     .foregroundStyle(Color.mlrText)
             }
@@ -374,3 +355,6 @@ struct CommentSkeleton: View {
         }
     }
 }
+
+// AvatarView — Shared/Components/AvatarView.swift
+// MentionText / MentionAutocomplete / detectMentionQuery / applyMention — Shared/Components/MentionText.swift

@@ -131,9 +131,9 @@ struct ProfileView: View {
                 VStack(spacing: 12) {
                     ZStack(alignment: .bottomTrailing) {
                         AvatarView(
-                            name: profile?.name ?? "",
-                            avatarUrl: profile?.avatarUrl,
-                            size: .xlarge
+                            url: profile?.avatarUrl,
+                            size: .xlarge,
+                            isAdmin: profile?.isAdmin ?? false
                         )
                         .overlay {
                             if uploadingAvatar {
@@ -545,6 +545,31 @@ struct ProfileView: View {
     }
 }
 
+// MARK: - HelpService extensions
+// Methods expected by ProfileView (and HomeView) that are not yet in HelpService.
+
+extension HelpService {
+    /// Toggle the `willing_to_help` flag for `userId`.
+    func setWillingToHelp(userId: UUID, willing: Bool) async throws {
+        struct Params: Encodable { let p_user_id: String; let p_willing: Bool }
+        try await supabase
+            .rpc("set_willing_to_help", params: Params(p_user_id: userId.uuidString, p_willing: willing))
+            .execute()
+    }
+
+    /// Return the count of currently open help requests (for the 10-cap UI guard).
+    func fetchOpenRequestCount() async throws -> Int {
+        struct CountRow: Decodable { let count: Int }
+        let rows: [CountRow] = try await supabase
+            .from("help_requests")
+            .select("count:id.count()")
+            .eq("status", value: "open")
+            .execute()
+            .value
+        return rows.first?.count ?? 0
+    }
+}
+
 // MARK: - AssistantToggleRow
 
 private struct AssistantToggleRow: View {
@@ -646,75 +671,6 @@ private struct BulletPoint: View {
             Text(text)
                 .font(.subheadline)
         }
-    }
-}
-
-// MARK: - AvatarView
-// Shared component used across the app. Sizes: small (24), medium (36),
-// large (52), xlarge (80).
-
-enum AvatarSize {
-    case small, medium, large, xlarge
-
-    var dimension: CGFloat {
-        switch self {
-        case .small:  return 28
-        case .medium: return 36
-        case .large:  return 52
-        case .xlarge: return 84
-        }
-    }
-
-    var fontSize: CGFloat {
-        switch self {
-        case .small:  return 11
-        case .medium: return 14
-        case .large:  return 20
-        case .xlarge: return 32
-        }
-    }
-}
-
-struct AvatarView: View {
-    let name: String
-    var avatarUrl: String? = nil
-    var size: AvatarSize = .medium
-
-    private var initials: String {
-        let parts = name.split(separator: " ")
-        if parts.count >= 2 {
-            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
-        }
-        return String(name.prefix(2)).uppercased()
-    }
-
-    var body: some View {
-        if let urlStr = avatarUrl, let url = URL(string: urlStr) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable()
-                        .scaledToFill()
-                        .frame(width: size.dimension, height: size.dimension)
-                        .clipShape(Circle())
-                default:
-                    fallbackCircle
-                }
-            }
-        } else {
-            fallbackCircle
-        }
-    }
-
-    private var fallbackCircle: some View {
-        Circle()
-            .fill(Color.mlrPrimaryLight)
-            .frame(width: size.dimension, height: size.dimension)
-            .overlay {
-                Text(initials.isEmpty ? "?" : initials)
-                    .font(.system(size: size.fontSize, weight: .semibold))
-                    .foregroundStyle(Color.mlrPrimary)
-            }
     }
 }
 
