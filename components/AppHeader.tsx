@@ -12,9 +12,11 @@ import { fitAppLogo } from "@/lib/appLogoFit";
  * their own titles/back-links and a Profile tab of their own, so there's no
  * persistent bar (and no stray profile icon) floating across them.
  *
- * The logo is a responsive hero — it grows to fill the top so the marked
- * `[data-fit-anchor]` card (the Ask-for-Help / People row) lands as the last
- * fully-visible thing above the tab bar. A CSS `clamp()` (`#app-logo` in
+ * The logo is a responsive hero — it grows to fill the top so the marked anchor
+ * card lands as the last fully-visible thing above the tab bar: the Ask-for-Help
+ * / People row (`[data-fit-anchor]`) normally, or — when Home has no upcoming
+ * events — the lower "Around the resort" group (`[data-fit-anchor-empty]`), so
+ * the logo shrinks to show it rather than ballooning. A CSS `clamp()` (`#app-logo` in
  * app/globals.css) is the no-JS / pre-hydration baseline; the shared `fitAppLogo`
  * (lib/appLogoFit.ts) refines it against the live layout. It fits at load (and
  * when the beta card resolves / on viewport change) but NOT on live reflow — so
