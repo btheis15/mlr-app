@@ -29,14 +29,21 @@ export default function EventsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
   const [showPast, setShowPast] = useState(false);
+  const [showDeclined, setShowDeclined] = useState(false);
 
-  const up = today ? upcomingEvents(events, today) : [];
-  const past = today ? pastEvents(events, today) : [];
   const openEvent = events.find((e) => e.id === openId) ?? null;
   const myStatus = (e: ResortEvent): AttendanceStatus | null => {
     const m = mine[e.id];
     return m ? effectiveStatus(m.status, m.days) : null;
   };
+
+  const allUpcoming = today ? upcomingEvents(events, today) : [];
+  // Events you've said you can't make tuck into their own collapsible group below
+  // (like "Past events") instead of crowding the calendar — still here to find or
+  // change your RSVP, just not in your face.
+  const declined = allUpcoming.filter((e) => myStatus(e) === "not_going");
+  const up = allUpcoming.filter((e) => myStatus(e) !== "not_going");
+  const past = today ? pastEvents(events, today) : [];
 
   return (
     <div className="space-y-5 pt-2">
@@ -67,7 +74,7 @@ export default function EventsPage() {
 
       {loading ? (
         <SkeletonList />
-      ) : up.length === 0 && past.length === 0 ? (
+      ) : up.length === 0 && declined.length === 0 && past.length === 0 ? (
         <ComingSoonCTA
           icon="🌲"
           title="No events on the calendar yet"
@@ -89,6 +96,30 @@ export default function EventsPage() {
                   onSetStatus={canRsvp ? (s) => setStatus(e.id, s) : undefined}
                 />
               ))}
+            </section>
+          )}
+
+          {declined.length > 0 && (
+            <section className="space-y-2">
+              <button
+                onClick={() => setShowDeclined((v) => !v)}
+                aria-expanded={showDeclined}
+                className="press px-0.5 text-sm font-semibold text-foreground/70"
+              >
+                Can&rsquo;t make it ({declined.length}) {showDeclined ? "▾" : "▸"}
+              </button>
+              {showDeclined &&
+                declined.map((e) => (
+                  <EventCard
+                    key={e.id}
+                    event={e}
+                    summary={summaries[e.id] ?? EMPTY_SUMMARY}
+                    myStatus={myStatus(e)}
+                    today={today!}
+                    variant="compact"
+                    onOpen={() => setOpenId(e.id)}
+                  />
+                ))}
             </section>
           )}
 

@@ -29,17 +29,22 @@ export function UpcomingEvents() {
 
   if (!today || loading) return null;
 
+  const myStatus = (e: ResortEvent): AttendanceStatus | null => {
+    const m = mine[e.id];
+    return m ? effectiveStatus(m.status, m.days) : null;
+  };
+
   let up = upcomingEvents(events, today);
   if (ffSeason?.isTakeover) up = up.filter((e) => e.kind !== "family_fest");
+  // Don't make anyone stay stuck on a "can't go" card here — once you've RSVP'd
+  // "Can't make", the event drops off Home. It's still in the full /events
+  // calendar (under "Can't make it") if you want to find or change it.
+  up = up.filter((e) => myStatus(e) !== "not_going");
   if (up.length === 0) return null;
 
   const first = up[0];
   const secondary = up.slice(1, 3);
   const openEvent = up.find((e) => e.id === openId) ?? null;
-  const myStatus = (e: ResortEvent): AttendanceStatus | null => {
-    const m = mine[e.id];
-    return m ? effectiveStatus(m.status, m.days) : null;
-  };
 
   return (
     <section className="space-y-3">
