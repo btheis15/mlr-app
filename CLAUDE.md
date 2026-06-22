@@ -91,10 +91,15 @@ splash just clears — the fly is a Home thing). The logo is a **responsive
 hero**: a viewport-derived `clamp()` (the `#app-logo` rule in
 [`app/globals.css`](app/globals.css)) is the no-JS baseline, and an effect in
 `AppHeader` **refines it against the live layout** — it measures the marked
-`[data-fit-anchor]` card (the Ask-for-Help / People row,
-[`HomeHelpPeople`](components/HomeHelpPeople.tsx)) and sizes the logo so that row
-lands ~12px above the tab bar (the "Around the resort" group then sits just past
-the fold, hidden). It fits at load / when the beta tile resolves / on viewport
+anchor card and sizes the logo so it lands ~12px above the tab bar. The anchor
+is **dynamic**: normally the Ask-for-Help / People row (`[data-fit-anchor]`,
+[`HomeHelpPeople`](components/HomeHelpPeople.tsx)), with the "Around the resort"
+group just past the fold — **but when Home has no upcoming events** (the
+`[data-home-events]` block in [`UpcomingEvents`](components/UpcomingEvents.tsx)
+renders nothing) it drops to the "Around the resort" group
+(`[data-fit-anchor-empty]`, [`HomeAroundResort`](components/HomeResortGroups.tsx))
+so the logo **shrinks to show it** instead of ballooning to fill the freed
+space. It fits at load / when the beta tile resolves / on viewport
 change, **not** on live reflow — so opening an accordion just scrolls. Shrinks to
 the old `h-16` on short screens (SE).
 

@@ -47,7 +47,10 @@ export function UpcomingEvents() {
   const openEvent = up.find((e) => e.id === openId) ?? null;
 
   return (
-    <section className="space-y-3">
+    // `data-home-events` lets the Home hero-logo fit know events are present, so
+    // it anchors on the Help/People row; with no events this block is absent and
+    // the fit drops to "Around the resort" instead (see lib/appLogoFit.ts).
+    <section data-home-events className="space-y-3">
       <div className="flex items-baseline justify-between px-0.5">
         <h2 className="text-sm font-semibold">📅 Upcoming Up North</h2>
         <Link href="/events" className="press text-xs font-medium text-primary">

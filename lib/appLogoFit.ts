@@ -1,9 +1,15 @@
 // Shared "fit the Home hero logo" measurement. The green MLR logo in the Home
-// header (#app-logo) is a responsive hero: it grows so the marked
-// [data-fit-anchor] card (the Ask-for-Help / People row) lands as the last
-// fully-visible thing above the tab bar. The size depends on the live Home
-// layout — which differs by login state (guest vs member show different cards),
-// so the final height genuinely varies.
+// header (#app-logo) is a responsive hero: it grows so the marked anchor card
+// lands as the last fully-visible thing above the tab bar. The size depends on
+// the live Home layout — which differs by login state (guest vs member show
+// different cards), so the final height genuinely varies.
+//
+// Which card is the anchor is dynamic: normally it's the Ask-for-Help / People
+// row (`[data-fit-anchor]`), with "Around the resort" tucked just past the fold.
+// But when there are no upcoming events on Home (the `[data-home-events]` block
+// renders nothing), the logo would otherwise grow huge to fill the freed space,
+// so we instead anchor on the "Around the resort" group (`[data-fit-anchor-empty]`)
+// — the logo shrinks a bit and that group comes into view.
 //
 // This lives in one place because TWO callers must agree on it byte-for-byte:
 //   • AppHeader — the live owner, fits on mount / beta-tile resolve / rotation.
@@ -30,7 +36,13 @@ const MIN_LOGO = 64; // never shrink below the original h-16
 export function fitAppLogo(): number | null {
   const logo = document.getElementById("app-logo");
   if (!logo) return null;
-  const anchor = document.querySelector("[data-fit-anchor]");
+  // With upcoming events on Home, anchor the Ask-for-Help / People row; with
+  // none, anchor the lower "Around the resort" group so the logo shrinks to
+  // show it instead of ballooning to fill the empty space.
+  const hasEvents = !!document.querySelector("[data-home-events]");
+  const anchor =
+    (!hasEvents && document.querySelector("[data-fit-anchor-empty]")) ||
+    document.querySelector("[data-fit-anchor]");
   const tabBar = document.querySelector("nav.fixed"); // the fixed TabBar
   if (!anchor || !tabBar) return null;
 

@@ -34,14 +34,20 @@ export function HomeGetInvolved() {
 
 // Around the resort → Cabin Stay · Local Places. Secondary destinations, kept
 // lower on Home (below Get involved and the Ask-for-Help / People row).
+//
+// Tagged `data-fit-anchor-empty`: when Home has no upcoming events, the hero
+// logo anchors on THIS group (rather than ballooning) so it lands just above
+// the fold — see lib/appLogoFit.ts.
 export function HomeAroundResort() {
   return (
-    <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · Local Places">
-      <div className="grid grid-cols-2 gap-3">
-        <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
-        <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
-      </div>
-    </CollapsibleSection>
+    <div data-fit-anchor-empty>
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · Local Places">
+        <div className="grid grid-cols-2 gap-3">
+          <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
+          <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
+        </div>
+      </CollapsibleSection>
+    </div>
   );
 }
 
