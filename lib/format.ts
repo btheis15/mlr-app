@@ -116,10 +116,19 @@ export function relativeDays(today: string, date: string): string | null {
  * them into the friendly "(715) 555-0123" display.
  */
 
-/** Strip a phone string to at most 10 US digits, dropping a leading "1"/"+1"
- *  country code so a pasted "+1 715…" or "1-715…" lands on the 10 we format. */
+/** Strip a phone string to at most 10 US digits, dropping a leading "+1"/"1"
+ *  country code so a pasted "+1 715…" or "1-715…" — and our own stored
+ *  "+1 (715)…" value — all land on the 10 national digits we format.
+ *
+ *  The explicit "+1 " prefix is removed *textually first*: our stored value
+ *  always carries it, and without this the prefix's own "1" gets re-counted as
+ *  a national digit on every keystroke (the length-based strip below only fires
+ *  once 11 digits accumulate), so a field would balloon into "(111) 111-1111"
+ *  as you type. US national numbers never start with 1, so a leading 1 is
+ *  unambiguously a country code either way. */
 export function phoneDigits(input: string): string {
-  let d = (input || "").replace(/\D/g, "");
+  const s = (input || "").replace(/^\s*\+1[\s.\-(]+/, "");
+  let d = s.replace(/\D/g, "");
   if (d.length > 10 && d.startsWith("1")) d = d.slice(1);
   return d.slice(0, 10);
 }
