@@ -73,6 +73,19 @@ body {
   font-size: 1rem;
 }
 
+/* Kill iOS rubber-band overscroll on the page scroller. Without this, dragging
+   past the top/bottom bounces the whole document, and WebKit drags the
+   `position: fixed` TabBar along with the bounce — so the bar appears to "come
+   up" off the bottom edge for a moment while scrolling. `overscroll-behavior`
+   contains the scroll to this element (no bounce-chaining, no pull-to-refresh),
+   which keeps the fixed bar pinned. Paired with the opaque-bg fix from #192.
+   Light-mode PWA target is iOS 16.4+, which supports this. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+
 html,
 body {
   color: var(--color-foreground);
