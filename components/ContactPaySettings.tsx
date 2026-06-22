@@ -6,13 +6,14 @@ import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
+import { PhoneInput } from "@/components/PhoneInput";
 import { isApple } from "@/lib/push";
 
 // Profile section to set your phone + pay handles and pick your preferred
 // contact/pay methods — what the member card defaults to. Each is optional.
 // Degrades to a gentle note until migration 0006 is run.
 const FIELDS: { key: string; label: string; placeholder: string; hint?: string; type?: string }[] = [
-  { key: "phone", label: "Phone (call / text / Apple Cash)", placeholder: "+1 715 555 0123" },
+  { key: "phone", label: "Phone (call / text / Apple Cash)", placeholder: "(715) 555-0123" },
   { key: "contact_email", label: "Email for contact", placeholder: "you@email.com", hint: "Defaults to the email you signed up with — change it to be reached somewhere else." },
   { key: "venmo", label: "Venmo", placeholder: "username" },
   { key: "zelle", label: "Zelle", placeholder: "phone or email" },
@@ -94,13 +95,17 @@ export function ContactPaySettings() {
       {FIELDS.map((f) => (
         <label key={f.key} className="block">
           <span className="text-xs font-medium text-foreground/70">{f.label}</span>
-          <input
-            value={v[f.key] ?? ""}
-            onChange={(e) => set(f.key, e.target.value)}
-            placeholder={f.placeholder}
-            type={f.type ?? "text"}
-            className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-          />
+          {f.key === "phone" ? (
+            <PhoneInput value={v[f.key] ?? ""} onChange={(val) => set(f.key, val)} className="mt-1" placeholder={f.placeholder} />
+          ) : (
+            <input
+              value={v[f.key] ?? ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              placeholder={f.placeholder}
+              type={f.type ?? "text"}
+              className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            />
+          )}
           {f.hint && <span className="mt-1 block text-[11px] text-foreground/45">{f.hint}</span>}
         </label>
       ))}

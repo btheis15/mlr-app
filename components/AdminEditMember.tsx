@@ -6,6 +6,7 @@ import { useSaveStatus } from "@/lib/hooks";
 import { setMemberEmail } from "@/lib/admin";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
+import { PhoneInput } from "@/components/PhoneInput";
 
 // Admin edit of ANOTHER member's info, the backup for when a member can't do it
 // themselves. Profile fields go through the admin_set_member_profile RPC
@@ -16,7 +17,7 @@ import { AddressEditor } from "@/components/AddressEditor";
 const TEXT_FIELDS: { key: string; label: string; placeholder?: string }[] = [
   { key: "display_name", label: "Name" },
   { key: "household", label: "Household / cabin" },
-  { key: "phone", label: "Phone", placeholder: "+1 715 555 0123" },
+  { key: "phone", label: "Phone", placeholder: "(715) 555-0123" },
   { key: "contact_email", label: "Contact email", placeholder: "where to reach them" },
   { key: "venmo", label: "Venmo" },
   { key: "zelle", label: "Zelle" },
@@ -128,12 +129,16 @@ export function AdminEditMember({ memberId, memberEmail, memberName, onClose, on
       {TEXT_FIELDS.map((f) => (
         <label key={f.key} className="block">
           <span className="text-xs font-medium text-foreground/70">{f.label}</span>
-          <input
-            value={v[f.key] ?? ""}
-            onChange={(e) => set(f.key, e.target.value)}
-            placeholder={f.placeholder}
-            className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-          />
+          {f.key === "phone" ? (
+            <PhoneInput value={v[f.key] ?? ""} onChange={(val) => set(f.key, val)} className="mt-1" placeholder={f.placeholder} />
+          ) : (
+            <input
+              value={v[f.key] ?? ""}
+              onChange={(e) => set(f.key, e.target.value)}
+              placeholder={f.placeholder}
+              className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            />
+          )}
         </label>
       ))}
 
