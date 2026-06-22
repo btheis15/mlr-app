@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIdentity } from "@/components/IdentityProvider";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
+import { PhoneInput } from "@/components/PhoneInput";
 import { PushToggle } from "@/components/PushToggle";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/roles";
@@ -172,14 +173,7 @@ export function WelcomeIntro() {
                 <span className="text-xs font-medium text-foreground/70">
                   Phone (so members can call or text you)
                 </span>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 715 555 0123"
-                  type="tel"
-                  autoComplete="tel"
-                  className={FIELD}
-                />
+                <PhoneInput value={phone} onChange={setPhone} className="mt-1" />
               </label>
 
               <div>

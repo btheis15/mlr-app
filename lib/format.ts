@@ -111,6 +111,39 @@ export function relativeDays(today: string, date: string): string | null {
 }
 
 /**
+ * US phone helpers. The app assumes a "+1" country code (the family is all in
+ * the States), so entry only deals in the 10 national digits and these turn
+ * them into the friendly "(715) 555-0123" display.
+ */
+
+/** Strip a phone string to at most 10 US digits, dropping a leading "1"/"+1"
+ *  country code so a pasted "+1 715…" or "1-715…" lands on the 10 we format. */
+export function phoneDigits(input: string): string {
+  let d = (input || "").replace(/\D/g, "");
+  if (d.length > 10 && d.startsWith("1")) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
+/** Progressive "(715) 555-0123" formatting of up-to-10 national digits — safe
+ *  to call on partial input as someone types. */
+export function formatPhoneNational(input: string): string {
+  const d = phoneDigits(input);
+  const a = d.slice(0, 3), b = d.slice(3, 6), c = d.slice(6, 10);
+  if (!d) return "";
+  if (d.length <= 3) return `(${a}`;
+  if (d.length <= 6) return `(${a}) ${b}`;
+  return `(${a}) ${b}-${c}`;
+}
+
+/** Canonical stored phone with the assumed country code: "+1 (715) 555-0123",
+ *  or "" when there are no digits. `tel:`/`sms:` links re-strip to digits, so
+ *  this nicely-formatted value is also link-safe. */
+export function formatPhoneStored(input: string): string {
+  const national = formatPhoneNational(input);
+  return national ? `+1 ${national}` : "";
+}
+
+/**
  * The right noun form for a count: `plural(1, "day")` → "day",
  * `plural(2, "day")` → "days". Pass `pluralForm` for irregulars
  * (e.g. `plural(n, "person", "people")`). Use as `{n} {plural(n, "day")}`.
