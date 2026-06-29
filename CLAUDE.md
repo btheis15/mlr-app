@@ -133,14 +133,34 @@ Committee rosters are **static** in [`lib/data.ts`](lib/data.ts) `COMMITTEES`
 where each person's `roles[]` are the **areas** they own (Meals · Entertainment &
 Games · Art & Decorating · Merchandise, Fundraising & Polling · Logistics,
 Scheduling & Finance); a trailing `" · Lead"` on a role marks that area's lead.
-[`app/committees/[slug]/page.tsx`](app/committees/[slug]/page.tsx) detects a
-role-based committee and lays the roster out **grouped by area** (Lead pinned on
-top) instead of a flat list; the other committees fall back to the flat list.
-Most people **have no account yet**, so `CommitteeMember.email`/`phone` (and
-`Chef.phone`, `ScheduleEvent.start`) are **optional** — contact controls
+The roster renders via [`CommitteeRoster`](components/CommitteeRoster.tsx): a
+role-based committee is laid out **grouped by area** (Lead pinned on top); other
+committees get a flat list; an **empty roster renders nothing** (so it never
+shows a misleading "no members" next to the account-membership card). Most people
+**have no account yet**, so `CommitteeMember.email`/`phone` (and `Chef.phone`,
+`ScheduleEvent.start`) are **optional** — contact controls
 ([`CommitteeMemberContact`](components/CommitteeMemberContact.tsx),
 `CommitteeJoin`, dinner/schedule leads) self-hide when there's no number, and
 `formatTime()` renders **"TBD"** for a missing time.
+
+**Two distinct rosters — don't confuse them.** (1) The **static display roster**
+above (`COMMITTEES`, public, includes account-less people). (2) The Supabase
+**`committee_members`** table — account-only membership that gates **chat**,
+managed by leads/admins via [`CommitteeMembers`](components/CommitteeMembers.tsx)
+and readable only by that committee's members (RLS, [`0012`](supabase/migrations/0012_committees.sql)).
+They count different things, so an admin can see e.g. "[2] members" (DB chat
+membership) alongside a different static roster — that's expected, not a bug.
+
+**Account linking (no duplicate slot).** `CommitteeRoster` resolves each static
+slot to a real account by **email** (`profiles.contact_email`, which Supabase
+seeds from the login email on signup; profiles are public-read) with a
+[`nameMatches()`](lib/committees.ts) fallback. A linked slot renders the
+**account** (avatar + current display name + tap-through to the profile) instead
+of the placeholder, so a person **upgrades in place** when they sign up — one
+slot per person, no duplicate. ⚠️ The roster emails ship in the **client
+bundle** (needed for both the link key and `mailto:`); consistent with the
+app's existing "seed contact ships in the bundle" posture (see the privacy wall
+note) — display is still gated behind sign-in.
 
 **Name badge** — [`CommitteeBadge`](components/CommitteeBadge.tsx) is a tiny
 emoji tag shown next to a person's name (committee name as the accessible

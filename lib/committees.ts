@@ -9,16 +9,21 @@ function tokens(s: string): string[] {
   return s.toLowerCase().replace(/[.,]/g, "").split(/\s+/).filter(Boolean);
 }
 
-/** Does a roster display name match a candidate (profile) name? Roster names are
- *  often short ("Brian", "Rob H", "Michelle B") while a profile is the fuller
- *  name ("Brian Theis", "Michelle Birkholz"). We match when every roster token
- *  is a prefix of the profile token in the same position — so the badge lights
- *  up as people link real accounts, without the names having to be identical. */
-function nameMatches(rosterName: string, candidate: string): boolean {
+/** Does a roster display name match a candidate (profile) name? The two can be
+ *  abbreviated in *either* direction — a roster "Michelle B" vs a profile
+ *  "Michelle Birkholz", or a roster "Keith Thibodeau" vs a profile "Keith T".
+ *  So we compare position by position over the shorter token list and accept a
+ *  token pair when either side is a prefix of the other. This lets the link /
+ *  badge survive most display-name choices without matching unrelated people. */
+export function nameMatches(rosterName: string, candidate: string): boolean {
   const r = tokens(rosterName);
   const c = tokens(candidate);
-  if (!r.length || !c.length || r.length > c.length) return false;
-  return r.every((tok, i) => c[i].startsWith(tok));
+  if (!r.length || !c.length) return false;
+  const n = Math.min(r.length, c.length);
+  for (let i = 0; i < n; i++) {
+    if (!(r[i].startsWith(c[i]) || c[i].startsWith(r[i]))) return false;
+  }
+  return true;
 }
 
 export interface CommitteeTag {
