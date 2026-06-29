@@ -38,7 +38,9 @@ export function WelcomeIntro() {
   const { user, updateUser, completeIntro } = useIdentity();
   const router = useRouter();
 
-  const [step, setStep] = useState<"welcome" | "push">("welcome");
+  // Push comes FIRST so turning on notifications is the very first thing a
+  // newcomer sees right after verifying — then the optional profile basics.
+  const [step, setStep] = useState<"push" | "basics">("push");
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -75,7 +77,8 @@ export function WelcomeIntro() {
     if (trimmed && trimmed !== user?.name) updateUser({ name: trimmed });
   };
 
-  const goToPush = async () => {
+  // Last step (basics): save whatever they entered, then finish + go Home.
+  const finishBasics = async () => {
     if (busy) return;
     setBusy(true);
     try {
@@ -83,7 +86,7 @@ export function WelcomeIntro() {
     } finally {
       setBusy(false);
     }
-    setStep("push");
+    await finish(true, true);
   };
 
   // Close + finish. `reachedPush` means they saw the push step, so we also stamp
@@ -113,7 +116,7 @@ export function WelcomeIntro() {
   // re-nags), then animate out. No navigation — leave them where they are.
   const dismiss = () => {
     if (busy) return;
-    void finish(step === "push", false);
+    void finish(true, false);
     if (reduceMotion()) return;
     setClosing(true);
     timer.current = setTimeout(() => {}, 440);
@@ -140,21 +143,21 @@ export function WelcomeIntro() {
         <div className="overflow-y-auto p-6">
           {/* Tiny step indicator */}
           <div className="mb-4 flex items-center justify-center gap-1.5" aria-hidden>
-            <span className={`h-1.5 w-6 rounded-full ${step === "welcome" ? "bg-primary" : "bg-primary/25"}`} />
             <span className={`h-1.5 w-6 rounded-full ${step === "push" ? "bg-primary" : "bg-primary/25"}`} />
+            <span className={`h-1.5 w-6 rounded-full ${step === "basics" ? "bg-primary" : "bg-primary/25"}`} />
           </div>
 
-          {step === "welcome" ? (
+          {step === "basics" ? (
             <div className="space-y-4">
               <div className="space-y-2 text-center">
                 <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
                   🌲
                 </div>
-                <h1 className="text-xl font-bold">Welcome to MLR, {firstName}!</h1>
+                <h1 className="text-xl font-bold">A few details about you</h1>
                 <p className="text-sm text-foreground/60">
-                  Glad you&rsquo;re here. Take a few seconds to fill in the basics so
-                  the family can reach you and celebrate your birthday. It&rsquo;s all
-                  optional — you can change any of it later in Profile.
+                  Take a few seconds to fill in the basics so the family can reach
+                  you and celebrate your birthday. It&rsquo;s all optional — you can
+                  change any of it later in Profile.
                 </p>
               </div>
 
@@ -214,11 +217,11 @@ export function WelcomeIntro() {
               <div className="space-y-2 pt-1">
                 <button
                   type="button"
-                  onClick={goToPush}
+                  onClick={finishBasics}
                   disabled={busy}
                   className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {busy ? "Saving…" : "Continue"}
+                  {busy ? "Finishing…" : "Done"}
                 </button>
                 <button
                   type="button"
@@ -226,7 +229,7 @@ export function WelcomeIntro() {
                   disabled={busy}
                   className="press w-full py-1 text-center text-xs font-medium text-foreground/55"
                 >
-                  Skip for now
+                  ← Back
                 </button>
               </div>
             </div>
@@ -236,11 +239,12 @@ export function WelcomeIntro() {
                 <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
                   🔔
                 </div>
-                <h1 className="text-xl font-bold">Stay in the loop</h1>
+                <h1 className="text-xl font-bold">Welcome to MLR, {firstName}!</h1>
                 <p className="text-sm text-foreground/60">
-                  Turn on notifications to get a heads-up on your phone for what
-                  matters at the lake. A lot are on by default — turn off any you
-                  don&rsquo;t want below. You can change these anytime in Profile.
+                  First, turn on notifications so you get a heads-up on your phone
+                  for what matters at the lake — event RSVPs, dinners, help
+                  requests, and emergencies. A lot are on by default; turn off any
+                  you don&rsquo;t want. You can change these anytime in Profile.
                 </p>
               </div>
 
@@ -249,19 +253,19 @@ export function WelcomeIntro() {
               <div className="space-y-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => finish(true, true)}
+                  onClick={() => setStep("basics")}
                   disabled={busy}
                   className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {busy ? "Finishing…" : "Done"}
+                  Continue
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStep("welcome")}
+                  onClick={() => setStep("basics")}
                   disabled={busy}
                   className="press w-full py-1 text-center text-xs font-medium text-foreground/55"
                 >
-                  ← Back
+                  Skip for now
                 </button>
               </div>
             </div>

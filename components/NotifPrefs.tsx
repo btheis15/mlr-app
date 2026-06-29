@@ -3,7 +3,7 @@
 import { useIdentity } from "@/components/IdentityProvider";
 import type { NotifPrefType } from "@/lib/types";
 
-const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: boolean }[] = [
+const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: boolean; locked?: boolean }[] = [
   { value: "post_comment", label: "Comments on my posts", desc: "When someone comments on a post you made" },
   { value: "post_reply", label: "Replies on posts I'm in", desc: "When someone else comments on a post you commented on" },
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
@@ -15,7 +15,7 @@ const TYPES: { value: NotifPrefType; label: string; desc: string; adminOnly?: bo
   { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
   { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "help_request", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },
-  { value: "help_urgent", label: "Urgent help (emergencies)", desc: "When someone marks a request Urgent — goes to everyone, not just people here. We recommend leaving this on." },
+  { value: "help_urgent", label: "Urgent help (emergencies)", desc: "When someone marks a request Urgent — goes to everyone. Always on; the only way to silence it is your phone's notification permission.", locked: true },
   { value: "help_response", label: "Responses to my request", desc: "When someone’s on the way to help with your request" },
   { value: "cabin_request", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
   { value: "committee_join_request", label: "New committee join requests", desc: "When a member asks to join a committee (leads of that committee see these too)", adminOnly: true },
@@ -49,6 +49,24 @@ export function NotifPrefs() {
       </p>
       <div className="overflow-hidden rounded-2xl ring-1 ring-border">
         {shown.map((l, i) => {
+          // Locked kinds (emergencies) are always on and not toggleable — render
+          // a static row with a lock instead of a checkbox.
+          if (l.locked) {
+            return (
+              <div
+                key={l.value}
+                className={`flex w-full items-start justify-between gap-3 bg-primary/10 p-4 text-left ${i ? "border-t border-border" : ""}`}
+              >
+                <span className="min-w-0">
+                  <span className="text-sm font-medium">{l.label}</span>
+                  <span className="block text-xs text-foreground/50">{l.desc}</span>
+                </span>
+                <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  🔒 Always on
+                </span>
+              </div>
+            );
+          }
           const on = has(l.value);
           return (
             <button
