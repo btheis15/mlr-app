@@ -1,11 +1,8 @@
 import SwiftUI
 
-// MARK: - HelpRequestsView (BETA)
-// Shared log of open "Ask for Help" requests. Beta-gated: non-beta members
-// get an explanation, guests get a SignInWall. Each request shows the
-// category, what's needed, the requester, how many are needed vs. on the way,
-// and a Covered/Open badge. Eligible members tap "On my way" (then can
-// withdraw); the requester can cancel their own request.
+// MARK: - HelpRequestsView
+// Shared log of open "Ask for Help" requests. Guests get a SignInWall;
+// signed-in members see the full log and can post requests.
 
 struct HelpRequestsView: View {
     @Environment(AppEnvironment.self) private var env
@@ -24,8 +21,6 @@ struct HelpRequestsView: View {
             Group {
                 if !env.isSignedIn {
                     SignInWall { listPlaceholder }
-                } else if !env.isBetaTester && !env.isAdmin {
-                    betaExplanation
                 } else {
                     content
                 }
@@ -34,7 +29,7 @@ struct HelpRequestsView: View {
             .navigationTitle("Ask for Help")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                if env.isBetaTester || env.isAdmin {
+                if env.isSignedIn {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showAskSheet = true
@@ -96,27 +91,6 @@ struct HelpRequestsView: View {
                 .refreshable { await env.helpService.fetchOpenRequests() }
             }
         }
-    }
-
-    // MARK: - Beta explanation
-
-    private var betaExplanation: some View {
-        VStack(spacing: 18) {
-            Spacer()
-            Image(systemName: "hands.and.sparkles.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(Color.mlrFest)
-            Text("Ask for Help is in beta")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.mlrText)
-            Text("When you're at the resort, post a quick request for a hand — moving something, setting up, a ride. Willing helpers who are also here get pinged. It's still being tested with our beta crew.")
-                .font(.mlrBody)
-                .foregroundStyle(Color.mlrTextMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Empty / placeholder
@@ -227,8 +201,6 @@ private struct HelpRequestCard: View {
                     .foregroundStyle(Color.mlrTextMuted)
             }
 
-            // GPS-pinned requests get a map + one-tap navigate (Directions button
-            // lives inside HelpRequestMap's overlay).
             if let coordinate = request.coordinate {
                 HelpRequestMap(coordinate: coordinate,
                                title: request.whereDescription ?? request.what)

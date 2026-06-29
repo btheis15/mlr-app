@@ -178,7 +178,7 @@ private struct FestPosterCard: View {
             Text("2026 · Muskellunge Lake Resort")
                 .font(.festSerif(14))
                 .foregroundStyle(Color.mlrFest.opacity(0.75))
-            Text("August 2 – 8 · Tomahawk, Wisconsin")
+            Text("\(FamilyFestConfig.dateRangeLabel) · Tomahawk, Wisconsin")
                 .font(.festSerif(13))
                 .foregroundStyle(Color.mlrFest.opacity(0.6))
         }

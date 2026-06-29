@@ -5,22 +5,20 @@ import SwiftUI
 // Add CaseIterable + Identifiable conformances and UI helpers here.
 
 extension BroadcastAudience: CaseIterable, Identifiable {
-    public static var allCases: [BroadcastAudience] { [.everyone, .betaTesters, .admins] }
+    public static var allCases: [BroadcastAudience] { [.everyone, .admins] }
     public var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .everyone:    return "Everyone"
-        case .betaTesters: return "Beta Testers"
-        case .admins:      return "Admins"
+        case .everyone: return "Everyone"
+        case .admins:   return "Admins"
         }
     }
 
     var icon: String {
         switch self {
-        case .everyone:    return "person.3.fill"
-        case .betaTesters: return "flask.fill"
-        case .admins:      return "shield.fill"
+        case .everyone: return "person.3.fill"
+        case .admins:   return "shield.fill"
         }
     }
 }
@@ -32,7 +30,7 @@ struct AdminNotificationComposer: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String = ""
-    @State private var body: String = ""
+    @State private var messageBody: String = ""
     @State private var audience: BroadcastAudience = .everyone
     @State private var alsoBanner: Bool = false
     @State private var bannerExpiry: ExpiryWindow = .sixHours
@@ -53,13 +51,13 @@ struct AdminNotificationComposer: View {
                         .font(.system(size: 16, weight: .medium))
 
                     ZStack(alignment: .topLeading) {
-                        if body.isEmpty {
+                        if messageBody.isEmpty {
                             Text("Body (optional)")
                                 .foregroundStyle(Color.mlrTextSubtle)
                                 .padding(.top, 8)
                                 .padding(.leading, 4)
                         }
-                        TextEditor(text: $body)
+                        TextEditor(text: $messageBody)
                             .frame(minHeight: 80)
                     }
                 }
@@ -185,8 +183,8 @@ struct AdminNotificationComposer: View {
                     .foregroundStyle(Color.mlrText)
                     .lineLimit(2)
 
-                if !body.isEmpty {
-                    Text(body)
+                if !messageBody.isEmpty {
+                    Text(messageBody)
                         .font(.caption)
                         .foregroundStyle(Color.mlrTextMuted)
                         .lineLimit(2)
@@ -219,7 +217,7 @@ struct AdminNotificationComposer: View {
         defer { isSending = false }
 
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
-        let trimmedBody  = body.trimmingCharacters(in: .whitespaces)
+        let trimmedBody  = messageBody.trimmingCharacters(in: .whitespaces)
         let postBanner   = audience == .everyone && alsoBanner
 
         do {

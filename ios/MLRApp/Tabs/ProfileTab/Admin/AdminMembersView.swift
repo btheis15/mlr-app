@@ -8,7 +8,7 @@ struct AdminMember: Codable, Identifiable, Equatable {
     let name: String
     let email: String
     var isAdmin: Bool
-    var betaTester: Bool
+    var betaTester: Bool  // kept for DB compat; not surfaced in UI
     var avatarUrl: String?
     var createdAt: Date?
 
@@ -66,7 +66,6 @@ struct AdminMembersView: View {
                     member: member,
                     currentUserId: currentUserId,
                     onToggleAdmin: { Task { await toggleAdmin(member) } },
-                    onToggleBeta:  { Task { await toggleBeta(member) } },
                     onRemove: {
                         memberToRemove = member
                         showRemoveAlert = true
@@ -142,29 +141,15 @@ struct AdminMembersView: View {
         guard member.id != currentUserId else { return }
         let newValue = !member.isAdmin
         do {
+            struct P: Encodable { let target_user_id: String; let admin_value: Bool }
             try await supabase
-                .rpc("set_admin", params: ["target_user_id": member.id.uuidString, "admin_value": newValue])
+                .rpc("set_admin", params: P(target_user_id: member.id.uuidString, admin_value: newValue))
                 .execute()
             if let idx = members.firstIndex(of: member) {
                 members[idx].isAdmin = newValue
             }
         } catch {
             self.error = "Couldn't update admin role."
-        }
-    }
-
-    @MainActor
-    private func toggleBeta(_ member: AdminMember) async {
-        let newValue = !member.betaTester
-        do {
-            try await supabase
-                .rpc("set_beta_tester", params: ["target_user_id": member.id.uuidString, "beta_value": newValue])
-                .execute()
-            if let idx = members.firstIndex(of: member) {
-                members[idx].betaTester = newValue
-            }
-        } catch {
-            self.error = "Couldn't update beta role."
         }
     }
 
@@ -188,7 +173,6 @@ private struct MemberRow: View {
     let member: AdminMember
     let currentUserId: UUID?
     let onToggleAdmin: () -> Void
-    let onToggleBeta: () -> Void
     let onRemove: () -> Void
 
     private var isSelf: Bool { member.id == currentUserId }
@@ -206,9 +190,6 @@ private struct MemberRow: View {
 
                     if member.isAdmin {
                         badge("Admin", color: Color.mlrPrimary)
-                    }
-                    if member.betaTester {
-                        badge("Beta", color: Color.mlrAccent)
                     }
                     if isSelf {
                         badge("You", color: Color.mlrInfo)
@@ -235,15 +216,6 @@ private struct MemberRow: View {
                 }
             }
 
-            Button {
-                onToggleBeta()
-            } label: {
-                Label(
-                    member.betaTester ? "Remove from beta" : "Add to beta",
-                    systemImage: member.betaTester ? "flask.slash" : "flask.fill"
-                )
-            }
-
             if canRemove {
                 Divider()
                 Button(role: .destructive) {
@@ -261,13 +233,6 @@ private struct MemberRow: View {
                     Label("Remove", systemImage: "trash")
                 }
             }
-
-            Button {
-                onToggleBeta()
-            } label: {
-                Label(member.betaTester ? "Remove beta" : "Add beta", systemImage: "flask.fill")
-            }
-            .tint(Color.mlrAccent)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if !isSelf {

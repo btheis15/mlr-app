@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RowLink } from "@/components/RowLink";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { WorkChecklist } from "@/components/WorkChecklist";
 
 // The resort destinations on Home, as collapsed groups (the same accordion the
 // Profile page uses) so the screen stays short for a mostly-non-technical,
@@ -41,11 +42,12 @@ export function HomeGetInvolved() {
 export function HomeAroundResort() {
   return (
     <div data-fit-anchor-empty>
-      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · Local Places">
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Cabin Stay · Local Places · Work Checklist">
         <div className="grid grid-cols-2 gap-3">
           <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
           <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
         </div>
+        <WorkChecklist />
       </CollapsibleSection>
     </div>
   );
@@ -69,7 +71,7 @@ function TileCard({
       href={href}
       className="press rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
     >
-      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${tile}`}>{emoji}</span>
+      <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${tile}`}>{emoji}</span>
       <h3 className="mt-2 text-sm font-semibold">{title}</h3>
       <p className="mt-0.5 text-xs text-foreground/60">{body}</p>
     </Link>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent, WorkItem } from "@/lib/types";
 import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
+import { fetchEventWorkItems } from "@/lib/workItems";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
@@ -45,6 +46,11 @@ export function EventSheet({
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const [deleting, setDeleting] = useState(false);
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+
+  useEffect(() => {
+    fetchEventWorkItems(event.id).then(setWorkItems);
+  }, [event.id]);
   const days = eventDays(event.startDate, event.endDate);
   const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
@@ -203,6 +209,41 @@ export function EventSheet({
               <p className="px-0.5 text-[11px] text-foreground/45">
                 Numbers show how many are here each day · tap a day to add or drop it.
               </p>
+            </div>
+          )}
+
+          {/* Work items planned for this event */}
+          {workItems.length > 0 && (
+            <div className="space-y-2">
+              <SectionLabel>Work items planned</SectionLabel>
+              <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
+                {workItems.map((item) => (
+                  <div key={item.id} className="flex items-start gap-3 px-3 py-2.5">
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                        item.status === "done"
+                          ? "bg-primary/15 text-primary"
+                          : "border-2 border-border"
+                      }`}
+                      aria-hidden
+                    >
+                      {item.status === "done" ? "✓" : ""}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={`block text-sm font-medium leading-snug ${
+                          item.status === "done" ? "text-foreground/40 line-through" : ""
+                        }`}
+                      >
+                        {item.title}
+                      </span>
+                      {item.category && (
+                        <span className="text-[10px] text-foreground/45">{item.category}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

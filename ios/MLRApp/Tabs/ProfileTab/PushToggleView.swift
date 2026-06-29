@@ -92,11 +92,8 @@ struct PushToggleView: View {
                     pushToggle(for: .eventRsvp, label: "Event RSVPs",              icon: "calendar.badge.checkmark")
                     pushToggle(for: .cabinDecision, label: "Cabin stay decisions", icon: "house.lodge.fill")
                     pushToggle(for: .committeeJoin, label: "Committee joins",      icon: "person.badge.plus")
-
-                    if env.isBetaTester || env.isAdmin {
-                        pushToggle(for: .helpRequest,  label: "Help requests",     icon: "hand.raised.fill")
-                        pushToggle(for: .helpResponse, label: "Help responses",    icon: "figure.walk")
-                    }
+                    pushToggle(for: .helpRequest,  label: "Help requests",         icon: "hand.raised.fill")
+                    pushToggle(for: .helpResponse, label: "Help responses",        icon: "figure.walk")
 
                     if env.isAdmin {
                         Divider()
@@ -262,22 +259,6 @@ struct PushToggleView: View {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
         }
-    }
-}
-
-// MARK: - PushService interface additions
-// These must be implemented on PushService (documented interface).
-
-extension PushService {
-    /// Remove the APNs/push subscription token for `userId` from Supabase.
-    func removeToken(userId: UUID) async throws {
-        guard let token = AppDelegate.apnsToken else { return }
-        try await supabase
-            .from("push_subscriptions")
-            .delete()
-            .eq("user_id", value: userId.uuidString)
-            .eq("token", value: token)
-            .execute()
     }
 }
 

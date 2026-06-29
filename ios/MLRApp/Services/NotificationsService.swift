@@ -44,7 +44,7 @@ final class NotificationsService {
                 .from("notifications")
                 .select("count:id.count()")
                 .eq("user_id", value: userId.uuidString)
-                .is("seen_at", value: "null")
+                .is("seen_at", value: nil as Bool?)
                 .or("expires_at.is.null,expires_at.gt.\(iso8601Now())")
                 .execute()
                 .value
@@ -127,19 +127,15 @@ final class NotificationsService {
         realtimeChannel = channel
 
         Task {
-            await channel.on(
-                "postgres_changes",
-                filter: ChannelFilter(
-                    event: "INSERT",
-                    schema: "public",
-                    table: "notifications",
-                    filter: "user_id=eq.\(userId.uuidString)"
-                )
-            ) { [weak self] message in
+            channel.onPostgresChange(
+                InsertAction.self,
+                schema: "public",
+                table: "notifications",
+                filter: "user_id=eq.\(userId.uuidString)"
+            ) { [weak self] action in
                 guard let self else { return }
                 Task { @MainActor in
-                    // Decode the new row and prepend it
-                    if let newNotif = self.decodeNotification(from: message.record) {
+                    if let newNotif = self.decodeNotification(from: action.record) {
                         self.notifications.insert(newNotif, at: 0)
                         if newNotif.countsForBadge {
                             self.unreadCount += 1
@@ -147,7 +143,7 @@ final class NotificationsService {
                     }
                 }
             }
-            .subscribe()
+            await channel.subscribe()
         }
     }
 
@@ -209,6 +205,5 @@ final class NotificationsService {
 
 enum BroadcastAudience: String {
     case everyone = "everyone"
-    case betaTesters = "beta_testers"
     case admins
 }

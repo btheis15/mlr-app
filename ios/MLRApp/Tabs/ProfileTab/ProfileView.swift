@@ -1,9 +1,10 @@
 import SwiftUI
 import PhotosUI
+import Supabase
 
 // MARK: - ProfileView
 // The Profile tab. Shows the signed-in member's info with editable fields,
-// notification/push settings, beta features, admin hub link, and sign-out.
+// notification/push settings, features, admin hub link, and sign-out.
 
 struct ProfileView: View {
     @Environment(AppEnvironment.self) private var env
@@ -106,10 +107,8 @@ struct ProfileView: View {
             // 4b. Appearance (light / dark / system)
             appearanceSection
 
-            // 5. Beta features (beta testers only)
-            if env.isBetaTester {
-                betaSection
-            }
+            // 5. Features (all signed-in members)
+            featuresSection
 
             // 6. Admin hub (admins only)
             if env.isAdmin {
@@ -308,29 +307,12 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Beta section
+    // MARK: - Features section
 
-    private var betaSection: some View {
-        Section {
-            // AI Assistant toggle
+    private var featuresSection: some View {
+        Section("Features") {
             AssistantToggleRow()
-
-            // Willing to help toggle
             WillingToHelpRow()
-
-            NavigationLink {
-                BetaInfoView()
-            } label: {
-                Label("Beta features info", systemImage: "flask.fill")
-                    .foregroundStyle(Color.mlrText)
-            }
-        } header: {
-            HStack(spacing: 4) {
-                Image(systemName: "flask.fill")
-                    .font(.system(size: 10))
-                Text("Beta Features")
-            }
-            .foregroundStyle(Color.mlrAccent)
         }
     }
 
@@ -503,21 +485,21 @@ struct ProfileView: View {
         saveError = nil
         defer { isSaving = false }
 
-        var updates: [String: Any] = [
-            "name": name.trimmingCharacters(in: .whitespaces),
-            "phone": phone.trimmingCharacters(in: .whitespaces),
-            "bio": bio.trimmingCharacters(in: .whitespaces),
-            "venmo_handle": venmo.trimmingCharacters(in: .whitespaces),
-            "zelle_handle": zelle.trimmingCharacters(in: .whitespaces),
-            "apple_cash_handle": appleCash.trimmingCharacters(in: .whitespaces)
+        var updates: [String: AnyJSON] = [
+            "name": .string(name.trimmingCharacters(in: .whitespaces)),
+            "phone": .string(phone.trimmingCharacters(in: .whitespaces)),
+            "bio": .string(bio.trimmingCharacters(in: .whitespaces)),
+            "venmo_handle": .string(venmo.trimmingCharacters(in: .whitespaces)),
+            "zelle_handle": .string(zelle.trimmingCharacters(in: .whitespaces)),
+            "apple_cash_handle": .string(appleCash.trimmingCharacters(in: .whitespaces))
         ]
 
         if hasBirthday {
             let fmt = DateFormatter()
             fmt.dateFormat = "yyyy-MM-dd"
-            updates["birthday"] = fmt.string(from: birthday)
+            updates["birthday"] = .string(fmt.string(from: birthday))
         } else {
-            updates["birthday"] = NSNull()
+            updates["birthday"] = .null
         }
 
         do {
@@ -548,7 +530,7 @@ struct ProfileView: View {
         do {
             _ = try await supabase.storage
                 .from("avatars")
-                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                .upload(path, data: data, options: .init(contentType: "image/jpeg", upsert: true))
 
             let publicUrl = try supabase.storage
                 .from("avatars")
@@ -653,47 +635,6 @@ private struct WillingToHelpRow: View {
         defer { isUpdating = false }
         try? await env.helpService.setWillingToHelp(userId: profile.id, willing: !profile.willingToHelp)
         await env.loadProfile()
-    }
-}
-
-// MARK: - BetaInfoView
-
-private struct BetaInfoView: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("You're in the beta tester group, which gives you early access to features being tested before they roll out to everyone.")
-                    .font(.body)
-
-                Text("Current beta features:")
-                    .font(.headline)
-
-                BulletPoint("AI Assistant — ask questions about the resort schedule, who's in charge of what, and more.")
-                BulletPoint("Ask for Help — post a quick request when you need a hand at the resort.")
-                BulletPoint("Willing to Help — opt in to receive help request notifications.")
-
-                Text("Your feedback directly shapes what ships. If something feels off, let an admin know.")
-                    .font(.body)
-                    .foregroundStyle(Color.mlrTextMuted)
-            }
-            .padding()
-        }
-        .navigationTitle("Beta Features")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct BulletPoint: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("•")
-                .foregroundStyle(Color.mlrPrimary)
-            Text(text)
-                .font(.subheadline)
-        }
     }
 }
 

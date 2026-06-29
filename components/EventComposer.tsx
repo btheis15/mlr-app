@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import type { EventKind, ResortEvent } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { EventKind, ResortEvent, WorkItem } from "@/lib/types";
 import { createEvent, updateEvent, type EventInput } from "@/lib/events";
+import { fetchWorkItems, fetchEventWorkItems, syncEventWorkItems } from "@/lib/workItems";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
@@ -42,6 +43,26 @@ export function EventComposer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Work items: all open items for the picker + which ones are selected for this event.
+  const [allWorkItems, setAllWorkItems] = useState<WorkItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchWorkItems().then((items) => setAllWorkItems(items.filter((i) => i.status === "open")));
+    if (event?.persisted) {
+      fetchEventWorkItems(event.id).then((linked) =>
+        setSelectedItemIds(new Set(linked.map((i) => i.id))),
+      );
+    }
+  }, [event?.id, event?.persisted]);
+
+  const toggleItem = (id: string) =>
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   const multiDay = Boolean(endDate && endDate > startDate);
   const validRange = !endDate || endDate >= startDate;
   const canSubmit = title.trim().length > 0 && startDate.length > 0 && validRange && !pending;
@@ -60,14 +81,19 @@ export function EventComposer({
       description: description.trim() || null,
       dayRsvp: multiDay && dayRsvp,
     };
-    const { error: err } = event?.persisted
-      ? await updateEvent(event.id, input)
-      : await createEvent(input);
-    setPending(false);
-    if (err) {
-      setError(err);
-      return;
+    let eventId: string | undefined;
+    if (event?.persisted) {
+      const { error: err } = await updateEvent(event.id, input);
+      if (err) { setPending(false); setError(err); return; }
+      eventId = event.id;
+    } else {
+      const { id, error: err } = await createEvent(input);
+      if (err) { setPending(false); setError(err); return; }
+      eventId = id;
     }
+    // Sync work item links after the event is saved.
+    if (eventId) await syncEventWorkItems(eventId, [...selectedItemIds]);
+    setPending(false);
     onSaved();
     close();
   };
@@ -186,6 +212,40 @@ export function EventComposer({
               className={`${sel} w-full resize-none`}
             />
           </div>
+
+          {/* Work items — link checklist items so attendees know what's planned */}
+          {allWorkItems.length > 0 && (
+            <div className="space-y-2">
+              <SectionLabel>
+                Work items{" "}
+                <span className="font-normal normal-case text-foreground/40">(optional)</span>
+              </SectionLabel>
+              <p className="px-0.5 text-xs text-foreground/50">
+                Check off tasks from the resort work checklist so people know what&rsquo;s planned.
+              </p>
+              <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
+                {allWorkItems.map((item) => (
+                  <label
+                    key={item.id}
+                    className="flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-background"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedItemIds.has(item.id)}
+                      onChange={() => toggleItem(item.id)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm">{item.title}</span>
+                      {item.category && (
+                        <span className="text-[10px] text-foreground/45">{item.category}</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">

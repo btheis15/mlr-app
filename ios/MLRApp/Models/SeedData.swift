@@ -3,8 +3,8 @@ import Foundation
 // MARK: - Family Fest Config
 
 struct FamilyFestConfig {
-    static let startDate = "2026-08-02"
-    static let endDate   = "2026-08-08"
+    static let startDate = "2026-07-27"
+    static let endDate   = "2026-07-31"
     static let id        = "family-fest-2026"
     static let year      = 2026
 }
@@ -63,155 +63,186 @@ struct ResortActivity: Identifiable {
     let icon: String
 }
 
+// MARK: - Local Places Seed Data
+
+extension LocalPlace {
+    static let all: [LocalPlace] = [
+        LocalPlace(
+            id: "inshalla",
+            name: "Inshalla Country Club",
+            category: .golf,
+            phone: "+17154533130",
+            address: "Tomahawk, WI",
+            website: "https://inshallacc.com",
+            menuUrl: nil,
+            orderUrl: "https://stage.foreupsoftware.com/index.php/booking/19715/2251?booking_class_id=2431&schedule_id=2251#/teetimes",
+            description: "Public 18-hole course with a pro shop, driving range, and bar & grill."
+        ),
+        LocalPlace(
+            id: "billy-bobs",
+            name: "Billy Bob's Sports Bar & Grill",
+            category: .dining,
+            phone: "+17154534984",
+            address: "Tomahawk, WI",
+            website: "https://billybobssportsbarandgrill.com",
+            menuUrl: "https://billybobssportsbarandgrill.com/menu/",
+            orderUrl: nil,
+            description: "Our usual pizza order — plus burgers, baskets, and the big game on."
+        ),
+        LocalPlace(
+            id: "tilted-loon",
+            name: "Tilted Loon",
+            category: .dining,
+            phone: "+17154532768",
+            address: "Lake Nokomis · Tomahawk, WI",
+            website: "https://www.tiltedloon.com",
+            menuUrl: "https://www.tiltedloon.com/menus-1",
+            orderUrl: "https://order.toasttab.com/online/tilted_loon",
+            description: "Lakeside saloon known for pizza, burgers, and the Friday fish fry — takes online orders."
+        ),
+        LocalPlace(
+            id: "outboards",
+            name: "Outboards Bar & Grill",
+            category: .dining,
+            phone: "+17152243594",
+            address: "Downtown Tomahawk, WI",
+            website: "https://outboardsbarandgrill.com",
+            menuUrl: "https://outboardsbarandgrill.com/menu/",
+            orderUrl: nil,
+            description: "Downtown bar & grill — fish fry, happy hour, and a full grill menu."
+        ),
+        LocalPlace(
+            id: "sideways",
+            name: "Sideways Wine & Craft Beer",
+            category: .dining,
+            phone: "+17154930826",
+            address: "Downtown Tomahawk, WI",
+            website: "https://www.sidewayswineandcraftbeer.com",
+            menuUrl: "https://www.sidewayswineandcraftbeer.com/menu",
+            orderUrl: nil,
+            description: "Wine, Wisconsin craft beer, flatbreads, and charcuterie — a relaxed night out."
+        ),
+    ]
+}
+
 // MARK: - Schedule Item Seed Data
+// Jul 27 = Monday · Jul 28 = Tuesday · Jul 29 = Wednesday · Jul 30 = Thursday · Jul 31 = Friday
 
 extension ScheduleItem {
     static let seed: [ScheduleItem] = [
-        // Sunday Aug 2 — Arrival Day
+        // Monday Jul 27 — Arrival Day
         ScheduleItem(
-            id: "sun-bonfire",
-            day: "Sunday",
-            time: "7:00 PM",
-            title: "Opening Bonfire & Potluck",
-            location: "Main Fire Pit · Lakeside",
-            description: "Kick off the week together around the fire. Bring a dish to share — drinks provided. This is the unofficial start of everything.",
-            isPrivate: false,
-            leads: ["Mark Henderson", "Sue Garcia"]
-        ),
-        // Monday Aug 3
-        ScheduleItem(
-            id: "mon-fishing",
+            id: "arrival",
             day: "Monday",
-            time: "6:00 AM",
-            title: "Fishing Tournament",
-            location: "Dock A · Muskellunge Lake",
-            description: "Annual muskellunge fishing tournament. All ages welcome. Prizes for biggest catch and youngest angler. Bring your own gear or borrow from the resort.",
+            time: "3:00 PM",
+            title: "Arrival & check-in",
+            location: "Main Lodge",
+            description: "Roll in, grab your cabin keys at the lodge, and settle the kids. Coolers to the boathouse fridge.",
             isPrivate: false,
-            leads: ["Jim Peterson", "Ray Theis"]
+            leads: ["Steward Eadric of House Larkspur"]
         ),
         ScheduleItem(
-            id: "mon-kayak",
+            id: "welcome-bonfire",
             day: "Monday",
-            time: "2:00 PM",
-            title: "Kayak & Canoe Relay",
-            location: "Beach Area",
-            description: "Team relay race across the cove. Sign up at the beach — teams of 3.",
+            time: "7:30 PM",
+            title: "Welcome bonfire & s'mores",
+            location: "Lakeside fire pit",
+            description: "Kick off the week by the water. Marshmallows and firewood provided — bring a chair and your stories.",
             isPrivate: false,
-            leads: ["Amy Murphy"]
+            leads: ["Baron Aldric of House Thornwood"]
         ),
-        // Tuesday Aug 4
+        // Tuesday Jul 28
         ScheduleItem(
-            id: "tue-scavenger",
+            id: "pancake-breakfast",
             day: "Tuesday",
-            time: "10:00 AM",
-            title: "Scavenger Hunt",
-            location: "Resort Grounds — meet at Pavilion",
-            description: "The annual family scavenger hunt across the resort. Teams of 4–6, mixed ages. Clues hidden throughout the grounds, woods, and lakefront. Prizes for the top 3 teams.",
+            time: "8:00 AM",
+            title: "Pancake breakfast",
+            location: "Lodge deck",
+            description: "Grandpa's famous blueberry pancakes. Coffee's on by 7:30.",
             isPrivate: false,
-            leads: ["Lisa Garcia", "Tom Henderson"]
+            leads: ["Master Tobias of House Fenwick"]
         ),
         ScheduleItem(
-            id: "tue-golf",
+            id: "pontoon-parade",
             day: "Tuesday",
             time: "1:00 PM",
-            title: "Golf Outing",
-            location: "Tomahawk Golf Club · 15 min from resort",
-            description: "Optional golf outing for those who want to get a round in. Contact the lead to carpool.",
-            isPrivate: true,
-            leads: ["Dan Peterson"]
+            title: "Pontoon parade",
+            location: "Main dock",
+            description: "Deck out the pontoons and cruise the bay. Best-decorated boat wins the golden paddle.",
+            isPrivate: false,
+            leads: ["Captain Rowan of House Eldermoor"]
         ),
-        // Wednesday Aug 5
+        // Wednesday Jul 29
         ScheduleItem(
-            id: "wed-olympics",
+            id: "musky-tournament",
             day: "Wednesday",
-            time: "11:00 AM",
-            title: "Family Olympics",
-            location: "Back Field & Beach",
-            description: "Annual Family Olympics — tug of war, egg toss, three-legged race, and more. All ages compete. Medals awarded. Teams TBD morning of.",
+            time: "6:00 AM",
+            title: "Musky fishing tournament",
+            location: "North bay",
+            description: "The big one. Two-person boats, catch-and-release, biggest musky takes the trophy. Early start — coffee at the dock.",
             isPrivate: false,
-            leads: ["Mark Henderson", "Amy Murphy", "Lisa Garcia"]
-        ),
-        // Thursday Aug 6
-        ScheduleItem(
-            id: "thu-boat",
-            day: "Thursday",
-            time: "9:00 AM",
-            title: "Pontoon Cruise",
-            location: "Dock B — all pontoons",
-            description: "Morning lake cruise on the pontoons. Snacks and coolers welcome. Back by noon.",
-            isPrivate: true,
-            leads: ["Ray Theis"]
+            leads: ["Master Bartholomew of House Eldermoor"]
         ),
         ScheduleItem(
-            id: "thu-talent",
-            day: "Thursday",
-            time: "7:30 PM",
-            title: "Talent Show",
-            location: "Pavilion Stage",
-            description: "Family talent show — sign up by dinner. All acts welcome: music, comedy, impersonations, skits. Judges are the under-10 crew.",
-            isPrivate: false,
-            leads: ["Sue Garcia", "Amy Murphy"]
-        ),
-        // Friday Aug 7
-        ScheduleItem(
-            id: "fri-photo",
-            day: "Friday",
+            id: "kids-olympics",
+            day: "Wednesday",
             time: "10:00 AM",
-            title: "Family Portrait Session",
-            location: "Lakefront Dock",
-            description: "Annual family photo — whole group and by household. Wear your Fest shirt if you have one. A professional photographer will be on-site.",
+            title: "Kids' lake olympics",
+            location: "Swim beach",
+            description: "Cannonball contest, sandcastle build-off, and the legendary tube relay.",
             isPrivate: false,
-            leads: ["Lisa Garcia"]
+            leads: ["Lady Wynne of House Larkspur"]
         ),
+        // Thursday Jul 30
         ScheduleItem(
-            id: "fri-auction",
-            day: "Friday",
-            time: "4:00 PM",
-            title: "Silent Auction & Raffle",
+            id: "cousins-cookout",
+            day: "Thursday",
+            time: "5:30 PM",
+            title: "Cousins' cookout (potluck)",
             location: "Pavilion",
-            description: "Raise funds for next year's Fest. Donated items and experiences up for bid. Raffle tickets $5 each.",
+            description: "Everyone brings a dish — see the Crew tab for who's got what. Grill fired up at 5.",
             isPrivate: false,
-            leads: ["Mark Henderson", "Tom Henderson"]
+            leads: ["Goodwife Maren of House Hollowbrook"]
         ),
-        // Saturday Aug 8 — Last Day
         ScheduleItem(
-            id: "sat-breakfast",
-            day: "Saturday",
-            time: "9:00 AM",
-            title: "Grand Farewell Breakfast",
-            location: "Pavilion — main hall",
-            description: "Last morning together — a big spread before everyone hits the road. Lingerers welcome through noon.",
+            id: "talent-show",
+            day: "Thursday",
+            time: "7:00 PM",
+            title: "Family talent show",
+            location: "Lodge great room",
+            description: "Sign up at the lodge. Acts of all kinds welcome — the cheesier the better.",
             isPrivate: false,
-            leads: ["Sue Garcia", "Ray Theis"]
+            leads: ["Bard Percival of House Wyndmere"]
+        ),
+        // Friday Jul 31 — Last Day
+        ScheduleItem(
+            id: "group-photo",
+            day: "Friday",
+            time: "11:00 AM",
+            title: "Big group photo",
+            location: "Lodge front steps",
+            description: "Everyone, all of us, matching-ish shirts. Don't be late!",
+            isPrivate: false,
+            leads: ["Dame Cecily of House Brightwater"]
+        ),
+        ScheduleItem(
+            id: "fireworks",
+            day: "Friday",
+            time: "9:30 PM",
+            title: "Fireworks over the lake",
+            location: "Lakeside lawn",
+            description: "The grand finale. Blankets out, lights down, look up.",
+            isPrivate: false,
+            leads: ["Sir Reginald of House Pemberlye"]
         ),
         // Anytime
         ScheduleItem(
-            id: "anytime-scavenger",
+            id: "scavenger-hunt",
             day: "Anytime",
             time: "Any time",
-            title: "Mini Scavenger Hunt",
-            location: nil,
-            description: "A solo or small-group hunt you can do any time during the week. Pick up a clue sheet at the check-in table.",
-            isPrivate: false,
-            leads: []
-        ),
-        ScheduleItem(
-            id: "anytime-volleyball",
-            day: "Anytime",
-            time: "Any time",
-            title: "Volleyball & Horseshoes",
-            location: "Back Field",
-            description: "Nets and horseshoe pits are set up all week. Grab whoever's around and play.",
-            isPrivate: false,
-            leads: []
-        ),
-        ScheduleItem(
-            id: "anytime-smores",
-            day: "Anytime",
-            time: "After dark",
-            title: "S'mores at the Fire Pit",
-            location: "Main Fire Pit",
-            description: "Supplies are at the fire pit shelter every evening. Help yourself.",
+            title: "Family Fest scavenger hunt",
+            location: "Pick up your card at the Main Lodge",
+            description: "Track down hidden landmarks & oddities around the lake — any time, all week. Pick up a hunt card at the lodge, then find each spot at your own pace — solo, as a family, or as a house. Finish any day and turn it in at the lodge for a prize at the farewell BBQ.",
             isPrivate: false,
             leads: []
         ),
@@ -219,78 +250,59 @@ extension ScheduleItem {
 }
 
 // MARK: - Fest Dinner Seed Data
+// Jul 27 = Monday · Jul 28 = Tuesday · Jul 29 = Wednesday · Jul 30 = Thursday · Jul 31 = Friday
 
 extension FestDinner {
     static let seed: [FestDinner] = [
         FestDinner(
-            id: "dinner-sun",
-            day: "Sunday",
-            title: "Arrival Potluck",
-            chef: "Everyone",
-            menu: "Bring a dish to share\nGrilled brats & burgers (provided)\nLemonade & iced tea\nWatermelon",
-            location: "Pavilion Tables",
-            time: "6:30 PM",
-            crew: []
-        ),
-        FestDinner(
-            id: "dinner-mon",
+            id: "d-mon",
             day: "Monday",
-            title: "Shore Lunch Cookout",
-            chef: "Jim Peterson",
-            menu: "Fresh-caught fish (from the tournament)\nColeslaw\nCorn on the cob\nBaked beans\nCornbread",
-            location: "Lakeside Grill Area",
-            time: "5:30 PM",
-            crew: ["Ray Theis", "Dan Peterson", "Tom Henderson"]
-        ),
-        FestDinner(
-            id: "dinner-tue",
-            day: "Tuesday",
-            title: "Italian Night",
-            chef: "Sue Garcia",
-            menu: "Lasagna (meat & veggie)\nCaesar salad\nGarlic bread\nTiramisu",
-            location: "Pavilion Main Hall",
-            time: "6:00 PM",
-            crew: ["Lisa Garcia", "Amy Murphy"]
-        ),
-        FestDinner(
-            id: "dinner-wed",
-            day: "Wednesday",
-            title: "Wisconsin Bratwurst Fest",
-            chef: "Mark Henderson",
-            menu: "Beer brats & Johnsonville links\nKraut & grilled onions\nPotato salad\nPretzel rolls\nKey lime pie",
-            location: "Back Field Grills",
-            time: "5:30 PM",
-            crew: ["Tom Henderson", "Dan Peterson"]
-        ),
-        FestDinner(
-            id: "dinner-thu",
-            day: "Thursday",
-            title: "Taco Bar Night",
-            chef: "Amy Murphy",
-            menu: "Beef & chicken tacos\nAll the toppings bar\nRice & black beans\nChips & guacamole\nChurros",
-            location: "Pavilion Main Hall",
-            time: "6:00 PM",
-            crew: ["Lisa Garcia", "Sue Garcia"]
-        ),
-        FestDinner(
-            id: "dinner-fri",
-            day: "Friday",
-            title: "Farewell Fish Fry",
-            chef: "Ray Theis",
-            menu: "Friday fish fry — walleye & perch\nFrench fries\nColeslaw\nRye bread & lemon\nFunnel cake for dessert",
+            title: "The Welcoming Feast",
+            chef: "Baron Aldric of House Thornwood",
+            menu: "Flame-charred sausages & beef rounds of the realm, fire-roasted corn, and the Baron's legendary potato salad.",
             location: "Lakeside Pavilion",
-            time: "6:30 PM",
-            crew: ["Jim Peterson", "Mark Henderson", "Tom Henderson"]
+            time: "6:00 PM",
+            crew: ["House Thornwood", "The Ravenshire Clan", "House Larkspur"]
         ),
         FestDinner(
-            id: "dinner-sat",
-            day: "Saturday",
-            title: "Farewell Breakfast (Dinner Leftover Brunch)",
-            chef: "Sue Garcia",
-            menu: "Pancakes & French toast\nScrambled eggs & bacon\nFresh fruit\nJuice & coffee",
-            location: "Pavilion Main Hall",
-            time: "9:00 AM",
-            crew: ["Amy Murphy", "Lisa Garcia"]
+            id: "d-tue",
+            day: "Tuesday",
+            title: "Ye Olde Pizza Forge",
+            chef: "Dame Cecily of House Brightwater",
+            menu: "Wood-fired hand pies & flatbreads from the dock forge, a garden-greens salad, and lemon ices for the squires.",
+            location: "Main Dock",
+            time: "6:30 PM",
+            crew: ["House Brightwater", "The Wyndmere Troupe"]
+        ),
+        FestDinner(
+            id: "d-wed",
+            day: "Wednesday",
+            title: "Dragonscale Fish Fry",
+            chef: "Master Bartholomew of House Eldermoor",
+            menu: "Beer-battered walleye from the day's catch, golden hush puppies, and slaw of the realm.",
+            location: "Boathouse",
+            time: "5:30 PM",
+            crew: ["House Eldermoor", "The Ashforge Family", "House Fenwick"]
+        ),
+        FestDinner(
+            id: "d-thu",
+            day: "Thursday",
+            title: "The Cousins' Grand Potluck Banquet",
+            chef: "Goodwife Maren of House Hollowbrook",
+            menu: "A long table of dishes from every house (see the Crew board), with the Goodwife's grill lit at 5.",
+            location: "Pavilion",
+            time: "5:30 PM",
+            crew: ["House Hollowbrook", "The Stagleigh Kin", "House Marrowin"]
+        ),
+        FestDinner(
+            id: "d-fri",
+            day: "Friday",
+            title: "The Farewell Pig Roast",
+            chef: "Sir Reginald of House Pemberlye",
+            menu: "A smoked feast to send us off — slow brisket, herbed chicken, honeyed beans, and berry cobbler before the fireworks.",
+            location: "Lakeside Pavilion",
+            time: "6:00 PM",
+            crew: ["House Pemberlye", "The Brightwater Family", "House Thornwood"]
         ),
     ]
 }
@@ -298,11 +310,40 @@ extension FestDinner {
 // MARK: - T-Shirt Vote
 
 struct TshirtVoteConfig {
-    static let formUrl = "https://forms.gle/PLACEHOLDER"
-    static let deadline = "2026-07-15"
+    static let formUrl = "https://forms.gle/8aVV4b7vtkpKUm7N7"
+    static let deadline = "2026-06-27"
     static let rankedChoice = true
-    static let minVoterAge = 10
-    static let designs: [TshirtDesign] = []
+    static let minVoterAge = 6
+    static let designs: [TshirtDesign] = [
+        TshirtDesign(
+            id: "olde-fantasy",
+            name: "Olde Fantasy",
+            artist: "Rick G",
+            imageName: "ff-shirt-olde-fantasy",
+            blurb: "A hand-inked treasure map of Ye Olde Family Feste — sea serpent, castle, and a compass-rose crest, in heritage navy. Front pocket mark with the full map across the back."
+        ),
+        TshirtDesign(
+            id: "swordstone",
+            name: "SwordStone",
+            artist: "Rick G",
+            imageName: "ff-shirt-swordstone",
+            blurb: "Woodcut-style sword in the stone, a hoarding dragon, and a knight riding out on the quest, under a smiling sun. Shown on maroon and forest green."
+        ),
+        TshirtDesign(
+            id: "tomahawk-quest",
+            name: "Tomahawk Quest",
+            artist: "Abbie",
+            imageName: "ff-shirt-tomahawk-quest",
+            blurb: "An ornate dragon crest up front and a detailed Muskellunge Lake quest map — with a numbered key — across the back. Inky black line art."
+        ),
+        TshirtDesign(
+            id: "toon-knight",
+            name: "ToonKnight",
+            artist: "Evan",
+            imageName: "ff-shirt-toon-knight",
+            blurb: "A friendly cartoon knight raising sword and banner in hand-lettered script — the playful, kid-favorite option. Comes in a red and a grey knight."
+        ),
+    ]
 }
 
 struct TshirtDesign: Identifiable {
@@ -329,27 +370,16 @@ extension ResortEvent {
             source: .seed
         ),
         ResortEvent(
-            id: "work-weekend-spring-2026",
-            title: "Spring Work Weekend",
-            description: "Annual spring cleanup and maintenance at the resort.",
-            kind: .workWeekend,
-            startDate: "2026-05-15",
-            endDate: "2026-05-17",
+            id: "up-north-4th-2026",
+            title: "Up North for the 4th",
+            description: "The 4th of July weekend at the lake — fireworks, cookouts, and time on the water. Let everyone know if you're heading up.",
+            kind: .holiday,
+            startDate: "2026-07-03",
+            endDate: "2026-07-05",
             location: "Muskellunge Lake Resort",
             dayRsvp: false,
             source: .seed
         ),
-        ResortEvent(
-            id: "work-weekend-fall-2026",
-            title: "Fall Work Weekend",
-            description: "Fall closing and winterization of the resort.",
-            kind: .workWeekend,
-            startDate: "2026-10-02",
-            endDate: "2026-10-04",
-            location: "Muskellunge Lake Resort",
-            dayRsvp: false,
-            source: .seed
-        )
     ]
 }
 

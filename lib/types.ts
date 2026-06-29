@@ -176,6 +176,22 @@ export interface User {
   avatarUrl?: string | null;
 }
 
+export type WorkItemStatus = "open" | "done";
+
+/** One item on the resort work checklist. Any signed-in member can add items;
+ *  admins can edit, delete, and mark done. Items can also be attached to events
+ *  (see event_work_items) so attendees know what's planned for a work weekend. */
+export interface WorkItem {
+  id: string;
+  title: string;
+  notes: string | null;
+  category: string | null;
+  status: WorkItemStatus;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A post in the shared feed — a photo and/or a note, by a member. (Combines
  *  the old chat + photos.) Runtime posts add a real image; seed posts use a
  *  gradient tile so the feed looks alive without shipping image binaries. */

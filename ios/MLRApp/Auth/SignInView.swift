@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - SignInView
-// Two-step passwordless sign-in: email entry → 6-digit OTP code entry.
+// Two-step passwordless sign-in: email entry → 8-digit OTP code entry.
 
 struct SignInView: View {
     @Environment(AppEnvironment.self) private var env
@@ -25,25 +25,28 @@ struct SignInView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Reassurance header
-                reassuranceHeader
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Reassurance header
+                    reassuranceHeader
 
-                Spacer().frame(height: 32)
+                    Spacer().frame(height: 32)
 
-                switch step {
-                case .email:
-                    emailStep
-                case .code:
-                    codeStep
+                    switch step {
+                    case .email:
+                        emailStep
+                    case .code:
+                        codeStep
+                    }
+
+                    helpLink
+                        .padding(.top, 32)
                 }
-
-                Spacer()
-
-                helpLink
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Sign In")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: auth.isSignedIn) { _, signedIn in
@@ -85,13 +88,13 @@ struct SignInView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .textContentType(.emailAddress)
-                .submitLabel(.go)
+                .submitLabel(.next)
                 .focused($emailFocused)
                 .padding()
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .onSubmit { Task { await sendCode() } }
                 .onAppear { emailFocused = true }
+                .onSubmit { /* dismiss keyboard only — tap Send Code to submit */ }
 
             if let error = auth.error {
                 errorBanner(error)
@@ -114,7 +117,7 @@ struct SignInView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Enter your code")
                     .font(.title2.bold())
-                Text("We sent a 6-digit code to **\(email)**.")
+                Text("We sent an 8-digit code to **\(email)**.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text("Check your spam folder if you don't see it.")
@@ -122,7 +125,7 @@ struct SignInView: View {
                     .foregroundStyle(.secondary)
             }
 
-            TextField("000000", text: $code)
+            TextField("00000000", text: $code)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
                 .font(.system(size: 32, weight: .semibold, design: .monospaced))
@@ -132,16 +135,12 @@ struct SignInView: View {
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .onChange(of: code) { _, newValue in
-                    // Strip non-digits and cap at 6
+                    // Strip non-digits and cap at 8
                     let digits = newValue.filter(\.isNumber)
-                    if digits.count > 6 {
-                        code = String(digits.prefix(6))
+                    if digits.count > 8 {
+                        code = String(digits.prefix(8))
                     } else {
                         code = digits
-                    }
-                    // Auto-submit when 6 digits entered
-                    if code.count == 6 {
-                        Task { await verifyCode() }
                     }
                 }
                 .onAppear { codeFocused = true }
@@ -153,7 +152,7 @@ struct SignInView: View {
             primaryButton(
                 label: "Verify Code",
                 isLoading: auth.isLoading,
-                isDisabled: code.count < 6
+                isDisabled: code.count < 8
             ) {
                 Task { await verifyCode() }
             }
@@ -198,7 +197,6 @@ struct SignInView: View {
                 .foregroundStyle(.secondary)
                 .underline()
         }
-        .padding(.bottom, 24)
     }
 
     // MARK: - Reusable sub-views

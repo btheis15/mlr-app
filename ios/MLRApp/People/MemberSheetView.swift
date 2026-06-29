@@ -87,11 +87,6 @@ struct MemberSheetView: View {
                             .clipShape(Capsule())
                     }
                 }
-                if member.betaTester {
-                    Text("Beta Tester")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.mlrFest)
-                }
             }
         }
         .frame(maxWidth: .infinity)

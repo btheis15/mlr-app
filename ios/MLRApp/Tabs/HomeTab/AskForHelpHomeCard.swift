@@ -1,12 +1,8 @@
 import SwiftUI
 
 // MARK: - AskForHelpHomeCard
-// Beta-gated home card for the "Ask for Help" feature.
+// Home card for the "Ask for Help" feature.
 // Mirrors components/AskForHelpHomeCard.tsx.
-//
-// Only shown when:
-//   • env.isBetaTester is true
-//   • fewer than 10 open requests exist (cap checked by HomeView)
 //
 // Includes:
 //   • "Post a request" button → opens AskForHelpSheet
@@ -26,18 +22,9 @@ struct AskForHelpHomeCard: View {
                 Text("🤝")
                     .font(.system(size: 18))
                 VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text("Ask for Help")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.mlrText)
-                        Text("BETA")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.mlrAccent)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.mlrAccent.opacity(0.12))
-                            .clipShape(Capsule())
-                    }
+                    Text("Ask for Help")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.mlrText)
                     Text("Need a hand at the resort?")
                         .font(.caption)
                         .foregroundStyle(Color.mlrTextMuted)

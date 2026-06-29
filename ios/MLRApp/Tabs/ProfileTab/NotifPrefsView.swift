@@ -62,12 +62,10 @@ struct NotifPrefsView: View {
                 toggle(for: .eventRsvp, label: "RSVPs to your events", icon: "calendar.badge.checkmark")
             }
 
-            // Help (beta testers only)
-            if env.isBetaTester {
-                Section("Help Requests") {
-                    toggle(for: .helpRequest,  label: "Help requests near you", icon: "hand.raised.fill")
-                    toggle(for: .helpResponse, label: "Someone's on their way",  icon: "figure.walk")
-                }
+            // Help Requests
+            Section("Help Requests") {
+                toggle(for: .helpRequest,  label: "Help requests near you", icon: "hand.raised.fill")
+                toggle(for: .helpResponse, label: "Someone's on their way",  icon: "figure.walk")
             }
         }
         .navigationTitle("Activity Notifications")
