@@ -14,6 +14,9 @@ import type { Committee } from "@/lib/types";
  *  - Request to join in the app — the real request → admin-approves → added loop
  *    (Supabase, migration 0012). Approval lets you into the committee's private
  *    chat. With no backend wired, this degrades to a "coming soon" affordance.
+ *
+ * For role-based committees (Family Fest) an optional area picker appears so the
+ * requester can signal which area they'd like to help with (migration 0051).
  */
 type JoinState = "loading" | "none" | "pending" | "member";
 
@@ -23,6 +26,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [committeeId, setCommitteeId] = useState<string | null>(null);
   const [state, setState] = useState<JoinState>("loading");
   const [busy, setBusy] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
 
   // The Lead is the contact for join requests; fall back to the first member.
   const lead = committee.members.find((m) => m.role === "Lead") ?? committee.members[0];
@@ -31,9 +35,13 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const message = `Hi ${leadFirst}, I'm interested in joining the ${committee.name} committee. How can I get involved?`;
   const mailto = lead?.email ? `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}` : null;
   const smsto = lead?.phone ? `sms:${lead.phone}?&body=${encodeURIComponent(message)}` : null;
-  // Some leads haven't linked an account yet (no email/phone on file) — then we
-  // skip the "message the lead" buttons and lean on the in-app request flow.
   const canContactLead = Boolean(mailto || smsto);
+
+  // Derive available areas from the committee roster's role data.
+  // Non-empty only for role-based committees (e.g. Family Fest).
+  const areaOptions = Array.from(
+    new Set(committee.members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, "")))),
+  );
 
   useEffect(() => {
     if (!configured || !supabase || !user) {
@@ -59,7 +67,11 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const requestToJoin = async () => {
     if (!supabase || !committeeId) return;
     setBusy(true);
-    const { error } = await supabase.rpc("request_to_join", { cid: committeeId, msg: message });
+    const { error } = await supabase.rpc("request_to_join", {
+      cid: committeeId,
+      msg: message,
+      requested_area: selectedArea,
+    });
     setBusy(false);
     if (!error) setState("pending");
   };
@@ -126,9 +138,37 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           ✓ Request sent — an admin will review it.
         </p>
       ) : (
-        <button onClick={requestToJoin} disabled={busy || state === "loading"} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50">
-          {busy ? "Sending…" : `📝 Request to join ${committee.name}`}
-        </button>
+        <div className="space-y-3">
+          {/* Area picker for role-based committees */}
+          {areaOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-foreground/60">Which area are you interested in? (optional)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {areaOptions.map((area) => (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() => setSelectedArea(selectedArea === area ? null : area)}
+                    className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+                      selectedArea === area
+                        ? "bg-primary text-white ring-primary"
+                        : "bg-background ring-border text-foreground/60"
+                    }`}
+                  >
+                    {area}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={requestToJoin}
+            disabled={busy || state === "loading"}
+            className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? "Sending…" : `📝 Request to join ${committee.name}`}
+          </button>
+        </div>
       )}
     </section>
   );
