@@ -43,3 +43,7 @@ __pycache__/
 
 # Swift build output (the Ask-MLR Foundation Models service — WIP, never deployed)
 media-server/fm-service/.build/
+
+# Native iOS app — moved to its own repo (btheis15/mlr-app-ios).
+# Guard against Xcode re-writing state files here while a stale project is open.
+/ios/
