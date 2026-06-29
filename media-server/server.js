@@ -416,6 +416,14 @@ try {
   console.error("[push] not started:", e && e.message);
 }
 
+// Optional: native iOS push via APNs (see apns-sender.js). No-op unless the
+// APNS_* + service-role env vars are set. Isolated like the others.
+try {
+  require("./apns-sender").start().catch((e) => console.error("[apns] start failed:", e && e.message));
+} catch (e) {
+  console.error("[apns] not started:", e && e.message);
+}
+
 // Optional: daily birthday notifications (see birthday-notifier.js). No-op
 // unless the VAPID + service-role env vars are set. Isolated so a hiccup here
 // can never take down uploads.
