@@ -29,8 +29,11 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const leadFirst = lead?.name.split(" ")[0] ?? "the lead";
   const subject = `${committee.name} committee — interested in joining`;
   const message = `Hi ${leadFirst}, I'm interested in joining the ${committee.name} committee. How can I get involved?`;
-  const mailto = lead ? `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}` : "#";
-  const smsto = lead ? `sms:${lead.phone}?&body=${encodeURIComponent(message)}` : "#";
+  const mailto = lead?.email ? `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}` : null;
+  const smsto = lead?.phone ? `sms:${lead.phone}?&body=${encodeURIComponent(message)}` : null;
+  // Some leads haven't linked an account yet (no email/phone on file) — then we
+  // skip the "message the lead" buttons and lean on the in-app request flow.
+  const canContactLead = Boolean(mailto || smsto);
 
   useEffect(() => {
     if (!configured || !supabase || !user) {
@@ -78,16 +81,21 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
       <div>
         <h2 className="text-sm font-semibold text-primary">🙌 Interested in joining?</h2>
         <p className="mt-0.5 text-xs text-foreground/60">
-          {committee.name} is always glad to have more hands. Message {leadFirst} (Lead) — your note&rsquo;s already written — or request to join right in the app.
+          {committee.name} is always glad to have more hands.{" "}
+          {canContactLead
+            ? <>Message {leadFirst} — your note&rsquo;s already written — or request to join right in the app.</>
+            : <>Request to join right in the app.</>}
         </p>
       </div>
 
-      <Protected label="Sign in to contact the lead" className="w-full justify-center py-2.5">
-        <div className="grid grid-cols-2 gap-2">
-          <a href={mailto} className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary">✉️ Email {leadFirst}</a>
-          <a href={smsto} className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent">💬 Text {leadFirst}</a>
-        </div>
-      </Protected>
+      {canContactLead && (
+        <Protected label="Sign in to contact the lead" className="w-full justify-center py-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            {mailto && <a href={mailto} className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary">✉️ Email {leadFirst}</a>}
+            {smsto && <a href={smsto} className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent">💬 Text {leadFirst}</a>}
+          </div>
+        </Protected>
+      )}
 
       {!configured ? (
         <ComingSoonCTA

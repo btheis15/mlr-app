@@ -46,9 +46,14 @@ export default async function CommitteePage({
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Members</h2>
+        {committee.members.length === 0 ? (
+          <p className="rounded-2xl bg-card p-4 text-sm text-foreground/55 ring-1 ring-border">
+            No members yet — this roster is still being filled in.
+          </p>
+        ) : (
         <ul className="space-y-2">
           {committee.members.map((m) => (
-            <li key={m.email} className="rounded-2xl bg-card p-4 ring-1 ring-border">
+            <li key={m.name} className="rounded-2xl bg-card p-4 ring-1 ring-border">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold"><PrivateName name={m.name} /></p>
                 {m.role && (
@@ -59,47 +64,65 @@ export default async function CommitteePage({
               </div>
               {m.roles && m.roles.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
-                  {m.roles.map((r) => (
-                    <span
-                      key={r}
-                      className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent"
-                    >
-                      {r}
-                    </span>
-                  ))}
+                  {m.roles.map((r) => {
+                    // A role tagged " · Lead" marks the area's lead — render it
+                    // with the emphasized primary chip instead of the accent one.
+                    const isLead = r.endsWith(" · Lead");
+                    return (
+                      <span
+                        key={r}
+                        className={
+                          isLead
+                            ? "rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary"
+                            : "rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent"
+                        }
+                      >
+                        {r}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
-              <div className="mt-2">
-                <Protected label="Sign in to contact">
-                  <div className="grid grid-cols-3 gap-2">
-                    <a
-                      href={`mailto:${m.email}`}
-                      className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
-                    >
-                      ✉️ Email
-                    </a>
-                    <a
-                      href={`tel:${m.phone}`}
-                      className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
-                    >
-                      📞 Call
-                    </a>
-                    <a
-                      href={`sms:${m.phone}`}
-                      className="press rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
-                    >
-                      💬 Text
-                    </a>
-                  </div>
-                </Protected>
-              </div>
+              {(m.email || m.phone) && (
+                <div className="mt-2">
+                  <Protected label="Sign in to contact">
+                    <div className="grid grid-cols-3 gap-2">
+                      {m.email && (
+                        <a
+                          href={`mailto:${m.email}`}
+                          className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                        >
+                          ✉️ Email
+                        </a>
+                      )}
+                      {m.phone && (
+                        <a
+                          href={`tel:${m.phone}`}
+                          className="press rounded-xl bg-primary/10 py-2 text-center text-xs font-semibold text-primary"
+                        >
+                          📞 Call
+                        </a>
+                      )}
+                      {m.phone && (
+                        <a
+                          href={`sms:${m.phone}`}
+                          className="press rounded-xl bg-accent/10 py-2 text-center text-xs font-semibold text-accent"
+                        >
+                          💬 Text
+                        </a>
+                      )}
+                    </div>
+                  </Protected>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        )}
       </section>
 
       <p className="text-center text-xs text-foreground/40">
-        Placeholder roster — real members &amp; contacts coming soon.
+        Contact buttons appear as members link their accounts.
       </p>
     </div>
   );

@@ -9,9 +9,11 @@ export function CallTextButtons({
   phone,
   label = "Sign in to call or text",
 }: {
-  phone: string;
+  phone?: string;
   label?: string;
 }) {
+  // No number on file yet (e.g. a chef who hasn't linked an account) — nothing to show.
+  if (!phone) return null;
   return (
     <Protected label={label}>
       <div className="grid grid-cols-2 gap-2">
