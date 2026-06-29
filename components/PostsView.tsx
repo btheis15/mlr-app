@@ -10,6 +10,7 @@ import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
 import { useMediaPicker, useDebouncedCallback } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
+import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { MemberSheet } from "@/components/MemberSheet";
 import { Lightbox } from "@/components/Lightbox";
 import { ReportButton } from "@/components/ReportButton";
@@ -758,7 +759,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                 <button type="button" onClick={() => openMember(p.authorId, p.author, p.authorAvatar)} className="press flex min-w-0 flex-1 items-center gap-2 text-left">
                   <Avatar name={p.author} url={p.authorAvatar} size={32} />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{p.author}</p>
+                    <p className="flex items-center truncate text-sm font-semibold"><span className="truncate">{p.author}</span><CommitteeBadge name={p.author} /></p>
                     <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
                   </div>
                 </button>
@@ -865,7 +866,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                     <div key={c.id} className="flex items-start gap-2 text-xs">
                       <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press flex shrink-0 items-center gap-1.5">
                         <Avatar name={c.author} url={c.authorAvatar} size={22} />
-                        <span className="font-semibold">{c.author}</span>
+                        <span className="inline-flex items-center font-semibold">{c.author}<CommitteeBadge name={c.author} /></span>
                       </button>
                       <span className="min-w-0 flex-1 text-foreground/75"><MentionText text={c.text} mentions={c.mentions} members={members} /></span>
                       {isAdmin || (!!uid && c.authorId === uid) ? (

@@ -40,6 +40,17 @@ export const POSTS: Post[] = [
  * Resort Maintenance + Beautification have **no roster yet** — their old
  * illustrative placeholders were cleared. Add real people as they sign on.
  */
+/** The Family Fest committee's role areas, in display order. Each person's
+ *  `roles[]` are drawn from these (a trailing " · Lead" marks the area's lead).
+ *  Used to lay the roster out grouped by area on the committee page. */
+export const FAMILY_FEST_AREAS = [
+  "Meals",
+  "Entertainment & Games",
+  "Art & Decorating",
+  "Merchandise, Fundraising & Polling",
+  "Logistics, Scheduling & Finance",
+] as const;
+
 export const COMMITTEES: Committee[] = [
   {
     slug: "resort-maintenance",

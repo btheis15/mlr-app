@@ -120,6 +120,31 @@ technical members are smoothed:
 - **Text size + zoom** — [`TextSizeControl`](components/TextSizeControl.tsx) overrides the `<html>` rem root (17/19/21px); a boot script in [`layout.tsx`](app/layout.tsx) re-applies the saved choice before paint. Pinch-zoom is now allowed (viewport `userScalable: true`, was disabled). `body` uses `font-size: 1rem` so the override scales the whole app — **don't re-pin a px font-size on `body`/`html`** or you break it.
 - **Sign-in walls** ([`Guard`](components/Guard.tsx), `CommitteeJoin`, `CommitteeChat`) carry a "just your name & email, no password" reassurance.
 
+## Committees & the name badge
+
+Committee rosters are **static** in [`lib/data.ts`](lib/data.ts) `COMMITTEES`
+(see also `FAMILY_FEST_AREAS`). The real data is **Family Fest** — one committee
+where each person's `roles[]` are the **areas** they own (Meals · Entertainment &
+Games · Art & Decorating · Merchandise, Fundraising & Polling · Logistics,
+Scheduling & Finance); a trailing `" · Lead"` on a role marks that area's lead.
+[`app/committees/[slug]/page.tsx`](app/committees/[slug]/page.tsx) detects a
+role-based committee and lays the roster out **grouped by area** (Lead pinned on
+top) instead of a flat list; the other committees fall back to the flat list.
+Most people **have no account yet**, so `CommitteeMember.email`/`phone` (and
+`Chef.phone`, `ScheduleEvent.start`) are **optional** — contact controls
+([`CommitteeMemberContact`](components/CommitteeMemberContact.tsx),
+`CommitteeJoin`, dinner/schedule leads) self-hide when there's no number, and
+`formatTime()` renders **"TBD"** for a missing time.
+
+**Name badge** — [`CommitteeBadge`](components/CommitteeBadge.tsx) is a tiny
+emoji tag shown next to a person's name (committee name as the accessible
+label/tooltip). It keys off the roster names via
+[`committeesForName()`](lib/committees.ts) (token-prefix match, so "Brian" ↔
+"Brian Theis", "Michelle B" ↔ "Michelle Birkholz"), so it **lights up as people
+are linked to real accounts**. Wired into the People directory + `MemberSheet`,
+Posts + comments ([`PostsView`](components/PostsView.tsx)),
+[`CommitteeChat`](components/CommitteeChat.tsx), and the committee roster itself.
+
 ## Identity, admins & alerts
 
 - **Identity (on-demand, not a gate)** — the whole app is **public to browse**.
