@@ -275,7 +275,7 @@ export const SCHEDULE: ScheduleEvent[] = [
     day: "2026-07-27",
     title: "Games Up Top",
     location: "TBD",
-    emoji: "🎮",
+    emoji: "🏅",
     description: "Details TBD.",
   },
   {
