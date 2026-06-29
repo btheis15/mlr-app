@@ -9,6 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { Sheet, SectionLabel } from "@/components/Sheet";
+import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { useSheetDismiss } from "@/lib/hooks";
 
 // The event detail sheet: dates, location, description, the RSVP control, an
@@ -47,10 +48,13 @@ export function EventSheet({
   const { closing, close } = useSheetDismiss(onClose);
   const [deleting, setDeleting] = useState(false);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+  const [addingWorkItem, setAddingWorkItem] = useState(false);
+
+  const reloadWorkItems = () => fetchEventWorkItems(event.id).then(setWorkItems);
 
   useEffect(() => {
-    fetchEventWorkItems(event.id).then(setWorkItems);
-  }, [event.id]);
+    reloadWorkItems();
+  }, [event.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const days = eventDays(event.startDate, event.endDate);
   const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
@@ -92,6 +96,14 @@ export function EventSheet({
   const when = isOngoing(event, today) ? "Happening now" : relativeDays(today, event.startDate);
 
   return (
+    <>
+    {addingWorkItem && (
+      <WorkItemComposer
+        preLinkedEventId={event.id}
+        onClose={() => setAddingWorkItem(false)}
+        onSaved={() => { setAddingWorkItem(false); reloadWorkItems(); }}
+      />
+    )}
     <Sheet
       closing={closing}
       onDismiss={close}
@@ -212,40 +224,55 @@ export function EventSheet({
             </div>
           )}
 
-          {/* Work items planned for this event */}
-          {workItems.length > 0 && (
+          {/* Work items planned for this event — always visible to admins */}
+          {(workItems.length > 0 || isAdmin) && (
             <div className="space-y-2">
-              <SectionLabel>Work items planned</SectionLabel>
-              <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
-                {workItems.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 px-3 py-2.5">
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                        item.status === "done"
-                          ? "bg-primary/15 text-primary"
-                          : "border-2 border-border"
-                      }`}
-                      aria-hidden
-                    >
-                      {item.status === "done" ? "✓" : ""}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={`block text-sm font-medium leading-snug ${
-                          item.status === "done" ? "text-foreground/40 line-through" : ""
-                        }`}
-                      >
-                        {item.title}
-                      </span>
-                      {item.peopleNeeded != null && (
-                        <span className="mt-0.5 block text-[10px] text-foreground/45">
-                          👥 {item.peopleNeeded} needed
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between">
+                <SectionLabel>Work items planned</SectionLabel>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setAddingWorkItem(true)}
+                    className="press text-xs font-semibold text-primary"
+                  >
+                    + Add
+                  </button>
+                )}
               </div>
+              {workItems.length > 0 ? (
+                <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
+                  {workItems.map((item) => (
+                    <div key={item.id} className="flex items-start gap-3 px-3 py-2.5">
+                      <span
+                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                          item.status === "done"
+                            ? "bg-primary/15 text-primary"
+                            : "border-2 border-border"
+                        }`}
+                        aria-hidden
+                      >
+                        {item.status === "done" ? "✓" : ""}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={`block text-sm font-medium leading-snug ${
+                            item.status === "done" ? "text-foreground/40 line-through" : ""
+                          }`}
+                        >
+                          {item.title}
+                        </span>
+                        {item.peopleNeeded != null && (
+                          <span className="mt-0.5 block text-[10px] text-foreground/45">
+                            👥 {item.peopleNeeded} needed
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-foreground/40">No work items yet.</p>
+              )}
             </div>
           )}
 
@@ -300,6 +327,7 @@ export function EventSheet({
             )}
           </div>
     </Sheet>
+    </>
   );
 }
 

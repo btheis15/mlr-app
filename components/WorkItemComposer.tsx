@@ -15,10 +15,13 @@ export function WorkItemComposer({
   item,
   onClose,
   onSaved,
+  preLinkedEventId,
 }: {
   item?: WorkItem | null;
   onClose: () => void;
   onSaved: () => void;
+  /** When set, the new item is auto-linked to this event and the picker is hidden. */
+  preLinkedEventId?: string;
 }) {
   const { isAdmin } = useIdentity();
   const editing = Boolean(item);
@@ -28,17 +31,17 @@ export function WorkItemComposer({
   const [notes, setNotes] = useState(item?.notes ?? "");
   const [peopleNeeded, setPeopleNeeded] = useState<number>(item?.peopleNeeded ?? 0);
   const [status, setStatus] = useState<"open" | "done">(item?.status ?? "open");
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(preLinkedEventId ?? null);
   const [events, setEvents] = useState<ResortEvent[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load upcoming events for the "link to event" picker (add mode only).
+  // Load upcoming events for the "link to event" picker (add mode only, not when pre-linked).
   useEffect(() => {
-    if (editing) return;
+    if (editing || preLinkedEventId) return;
     const today = new Date().toISOString().slice(0, 10);
     fetchEvents().then((all) => setEvents(upcomingEvents(all, today)));
-  }, [editing]);
+  }, [editing, preLinkedEventId]);
 
   const canSubmit = title.trim().length > 0 && !pending;
 
@@ -171,8 +174,8 @@ export function WorkItemComposer({
         </div>
       </div>
 
-      {/* Link to an event (add mode only, when upcoming events exist) */}
-      {!editing && events.length > 0 && (
+      {/* Link to an event (add mode only, when upcoming events exist, not when pre-linked) */}
+      {!editing && !preLinkedEventId && events.length > 0 && (
         <div className="space-y-2">
           <SectionLabel>Link to an event (optional)</SectionLabel>
           <div className="space-y-1">
