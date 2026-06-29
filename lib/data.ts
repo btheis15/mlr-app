@@ -73,7 +73,7 @@ export const COMMITTEES: Committee[] = [
     // haven't given an email yet (name-match is the fallback there).
     members: [
       { name: "Lauren Zerfas", roles: ["Meals · Lead"] },
-      { name: "Jessica Theis", roles: ["Meals", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
+      { name: "Jessica Stewart", roles: ["Meals", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
       { name: "Rob Hermanson", roles: ["Meals", "Logistics, Scheduling & Finance"], email: "rob.hermanson@yahoo.com" },
       { name: "Lisa Gorge", roles: ["Meals"], email: "lisagorge20@gmail.com" },
       { name: "Matthew Vinezeano", roles: ["Meals", "Entertainment & Games"], email: "mvinezeano10@gmail.com" },
@@ -346,7 +346,7 @@ export const DINNERS: Dinner[] = [
     day: "2026-07-27",
     title: "Monday Dinner",
     emoji: "🍽️",
-    chef: { name: "Jessica Theis" },
+    chef: { name: "Jessica Stewart" },
     houses: [],
     menu: "TBD",
     prepTime: "TBD",
