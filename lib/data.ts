@@ -72,7 +72,7 @@ export const COMMITTEES: Committee[] = [
     // entry. See lib/committees.ts + components/CommitteeRoster.tsx. A few people
     // haven't given an email yet (name-match is the fallback there).
     members: [
-      { name: "Lauren Birkholz", roles: ["Meals · Lead"] },
+      { name: "Lauren Zerfas", roles: ["Meals · Lead"] },
       { name: "Jessica Theis", roles: ["Meals", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
       { name: "Rob Hermanson", roles: ["Meals", "Logistics, Scheduling & Finance"], email: "rob.hermanson@yahoo.com" },
       { name: "Lisa Gorge", roles: ["Meals"], email: "lisagorge20@gmail.com" },
@@ -370,7 +370,7 @@ export const DINNERS: Dinner[] = [
     day: "2026-07-29",
     title: "Wednesday Dinner",
     emoji: "🍽️",
-    chef: { name: "Lauren" },
+    chef: { name: "Lauren Zerfas" },
     houses: [],
     menu: "TBD",
     prepTime: "TBD",
