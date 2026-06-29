@@ -101,6 +101,20 @@ export async function deleteWorkItem(id: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {};
 }
 
+/** Link a single work item to an event (any signed-in member).
+ *  Additive only — never removes other items already linked to the event. */
+export async function addWorkItemToEvent(
+  eventId: string,
+  workItemId: string,
+): Promise<{ error?: string }> {
+  if (!supabase) return { error: "Not connected" };
+  const { error } = await supabase.rpc("add_work_item_to_event", {
+    p_event_id: eventId,
+    p_work_item_id: workItemId,
+  });
+  return error ? { error: error.message } : {};
+}
+
 /** Replace the full set of work items attached to an event (admin only).
  *  Pass an empty array to clear all links for the event. */
 export async function syncEventWorkItems(

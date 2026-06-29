@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import type { WorkItem } from "@/lib/types";
-import { createWorkItem, updateWorkItem, deleteWorkItem } from "@/lib/workItems";
+import { useEffect, useState } from "react";
+import type { ResortEvent, WorkItem } from "@/lib/types";
+import { createWorkItem, updateWorkItem, deleteWorkItem, addWorkItemToEvent } from "@/lib/workItems";
+import { fetchEvents, upcomingEvents } from "@/lib/events";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -25,13 +26,19 @@ export function WorkItemComposer({
 
   const [title, setTitle] = useState(item?.title ?? "");
   const [notes, setNotes] = useState(item?.notes ?? "");
-  const [category, setCategory] = useState(item?.category ?? "");
-  const [peopleNeeded, setPeopleNeeded] = useState<string>(
-    item?.peopleNeeded != null ? String(item.peopleNeeded) : "",
-  );
+  const [peopleNeeded, setPeopleNeeded] = useState<number>(item?.peopleNeeded ?? 0);
   const [status, setStatus] = useState<"open" | "done">(item?.status ?? "open");
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [events, setEvents] = useState<ResortEvent[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load upcoming events for the "link to event" picker (add mode only).
+  useEffect(() => {
+    if (editing) return;
+    const today = new Date().toISOString().slice(0, 10);
+    fetchEvents().then((all) => setEvents(upcomingEvents(all, today)));
+  }, [editing]);
 
   const canSubmit = title.trim().length > 0 && !pending;
 
@@ -39,24 +46,30 @@ export function WorkItemComposer({
     if (!canSubmit) return;
     setPending(true);
     setError(null);
-    const parsed = peopleNeeded ? parseInt(peopleNeeded, 10) : null;
-    const { error: err } =
-      editing && item
-        ? await updateWorkItem(item.id, {
-            title: title.trim(),
-            notes: notes.trim() || undefined,
-            category: category.trim() || undefined,
-            status,
-            peopleNeeded: parsed,
-          })
-        : await createWorkItem({
-            title: title.trim(),
-            notes: notes.trim() || undefined,
-            category: category.trim() || undefined,
-            peopleNeeded: parsed,
-          });
-    setPending(false);
-    if (err) { setError(err); return; }
+    const parsed = peopleNeeded > 0 ? peopleNeeded : null;
+
+    if (editing && item) {
+      const { error: err } = await updateWorkItem(item.id, {
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        status,
+        peopleNeeded: parsed,
+      });
+      setPending(false);
+      if (err) { setError(err); return; }
+    } else {
+      const { error: err, id: newId } = await createWorkItem({
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        peopleNeeded: parsed,
+      });
+      if (err) { setPending(false); setError(err); return; }
+      if (newId && selectedEventId) {
+        await addWorkItemToEvent(selectedEventId, newId);
+      }
+      setPending(false);
+    }
+
     onSaved();
     close();
   };
@@ -107,6 +120,7 @@ export function WorkItemComposer({
         </div>
       }
     >
+      {/* Task */}
       <div className="space-y-2">
         <SectionLabel>Task</SectionLabel>
         <input
@@ -115,21 +129,6 @@ export function WorkItemComposer({
           placeholder='e.g. "Caulk windows on red & white cabin"'
           className={`${sel} w-full`}
           autoFocus
-        />
-        <input
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Category (optional) — e.g. Cabin, Grounds, Road"
-          className={`${sel} w-full`}
-        />
-        <input
-          type="number"
-          min={1}
-          max={99}
-          value={peopleNeeded}
-          onChange={(e) => setPeopleNeeded(e.target.value)}
-          placeholder="People needed (optional) — e.g. 3"
-          className={`${sel} w-full`}
         />
         <textarea
           value={notes}
@@ -140,6 +139,66 @@ export function WorkItemComposer({
           className={`${sel} w-full resize-none`}
         />
       </div>
+
+      {/* People needed — +/- stepper, 0 = not set */}
+      <div className="space-y-2">
+        <SectionLabel>How many people needed? (optional)</SectionLabel>
+        <div className="flex items-center justify-between rounded-xl bg-card px-4 py-3 ring-1 ring-border">
+          <span className="text-sm font-medium text-foreground/70">People needed</span>
+          <span className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="Fewer people"
+              onClick={() => setPeopleNeeded((n) => Math.max(0, n - 1))}
+              disabled={peopleNeeded <= 0}
+              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="w-8 text-center text-sm font-semibold tabular-nums">
+              {peopleNeeded === 0 ? "Any" : peopleNeeded}
+            </span>
+            <button
+              type="button"
+              aria-label="More people"
+              onClick={() => setPeopleNeeded((n) => Math.min(20, n + 1))}
+              disabled={peopleNeeded >= 20}
+              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+            >
+              +
+            </button>
+          </span>
+        </div>
+      </div>
+
+      {/* Link to an event (add mode only, when upcoming events exist) */}
+      {!editing && events.length > 0 && (
+        <div className="space-y-2">
+          <SectionLabel>Link to an event (optional)</SectionLabel>
+          <div className="space-y-1">
+            {events.map((ev) => (
+              <button
+                key={ev.id}
+                type="button"
+                onClick={() => setSelectedEventId(selectedEventId === ev.id ? null : ev.id)}
+                className={`press flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left ring-1 transition-colors ${
+                  selectedEventId === ev.id
+                    ? "bg-primary/10 ring-primary/30"
+                    : "bg-card ring-border"
+                }`}
+              >
+                <span aria-hidden className="shrink-0">{ev.emoji ?? "📅"}</span>
+                <span className={`flex-1 text-sm leading-snug ${selectedEventId === ev.id ? "font-medium text-primary" : "text-foreground/70"}`}>
+                  {ev.title}
+                </span>
+                {selectedEventId === ev.id && (
+                  <span className="shrink-0 text-xs font-semibold text-primary">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Admins can flip the status when editing */}
       {editing && isAdmin && (

@@ -196,18 +196,11 @@ function WorkItemRow({
         {item.notes && (
           <span className="mt-0.5 block text-xs text-foreground/50 leading-snug">{item.notes}</span>
         )}
-        {(item.category || item.peopleNeeded != null) && (
+        {item.peopleNeeded != null && (
           <span className="mt-1 flex flex-wrap gap-1">
-            {item.category && (
-              <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
-                {item.category}
-              </span>
-            )}
-            {item.peopleNeeded != null && (
-              <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
-                👥 {item.peopleNeeded} needed
-              </span>
-            )}
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+              👥 {item.peopleNeeded} needed
+            </span>
           </span>
         )}
       </div>
