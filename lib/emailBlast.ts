@@ -11,6 +11,9 @@ export interface Recipient {
   id: string;
   name: string;
   email: string;
+  /** Area/role labels (e.g. Family Fest areas). Stripped of " · Lead" suffix
+   *  for display; presence enables the "By Role" filter in the composer. */
+  roles?: string[];
 }
 
 /** Load result. `needsMigration` is true when the RPC isn't there yet (0028

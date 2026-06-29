@@ -38,11 +38,15 @@ export function EmailMembersComposer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needsMigration, setNeedsMigration] = useState(false);
-  const [mode, setMode] = useState<"all" | "pick">(allowAll ? "all" : "pick");
+  const [mode, setMode] = useState<"all" | "role" | "pick">(allowAll ? "all" : "pick");
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [subject, setSubject] = useState("");
   const copied = useSaveStatus();
+
+  // Area name without the " · Lead" suffix — the canonical key for role chips.
+  const roleArea = (r: string) => r.replace(/ · Lead$/, "");
 
   // (Re)load whenever the pool changes. Reset the picker so a stale selection
   // from a different group can't leak into the next one.
@@ -52,6 +56,7 @@ export function EmailMembersComposer({
     setError(null);
     setNeedsMigration(false);
     setMode(allowAll ? "all" : "pick");
+    setSelectedRole(null);
     setSelected(new Set());
     setQuery("");
     load().then((res) => {
@@ -67,10 +72,19 @@ export function EmailMembersComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey]);
 
-  const audience = useMemo(
-    () => (mode === "all" ? recipients : recipients.filter((r) => selected.has(r.id))),
-    [mode, recipients, selected],
+  const hasRoles = recipients.some((r) => r.roles?.length);
+  const roleOptions = useMemo(
+    () => [...new Set(recipients.flatMap((r) => (r.roles ?? []).map(roleArea)))].sort(),
+    [recipients], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const audience = useMemo(() => {
+    if (mode === "all") return recipients;
+    if (mode === "role") return selectedRole
+      ? recipients.filter((r) => r.roles?.some((rl) => roleArea(rl) === selectedRole))
+      : [];
+    return recipients.filter((r) => selected.has(r.id));
+  }, [mode, recipients, selected, selectedRole]); // eslint-disable-line react-hooks/exhaustive-deps
   const emails = useMemo(() => audience.map((r) => r.email), [audience]);
   const href = useMemo(() => mailtoUrl(emails, subject), [emails, subject]);
 
@@ -124,22 +138,64 @@ export function EmailMembersComposer({
         the <strong>To</strong> field — write and send it from there. Nothing is sent from the app.
       </p>
 
-      {/* Everyone in this group vs. pick specific people. Hidden for the open
+      {/* Everyone / By Role / Pick specific. Hidden for the open
           directory pool (allowAll=false), which is hand-pick only. */}
       {allowAll && (
         <div className="flex gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border">
-          {(["all", "pick"] as const).map((m) => (
+          <button
+            type="button"
+            onClick={() => setMode("all")}
+            className={`press flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+              mode === "all" ? "bg-primary text-white" : "text-foreground/60"
+            }`}
+          >
+            Everyone ({recipients.length})
+          </button>
+          {hasRoles && (
             <button
-              key={m}
               type="button"
-              onClick={() => setMode(m)}
+              onClick={() => setMode("role")}
               className={`press flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                mode === m ? "bg-primary text-white" : "text-foreground/60"
+                mode === "role" ? "bg-primary text-white" : "text-foreground/60"
               }`}
             >
-              {m === "all" ? `Everyone (${recipients.length})` : "Pick specific"}
+              By Role
             </button>
-          ))}
+          )}
+          <button
+            type="button"
+            onClick={() => setMode("pick")}
+            className={`press flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+              mode === "pick" ? "bg-primary text-white" : "text-foreground/60"
+            }`}
+          >
+            Pick specific
+          </button>
+        </div>
+      )}
+
+      {/* Role chips — pick one area to email just that group */}
+      {mode === "role" && (
+        <div className="space-y-1.5">
+          {roleOptions.map((area) => {
+            const count = recipients.filter((r) => r.roles?.some((rl) => roleArea(rl) === area)).length;
+            const on = selectedRole === area;
+            return (
+              <button
+                key={area}
+                type="button"
+                onClick={() => setSelectedRole(on ? null : area)}
+                className={`press flex w-full items-center justify-between rounded-xl px-3 py-2.5 ring-1 transition-colors ${
+                  on ? "bg-primary/10 ring-primary/30" : "bg-card ring-border"
+                }`}
+              >
+                <span className={`text-sm font-medium ${on ? "text-primary" : "text-foreground/80"}`}>{area}</span>
+                <span className={`text-xs font-semibold ${on ? "text-primary" : "text-foreground/45"}`}>
+                  {on ? "✓ " : ""}{count} {count === 1 ? "person" : "people"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -192,6 +248,8 @@ export function EmailMembersComposer({
       <p className="text-xs text-foreground/55">
         {audience.length > 0 ? (
           <>Emailing <strong>{audience.length}</strong> {plural(audience.length, "person", "people")}.</>
+        ) : mode === "role" ? (
+          <>Pick a role above to choose who to email.</>
         ) : (
           <>No one selected yet.</>
         )}

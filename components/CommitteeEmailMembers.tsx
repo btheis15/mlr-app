@@ -6,7 +6,9 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
-import { fetchCommitteeRecipients } from "@/lib/emailBlast";
+import { fetchCommitteeRecipients, type RecipientResult } from "@/lib/emailBlast";
+import { COMMITTEES } from "@/lib/data";
+import { nameMatches } from "@/lib/committees";
 
 /**
  * "Email these members" on a committee page — shown to **any member of that
@@ -39,11 +41,25 @@ export function CommitteeEmailMembers({ slug, name }: { slug: string; name: stri
 
   if (!isSupabaseConfigured || !canEmail || !committeeId) return null;
 
+  // Enrich DB recipients with roles from the static committee roster so the
+  // composer can offer a "By Role" filter (Family Fest areas, etc.).
+  const load = async (): Promise<RecipientResult> => {
+    const result = await fetchCommitteeRecipients(committeeId);
+    const committee = COMMITTEES.find((c) => c.slug === slug);
+    const roleMembers = committee?.members.filter((m) => m.roles?.length);
+    if (!roleMembers?.length) return result;
+    const enriched = result.recipients.map((r) => {
+      const match = roleMembers.find((m) => nameMatches(m.name, r.name));
+      return match?.roles?.length ? { ...r, roles: match.roles } : r;
+    });
+    return { ...result, recipients: enriched };
+  };
+
   return (
-    <CollapsibleSection title="Email these members" icon="✉️" subtitle={`Email ${name} — everyone or pick people`}>
+    <CollapsibleSection title="Email these members" icon="✉️" subtitle={`Email ${name} — everyone, by role, or pick people`}>
       <EmailMembersComposer
         sourceKey={`committee:${committeeId}`}
-        load={() => fetchCommitteeRecipients(committeeId)}
+        load={load}
         groupNoun={name}
       />
     </CollapsibleSection>
