@@ -76,6 +76,22 @@ export default function HelpPage() {
         announcements, all in one place. Anyone in the family can use it.
       </HelpItem>
 
+      <HelpItem emoji="🧭" title="Take a quick tour">
+        New here? This short, plain-English walkthrough goes screen by screen —
+        what each tab does, Family Fest, RSVPs, photos, and how to get the app on
+        your phone. Great to skim before you dive in.
+        <div className="mt-3">
+          <a
+            href="/mlr-app-guide.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="press inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white"
+          >
+            📖 Open the guided tour
+          </a>
+        </div>
+      </HelpItem>
+
       <HelpItem emoji="👀" title="Do I need an account?">
         No — you can <b>look around freely</b> without signing in. You only add
         your name and email when you want to <b>do</b> something: post a photo,
