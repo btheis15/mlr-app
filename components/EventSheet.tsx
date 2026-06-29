@@ -237,8 +237,15 @@ export function EventSheet({
                       >
                         {item.title}
                       </span>
-                      {item.category && (
-                        <span className="text-[10px] text-foreground/45">{item.category}</span>
+                      {(item.category || item.peopleNeeded != null) && (
+                        <span className="flex flex-wrap gap-1 mt-0.5">
+                          {item.category && (
+                            <span className="text-[10px] text-foreground/45">{item.category}</span>
+                          )}
+                          {item.peopleNeeded != null && (
+                            <span className="text-[10px] text-foreground/45">👥 {item.peopleNeeded} needed</span>
+                          )}
+                        </span>
                       )}
                     </span>
                   </div>

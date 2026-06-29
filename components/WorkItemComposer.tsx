@@ -26,6 +26,9 @@ export function WorkItemComposer({
   const [title, setTitle] = useState(item?.title ?? "");
   const [notes, setNotes] = useState(item?.notes ?? "");
   const [category, setCategory] = useState(item?.category ?? "");
+  const [peopleNeeded, setPeopleNeeded] = useState<string>(
+    item?.peopleNeeded != null ? String(item.peopleNeeded) : "",
+  );
   const [status, setStatus] = useState<"open" | "done">(item?.status ?? "open");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +39,7 @@ export function WorkItemComposer({
     if (!canSubmit) return;
     setPending(true);
     setError(null);
+    const parsed = peopleNeeded ? parseInt(peopleNeeded, 10) : null;
     const { error: err } =
       editing && item
         ? await updateWorkItem(item.id, {
@@ -43,11 +47,13 @@ export function WorkItemComposer({
             notes: notes.trim() || undefined,
             category: category.trim() || undefined,
             status,
+            peopleNeeded: parsed,
           })
         : await createWorkItem({
             title: title.trim(),
             notes: notes.trim() || undefined,
             category: category.trim() || undefined,
+            peopleNeeded: parsed,
           });
     setPending(false);
     if (err) { setError(err); return; }
@@ -114,6 +120,15 @@ export function WorkItemComposer({
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           placeholder="Category (optional) — e.g. Cabin, Grounds, Road"
+          className={`${sel} w-full`}
+        />
+        <input
+          type="number"
+          min={1}
+          max={99}
+          value={peopleNeeded}
+          onChange={(e) => setPeopleNeeded(e.target.value)}
+          placeholder="People needed (optional) — e.g. 3"
           className={`${sel} w-full`}
         />
         <textarea

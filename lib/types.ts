@@ -187,6 +187,7 @@ export interface WorkItem {
   notes: string | null;
   category: string | null;
   status: WorkItemStatus;
+  peopleNeeded: number | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;

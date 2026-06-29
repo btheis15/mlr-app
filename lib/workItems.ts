@@ -13,6 +13,7 @@ function mapRow(r: Record<string, unknown>): WorkItem {
     notes: (r.notes as string | null) ?? null,
     category: (r.category as string | null) ?? null,
     status: (r.status as WorkItemStatus) ?? "open",
+    peopleNeeded: (r.people_needed as number | null) ?? null,
     createdBy: (r.created_by as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
@@ -56,12 +57,14 @@ export async function createWorkItem(input: {
   title: string;
   notes?: string;
   category?: string;
+  peopleNeeded?: number | null;
 }): Promise<{ id?: string; error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { data, error } = await supabase.rpc("create_work_item", {
     p_title: input.title,
     p_notes: input.notes ?? null,
     p_category: input.category ?? null,
+    p_people_needed: input.peopleNeeded ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -77,7 +80,7 @@ export async function markWorkItemDone(id: string): Promise<{ error?: string }> 
 /** Edit an item's fields + status (admin only). */
 export async function updateWorkItem(
   id: string,
-  input: { title: string; notes?: string; category?: string; status: WorkItemStatus },
+  input: { title: string; notes?: string; category?: string; status: WorkItemStatus; peopleNeeded?: number | null },
 ): Promise<{ error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { error } = await supabase.rpc("update_work_item", {
@@ -86,6 +89,7 @@ export async function updateWorkItem(
     p_notes: input.notes ?? null,
     p_category: input.category ?? null,
     p_status: input.status,
+    p_people_needed: input.peopleNeeded ?? null,
   });
   return error ? { error: error.message } : {};
 }
