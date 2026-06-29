@@ -1,8 +1,7 @@
 import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { HomeSpotlight } from "@/components/HomeSpotlight";
-import { HomeGetInvolved, HomeAroundResort } from "@/components/HomeResortGroups";
-import { HomeHelpPeople } from "@/components/HomeHelpPeople";
+import { HomeCommunication, HomeAroundResort } from "@/components/HomeResortGroups";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
 import { InstallButton } from "@/components/InstallButton";
@@ -38,13 +37,10 @@ export default function HomePage() {
 
       <UpcomingEvents />
 
-      {/* ── Get involved — pulled up high (most important ask) ──────────────── */}
-      <HomeGetInvolved />
+      {/* ── Communication — People, Committees, Ask for Help, Work Checklist ── */}
+      <HomeCommunication />
 
-      {/* Ask for Help (BETA, self-hides) + People, as side-by-side square tiles. */}
-      <HomeHelpPeople />
-
-      {/* ── Quieter destinations, lower down ─────────────────────────────────── */}
+      {/* ── Around the resort — Events, Cabin Stay, Local Places ─────────────── */}
       <HomeAroundResort />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}
