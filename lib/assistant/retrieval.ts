@@ -196,11 +196,13 @@ function contactRecords(message: string): ContextRecord[] {
   for (const c of COMMITTEES) {
     for (const m of c.members) {
       if (!matchesTerms(message, m.name)) continue;
+      const contact = [m.phone ? prettyPhone(m.phone) : null, m.email].filter(Boolean).join(", ");
+      const areas = m.role ? `, ${m.role} of ${c.name}` : m.roles?.length ? ` (${c.name} — ${m.roles.join(", ")})` : ` (${c.name})`;
       recs.push({
         kind: "committee",
         id: `${c.slug}:${m.name}`,
         label: `${m.name} (${c.name})`,
-        text: `${m.name}${m.role ? `, ${m.role} of ${c.name}` : ` (${c.name})`}: ${prettyPhone(m.phone)}, ${m.email}.`,
+        text: `${m.name}${areas}${contact ? `: ${contact}` : ""}.`,
       });
     }
   }
@@ -210,7 +212,7 @@ function contactRecords(message: string): ContextRecord[] {
       kind: "dinner",
       id: d.id,
       label: `${d.chef.name} (head chef)`,
-      text: `${d.chef.name} is head chef for ${d.title} (${formatDateLong(d.day)}): ${prettyPhone(d.chef.phone)}.`,
+      text: `${d.chef.name} is head chef for ${d.title} (${formatDateLong(d.day)})${d.chef.phone ? `: ${prettyPhone(d.chef.phone)}` : ""}.`,
     });
   }
   // Always-available fallbacks so contact questions land somewhere useful.

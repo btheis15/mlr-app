@@ -10,7 +10,7 @@ import type { ScheduleEvent, Dinner } from "@/lib/types";
 export function eventsForDay(events: ScheduleEvent[], day: string | null): ScheduleEvent[] {
   return events
     .filter((e) => e.day === day)
-    .sort((a, b) => a.start.localeCompare(b.start));
+    .sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
 }
 
 /** The dinner scheduled for a day, if any. */

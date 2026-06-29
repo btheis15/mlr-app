@@ -24,7 +24,9 @@ export function formatDateLong(input: string | number | Date): string {
 }
 
 /** "18:00" → "6:00 PM". Accepts an "HH:MM" 24h string. */
-export function formatTime(hhmm: string): string {
+export function formatTime(hhmm?: string): string {
+  // Schedule items whose time isn't set yet read "TBD" rather than a fake slot.
+  if (!hhmm) return "TBD";
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date();
   d.setHours(h, m, 0, 0);

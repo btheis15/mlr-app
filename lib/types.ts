@@ -201,8 +201,8 @@ export interface Post {
  *  links (tel:/sms:) that work on iOS and Android. */
 export interface Chef {
   name: string;
-  /** E.164 phone, e.g. "+17155550112". */
-  phone: string;
+  /** E.164 phone, e.g. "+17155550112". Omitted until the chef links up. */
+  phone?: string;
 }
 
 /** A single timed item on the week's agenda. */
@@ -210,8 +210,8 @@ export interface ScheduleEvent {
   id: string;
   /** ISO date, YYYY-MM-DD. */
   day: string;
-  /** 24h time, "HH:MM". */
-  start: string;
+  /** 24h time, "HH:MM". Omitted when the time isn't set yet (renders "TBD"). */
+  start?: string;
   end?: string;
   title: string;
   location: string;
@@ -268,9 +268,10 @@ export interface CommitteeMember {
   /** Areas this person owns, e.g. ["Meals", "Scavenger Hunt"]. Used on the
    *  busier committees (Family Fest) where people wear several hats. */
   roles?: string[];
-  email: string;
-  /** E.164 phone, e.g. "+17155550201". */
-  phone: string;
+  /** Omitted until the person makes an account and links up. */
+  email?: string;
+  /** E.164 phone, e.g. "+17155550201". Omitted until they link up. */
+  phone?: string;
 }
 
 /** A volunteer committee that helps run the resort year-round. */

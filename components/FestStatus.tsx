@@ -145,14 +145,14 @@ function TodayDinner({ d }: { d: Dinner }) {
   );
 }
 
-function Contact({ label, name, phone }: { label: string; name: string; phone: string }) {
+function Contact({ label, name, phone }: { label: string; name: string; phone?: string }) {
   const { guest, promptSignIn } = useGuest();
   return (
     <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
       <p className="min-w-0 flex-1 truncate text-xs text-foreground/60">
         <span className="text-foreground/40">{label}:</span> {guest ? firstName(name) : name}
       </p>
-      {guest ? (
+      {!phone ? null : guest ? (
         <button
           onClick={promptSignIn}
           className="press rounded-full bg-background px-2.5 py-1.5 text-xs text-foreground/45 ring-1 ring-border"

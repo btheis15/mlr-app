@@ -28,43 +28,65 @@ export const POSTS: Post[] = [
 ];
 
 /**
- * Resort committees — year-round volunteer groups. Members below are
- * ILLUSTRATIVE placeholders (made-up names + example.com emails + 555 phones)
- * to show how the rosters read; swap in the real people later. Phones are E.164
- * so tel:/sms: work everywhere.
+ * Resort committees — year-round volunteer groups.
+ *
+ * Family Fest's roster is the **real** committee: each person's `roles[]` are
+ * the areas they own within the one Family Fest committee (Meals, Entertainment
+ * & Games, etc. — these are roles, not separate committees). Most don't have an
+ * account yet, so they have a display first name but no `email`/`phone`; those
+ * get filled in (and the name swapped to their account) once they link up. Brian
+ * is the one with contact on file for now. Phones are E.164 so tel:/sms: work.
+ *
+ * Resort Maintenance + Beautification have **no roster yet** — their old
+ * illustrative placeholders were cleared. Add real people as they sign on.
  */
+/** The Family Fest committee's role areas, in display order. Each person's
+ *  `roles[]` are drawn from these (a trailing " · Lead" marks the area's lead).
+ *  Used to lay the roster out grouped by area on the committee page. */
+export const FAMILY_FEST_AREAS = [
+  "Meals",
+  "Entertainment & Games",
+  "Art & Decorating",
+  "Merchandise, Fundraising & Polling",
+  "Logistics, Scheduling & Finance",
+] as const;
+
 export const COMMITTEES: Committee[] = [
   {
     slug: "resort-maintenance",
     name: "Resort Maintenance",
     emoji: "🛠️",
     description: "Cabin upkeep, docks, mowing, and getting the grounds ready each season.",
-    members: [
-      { name: "Dale Whitaker", role: "Lead", email: "dale.whitaker@example.com", phone: "+17155550201" },
-      { name: "Marie Olson", email: "marie.olson@example.com", phone: "+17155550202" },
-      { name: "Greg Sandberg", email: "greg.sandberg@example.com", phone: "+17155550203" },
-    ],
+    members: [],
   },
   {
     slug: "family-fest",
     name: "Family Fest",
     emoji: "🎉",
     description:
-      "The big one — plans the whole week. Each person owns one or more areas (meals, events, scavenger hunt, and more).",
+      "The big one — plans the whole week. Each person owns one or more areas (meals, entertainment & games, art & decorating, merchandise/fundraising/polling, logistics & finance); each area has a Lead.",
     members: [
-      { name: "Cathy Hofer", role: "Lead", roles: ["Finances", "Meals"], email: "cathy.hofer@example.com", phone: "+17155550211" },
-      { name: "Brian Theis", roles: ["Events", "Scavenger Hunt", "App & comms"], email: "brian.theis15@gmail.com", phone: "+12248005389" },
-      { name: "Susan Park", roles: ["Talent show", "Kids' activities"], email: "susan.park@example.com", phone: "+17155550212" },
-      { name: "Rick Hofer", roles: ["Dinners & grilling"], email: "rick.hofer@example.com", phone: "+17155550213" },
-      { name: "Megan Doyle", roles: ["Photos & memories"], email: "megan.doyle@example.com", phone: "+17155550214" },
-      { name: "Paul Stenberg", roles: ["Setup & cleanup"], email: "paul.stenberg@example.com", phone: "+17155550215" },
-      { name: "Diane Kessler", roles: ["Welcome & registration"], email: "diane.kessler@example.com", phone: "+17155550240" },
-      { name: "Mark Donnelly", roles: ["Fishing tournament"], email: "mark.donnelly@example.com", phone: "+17155550241" },
-      { name: "Karen Voss", roles: ["Decorations"], email: "karen.voss@example.com", phone: "+17155550242" },
-      { name: "Joe Ferris", roles: ["Bonfire & firewood"], email: "joe.ferris@example.com", phone: "+17155550243" },
-      { name: "Beth Calloway", roles: ["Supplies & shopping", "Meals"], email: "beth.calloway@example.com", phone: "+17155550244" },
-      { name: "Tony Marchetti", roles: ["Music & DJ"], email: "tony.marchetti@example.com", phone: "+17155550245" },
-      { name: "Laura Quinn", roles: ["Kids' activities", "Crafts"], email: "laura.quinn@example.com", phone: "+17155550246" },
+      { name: "Lauren", roles: ["Meals · Lead"] },
+      { name: "Jessica", roles: ["Meals", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
+      { name: "Rob H", roles: ["Meals", "Logistics, Scheduling & Finance"] },
+      { name: "Lisa", roles: ["Meals"] },
+      { name: "Matt", roles: ["Meals", "Entertainment & Games"] },
+      { name: "Aunt Kity", roles: ["Meals", "Logistics, Scheduling & Finance"] },
+      { name: "Natalie", roles: ["Meals", "Entertainment & Games"] },
+      { name: "Keith", roles: ["Entertainment & Games · Lead"] },
+      { name: "Rick G", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling · Lead"] },
+      { name: "Markus", roles: ["Entertainment & Games"] },
+      { name: "Karen", roles: ["Entertainment & Games"] },
+      { name: "Zack", roles: ["Entertainment & Games"] },
+      { name: "Abbie", roles: ["Entertainment & Games", "Art & Decorating", "Merchandise, Fundraising & Polling"] },
+      { name: "Brian", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"], email: "brian.theis15@gmail.com", phone: "+12248005389" },
+      { name: "Jenny", roles: ["Art & Decorating · Lead"] },
+      { name: "Christy", roles: ["Art & Decorating"] },
+      { name: "Lindsay", roles: ["Art & Decorating"] },
+      { name: "Ellie", roles: ["Art & Decorating"] },
+      { name: "Michelle B", roles: ["Art & Decorating"] },
+      { name: "Cathy", roles: ["Logistics, Scheduling & Finance · Lead"] },
+      { name: "Cassie", roles: ["Logistics, Scheduling & Finance"] },
     ],
   },
   {
@@ -72,11 +94,7 @@ export const COMMITTEES: Committee[] = [
     name: "Beautification",
     emoji: "🌲",
     description: "Planting, flower beds, trails, and keeping the resort looking its best.",
-    members: [
-      { name: "Linda Brauer", role: "Lead", email: "linda.brauer@example.com", phone: "+17155550221" },
-      { name: "Tom Becker", email: "tom.becker@example.com", phone: "+17155550222" },
-      { name: "Janet Cole", email: "janet.cole@example.com", phone: "+17155550223" },
-    ],
+    members: [],
   },
 ];
 
@@ -247,127 +265,51 @@ export const RESORT_EVENTS: ResortEvent[] = [
   },
 ];
 
-/** The week's timed agenda, in chronological order. Each event has time,
- *  location, a `lead` (who's in charge, tap-to-call/text) + a `bring` note. */
+/** The week's agenda — one headline activity per day so far. **Titles are
+ *  real**; times, locations, and details are still being set, so they read
+ *  "TBD" (no placeholders). Times are omitted until set (the UI shows "TBD").
+ *  Fill in `start`/`location`/`description`/`lead` as each is decided. */
 export const SCHEDULE: ScheduleEvent[] = [
   {
-    id: "arrival",
+    id: "games-up-top",
     day: "2026-07-27",
-    start: "15:00",
-    title: "Arrival & check-in",
-    location: "Main Lodge",
-    emoji: "🛻",
-    description:
-      "Roll in, grab your cabin keys at the lodge, and settle the kids. Coolers to the boathouse fridge.",
-    lead: { name: "Steward Eadric of House Larkspur", phone: "+17155550140" },
-    bring: "Your cabin confirmation & a cooler for the boathouse fridge.",
+    title: "Games Up Top",
+    location: "TBD",
+    emoji: "🎮",
+    description: "Details TBD.",
   },
   {
-    id: "welcome-bonfire",
-    day: "2026-07-27",
-    start: "19:30",
-    title: "Welcome bonfire & s'mores",
-    location: "Lakeside fire pit",
-    emoji: "🔥",
-    description:
-      "Kick off the week by the water. Marshmallows and firewood provided — bring a chair and your stories.",
-    lead: { name: "Baron Aldric of House Thornwood", phone: "+17155550127" },
-    bring: "A camp chair & your best lake stories.",
-  },
-  {
-    id: "pancake-breakfast",
+    id: "lake-day",
     day: "2026-07-28",
-    start: "08:00",
-    end: "10:00",
-    title: "Pancake breakfast",
-    location: "Lodge deck",
-    emoji: "🥞",
-    description: "Grandpa's famous blueberry pancakes. Coffee's on by 7:30.",
-    lead: { name: "Master Tobias of House Fenwick", phone: "+17155550141" },
-    bring: "Just an appetite (and your favorite syrup, if you're picky).",
+    title: "Lake Day",
+    location: "TBD",
+    emoji: "🏖️",
+    description: "Details TBD.",
   },
   {
-    id: "pontoon-parade",
-    day: "2026-07-28",
-    start: "13:00",
-    title: "Pontoon parade",
-    location: "Main dock",
-    emoji: "🛥️",
-    description:
-      "Deck out the pontoons and cruise the bay. Best-decorated boat wins the golden paddle.",
-    lead: { name: "Captain Rowan of House Eldermoor", phone: "+17155550142" },
-    bring: "Decorations for your boat & plenty of sunscreen.",
-  },
-  {
-    id: "musky-tournament",
+    id: "golf-outing",
     day: "2026-07-29",
-    start: "06:00",
-    end: "12:00",
-    title: "Musky fishing tournament",
-    location: "North bay",
-    emoji: "🎣",
-    description:
-      "The big one. Two-person boats, catch-and-release, biggest musky takes the trophy. Early start — coffee at the dock.",
-    lead: { name: "Master Bartholomew of House Eldermoor", phone: "+17155550129" },
-    bring: "Rod, reel, a thermos — and a partner for your boat.",
+    title: "Golf Outing",
+    location: "TBD",
+    emoji: "⛳",
+    description: "Details TBD.",
   },
   {
-    id: "kids-olympics",
-    day: "2026-07-29",
-    start: "10:00",
-    title: "Kids' lake olympics",
-    location: "Swim beach",
-    emoji: "🏅",
-    description:
-      "Cannonball contest, sandcastle build-off, and the legendary tube relay.",
-    lead: { name: "Lady Wynne of House Larkspur", phone: "+17155550143" },
-    bring: "Swimsuit, towel, and a competitive spirit.",
-  },
-  {
-    id: "cousins-cookout",
+    id: "variety-show",
     day: "2026-07-30",
-    start: "17:30",
-    title: "Cousins' cookout (potluck)",
-    location: "Pavilion",
-    emoji: "🍔",
-    description:
-      "Everyone brings a dish — see the Crew tab for who's got what. Grill fired up at 5.",
-    lead: { name: "Goodwife Maren of House Hollowbrook", phone: "+17155550130" },
-    bring: "A dish to share — check the Crew board so we don't get six potato salads.",
+    title: "Variety Show",
+    location: "TBD",
+    emoji: "🎭",
+    description: "Hosted by Michelle Birkholz. Details TBD.",
+    lead: { name: "Michelle Birkholz" },
   },
   {
-    id: "talent-show",
-    day: "2026-07-30",
-    start: "19:00",
-    title: "Family talent show",
-    location: "Lodge great room",
-    emoji: "🎤",
-    description:
-      "Sign up at the lodge. Acts of all kinds welcome — the cheesier the better.",
-    lead: { name: "Bard Percival of House Wyndmere", phone: "+17155550144" },
-    bring: "An act to perform — sign up at the lodge by noon.",
-  },
-  {
-    id: "group-photo",
+    id: "friday-tbd",
     day: "2026-07-31",
-    start: "11:00",
-    title: "Big group photo",
-    location: "Lodge front steps",
-    emoji: "📸",
-    description: "Everyone, all of us, matching-ish shirts. Don't be late!",
-    lead: { name: "Dame Cecily of House Brightwater", phone: "+17155550128" },
-    bring: "Your matching-ish shirt — and be on the steps by 11 sharp.",
-  },
-  {
-    id: "fireworks",
-    day: "2026-07-31",
-    start: "21:30",
-    title: "Fireworks over the lake",
-    location: "Lakeside lawn",
-    emoji: "🎆",
-    description: "The grand finale. Blankets out, lights down, look up.",
-    lead: { name: "Sir Reginald of House Pemberlye", phone: "+17155550131" },
-    bring: "A blanket and a spot on the lawn — dinner's right before at 6.",
+    title: "TBD",
+    location: "TBD",
+    emoji: "🗓️",
+    description: "Details TBD.",
   },
 ];
 
@@ -386,76 +328,72 @@ export const THINGS_TO_DO: FestActivity[] = [
 ];
 
 /**
- * Each night's dinner and head chef. ILLUSTRATIVE demo content (Renaissance
- * "house" names, made-up 555 numbers, sample menus) showing how a fully
- * assigned week reads — swap in the real families/chefs/numbers when set.
+ * Each night's dinner and head chef. **Head chefs are real**; the menus, crew
+ * houses, and serve/prep times are still being set, so they read **TBD** for now
+ * (no placeholders). Fill them in as they're decided. Chef phones get added once
+ * the chefs link their accounts.
  * GOOGLE DRIVE SEAM: replace with a fetch that maps a Drive file → Dinner[].
  */
 export const DINNERS: Dinner[] = [
   {
     id: "d-mon",
     day: "2026-07-27",
-    title: "The Welcoming Feast",
-    emoji: "🔥",
-    chef: { name: "Baron Aldric of House Thornwood", phone: "+17155550127" },
-    houses: ["House Thornwood", "The Ravenshire Clan", "House Larkspur"],
-    menu: "Flame-charred sausages & beef rounds of the realm, fire-roasted corn, and the Baron's legendary potato salad.",
-    prepTime: "4:30 PM",
-    prepLocation: "Lakeside Pavilion grills",
-    time: "6:00 PM",
-    location: "Lakeside Pavilion",
+    title: "Monday Dinner",
+    emoji: "🍽️",
+    chef: { name: "Jessica Theis" },
+    houses: [],
+    menu: "TBD",
+    prepTime: "TBD",
+    time: "TBD",
+    location: "TBD",
   },
   {
     id: "d-tue",
     day: "2026-07-28",
-    title: "Ye Olde Pizza Forge",
-    emoji: "🍕",
-    chef: { name: "Dame Cecily of House Brightwater", phone: "+17155550128" },
-    houses: ["House Brightwater", "The Wyndmere Troupe"],
-    menu: "Wood-fired hand pies & flatbreads from the dock forge, a garden-greens salad, and lemon ices for the squires.",
-    prepTime: "5:00 PM",
-    prepLocation: "Dock pizza oven",
-    time: "6:30 PM",
-    location: "Main Dock",
+    title: "Tuesday Dinner",
+    emoji: "🍽️",
+    chef: { name: "Natalie de Pareja & Karen" },
+    houses: [],
+    menu: "TBD",
+    prepTime: "TBD",
+    time: "TBD",
+    location: "TBD",
   },
   {
     id: "d-wed",
     day: "2026-07-29",
-    title: "Dragonscale Fish Fry",
-    emoji: "🐟",
-    chef: { name: "Master Bartholomew of House Eldermoor", phone: "+17155550129" },
-    houses: ["House Eldermoor", "The Ashforge Family", "House Fenwick"],
-    menu: "Beer-battered walleye from the day's catch, golden hush puppies, and slaw of the realm.",
-    prepTime: "4:00 PM",
-    prepLocation: "Boathouse kitchen",
-    time: "5:30 PM",
-    location: "Boathouse",
+    title: "Wednesday Dinner",
+    emoji: "🍽️",
+    chef: { name: "Lauren" },
+    houses: [],
+    menu: "TBD",
+    prepTime: "TBD",
+    time: "TBD",
+    location: "TBD",
   },
   {
     id: "d-thu",
     day: "2026-07-30",
-    title: "The Cousins' Grand Potluck Banquet",
-    emoji: "🍔",
-    chef: { name: "Goodwife Maren of House Hollowbrook", phone: "+17155550130" },
-    houses: ["House Hollowbrook", "The Stagleigh Kin", "House Marrowin"],
-    menu: "A long table of dishes from every house (see the Crew board), with the Goodwife's grill lit at 5.",
-    prepTime: "4:30 PM",
-    prepLocation: "Pavilion",
-    time: "5:30 PM",
-    location: "Pavilion",
+    title: "Thursday Dinner",
+    emoji: "🍽️",
+    chef: { name: "Rob & Joe" },
+    houses: [],
+    menu: "TBD",
+    prepTime: "TBD",
+    time: "TBD",
+    location: "TBD",
   },
   {
     id: "d-fri",
     day: "2026-07-31",
-    title: "The Farewell Pig Roast",
-    emoji: "🍖",
-    chef: { name: "Sir Reginald of House Pemberlye", phone: "+17155550131" },
-    houses: ["House Pemberlye", "The Brightwater Family", "House Thornwood"],
-    menu: "A smoked feast to send us off — slow brisket, herbed chicken, honeyed beans, and berry cobbler before the fireworks.",
-    prepTime: "3:30 PM",
-    prepLocation: "Lakeside Pavilion smokers",
-    time: "6:00 PM",
-    location: "Lakeside Pavilion",
+    title: "Friday Dinner",
+    emoji: "🍽️",
+    chef: { name: "TBD" },
+    houses: [],
+    menu: "TBD",
+    prepTime: "TBD",
+    time: "TBD",
+    location: "TBD",
   },
 ];
 
