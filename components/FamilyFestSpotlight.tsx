@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatTime, plural } from "@/lib/format";
+import { formatDateRange, formatTime, plural } from "@/lib/format";
 import { eventsForDay } from "@/lib/schedule";
 import type { ScheduleEvent } from "@/lib/types";
 
@@ -101,28 +101,38 @@ export function FamilyFestSpotlight({
 
   // Planning — partial takeover: gather volunteers and preview what's planned.
   if (season?.isPlanning) {
-    const preview = schedule.slice(0, 3);
     return (
       <Link
         href="/family-fest"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/25"
       >
-        <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
-          🎉 {name} · planning underway
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
+            🎉 {name} · planning underway
+          </p>
+          <p className="shrink-0 text-[11px] font-medium text-foreground/50">
+            {formatDateRange(startDate, endDate)}
+          </p>
+        </div>
         <p className="mt-1 text-base font-semibold">
           {season.isSoon
             ? "Almost here — final plans coming together"
             : `${season.daysUntilStart} days out — here's what's taking shape`}
         </p>
-        {preview.length > 0 && (
+        {schedule.length > 0 && (
           <ul className="mt-2 space-y-1">
-            {preview.map((h) => (
-              <li key={h.id} className="flex items-center gap-2 text-sm">
-                <span>{h.emoji}</span>
-                <span className="font-medium">{h.title}</span>
-              </li>
-            ))}
+            {schedule.map((h) => {
+              const d = new Date(`${h.day}T00:00:00`);
+              return (
+                <li key={h.id} className="flex items-center gap-2 text-sm">
+                  <span>{h.emoji}</span>
+                  <span className="flex-1 font-medium">{h.title}</span>
+                  <span className="shrink-0 text-[11px] text-foreground/45">
+                    {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
         <p className="mt-2 text-xs font-medium text-campfire">
