@@ -17,6 +17,7 @@ import { Avatar } from "@/components/Avatar";
 import { AvatarCropper } from "@/components/AvatarCropper";
 import { ContactPaySettings } from "@/components/ContactPaySettings";
 import { ChangeEmail } from "@/components/ChangeEmail";
+import { EditDisplayName } from "@/components/EditDisplayName";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PushToggle } from "@/components/PushToggle";
 import { NotifPrefs } from "@/components/NotifPrefs";
@@ -171,7 +172,10 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <ChangeEmail />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <EditDisplayName />
+        <ChangeEmail />
+      </div>
 
       <CollapsibleSection
         title="Notifications"
