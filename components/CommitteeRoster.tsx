@@ -10,7 +10,8 @@ import { PrivateName } from "@/components/Guard";
 import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
 import { FAMILY_FEST_AREAS } from "@/lib/data";
-import type { Committee, CommitteeMember } from "@/lib/types";
+import { fetchCommitteeRoster, type RosterEntry } from "@/lib/committeeRoster";
+import type { Committee } from "@/lib/types";
 
 /**
  * The public-facing committee roster. The roster itself is **static**
@@ -24,7 +25,19 @@ import type { Committee, CommitteeMember } from "@/lib/types";
  * management card above it, which controls Supabase chat membership.)
  */
 export function CommitteeRoster({ committee }: { committee: Committee }) {
-  const members = committee.members;
+  // The roster is DB-backed (migration 0055) with the in-code list as a fallback;
+  // each slot may carry a linked account (linked_user_id) stamped on verify.
+  const [members, setMembers] = useState<RosterEntry[]>(
+    () => (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null })),
+  );
+  useEffect(() => {
+    let alive = true;
+    fetchCommitteeRoster(committee.slug).then((r) => alive && setMembers(r));
+    return () => {
+      alive = false;
+    };
+  }, [committee.slug]);
+
   const isRoleBased = members.some((m) => m.roles && m.roles.length > 0);
 
   // Distinct, lowercased roster emails — the keys we resolve to real accounts.
@@ -65,7 +78,12 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     };
   }, [rosterEmails]);
 
-  const linkFor = (m: CommitteeMember): ProfileLite | null => {
+  const linkFor = (m: RosterEntry): ProfileLite | null => {
+    // The DB link (stamped on verify) is authoritative; fall back to live email /
+    // name matching so it still resolves before a backfill or for seed data.
+    if (m.linkedUserId) {
+      return { id: m.linkedUserId, name: m.linkedName ?? m.name, avatarUrl: m.linkedAvatarUrl ?? null };
+    }
     const e = m.email?.toLowerCase();
     if (e && byEmail[e]) return byEmail[e];
     return allProfiles.find((p) => nameMatches(m.name, p.name)) ?? null;
@@ -75,9 +93,11 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   // misleading "no members" next to the account-membership card above).
   if (members.length === 0) return null;
 
-  const Row = ({ m, isLead }: { m: CommitteeMember; isLead?: boolean }) => {
+  const Row = ({ m, isLead }: { m: RosterEntry; isLead?: boolean }) => {
     const link = linkFor(m);
     const display = link?.name ?? m.name;
+    // Invited (has an email) but hasn't claimed the slot by verifying yet.
+    const pending = !link && !!m.email;
     return (
       <li className="flex items-center gap-2">
         {link ? (
@@ -95,6 +115,14 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         <CommitteeBadge name={display} />
         {isLead && (
           <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">Lead</span>
+        )}
+        {pending && (
+          <span
+            className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-foreground/55"
+            title="Invited — hasn't signed in to claim their account yet"
+          >
+            Pending verification
+          </span>
         )}
         <span className="ml-auto">
           <CommitteeMemberContact email={m.email} phone={m.phone} />
