@@ -313,6 +313,24 @@ function RosterEditor({
   const roles = () =>
     FAMILY_FEST_AREAS.filter((a) => selected.has(a)).map((a) => (leads.has(a) ? `${a} · Lead` : a));
 
+  /** Link an existing account — and auto-fill their phone + email from their
+   *  profile so the roster row carries their contact info (mirrors iOS). */
+  const pickMember = async (p: ProfileLite) => {
+    setLinkedUserId(p.id);
+    setLinkedName(p.name);
+    setName(p.name);
+    setPickQuery("");
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("phone, contact_email")
+      .eq("id", p.id)
+      .single();
+    const prof = data as { phone: string | null; contact_email: string | null } | null;
+    if (prof?.contact_email) setEmail(prof.contact_email);
+    if (prof?.phone) setPhone(prof.phone);
+  };
+
   const save = async () => {
     if (!name.trim()) return;
     setBusy(true);
@@ -373,7 +391,7 @@ function RosterEditor({
                   <li key={p.id}>
                     <button
                       type="button"
-                      onClick={() => { setLinkedUserId(p.id); setLinkedName(p.name); setName(p.name); setPickQuery(""); }}
+                      onClick={() => void pickMember(p)}
                       className="press flex w-full items-center gap-2 bg-card px-3 py-2 text-left text-sm hover:bg-background"
                     >
                       <Avatar name={p.name} url={p.avatarUrl} size={22} />
