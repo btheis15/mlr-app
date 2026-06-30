@@ -104,7 +104,7 @@ export function FeedView() {
         .channel("feed-unread")
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeUnread())
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, () => computeUnread())
-        .on("postgres_changes", { event: "*", schema: "public", table: "committee_members", filter: `user_id=eq.${me}` }, () => loadCommittees())
+        .on("postgres_changes", { event: "*", schema: "public", table: "committee_roster" }, () => loadCommittees())
         .subscribe();
     })();
 
