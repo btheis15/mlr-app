@@ -76,11 +76,13 @@ export function FeedView() {
     // I was viewing, fall back to Posts.
     const loadCommittees = async () => {
       if (!me) return;
-      const { data: mem } = await sb.from("committee_members").select("committee_id").eq("user_id", me);
-      const ids = ((mem ?? []) as { committee_id: string }[]).map((r) => r.committee_id);
+      // Membership lives in the roster now (migration 0057): my committees are
+      // the ones where a roster entry is linked to my account.
+      const { data: ros } = await sb.from("committee_roster").select("committee_slug").eq("linked_user_id", me);
+      const slugs = Array.from(new Set(((ros ?? []) as { committee_slug: string }[]).map((r) => r.committee_slug)));
       let next: MyCommittee[] = [];
-      if (ids.length) {
-        const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("id", ids).order("position", { ascending: true });
+      if (slugs.length) {
+        const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("slug", slugs).order("position", { ascending: true });
         next = (cs ?? []) as MyCommittee[];
       }
       if (cancelled) return;

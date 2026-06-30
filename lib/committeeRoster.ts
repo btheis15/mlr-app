@@ -10,6 +10,8 @@ import type { CommitteeMember } from "@/lib/types";
 
 /** A roster slot, in the same shape the seed uses, plus its account link. */
 export interface RosterEntry extends CommitteeMember {
+  /** DB row id (absent for in-code seed fallback entries). */
+  id?: string;
   /** The claimed account, if someone has verified with this slot's email. */
   linkedUserId: string | null;
   linkedName: string | null;
@@ -25,6 +27,43 @@ interface RosterRow {
   position: number;
   linked_user_id: string | null;
   profiles: { display_name: string | null; avatar_url: string | null } | null;
+}
+
+/** Create or update a roster entry (admin-gated by RLS). */
+export async function saveRosterEntry(input: {
+  id?: string;
+  committeeSlug: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  roles: string[];
+  linkedUserId: string | null;
+}): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const uid = (await sb.auth.getUser()).data.user?.id ?? null;
+  const row = {
+    committee_slug: input.committeeSlug,
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    roles: input.roles,
+    linked_user_id: input.linkedUserId,
+    updated_at: new Date().toISOString(),
+    updated_by: uid,
+  };
+  const { error } = input.id
+    ? await sb.from("committee_roster").update(row).eq("id", input.id)
+    : await sb.from("committee_roster").insert(row);
+  return error ? { error: error.message } : {};
+}
+
+/** Remove a roster entry (= remove them from the committee). */
+export async function deleteRosterEntry(id: string): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from("committee_roster").delete().eq("id", id);
+  return error ? { error: error.message } : {};
 }
 
 /** The committee's roster from the DB (ordered), or the in-code seed as a
@@ -48,6 +87,7 @@ export async function fetchCommitteeRoster(slug: string): Promise<RosterEntry[]>
     const rows = (data ?? []) as unknown as RosterRow[];
     if (!rows.length) return seed;
     return rows.map((r) => ({
+      id: r.id,
       name: r.name,
       roles: r.roles ?? undefined,
       email: r.email ?? undefined,

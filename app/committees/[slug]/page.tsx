@@ -1,10 +1,6 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
-import { CommitteeJoin } from "@/components/CommitteeJoin";
 import { ChatEntryButton } from "@/components/ChatEntryButton";
-import { AdminJoinRequests } from "@/components/AdminJoinRequests";
-import { CommitteeMembers } from "@/components/CommitteeMembers";
-import { CommitteeEmailMembers } from "@/components/CommitteeEmailMembers";
 import { CommitteeRoster } from "@/components/CommitteeRoster";
 import { COMMITTEES } from "@/lib/data";
 
@@ -36,14 +32,9 @@ export default async function CommitteePage({
 
       <ChatEntryButton slug={committee.slug} name={committee.name} />
 
-      <AdminJoinRequests slug={committee.slug} name={committee.name} />
-
-      <CommitteeMembers slug={committee.slug} name={committee.name} />
-
-      <CommitteeEmailMembers slug={committee.slug} name={committee.name} />
-
-      <CommitteeJoin committee={committee} />
-
+      {/* The roster is the single membership list now (migration 0057): it shows
+          everyone + their roles, lets app admins add/remove/assign roles, and
+          emails the committee or a single role. */}
       <CommitteeRoster committee={committee} />
     </div>
   );
