@@ -44,7 +44,13 @@ export default function HomePage() {
       <HomeAroundResort />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}
-      <CollapsibleSection title="App & help" icon="📲" subtitle="Add to phone · Share · Help">
+      <CollapsibleSection title="App & help" icon="📲" subtitle="Take the tour · Add to phone · Share · Help">
+        <RowLink
+          href="/guide"
+          emoji="🧭"
+          title="Take a quick tour"
+          subtitle="See the app screen by screen."
+        />
         <InstallButton />
         <ShareApp />
         <RowLink
