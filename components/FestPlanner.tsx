@@ -78,7 +78,7 @@ function festDays(startDate: string, endDate: string): string[] {
 const orNull = (s: string): string | null => (s.trim() ? s.trim() : null);
 
 export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" }) {
-  const { user } = useIdentity();
+  const { user, promptSignIn } = useIdentity();
   const { config, reload: reloadContent } = useFestContent({ realtime: true });
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [members, setMembers] = useState<FestMemberOption[]>([]);
@@ -131,6 +131,29 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
     return <Frame variant={variant}><p className="py-12 text-center text-sm text-foreground/50">Checking access…</p></Frame>;
   }
   if (!allowed) {
+    // Signed out (e.g. opened in Safari from the iOS app, which keeps a separate
+    // login) → prompt to sign in here rather than implying they lack access.
+    if (!user) {
+      return (
+        <Frame variant={variant}>
+          <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
+            <p className="text-3xl">🔑</p>
+            <p className="mt-2 text-sm font-semibold">Sign in to edit Family Fest</p>
+            <p className="mt-1 text-xs text-foreground/60">
+              The website keeps its own sign-in, separate from the iOS app. Sign in here once
+              (it&rsquo;ll stay signed in on this browser) to edit.
+            </p>
+            <button
+              type="button"
+              onClick={promptSignIn}
+              className="press mt-4 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Sign in
+            </button>
+          </div>
+        </Frame>
+      );
+    }
     return (
       <Frame variant={variant}>
         <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
