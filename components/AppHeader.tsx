@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAppImages } from "@/lib/useAppImages";
+import { siteImageSrc } from "@/lib/appImages";
 
 /**
  * The top-of-Home chrome: the green MLR cabin logo, centered, tapping goes Home.
@@ -11,6 +13,7 @@ import { usePathname } from "next/navigation";
  */
 export function AppHeader() {
   const onHome = usePathname() === "/";
+  const images = useAppImages();
 
   if (!onHome) return null;
 
@@ -27,7 +30,7 @@ export function AppHeader() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           id="app-logo"
-          src="/brand-logo-green.png"
+          src={siteImageSrc(images, "home_logo")}
           alt="Muskellunge Lake Resort"
           className="block w-auto max-w-full"
         />
