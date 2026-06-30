@@ -81,14 +81,12 @@ export default function HelpPage() {
         what each tab does, Family Fest, RSVPs, photos, and how to get the app on
         your phone. Great to skim before you dive in.
         <div className="mt-3">
-          <a
-            href="/mlr-app-guide.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/guide"
             className="press inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white"
           >
             📖 Open the guided tour
-          </a>
+          </Link>
         </div>
       </HelpItem>
 
