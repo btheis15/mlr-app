@@ -51,7 +51,7 @@ function Tile({
       href={href}
       className={`press rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm ${className}`}
     >
-      <span aria-hidden className={`inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${tile}`}>
+      <span aria-hidden className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${tile}`}>
         {emoji}
       </span>
       <h3 className="mt-2 text-sm font-semibold">{title}</h3>
