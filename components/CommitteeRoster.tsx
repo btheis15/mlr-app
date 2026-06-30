@@ -318,25 +318,18 @@ function RosterEditor({
       >
         <h2 className="text-lg font-bold">{isNew ? "Add member" : "Edit member"}</h2>
 
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
-          className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-        />
-
-        {/* Link to a real account */}
+        {/* Primary path: pick someone who already has an app account. */}
         {linkedUserId ? (
           <div className="flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2 text-sm ring-1 ring-primary/20">
-            <span className="font-medium text-primary">🔗 {linkedName ?? "Linked account"}</span>
-            <button type="button" onClick={() => { setLinkedUserId(null); setLinkedName(null); }} className="press text-xs font-semibold text-accent">Unlink</button>
+            <span className="font-medium text-primary">✓ {linkedName ?? "Linked account"}</span>
+            <button type="button" onClick={() => { setLinkedUserId(null); setLinkedName(null); }} className="press text-xs font-semibold text-accent">Change</button>
           </div>
         ) : (
           <div className="space-y-1">
             <input
               value={pickQuery}
               onChange={(e) => setPickQuery(e.target.value)}
-              placeholder="🔗 Link a member account — search…"
+              placeholder="🔎 Choose a member — search by name…"
               className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
             {matches.length > 0 && (
@@ -345,7 +338,7 @@ function RosterEditor({
                   <li key={p.id}>
                     <button
                       type="button"
-                      onClick={() => { setLinkedUserId(p.id); setLinkedName(p.name); if (!name.trim()) setName(p.name); setPickQuery(""); }}
+                      onClick={() => { setLinkedUserId(p.id); setLinkedName(p.name); setName(p.name); setPickQuery(""); }}
                       className="press flex w-full items-center gap-2 bg-card px-3 py-2 text-left text-sm hover:bg-background"
                     >
                       <Avatar name={p.name} url={p.avatarUrl} size={22} />
@@ -355,9 +348,18 @@ function RosterEditor({
                 ))}
               </ul>
             )}
+            <p className="px-0.5 text-[11px] text-foreground/45">
+              Pick someone with an account — that brings their name, photo, and chat access. Only fill in the fields below for someone not in the app yet (a one-off).
+            </p>
           </div>
         )}
 
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+          className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+        />
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
