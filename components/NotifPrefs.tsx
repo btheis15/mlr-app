@@ -117,13 +117,10 @@ export function NotifPrefs() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-0.5">
-        <p className="px-1 text-sm font-medium">In-app notifications</p>
-        <p className="px-1 text-xs text-foreground/45">
-          Choose which activities show in your Activity tab. These are separate from
-          push notifications. Admin announcements always come through.
-        </p>
-      </div>
+      <p className="px-1 text-xs text-foreground/45">
+        Choose which activities show in your Activity tab. These are separate from
+        push notifications. Admin announcements always come through.
+      </p>
 
       {SECTIONS.map((section) => {
         // Admin-only kinds (e.g. "new cabin request") only fire for admins, so

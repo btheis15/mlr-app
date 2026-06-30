@@ -177,20 +177,32 @@ export default function ProfilePage() {
         <ChangeEmail />
       </div>
 
-      <CollapsibleSection
-        title="Notifications"
-        icon="🔔"
-        subtitle={
-          user.pushTypes && user.pushTypes.length > 0
-            ? "Push on"
-            : user.emailAlerts
-              ? "Email alerts on"
-              : "Off"
-        }
-      >
+      {/* Notifications — split into separate sections to mirror the iOS Profile
+          (Activity notifications · Push notifications · email alerts). */}
+      <div className="space-y-2">
+        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          Notifications
+        </p>
+
+        <CollapsibleSection
+          title="Activity notifications"
+          icon="🔔"
+          subtitle="What lands in your Activity tab"
+        >
+          <NotifPrefs />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Push notifications"
+          icon="📲"
+          subtitle={user.pushTypes && user.pushTypes.length > 0 ? "On — buzzes this phone" : "Off"}
+        >
+          <PushToggle />
+        </CollapsibleSection>
+
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
           <span className="min-w-0">
-            <span className="text-sm font-medium">Email me alerts</span>
+            <span className="text-sm font-medium">✉️ Email me alerts</span>
             <span className="block text-xs text-foreground/50">
               Get an email when an admin pushes an alert, in case you miss it in
               the app.
@@ -203,11 +215,7 @@ export default function ProfilePage() {
             className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
           />
         </label>
-        <PushToggle />
-        <div className="mt-2 border-t border-border pt-3">
-          <NotifPrefs />
-        </div>
-      </CollapsibleSection>
+      </div>
 
       <CollapsibleSection
         title="Contact & payment"
@@ -221,8 +229,11 @@ export default function ProfilePage() {
       </CollapsibleSection>
 
       {isAdmin && (
-        <>
-          <h2 className="px-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-accent">🛠️ Admin tools</h2>
+        <CollapsibleSection
+          title="Admin tools"
+          icon="🛠️"
+          subtitle="Alerts, members, content review & more"
+        >
           <CollapsibleSection title="Post an alert" icon="📣" subtitle="Banner notice to everyone (+ email)">
             <AdminAlertComposer />
           </CollapsibleSection>
@@ -250,7 +261,7 @@ export default function ProfilePage() {
           <CollapsibleSection title="View as" icon="👁️" subtitle="Preview the app as a member or guest">
             <PreviewAs />
           </CollapsibleSection>
-        </>
+        </CollapsibleSection>
       )}
 
       <div className="space-y-2">
