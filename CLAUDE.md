@@ -157,10 +157,23 @@ seeds from the login email on signup; profiles are public-read) with a
 [`nameMatches()`](lib/committees.ts) fallback. A linked slot renders the
 **account** (avatar + current display name + tap-through to the profile) instead
 of the placeholder, so a person **upgrades in place** when they sign up — one
-slot per person, no duplicate. ⚠️ The roster emails ship in the **client
-bundle** (needed for both the link key and `mailto:`); consistent with the
-app's existing "seed contact ships in the bundle" posture (see the privacy wall
-note) — display is still gated behind sign-in.
+slot per person, no duplicate. The link is **stamped in the DB**, not just the
+UI: a `SECURITY DEFINER` trigger keeps `committee_roster.linked_user_id` in sync
+with `profiles.contact_email` (the verified login email) in **both directions** —
+from the *profiles* side when someone verifies (migration
+[`0056`](supabase/migrations/0056_committee_roster.sql)) and from the *roster*
+side when an admin adds/edits a slot's email to one that already has an account
+(migration [`0060`](supabase/migrations/0060_committee_roster_link_both_directions.sql),
+trim/case-insensitive). Because membership + chat key off `linked_user_id`
+([`0057`](supabase/migrations/0057_roster_is_membership.sql)), the upgrade also
+grants committee access. Email is the only **auto**-link key — the
+[`nameMatches()`](lib/committees.ts) fallback stays **display-only** (never
+stamps the link), so a slot only auto-replaces when the signup email matches its
+roster email (a no-email slot or a mismatched signup email needs an admin to
+"pick a member"). ⚠️ The roster emails ship in the **client bundle** (needed for
+both the link key and `mailto:`); consistent with the app's existing "seed
+contact ships in the bundle" posture (see the privacy wall note) — display is
+still gated behind sign-in.
 
 **Name badge** — [`CommitteeBadge`](components/CommitteeBadge.tsx) is a tiny
 emoji tag shown next to a person's name (committee name as the accessible
