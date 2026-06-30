@@ -485,6 +485,25 @@ adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
 of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
 without them.
 
+**Native APNs (the iOS app).** Alongside web push, the same mini sender also
+delivers to the **native iOS app** ([`ios/MLRApp`](ios/MLRApp)) over **APNs**.
+The app registers its device token into the `apns_subscriptions` table
+(migration [`0048`](supabase/migrations/0048_apns_subscriptions.sql) — own-rows
+RLS, `user_id` / `device_token` / `environment`, the native peer of
+`push_subscriptions`); [`media-server/apns.js`](media-server/apns.js) is a
+dependency-free HTTP/2 + ES256-JWT sender (token auth via a `.p8`), and
+[`push-sender.js`](media-server/push-sender.js) fans the **same unified payload**
+out to both arms from one realtime listener, mapping it to an `aps` dict +
+deep-link fields (`target_type`/`target_id`, `committee_id`, `category`) the
+app's tap handler / `NotifCategory` actions read. Dead tokens (410 /
+`BadDeviceToken` / `Unregistered`) are pruned like web-push subs. **Env (mini):**
+`APNS_KEY_PATH` (a `.p8` kept **outside** the repo, e.g. `~/keys/`),
+`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`. Dormant (logs `[apns] dormant
+(missing …)`) until all four are set; when up it logs `[apns] listening`. Web
+push and APNs are independent — either arm runs without the other. *(Per-type
+action categories beyond chat reply — e.g. HELP_REQUEST "On my way" — are a
+documented follow-up; feed pushes currently carry the deep-link target only.)*
+
 **In-app Notifications (the Activity tab).** A durable, Facebook-style feed of
 everything that happened involving you — comments & reactions on your posts,
 @mentions in posts/comments, @mentions in committee chat, new Feed posts,

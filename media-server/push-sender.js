@@ -59,42 +59,68 @@ async function start() {
   // (paired with the per-account push_self_notify flag). Comma-separated user ids.
   const SELF_NOTIFY_IDS = new Set((process.env.PUSH_SELF_NOTIFY_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
-  if (!SUPABASE_URL || !SERVICE_KEY || !VAPID_PUBLIC || !VAPID_PRIVATE) {
-    console.log("[push] dormant (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY + SUPABASE_SERVICE_ROLE_KEY to enable)");
+  // The native APNs arm (the iOS app). It logs its own "[apns] dormant …" with
+  // the reason if a var is missing/misspelled, so failures are self-explaining.
+  const apns = require("./apns").create();
+  const webPushReady = Boolean(VAPID_PUBLIC && VAPID_PRIVATE);
+
+  // Need Supabase (to resolve recipients) plus at least one delivery arm. Web
+  // push and APNs are independent — either can run without the other.
+  if (!SUPABASE_URL || !SERVICE_KEY || (!webPushReady && !apns.configured)) {
+    console.log("[push] dormant (set SUPABASE_SERVICE_ROLE_KEY + VAPID keys and/or APNS_* to enable)");
     return;
   }
 
   let webpush, createClient;
   try {
-    webpush = require("web-push");
+    if (webPushReady) webpush = require("web-push");
     ({ createClient } = require("@supabase/supabase-js"));
   } catch (e) {
     console.error("[push] missing deps — run `npm install` in media-server:", e && e.message);
     return;
   }
 
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+  if (webPushReady) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-  // Send one payload to every device a user has registered; prune dead ones.
+  // Send one payload to every device a user has registered — across BOTH arms
+  // (web push + native APNs) — pruning dead subscriptions/tokens as we go.
   const sendToUser = async (userId, payload) => {
-    const { data: subs } = await sb
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .eq("user_id", userId);
-    for (const s of subs || []) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(payload),
-        );
-      } catch (e) {
-        const code = e && e.statusCode;
-        if (code === 404 || code === 410) {
-          await sb.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
-        } else {
-          console.warn(`[push] send failed (${code || "?"}) user=${userId}: ${e && e.message}`);
+    // Web push (browser / installed PWA).
+    if (webPushReady) {
+      const { data: subs } = await sb
+        .from("push_subscriptions")
+        .select("endpoint, p256dh, auth")
+        .eq("user_id", userId);
+      for (const s of subs || []) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            JSON.stringify(payload),
+          );
+        } catch (e) {
+          const code = e && e.statusCode;
+          if (code === 404 || code === 410) {
+            await sb.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
+          } else {
+            console.warn(`[push] send failed (${code || "?"}) user=${userId}: ${e && e.message}`);
+          }
         }
+      }
+    }
+
+    // Native APNs (the iOS app). Same unified payload; apns.js maps it to an aps
+    // dict + deep-link fields and reports tokens Apple says are gone, which we
+    // delete so the table self-cleans like push_subscriptions does.
+    if (apns.configured) {
+      const { data: toks } = await sb
+        .from("apns_subscriptions")
+        .select("device_token, environment")
+        .eq("user_id", userId);
+      const items = (toks || []).map((t) => ({ token: t.device_token, environment: t.environment }));
+      if (items.length) {
+        const { dead } = await apns.send(items, payload);
+        if (dead.length) await sb.from("apns_subscriptions").delete().in("device_token", dead);
       }
     }
   };
@@ -157,6 +183,11 @@ async function start() {
       badge: ICON,
       tag: `committee-${committee.slug}`,
       url: `${APP_URL}/posts?c=${committee.slug}`,
+      // iOS deep-link + inline-reply action (NotifCategory.chatMention).
+      target_type: "committee",
+      target_id: committee.slug,
+      committee_id: msg.committee_id,
+      category: "CHAT_MENTION",
     };
 
     // Notify the committee (minus the author) — plus the author themselves if
@@ -187,6 +218,8 @@ async function start() {
       badge: ICON,
       tag: `alert-${a.id}`,
       url: `${APP_URL}/`,
+      target_type: "broadcast",
+      target_id: a.id,
     };
     let sent = 0;
     for (const p of profs || []) { await sendToUser(p.id, payload); sent++; }
@@ -243,6 +276,11 @@ async function start() {
       badge: ICON,
       tag: `notif-${n.id}`,
       url: n.url ? `${APP_URL}${n.url}` : `${APP_URL}/`,
+      // The feed row already denormalizes a deep-link target (0030); pass it
+      // through so an iOS tap lands in the right place. (Per-type action
+      // categories — e.g. HELP_REQUEST "On my way" — are a documented follow-up.)
+      target_type: n.entity_type || null,
+      target_id: n.entity_id || null,
     };
     await sendToUser(n.recipient_id, payload);
     console.log(`[push] ${n.type}: notified recipient`);
@@ -351,7 +389,10 @@ async function start() {
       handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
     )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat + alerts + feed notifications + new members + cabin requests)");
+      if (status === "SUBSCRIBED") {
+        console.log("[push] listening (chat + alerts + feed notifications + new members + cabin requests)");
+        if (apns.configured) console.log("[apns] listening (chat + alerts + feed notifications)");
+      }
     });
 }
 
