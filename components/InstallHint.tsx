@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { isIos, isStandalone } from "@/lib/push";
 import { INSTALL_EVENT } from "@/lib/install";
+import { useIsBareRoute } from "@/lib/bareRoutes";
 
 /** The Chrome/Android `beforeinstallprompt` event (not in the standard lib types). */
 type BeforeInstallPromptEvent = Event & {
@@ -32,6 +33,7 @@ type BeforeInstallPromptEvent = Event & {
  * there's no tiny ✕ — you must tap a clear, labelled button.
  */
 export function InstallHint() {
+  const bare = useIsBareRoute();
   const [show, setShow] = useState(false);
   // "auto" = the iOS first-run nag; "forced" = the user asked via a button.
   const [mode, setMode] = useState<"auto" | "forced">("auto");
@@ -85,7 +87,7 @@ export function InstallHint() {
     };
   }, []);
 
-  if (!show) return null;
+  if (bare || !show) return null;
 
   // Hide for this visit. The auto iOS nag returns next load until installed; a
   // forced (button-triggered) open just closes.

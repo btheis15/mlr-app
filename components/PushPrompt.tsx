@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { enablePush, ensureServiceWorker, isPushSupported, isStandalone, isIos } from "@/lib/push";
 import { DEFAULT_PUSH_TYPES } from "@/lib/types";
+import { useIsBareRoute } from "@/lib/bareRoutes";
 
 /**
  * First-run push prompt. The FIRST time a signed-in member opens the app on a
@@ -20,6 +21,7 @@ import { DEFAULT_PUSH_TYPES } from "@/lib/types";
  */
 export function PushPrompt() {
   const { user, updateUser, needsIntro } = useIdentity();
+  const bare = useIsBareRoute();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export function PushPrompt() {
     setShow(true);
   }, [pending]);
 
-  if (!show || !user) return null;
+  if (bare || !show || !user) return null;
 
   const enable = async () => {
     if (busy) return;

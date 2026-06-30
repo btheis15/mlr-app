@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { AssistantChat } from "@/components/AssistantChat";
 import { useAssistantEnabled } from "@/lib/assistantToggle";
+import { useIsBareRoute } from "@/lib/bareRoutes";
 
 // The floating "Ask MLR" entry point, mounted globally in layout.tsx. Sits just
 // above the TabBar. Hidden by default for EVERYONE. It appears only when (a) you
@@ -17,9 +18,10 @@ import { useAssistantEnabled } from "@/lib/assistantToggle";
 export function AssistantButton() {
   const { isBetaTester } = useIdentity();
   const [assistantEnabled] = useAssistantEnabled();
+  const bare = useIsBareRoute();
   const [open, setOpen] = useState(false);
 
-  if (!isBetaTester || !assistantEnabled) return null;
+  if (bare || !isBetaTester || !assistantEnabled) return null;
 
   return (
     <>

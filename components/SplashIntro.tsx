@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { whenAppLogoStable } from "@/lib/appLogoFit";
+import { useIsBareRoute } from "@/lib/bareRoutes";
 
 // App-open splash. A near-white wash (the app's own background) so it blends
 // with the white screen the app naturally shows while loading — then the GREEN
@@ -37,6 +38,7 @@ export function SplashIntro() {
   // Hold the splash until the initial auth check has settled, so the app's first
   // visible paint is already the right member/guest view — no post-splash shift.
   const { authReady } = useIdentity();
+  const bare = useIsBareRoute();
   const [phase, setPhase] = useState<"intro" | "flying" | "done">("intro");
   const logoRef = useRef<HTMLImageElement>(null);
   const [flyTransform, setFlyTransform] = useState<string | undefined>();
@@ -56,6 +58,9 @@ export function SplashIntro() {
   };
 
   useEffect(() => {
+    // On a bare route (the master editor opened from iOS), skip the splash
+    // entirely — no logo flash on the way into the editor.
+    if (bare) return;
     reduceRef.current = Boolean(
       window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
     );
@@ -113,7 +118,7 @@ export function SplashIntro() {
     setTimeout(finish, FLY_MS + 60);
   };
 
-  if (phase === "done") return null;
+  if (bare || phase === "done") return null;
 
   return (
     <div
