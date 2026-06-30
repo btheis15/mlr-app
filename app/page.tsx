@@ -37,10 +37,10 @@ export default function HomePage() {
 
       <UpcomingEvents />
 
-      {/* ── Communication — People, Committees, Ask for Help, Work Checklist ── */}
+      {/* ── Communication — People, Committees, Ask for Help ─────────────────── */}
       <HomeCommunication />
 
-      {/* ── Around the resort — Events, Cabin Stay, Local Places ─────────────── */}
+      {/* ── Around the resort — Events, Cabin Stay, Local Places, Work Checklist ── */}
       <HomeAroundResort />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}

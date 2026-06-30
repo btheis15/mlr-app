@@ -1,10 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { helpTargeting, requestHelp, mapsUrl, HELP_TYPES, DEFAULT_HELP_TYPE } from "@/lib/helpRequests";
-import type { ResortEvent } from "@/lib/types";
+import { fetchWorkItems } from "@/lib/workItems";
+import type { ResortEvent, WorkItem } from "@/lib/types";
+
+/** The "did this get done?" nudge fires at 9 PM resort-local today, or 8 AM the
+ *  next morning if it's already past 6 PM. Returns an ISO timestamp. */
+function followupAtISO(): string {
+  const now = new Date();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  // Offset (ms) between Chicago wall-clock and true UTC right now.
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = asUTC - now.getTime();
+  let y = +parts.year,
+    mo = +parts.month,
+    d = +parts.day,
+    h = 21;
+  if (+parts.hour >= 18) {
+    h = 8;
+    const next = new Date(Date.UTC(y, mo - 1, d + 1));
+    y = next.getUTCFullYear();
+    mo = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  const targetAsUTC = Date.UTC(y, mo - 1, d, h, 0, 0);
+  return new Date(targetAsUTC - offsetMs).toISOString();
+}
 
 // The "Ask for Help" form (migration 0037). Opens only for someone who's at the
 // resort (the page gates it). Pick a type, describe what you need, optionally a
@@ -33,6 +70,10 @@ export function AskForHelpSheet({
   // Optional "what to bring" lines (e.g. "2 long tables", "6 chairs"). Helpers
   // check these off as they commit to bringing them.
   const [items, setItems] = useState<string[]>([]);
+  // Optional Work Checklist task this request is for. Linking one schedules a
+  // "did it get done?" follow-up and lets the asker check it off later.
+  const [openTasks, setOpenTasks] = useState<WorkItem[]>([]);
+  const [workItemId, setWorkItemId] = useState<string | null>(null);
   const [whereText, setWhereText] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
@@ -44,6 +85,18 @@ export function AskForHelpSheet({
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = description.trim().length > 0 && !pending;
+
+  useEffect(() => {
+    let active = true;
+    fetchWorkItems()
+      .then((all) => {
+        if (active) setOpenTasks(all.filter((w) => w.status === "open"));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const shareLocation = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -86,6 +139,8 @@ export function AskForHelpSheet({
       strict,
       today,
       items: items.map((s) => s.trim()).filter(Boolean),
+      workItemId,
+      followupAt: workItemId ? followupAtISO() : null,
     });
     setPending(false);
     if (err) {
@@ -167,6 +222,41 @@ export function AskForHelpSheet({
           className={`${FIELD} w-full resize-none`}
         />
       </div>
+
+      {/* Link a Work Checklist task (optional) */}
+      {openTasks.length > 0 && (
+        <div className="space-y-2">
+          <SectionLabel>
+            Link a Work Checklist task{" "}
+            <span className="font-normal normal-case text-foreground/40">(optional)</span>
+          </SectionLabel>
+          <select
+            value={workItemId ?? ""}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              setWorkItemId(id);
+              // Prefill the request text with the task title if it's still empty.
+              if (id && !description.trim()) {
+                const t = openTasks.find((w) => w.id === id);
+                if (t) setDescription(t.title);
+              }
+            }}
+            className={`${FIELD} w-full`}
+          >
+            <option value="">No linked task</option>
+            {openTasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+          {workItemId && (
+            <p className="px-0.5 text-[11px] text-foreground/45">
+              Later today we&rsquo;ll ask if this got done — saying yes checks it off the list.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* What to bring (optional checklist) */}
       <div className="space-y-2">
