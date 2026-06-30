@@ -285,6 +285,25 @@ async function start() {
     if (sent) console.log(`[push] new member ${name}: notified ${sent} admin(s)`);
   };
 
+  // A profiles row event means a *genuinely new* member ONLY when joined_at was
+  // just stamped (OTP verified, migration 0054). We can't rely on e.old: profiles
+  // uses the default REPLICA IDENTITY, so a realtime UPDATE's `old` carries only
+  // the primary key (e.old.joined_at is undefined) — which made the previous
+  // `!e.old.joined_at` guard true for EVERY profile edit / re-sign-in of an
+  // existing member, so re-verifying an existing account falsely pushed "joined".
+  // Instead we gate on joined_at being freshly set (within JOIN_FRESH_MS of now);
+  // an existing member's joined_at is old, so it never re-notifies. handleNewMember's
+  // once() dedupes the INSERT + UPDATE that can both accompany one verification.
+  const JOIN_FRESH_MS = 10 * 60 * 1000;
+  const maybeNewMember = (row) => {
+    if (!row || !row.joined_at) return;
+    const t = Date.parse(row.joined_at);
+    if (!Number.isFinite(t) || Date.now() - t > JOIN_FRESH_MS) return;
+    handleNewMember(row.id, row.display_name).catch((err) =>
+      console.error("[push] new member error:", err && err.message),
+    );
+  };
+
   // A new cabin stay request was submitted (cabin_bookings INSERT) — tell every
   // admin so they can review it, minus the requester themselves. Gated on the
   // in-app notification pref `notif_types` containing 'cabin_request' (the same
@@ -342,15 +361,12 @@ async function start() {
         console.error("[push] feed notification error:", err && err.message),
       ),
     )
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => {
-      // Only fire when joined_at is first set (OTP verified). The trigger in
-      // migration 0054 stamps it exactly once per user on email confirmation.
-      if (e.new.joined_at && !e.old.joined_at) {
-        handleNewMember(e.new.id, e.new.display_name).catch((err) =>
-          console.error("[push] new member error:", err && err.message),
-        );
-      }
-    })
+    // A new member's profile is stamped with joined_at at first verification —
+    // which can land as an INSERT (no prior row) or an UPDATE (stub upgraded).
+    // Route both through maybeNewMember, which fires only on a FRESH joined_at,
+    // so an existing member re-signing in / editing their profile never re-notifies.
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
       handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
     )
