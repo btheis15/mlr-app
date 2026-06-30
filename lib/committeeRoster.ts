@@ -1,4 +1,4 @@
-// Committee roster, DB-backed (migration 0055). Each slot can link to a real
+// Committee roster, DB-backed (migration 0056). Each slot can link to a real
 // account (linked_user_id, auto-stamped when someone verifies with the matching
 // email). Falls back to the in-code COMMITTEES seed when the table is empty /
 // offline, so the roster always renders. Shared by the web roster UI; iOS reads

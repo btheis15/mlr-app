@@ -25,7 +25,7 @@ import type { Committee } from "@/lib/types";
  * management card above it, which controls Supabase chat membership.)
  */
 export function CommitteeRoster({ committee }: { committee: Committee }) {
-  // The roster is DB-backed (migration 0055) with the in-code list as a fallback;
+  // The roster is DB-backed (migration 0056) with the in-code list as a fallback;
   // each slot may carry a linked account (linked_user_id) stamped on verify.
   const [members, setMembers] = useState<RosterEntry[]>(
     () => (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null })),
