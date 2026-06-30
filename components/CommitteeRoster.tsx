@@ -47,6 +47,30 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   const [byEmail, setByEmail] = useState<Record<string, ProfileLite>>({});
   const [sheet, setSheet] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
   const [editing, setEditing] = useState<RosterEntry | "new" | null>(null);
+  // Phone/email of the linked accounts (by profile id), so a linked person's own
+  // profile contact info wins over whatever's on the roster row.
+  const [contactById, setContactById] = useState<Record<string, { phone: string | null; email: string | null }>>({});
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const ids = Array.from(new Set(members.map((m) => m.linkedUserId).filter((i): i is string => !!i)));
+    if (!ids.length) {
+      setContactById({});
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data } = await supabase!.from("profiles").select("id, phone, contact_email").in("id", ids);
+      const map: Record<string, { phone: string | null; email: string | null }> = {};
+      for (const p of (data ?? []) as { id: string; phone: string | null; contact_email: string | null }[]) {
+        map[p.id] = { phone: p.phone, email: p.contact_email };
+      }
+      if (alive) setContactById(map);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [members]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -83,9 +107,20 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     return allProfiles.find((p) => nameMatches(m.name, p.name)) ?? null;
   };
 
+  /** Contact info to use for an entry: the linked account's profile wins, else
+   *  the roster row's own fields. */
+  const effectiveContact = (m: RosterEntry): { phone?: string; email?: string } => {
+    const link = linkFor(m);
+    const c = link ? contactById[link.id] : undefined;
+    return {
+      phone: (c?.phone || m.phone) ?? undefined,
+      email: (c?.email || m.email) ?? undefined,
+    };
+  };
+
   /** Build a mailto: link (bcc keeps addresses private) for a set of people. */
   const mailtoFor = (entries: RosterEntry[], subject: string): string | null => {
-    const emails = Array.from(new Set(entries.map((e) => e.email?.trim()).filter((e): e is string => !!e)));
+    const emails = Array.from(new Set(entries.map((e) => effectiveContact(e).email?.trim()).filter((e): e is string => !!e)));
     if (!emails.length) return null;
     return `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${encodeURIComponent(subject)}`;
   };
@@ -121,7 +156,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           </span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
-          <CommitteeMemberContact email={m.email} phone={m.phone} />
+          <CommitteeMemberContact {...effectiveContact(m)} />
           {isAdmin && (
             <button
               type="button"
