@@ -7,13 +7,20 @@
 // Activities, and the fest Details (name/tagline/dates). Saves write straight to
 // Supabase (RLS-gated) and both apps re-read, so web and iOS stay in lockstep.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useFestContent } from "@/lib/useFestContent";
 import { formatDateLong } from "@/lib/format";
+import {
+  fetchAppImages,
+  siteImageSrc,
+  uploadSiteImage,
+  saveAppImage,
+  resetAppImage,
+} from "@/lib/appImages";
 import {
   canEditFest,
   fetchMemberOptions,
@@ -41,7 +48,7 @@ import {
   type ActivityDraft,
 } from "@/lib/festContent";
 
-type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "details";
+type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "details" | "images";
 
 const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
@@ -49,6 +56,7 @@ const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "dues", label: "Dues", icon: "💵" },
   { key: "payees", label: "Payees", icon: "💸" },
   { key: "activities", label: "Anytime", icon: "🗺️" },
+  { key: "images", label: "Images", icon: "🖼️" },
   { key: "details", label: "Details", icon: "⚙️" },
 ];
 
@@ -170,6 +178,7 @@ export function FestPlanner() {
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
       {section === "activities" && <ActivityEditor items={activities} onChanged={reloadDrafts} />}
+      {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>
   );
@@ -867,6 +876,129 @@ function ActivitySheet({
       <Field label="Details (optional)"><textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} /></Field>
       <Field label="Where to start (optional)"><input value={location} onChange={(e) => setLocation(e.target.value)} className={`${FIELD} w-full`} /></Field>
     </Sheet>
+  );
+}
+
+// ── Images (logo, fest cover) ─────────────────────────────────────────────────
+
+function ImagesEditor() {
+  const [map, setMap] = useState<Record<string, string>>({});
+  const reload = useCallback(async () => setMap(await fetchAppImages()), []);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const items = [
+    { key: "home_logo", title: "Home logo", note: "Shown at the top of the Home screen.", wide: false },
+    { key: "fest_cover", title: "Family Fest cover", note: "The banner across the Family Fest page.", wide: true },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <p className="px-0.5 text-xs text-foreground/55">
+        Replace a default image everywhere — web and iOS update together. Reset goes back to the built-in art.
+      </p>
+      {items.map((it) => (
+        <ImageRow
+          key={it.key}
+          imageKey={it.key}
+          title={it.title}
+          note={it.note}
+          wide={it.wide}
+          src={siteImageSrc(map, it.key)}
+          hasCustom={Boolean(map[it.key])}
+          onChanged={reload}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ImageRow({
+  imageKey,
+  title,
+  note,
+  wide,
+  src,
+  hasCustom,
+  onChanged,
+}: {
+  imageKey: string;
+  title: string;
+  note: string;
+  wide: boolean;
+  src: string;
+  hasCustom: boolean;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const url = await uploadSiteImage(file, imageKey);
+      const { error: saveErr } = await saveAppImage(imageKey, url);
+      if (saveErr) throw new Error(saveErr);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: resetErr } = await resetAppImage(imageKey);
+    if (resetErr) setError(resetErr);
+    else onChanged();
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
+      <p className="text-sm font-semibold">{title}</p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={title}
+        className={`w-full rounded-xl object-contain ${wide ? "max-h-48" : "max-h-28"}`}
+      />
+      <p className="text-xs text-foreground/55">{note}</p>
+      <input ref={inputRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="press rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Uploading…" : hasCustom ? "Replace photo" : "Change photo"}
+        </button>
+        {hasCustom && (
+          <button
+            type="button"
+            onClick={reset}
+            disabled={busy}
+            className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-border disabled:opacity-50"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      {error && (
+        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
