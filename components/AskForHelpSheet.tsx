@@ -210,20 +210,8 @@ export function AskForHelpSheet({
         </div>
       </div>
 
-      {/* What */}
-      <div className="space-y-2">
-        <SectionLabel>What do you need?</SectionLabel>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-          maxLength={400}
-          placeholder="e.g. Need 2–3 people to move logs from the lot to the pavilion."
-          className={`${FIELD} w-full resize-none`}
-        />
-      </div>
-
-      {/* Link a Work Checklist task (optional) */}
+      {/* Link a Work Checklist task (optional) — near the top so it's clear you
+          can start from the list instead of describing the task by hand. */}
       {openTasks.length > 0 && (
         <div className="space-y-2">
           <SectionLabel>
@@ -257,6 +245,19 @@ export function AskForHelpSheet({
           )}
         </div>
       )}
+
+      {/* What */}
+      <div className="space-y-2">
+        <SectionLabel>What do you need?</SectionLabel>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          maxLength={400}
+          placeholder="e.g. Need 2–3 people to move logs from the lot to the pavilion."
+          className={`${FIELD} w-full resize-none`}
+        />
+      </div>
 
       {/* What to bring (optional checklist) */}
       <div className="space-y-2">
