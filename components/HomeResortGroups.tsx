@@ -3,13 +3,13 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import Link from "next/link";
 
-// Communication → People · Committees · Ask for Help · Work Checklist.
+// Communication → People · Committees · Ask for Help.
 // Placed right after events on Home. Tagged data-fit-anchor so the hero logo
 // sizes to land just above this section (see lib/appLogoFit.ts).
 export function HomeCommunication() {
   return (
     <div data-fit-anchor>
-      <CollapsibleSection title="Communication" icon="💬" subtitle="People · Committees · Ask for Help · Work Checklist">
+      <CollapsibleSection title="Communication" icon="💬" subtitle="People · Committees · Ask for Help">
         <RowLink
           href="/people"
           emoji="👥"
@@ -31,13 +31,12 @@ export function HomeCommunication() {
           title="Ask for Help"
           subtitle="Need a hand at the resort? Ask — or help out."
         />
-        <WorkChecklist />
       </CollapsibleSection>
     </div>
   );
 }
 
-// Around the resort → Events & Work Weekends · Cabin Stay · Local Places.
+// Around the resort → Events & Work Weekends · Cabin Stay · Local Places · Work Checklist.
 // Sits below Communication on Home.
 //
 // Tagged data-fit-anchor-empty: when Home has no upcoming events, the hero
@@ -45,7 +44,7 @@ export function HomeCommunication() {
 export function HomeAroundResort() {
   return (
     <div data-fit-anchor-empty>
-      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Events · Cabin Stay · Local Places">
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Events · Cabin Stay · Local Places · Work Checklist">
         <RowLink
           href="/events"
           emoji="📅"
@@ -57,6 +56,7 @@ export function HomeAroundResort() {
           <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
           <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
         </div>
+        <WorkChecklist />
       </CollapsibleSection>
     </div>
   );

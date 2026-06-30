@@ -126,6 +126,10 @@ export async function requestHelp(input: {
   today: string;
   /** Optional "what to bring" lines — helpers check off the ones they're bringing. */
   items?: string[];
+  /** Optional Work Checklist task this request is for. */
+  workItemId?: string | null;
+  /** ISO timestamp for the "did this get done?" follow-up nudge (set when a task is linked). */
+  followupAt?: string | null;
 }): Promise<{ id?: string; notified?: number; error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Sign-in isn't available yet." };
@@ -142,6 +146,8 @@ export async function requestHelp(input: {
     p_strict: input.strict,
     p_today: input.today,
     p_items: input.items ?? [],
+    p_work_item_id: input.workItemId ?? null,
+    p_followup_at: input.followupAt ?? null,
   });
   if (error) return { error: error.message };
   const row = (Array.isArray(data) ? data[0] : data) as { id: string; notified: number } | null;
