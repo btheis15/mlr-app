@@ -66,6 +66,24 @@ export async function deleteRosterEntry(id: string): Promise<{ error?: string }>
   return error ? { error: error.message } : {};
 }
 
+/** Live roster size per committee slug, in one query. Slugs with no DB rows are
+ *  absent from the map, so callers fall back to the in-code seed count — mirrors
+ *  `fetchCommitteeRoster`, which falls back to the seed when a slug has no rows. */
+export async function fetchRosterCounts(): Promise<Record<string, number>> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return {};
+  try {
+    const { data } = await sb.from("committee_roster").select("committee_slug");
+    const counts: Record<string, number> = {};
+    for (const r of (data ?? []) as { committee_slug: string }[]) {
+      counts[r.committee_slug] = (counts[r.committee_slug] ?? 0) + 1;
+    }
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
 /** The committee's roster from the DB (ordered), or the in-code seed as a
  *  fallback when there's no backend / the table is empty. */
 export async function fetchCommitteeRoster(slug: string): Promise<RosterEntry[]> {
