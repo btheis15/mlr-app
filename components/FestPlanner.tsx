@@ -8,6 +8,7 @@
 // Supabase (RLS-gated) and both apps re-read, so web and iOS stay in lockstep.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { BackLink } from "@/components/BackLink";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
@@ -76,7 +77,7 @@ function festDays(startDate: string, endDate: string): string[] {
 /** Trim a text field → null when empty (so updates blank the DB column). */
 const orNull = (s: string): string | null => (s.trim() ? s.trim() : null);
 
-export function FestPlanner() {
+export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" }) {
   const { user } = useIdentity();
   const { config, reload: reloadContent } = useFestContent({ realtime: true });
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -127,15 +128,11 @@ export function FestPlanner() {
   const days = festDays(config.startDate, config.endDate);
 
   if (allowed === null) {
-    return (
-      <Frame>
-        <p className="py-12 text-center text-sm text-foreground/50">Checking access…</p>
-      </Frame>
-    );
+    return <Frame variant={variant}><p className="py-12 text-center text-sm text-foreground/50">Checking access…</p></Frame>;
   }
   if (!allowed) {
     return (
-      <Frame>
+      <Frame variant={variant}>
         <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
           <p className="text-3xl">🔒</p>
           <p className="mt-2 text-sm font-semibold">Editing is for fest organizers</p>
@@ -148,8 +145,38 @@ export function FestPlanner() {
     );
   }
 
+  // Master/desktop variant: every section stacked on one long page (no tabs),
+  // each under a heading — the "edit one master sheet" feel.
+  if (variant === "page") {
+    return (
+      <Frame variant="page">
+        <PageSection icon="⚙️" title="Details">
+          <DetailsEditor config={config} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="📅" title="Schedule & events">
+          <ScheduleEditor items={schedule} days={days} members={members} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="🍽️" title="Dinners">
+          <DinnerEditor items={dinners} days={days} members={members} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="💵" title="Dues">
+          <DuesEditor items={dues} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="💸" title="Who to pay">
+          <PayeeEditor items={payees} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="🗺️" title="Anytime activities">
+          <ActivityEditor items={activities} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection icon="🖼️" title="Images">
+          <ImagesEditor />
+        </PageSection>
+      </Frame>
+    );
+  }
+
   return (
-    <Frame>
+    <Frame variant={variant}>
       {/* Section nav */}
       <div className="-mx-4 overflow-x-auto px-4">
         <div className="flex gap-2">
@@ -184,7 +211,34 @@ export function FestPlanner() {
   );
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+function Frame({ children, variant = "tabs" }: { children: React.ReactNode; variant?: "tabs" | "page" }) {
+  // Master/desktop variant: a full-window, document-style editor that breaks out
+  // of the app's narrow phone column and tab bar — so it reads like editing one
+  // master sheet, not navigating the app. Wide, centered, its own scroll.
+  if (variant === "page") {
+    return (
+      <div className="fixed inset-0 z-[80] overflow-y-auto bg-background">
+        <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
+          <header className="mb-8 flex items-start justify-between gap-4 border-b border-border pb-5">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Family Fest — Master Editor</h1>
+              <p className="text-sm text-foreground/60">
+                Everything in one place. Edits save straight to the database and sync to the app and iOS instantly.
+              </p>
+            </div>
+            <Link
+              href="/family-fest"
+              className="press shrink-0 rounded-full bg-card px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-border"
+            >
+              Done
+            </Link>
+          </header>
+          <div className="space-y-12">{children}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 pt-1">
       <BackLink href="/family-fest" label="Family Fest" />
@@ -196,6 +250,19 @@ function Frame({ children }: { children: React.ReactNode }) {
       </header>
       {children}
     </div>
+  );
+}
+
+/** A titled block in the master/page editor. */
+function PageSection({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-bold tracking-tight">
+        <span className="mr-2" aria-hidden>{icon}</span>
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 

@@ -61,7 +61,7 @@ export default function FamilyFestPage() {
         </p>
         {canEdit && (
           <Link
-            href="/family-fest/planner"
+            href="/family-fest/master"
             className="press inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
           >
             ✏️ Edit Family Fest
