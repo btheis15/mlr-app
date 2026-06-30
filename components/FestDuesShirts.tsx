@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { FAMILY_FEST, TSHIRT_VOTE } from "@/lib/data";
+import { useFestContent } from "@/lib/useFestContent";
+import { duesSummary } from "@/lib/festContent";
 
 /**
  * Family Fest "Pay Dues" + "Vote on Shirts" as a tidy side-by-side square pair —
@@ -16,6 +18,7 @@ import { FAMILY_FEST, TSHIRT_VOTE } from "@/lib/data";
 export function FestDuesShirts() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   const { today } = useDemoDate();
+  const { dues } = useFestContent();
   if (!season?.isPlanning) return null;
 
   const voteOpen = today == null || today <= TSHIRT_VOTE.deadline;
@@ -32,9 +35,7 @@ export function FestDuesShirts() {
       >
         <span className="text-2xl" aria-hidden>💸</span>
         <span className="mt-2 text-sm font-semibold">Pay Dues</span>
-        <span className="mt-0.5 text-xs text-white/80">
-          {FAMILY_FEST.dues.perAdult} / adult {FAMILY_FEST.dues.per}
-        </span>
+        <span className="mt-0.5 text-xs text-white/80">{duesSummary(dues)}</span>
       </Link>
 
       <Link

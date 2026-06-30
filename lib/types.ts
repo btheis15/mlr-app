@@ -309,6 +309,34 @@ export interface Payee {
   venmo?: string;
   /** Zelle handle — an email or phone registered with Zelle. */
   zelle?: string;
+  /** Apple Cash handle — a phone or email tied to Apple Cash. */
+  applecash?: string;
+  /** PayPal username (paypal.me/<handle>) or email. */
+  paypal?: string;
+  /** Optional free-text note shown under the payee. */
+  note?: string;
+}
+
+/** One Family Fest dues tier (Adult / Kid / per-day / without-food …). Amounts
+ *  are admin-editable in the Planner and stored in `fest_dues`; a null amount
+ *  renders "TBD". Mirrors the iOS `FestDuesTier`. */
+export interface DuesTier {
+  id: string;
+  label: string;
+  /** Whole dollars; null = TBD (not set yet). */
+  amount: number | null;
+  /** Optional qualifier, e.g. "per person", "covers meals". */
+  note?: string;
+}
+
+/** Editable Family Fest meta (name, tagline, date window) — the `fest_config`
+ *  row, mirrored from the iOS `FestConfig`. Read-with-fallback to FAMILY_FEST. */
+export interface FestConfigContent {
+  name: string;
+  tagline: string;
+  /** ISO date, YYYY-MM-DD. */
+  startDate: string;
+  endDate: string;
 }
 
 /* ── Cabin stays (lodging requests) ──────────────────────────────────────────

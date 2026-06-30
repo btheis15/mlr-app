@@ -2,7 +2,8 @@
 
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { FAMILY_FEST, SCHEDULE, TSHIRT_VOTE } from "@/lib/data";
+import { FAMILY_FEST, TSHIRT_VOTE } from "@/lib/data";
+import { useFestContent } from "@/lib/useFestContent";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { TshirtCallout } from "@/components/TshirtCallout";
 import { CalloutStack, type StackItem } from "@/components/CalloutStack";
@@ -21,6 +22,8 @@ import { CalloutStack, type StackItem } from "@/components/CalloutStack";
 export function HomeSpotlight() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   const { today } = useDemoDate();
+  // Live fest content (schedule + meta) so the spotlight matches the Planner.
+  const { config, schedule } = useFestContent({ realtime: true });
 
   const items: StackItem[] = [];
 
@@ -42,11 +45,11 @@ export function HomeSpotlight() {
     swipeable: false,
     node: (
       <FamilyFestSpotlight
-        name={FAMILY_FEST.name}
-        tagline={FAMILY_FEST.tagline}
-        startDate={FAMILY_FEST.startDate}
-        endDate={FAMILY_FEST.endDate}
-        schedule={SCHEDULE}
+        name={config.name}
+        tagline={config.tagline}
+        startDate={config.startDate}
+        endDate={config.endDate}
+        schedule={schedule}
       />
     ),
   });

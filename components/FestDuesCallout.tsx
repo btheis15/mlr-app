@@ -2,6 +2,8 @@
 
 import { useFestSeason } from "@/lib/useFestSeason";
 import { FAMILY_FEST } from "@/lib/data";
+import { useFestContent } from "@/lib/useFestContent";
+import { duesSummary } from "@/lib/festContent";
 import { RowLink } from "@/components/RowLink";
 
 /**
@@ -12,6 +14,7 @@ import { RowLink } from "@/components/RowLink";
  */
 export function FestDuesCallout() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const { dues } = useFestContent();
   if (!season?.isPlanning) return null;
 
   return (
@@ -20,7 +23,7 @@ export function FestDuesCallout() {
       tone="primary"
       emoji="💸"
       title="Pay your Family Fest dues"
-      subtitle={`${FAMILY_FEST.dues.perAdult} / adult ${FAMILY_FEST.dues.per} · kids ${FAMILY_FEST.dues.perKid}`}
+      subtitle={duesSummary(dues)}
     />
   );
 }

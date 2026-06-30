@@ -1,9 +1,13 @@
+"use client";
+
 import { BackLink } from "@/components/BackLink";
 import { PayView } from "@/components/PayView";
 import { SignInWall } from "@/components/Guard";
-import { FAMILY_FEST, PAYEES } from "@/lib/data";
+import { useFestContent } from "@/lib/useFestContent";
 
 export default function PayPage() {
+  const { dues, payees } = useFestContent({ realtime: true });
+
   return (
     <div className="space-y-3 pt-1">
       <BackLink href="/family-fest" label="Family Fest" />
@@ -12,19 +16,27 @@ export default function PayPage() {
         title="Pay"
         note="Payment details (who to pay and how) are kept private. Add your name & email to see them."
       >
-      {/* Dues at a glance */}
-      <div className="rounded-2xl bg-primary/10 p-4 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-          Family Fest dues
-        </p>
-        <p className="mt-1 text-2xl font-bold text-primary">
-          {FAMILY_FEST.dues.perAdult}
-          <span className="text-sm font-medium text-foreground/60"> / adult {FAMILY_FEST.dues.per}</span>
-        </p>
-        <p className="text-xs text-foreground/60">Kids&rsquo; cost {FAMILY_FEST.dues.perKid}</p>
-      </div>
+        {/* Dues tiers — admin-editable amounts (TBD until set in the Planner). */}
+        <div className="rounded-2xl bg-primary/10 p-4">
+          <p className="text-center text-xs font-semibold uppercase tracking-wide text-primary">
+            Family Fest dues
+          </p>
+          <ul className="mt-3 space-y-2">
+            {dues.map((tier) => (
+              <li key={tier.id} className="flex items-baseline justify-between gap-3">
+                <span className="text-sm text-foreground/80">
+                  {tier.label}
+                  {tier.note && <span className="text-foreground/50"> · {tier.note}</span>}
+                </span>
+                <span className="shrink-0 text-base font-bold text-primary">
+                  {tier.amount != null ? `$${tier.amount}` : "TBD"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-      <PayView payees={PAYEES} />
+        <PayView payees={payees} />
       </SignInWall>
     </div>
   );

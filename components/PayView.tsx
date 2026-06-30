@@ -79,12 +79,27 @@ function PayeeCard({
     return `https://venmo.com/${encodeURIComponent(payee.venmo)}?${params.toString()}`;
   })();
 
-  const copyZelle = async () => {
-    if (!payee.zelle) return;
+  // PayPal: a paypal.me link if the handle isn't already an email; emails just
+  // get copied (there's no universal pay-by-email deep link).
+  const paypalUrl = (() => {
+    if (!payee.paypal) return null;
+    if (payee.paypal.includes("@")) return null;
+    const handle = payee.paypal.replace(/^@/, "");
+    const base = `https://paypal.me/${encodeURIComponent(handle)}`;
+    return amount ? `${base}/${amount}` : base;
+  })();
+
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copy = async (label: string, value?: string) => {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(payee.zelle);
+      await navigator.clipboard.writeText(value);
+      setCopiedField(label);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      setTimeout(() => {
+        setCopied(false);
+        setCopiedField(null);
+      }, 1800);
     } catch {
       /* clipboard unavailable */
     }
@@ -95,6 +110,7 @@ function PayeeCard({
       <div>
         <p className="text-sm font-semibold">{payee.name}</p>
         <p className="text-xs text-foreground/50">{payee.role}</p>
+        {payee.note && <p className="mt-1 text-xs text-foreground/60">{payee.note}</p>}
       </div>
 
       {venmoUrl && (
@@ -108,15 +124,50 @@ function PayeeCard({
         </a>
       )}
 
+      {paypalUrl && (
+        <a
+          href={paypalUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="press flex items-center justify-center gap-2 rounded-xl bg-[#003087] py-2.5 text-sm font-semibold text-white"
+        >
+          Pay with PayPal
+        </a>
+      )}
+
       {payee.zelle && (
         <button
-          onClick={copyZelle}
+          onClick={() => copy("zelle", payee.zelle)}
           className="press flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border"
         >
           <span className="text-foreground/70">
             Zelle: <span className="font-medium text-foreground">{payee.zelle}</span>
           </span>
-          <span className="text-xs text-primary">{copied ? "Copied!" : "Copy"}</span>
+          <span className="text-xs text-primary">{copied && copiedField === "zelle" ? "Copied!" : "Copy"}</span>
+        </button>
+      )}
+
+      {payee.applecash && (
+        <button
+          onClick={() => copy("applecash", payee.applecash)}
+          className="press flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border"
+        >
+          <span className="text-foreground/70">
+            Apple Cash: <span className="font-medium text-foreground">{payee.applecash}</span>
+          </span>
+          <span className="text-xs text-primary">{copied && copiedField === "applecash" ? "Copied!" : "Copy"}</span>
+        </button>
+      )}
+
+      {payee.paypal && !paypalUrl && (
+        <button
+          onClick={() => copy("paypal", payee.paypal)}
+          className="press flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border"
+        >
+          <span className="text-foreground/70">
+            PayPal: <span className="font-medium text-foreground">{payee.paypal}</span>
+          </span>
+          <span className="text-xs text-primary">{copied && copiedField === "paypal" ? "Copied!" : "Copy"}</span>
         </button>
       )}
     </li>

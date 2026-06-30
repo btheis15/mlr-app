@@ -1,0 +1,603 @@
+// Family Fest content as shared, editable data (migration 0053). The schedule,
+// dinners, payees, dues tiers, anytime activities, and the fest config all live
+// in Supabase so app admins / Family Fest committee members can edit them in-app
+// and BOTH the web app and iOS show the same thing. Reads are public (browse-
+// first); writes are gated by RLS to `can_edit_fest()`. Everything degrades to
+// the in-code seed (lib/data.ts) when there's no backend / a fetch is empty, so
+// the page never breaks pre-migration or offline — the same fallback model as
+// the iOS FestContentService and lib/events.ts.
+
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { FAMILY_FEST, SCHEDULE, DINNERS, PAYEES, THINGS_TO_DO } from "@/lib/data";
+import type {
+  ScheduleEvent,
+  Dinner,
+  Payee,
+  FestActivity,
+  DuesTier,
+  FestConfigContent,
+} from "@/lib/types";
+
+/** The fest year these tables are keyed on. Bump (or parameterize) for 2027. */
+const FEST_YEAR = 2026;
+
+// ── Fallbacks (the in-code seed; identical to the DB seed in migration 0053) ──
+
+export const FALLBACK_CONFIG: FestConfigContent = {
+  name: FAMILY_FEST.name,
+  tagline: FAMILY_FEST.tagline,
+  startDate: FAMILY_FEST.startDate,
+  endDate: FAMILY_FEST.endDate,
+};
+
+/** Seed dues tiers — all amounts TBD until set in the Planner. */
+export const FALLBACK_DUES: DuesTier[] = [
+  { id: "adult", label: "Adult (high school & up)", amount: null },
+  { id: "kid", label: "Kid (K–8th grade)", amount: null },
+  { id: "per-day", label: "Per day", amount: null, note: "per person" },
+  { id: "no-food", label: "Without food", amount: null, note: "per person" },
+];
+
+/** Everything the Family Fest views need, in one bundle. */
+export interface FestContent {
+  config: FestConfigContent;
+  schedule: ScheduleEvent[];
+  dinners: Dinner[];
+  payees: Payee[];
+  activities: FestActivity[];
+  dues: DuesTier[];
+}
+
+/** The in-code seed bundle — the first-paint value and the offline fallback. */
+export const SEED_CONTENT: FestContent = {
+  config: FALLBACK_CONFIG,
+  schedule: SCHEDULE,
+  dinners: DINNERS,
+  payees: PAYEES,
+  activities: THINGS_TO_DO,
+  dues: FALLBACK_DUES,
+};
+
+// ── Row shapes (snake_case, straight from Postgres) ───────────────────────────
+
+interface ConfigRow {
+  name: string;
+  tagline: string | null;
+  start_date: string;
+  end_date: string;
+}
+interface DuesRow {
+  id: string;
+  label: string;
+  amount: number | null;
+  note: string | null;
+}
+interface ScheduleRow {
+  id: string;
+  day: string;
+  start_time: string | null;
+  end_time: string | null;
+  title: string;
+  emoji: string | null;
+  location: string | null;
+  description: string | null;
+  bring: string | null;
+  is_private: boolean;
+  lead_user_id: string | null;
+  lead_name: string | null;
+  lead_phone: string | null;
+}
+interface DinnerRow {
+  id: string;
+  day: string;
+  title: string;
+  emoji: string | null;
+  chef_user_id: string | null;
+  chef_name: string | null;
+  chef_phone: string | null;
+  houses: string[] | null;
+  menu: string | null;
+  served_time: string | null;
+  served_location: string | null;
+  prep_time: string | null;
+  prep_location: string | null;
+}
+interface PayeeRow {
+  id: string;
+  name: string;
+  role: string | null;
+  venmo: string | null;
+  zelle: string | null;
+  applecash: string | null;
+  paypal: string | null;
+  note: string | null;
+}
+interface ActivityRow {
+  id: string;
+  title: string;
+  emoji: string | null;
+  blurb: string | null;
+  details: string | null;
+  location: string | null;
+}
+
+// ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
+
+function mapConfig(r: ConfigRow): FestConfigContent {
+  return { name: r.name, tagline: r.tagline ?? "", startDate: r.start_date, endDate: r.end_date };
+}
+function mapDues(r: DuesRow): DuesTier {
+  return { id: r.id, label: r.label, amount: r.amount, note: r.note ?? undefined };
+}
+function mapSchedule(r: ScheduleRow): ScheduleEvent {
+  return {
+    id: r.id,
+    day: r.day,
+    start: r.start_time ?? undefined,
+    end: r.end_time ?? undefined,
+    title: r.title,
+    location: r.location ?? "TBD",
+    emoji: r.emoji ?? "🗓️",
+    description: r.description ?? "",
+    bring: r.bring ?? undefined,
+    // We carry name + phone for the public card (tap-to-call/text); lead_user_id
+    // is the link of record but the display fields stand on their own.
+    lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
+  };
+}
+function mapDinner(r: DinnerRow): Dinner {
+  return {
+    id: r.id,
+    day: r.day,
+    title: r.title,
+    emoji: r.emoji ?? "🍽️",
+    chef: { name: r.chef_name?.trim() || "TBD", phone: r.chef_phone ?? undefined },
+    houses: r.houses ?? [],
+    menu: r.menu ?? "TBD",
+    time: r.served_time ?? "TBD",
+    location: r.served_location ?? "TBD",
+    prepTime: r.prep_time ?? "TBD",
+    prepLocation: r.prep_location ?? undefined,
+  };
+}
+function mapPayee(r: PayeeRow): Payee {
+  return {
+    id: r.id,
+    name: r.name,
+    role: r.role ?? "",
+    venmo: r.venmo ?? undefined,
+    zelle: r.zelle ?? undefined,
+    applecash: r.applecash ?? undefined,
+    paypal: r.paypal ?? undefined,
+    note: r.note ?? undefined,
+  };
+}
+function mapActivity(r: ActivityRow): FestActivity {
+  return {
+    id: r.id,
+    title: r.title,
+    emoji: r.emoji ?? "🗺️",
+    blurb: r.blurb ?? "",
+    details: r.details ?? undefined,
+    location: r.location ?? undefined,
+  };
+}
+
+// ── Reads (public; fall back to the seed on empty / error / no backend) ───────
+
+export async function fetchFestContent(): Promise<FestContent> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return SEED_CONTENT;
+  try {
+    const [config, dues, schedule, dinners, payees, activities] = await Promise.all([
+      sb.from("fest_config").select("name, tagline, start_date, end_date").eq("fest_year", FEST_YEAR).maybeSingle(),
+      sb.from("fest_dues").select("id, label, amount, note").eq("fest_year", FEST_YEAR).order("position"),
+      sb
+        .from("fest_schedule_items")
+        .select(
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone",
+        )
+        .eq("fest_year", FEST_YEAR)
+        .order("day")
+        .order("position"),
+      sb
+        .from("fest_dinners")
+        .select(
+          "id, day, title, emoji, chef_user_id, chef_name, chef_phone, houses, menu, served_time, served_location, prep_time, prep_location",
+        )
+        .eq("fest_year", FEST_YEAR)
+        .order("day")
+        .order("position"),
+      sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
+      sb.from("fest_activities").select("id, title, emoji, blurb, details, location").eq("fest_year", FEST_YEAR).order("position"),
+    ]);
+
+    const scheduleRows = (schedule.data ?? []) as ScheduleRow[];
+    const dinnerRows = (dinners.data ?? []) as DinnerRow[];
+    const payeeRows = (payees.data ?? []) as PayeeRow[];
+    const activityRows = (activities.data ?? []) as ActivityRow[];
+    const duesRows = (dues.data ?? []) as DuesRow[];
+
+    return {
+      config: config.data ? mapConfig(config.data as ConfigRow) : FALLBACK_CONFIG,
+      // Empty table ⇒ keep the seed so the page is never blank.
+      schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : SCHEDULE,
+      dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : DINNERS,
+      payees: payeeRows.length ? payeeRows.map(mapPayee) : PAYEES,
+      activities: activityRows.length ? activityRows.map(mapActivity) : THINGS_TO_DO,
+      dues: duesRows.length ? duesRows.map(mapDues) : FALLBACK_DUES,
+    };
+  } catch {
+    return SEED_CONTENT;
+  }
+}
+
+/** A short dues blurb for the Home/hub call-outs, e.g. "$100 / adult" — prefers
+ *  the Adult tier, else the first tier with a set amount, else nudges to tap. */
+export function duesSummary(dues: DuesTier[]): string {
+  const adult = dues.find((d) => /adult/i.test(d.label) && d.amount != null);
+  if (adult) return `$${adult.amount} / adult`;
+  const first = dues.find((d) => d.amount != null);
+  if (first) return `$${first.amount} · ${first.label}`;
+  return "Tap to see amounts";
+}
+
+/** Whether the signed-in member may edit fest content (admin OR family-fest
+ *  committee). Mirrors the iOS `canEditFest()` RPC call. False with no backend. */
+export async function canEditFest(): Promise<boolean> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return false;
+  try {
+    const { data, error } = await sb.rpc("can_edit_fest");
+    return !error && Boolean(data);
+  } catch {
+    return false;
+  }
+}
+
+// ── Writes (RLS-gated to can_edit_fest()). Each returns { error? }. ───────────
+// New rows (no id) insert with a DB-generated uuid; an id present ⇒ update.
+
+async function currentUid(): Promise<string | null> {
+  const sb = supabase;
+  if (!sb) return null;
+  return (await sb.auth.getUser()).data.user?.id ?? null;
+}
+
+/** Write a row to one fest table — insert when `id` is absent, else update. */
+async function writeRow(
+  table: string,
+  id: string | undefined,
+  row: Record<string, unknown>,
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const payload = { ...row, fest_year: FEST_YEAR, updated_at: new Date().toISOString(), updated_by: await currentUid() };
+  const q = id
+    ? sb.from(table).update(payload).eq("id", id)
+    : sb.from(table).insert(payload);
+  const { error } = await q;
+  return error ? { error: error.message } : {};
+}
+
+async function deleteRow(table: string, id: string): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from(table).delete().eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+// Inputs use null (not undefined) for "clear this column" so updates blank fields.
+
+export interface ScheduleInput {
+  id?: string;
+  day: string;
+  startTime: string | null;
+  endTime: string | null;
+  title: string;
+  emoji: string | null;
+  location: string | null;
+  description: string | null;
+  bring: string | null;
+  isPrivate: boolean;
+  leadUserId: string | null;
+  leadName: string | null;
+  leadPhone: string | null;
+  position: number;
+}
+export const saveScheduleItem = (i: ScheduleInput) =>
+  writeRow("fest_schedule_items", i.id, {
+    day: i.day,
+    start_time: i.startTime,
+    end_time: i.endTime,
+    title: i.title,
+    emoji: i.emoji,
+    location: i.location,
+    description: i.description,
+    bring: i.bring,
+    is_private: i.isPrivate,
+    lead_user_id: i.leadUserId,
+    lead_name: i.leadName,
+    lead_phone: i.leadPhone,
+    position: i.position,
+  });
+export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
+
+export interface DinnerInput {
+  id?: string;
+  day: string;
+  title: string;
+  emoji: string | null;
+  chefUserId: string | null;
+  chefName: string | null;
+  chefPhone: string | null;
+  houses: string[];
+  menu: string | null;
+  servedTime: string | null;
+  servedLocation: string | null;
+  prepTime: string | null;
+  prepLocation: string | null;
+  position: number;
+}
+export const saveDinner = (i: DinnerInput) =>
+  writeRow("fest_dinners", i.id, {
+    day: i.day,
+    title: i.title,
+    emoji: i.emoji,
+    chef_user_id: i.chefUserId,
+    chef_name: i.chefName,
+    chef_phone: i.chefPhone,
+    houses: i.houses,
+    menu: i.menu,
+    served_time: i.servedTime,
+    served_location: i.servedLocation,
+    prep_time: i.prepTime,
+    prep_location: i.prepLocation,
+    position: i.position,
+  });
+export const deleteDinner = (id: string) => deleteRow("fest_dinners", id);
+
+export interface PayeeInput {
+  id?: string;
+  name: string;
+  role: string | null;
+  venmo: string | null;
+  zelle: string | null;
+  applecash: string | null;
+  paypal: string | null;
+  note: string | null;
+  position: number;
+}
+export const savePayee = (i: PayeeInput) =>
+  writeRow("fest_payees", i.id, {
+    name: i.name,
+    role: i.role,
+    venmo: i.venmo,
+    zelle: i.zelle,
+    applecash: i.applecash,
+    paypal: i.paypal,
+    note: i.note,
+    position: i.position,
+  });
+export const deletePayee = (id: string) => deleteRow("fest_payees", id);
+
+export interface DuesInput {
+  id?: string;
+  label: string;
+  amount: number | null;
+  note: string | null;
+  position: number;
+}
+export const saveDuesTier = (i: DuesInput) =>
+  writeRow("fest_dues", i.id, { label: i.label, amount: i.amount, note: i.note, position: i.position });
+export const deleteDuesTier = (id: string) => deleteRow("fest_dues", id);
+
+export interface ActivityInput {
+  id?: string;
+  title: string;
+  emoji: string | null;
+  blurb: string | null;
+  details: string | null;
+  location: string | null;
+  position: number;
+}
+export const saveActivity = (i: ActivityInput) =>
+  writeRow("fest_activities", i.id, {
+    title: i.title,
+    emoji: i.emoji,
+    blurb: i.blurb,
+    details: i.details,
+    location: i.location,
+    position: i.position,
+  });
+export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
+
+export interface ConfigInput {
+  name: string;
+  tagline: string | null;
+  startDate: string;
+  endDate: string;
+}
+/** Save the fest config. Keyed by fest_year (upsert), so there's exactly one row. */
+export async function saveConfig(i: ConfigInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from("fest_config").upsert(
+    {
+      fest_year: FEST_YEAR,
+      name: i.name,
+      tagline: i.tagline,
+      start_date: i.startDate,
+      end_date: i.endDate,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    },
+    { onConflict: "fest_year" },
+  );
+  return error ? { error: error.message } : {};
+}
+
+// ── Editable drafts (raw rows incl. position / is_private / lead links) ───────
+// The display mappers above drop edit-only fields; the Planner needs them, so it
+// loads these full drafts. Each is the matching *Input plus its id + display
+// helpers the list rows render.
+
+export type ScheduleDraft = Required<Pick<ScheduleInput, "id">> & ScheduleInput;
+export type DinnerDraft = Required<Pick<DinnerInput, "id">> & DinnerInput;
+export type PayeeDraft = Required<Pick<PayeeInput, "id">> & PayeeInput;
+export type DuesDraft = Required<Pick<DuesInput, "id">> & DuesInput;
+export type ActivityDraft = Required<Pick<ActivityInput, "id">> & ActivityInput;
+
+interface ScheduleDraftRow extends ScheduleRow {
+  position: number;
+}
+interface DinnerDraftRow extends DinnerRow {
+  position: number;
+}
+interface PayeeDraftRow extends PayeeRow {
+  position: number;
+}
+interface DuesDraftRow extends DuesRow {
+  position: number;
+}
+interface ActivityDraftRow extends ActivityRow {
+  position: number;
+}
+
+export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("fest_schedule_items")
+    .select(
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, position",
+    )
+    .eq("fest_year", FEST_YEAR)
+    .order("day")
+    .order("position");
+  return ((data ?? []) as ScheduleDraftRow[]).map((r) => ({
+    id: r.id,
+    day: r.day,
+    startTime: r.start_time,
+    endTime: r.end_time,
+    title: r.title,
+    emoji: r.emoji,
+    location: r.location,
+    description: r.description,
+    bring: r.bring,
+    isPrivate: r.is_private,
+    leadUserId: r.lead_user_id,
+    leadName: r.lead_name,
+    leadPhone: r.lead_phone,
+    position: r.position,
+  }));
+}
+
+export async function fetchDinnerDrafts(): Promise<DinnerDraft[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("fest_dinners")
+    .select(
+      "id, day, title, emoji, chef_user_id, chef_name, chef_phone, houses, menu, served_time, served_location, prep_time, prep_location, position",
+    )
+    .eq("fest_year", FEST_YEAR)
+    .order("day")
+    .order("position");
+  return ((data ?? []) as DinnerDraftRow[]).map((r) => ({
+    id: r.id,
+    day: r.day,
+    title: r.title,
+    emoji: r.emoji,
+    chefUserId: r.chef_user_id,
+    chefName: r.chef_name,
+    chefPhone: r.chef_phone,
+    houses: r.houses ?? [],
+    menu: r.menu,
+    servedTime: r.served_time,
+    servedLocation: r.served_location,
+    prepTime: r.prep_time,
+    prepLocation: r.prep_location,
+    position: r.position,
+  }));
+}
+
+export async function fetchPayeeDrafts(): Promise<PayeeDraft[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("fest_payees")
+    .select("id, name, role, venmo, zelle, applecash, paypal, note, position")
+    .eq("fest_year", FEST_YEAR)
+    .order("position");
+  return ((data ?? []) as PayeeDraftRow[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    role: r.role,
+    venmo: r.venmo,
+    zelle: r.zelle,
+    applecash: r.applecash,
+    paypal: r.paypal,
+    note: r.note,
+    position: r.position,
+  }));
+}
+
+export async function fetchDuesDrafts(): Promise<DuesDraft[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("fest_dues")
+    .select("id, label, amount, note, position")
+    .eq("fest_year", FEST_YEAR)
+    .order("position");
+  return ((data ?? []) as DuesDraftRow[]).map((r) => ({
+    id: r.id,
+    label: r.label,
+    amount: r.amount,
+    note: r.note,
+    position: r.position,
+  }));
+}
+
+export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("fest_activities")
+    .select("id, title, emoji, blurb, details, location, position")
+    .eq("fest_year", FEST_YEAR)
+    .order("position");
+  return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
+    id: r.id,
+    title: r.title,
+    emoji: r.emoji,
+    blurb: r.blurb,
+    details: r.details,
+    location: r.location,
+    position: r.position,
+  }));
+}
+
+/** Member directory for the "who's in charge" / chef picker. Public read of
+ *  `profiles` (names + avatars only). Empty with no backend. */
+export interface FestMemberOption {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+export async function fetchMemberOptions(): Promise<FestMemberOption[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  try {
+    const { data } = await sb
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .order("display_name");
+    return ((data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map(
+      (r) => ({ id: r.id, name: r.display_name?.trim() || "Member", avatarUrl: r.avatar_url }),
+    );
+  } catch {
+    return [];
+  }
+}

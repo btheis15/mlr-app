@@ -1,11 +1,17 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { FestStatus } from "@/components/FestStatus";
 import { FestRsvp } from "@/components/FestRsvp";
 import { FestWeek } from "@/components/FestWeek";
 import { FestDuesShirts } from "@/components/FestDuesShirts";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
-import { FAMILY_FEST, RESORT, SCHEDULE, DINNERS, THINGS_TO_DO } from "@/lib/data";
+import { FAMILY_FEST, RESORT } from "@/lib/data";
+import { useFestContent } from "@/lib/useFestContent";
+import { canEditFest } from "@/lib/festContent";
+import { useIdentity } from "@/components/IdentityProvider";
 import { formatDateLong } from "@/lib/format";
 
 /**
@@ -13,32 +19,62 @@ import { formatDateLong } from "@/lib/format";
  * *today* (events + dinner in full, via FestStatus); below is the look-ahead
  * week as an expandable accordion (FestWeek), with dinners clicking through
  * inside each day. No sub-nav, no separate Schedule/Dinners/Crew pages.
+ *
+ * The schedule, dinners, dates and name come from the shared DB (migration 0053)
+ * via useFestContent, so admin/committee edits in the Planner show up here and on
+ * iOS alike; they fall back to the in-code seed when there's no backend. Fest
+ * editors get a quiet "Edit" link to the Planner.
  */
 export default function FamilyFestPage() {
+  const { config, schedule, dinners, activities } = useFestContent({ realtime: true });
+  const { user } = useIdentity();
+  const [canEdit, setCanEdit] = useState(false);
+
+  // Only signed-in members can possibly edit; re-check when sign-in flips.
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setCanEdit(false);
+      return;
+    }
+    canEditFest().then((ok) => active && setCanEdit(ok));
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   return (
     <div className="space-y-6 pt-1">
       <header className="space-y-3 text-center">
         <FestCover alt="Ye Olde Family Feste — Family Fest 2026" />
-        <h1 className="text-2xl font-bold tracking-tight">{FAMILY_FEST.name}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{config.name}</h1>
         <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
           ⚜ {FAMILY_FEST.theme} ⚜
         </p>
         <p className="text-xs text-foreground/50">
-          {formatDateLong(FAMILY_FEST.startDate)} – {formatDateLong(FAMILY_FEST.endDate)}
+          {formatDateLong(config.startDate)} – {formatDateLong(config.endDate)}
         </p>
         {/* The Family Fest heritage stamp — the fest began in 1987 (what the logo
             reads). The resort itself dates to 1959; that line lives on Home. */}
         <p className="font-display text-[11px] uppercase tracking-[0.18em] text-primary/70">
           ⚜ A family tradition since {RESORT.est} ⚜
         </p>
+        {canEdit && (
+          <Link
+            href="/family-fest/planner"
+            className="press inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+          >
+            ✏️ Edit Family Fest
+          </Link>
+        )}
       </header>
 
       {/* Countdown (and the day-of summary once the week is live). */}
       <FestStatus
-        startDate={FAMILY_FEST.startDate}
-        endDate={FAMILY_FEST.endDate}
-        events={SCHEDULE}
-        dinners={DINNERS}
+        startDate={config.startDate}
+        endDate={config.endDate}
+        events={schedule}
+        dinners={dinners}
         volunteerContact={FAMILY_FEST.organizer}
       />
 
@@ -52,11 +88,11 @@ export default function FamilyFestPage() {
       <FestCommitteesLink />
 
       <FestWeek
-        events={SCHEDULE}
-        dinners={DINNERS}
-        things={THINGS_TO_DO}
-        startDate={FAMILY_FEST.startDate}
-        endDate={FAMILY_FEST.endDate}
+        events={schedule}
+        dinners={dinners}
+        things={activities}
+        startDate={config.startDate}
+        endDate={config.endDate}
       />
 
       <Link
