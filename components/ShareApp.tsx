@@ -44,17 +44,27 @@ export function ShareApp() {
     }
   };
 
+  // Rendered as a full-width card matching RowLink, so it sits in the
+  // "App & help" group at the same size as the other rows.
   return (
-    <div className="flex justify-center">
-      <button
-        type="button"
-        onClick={share}
-        aria-label="Share this app with others"
-        className="press inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/15"
-      >
-        <span aria-hidden>{copied ? "✓" : "📤"}</span>
-        {copied ? "Link copied — paste it anywhere" : "Share this app with family"}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={share}
+      aria-label="Share this app with family"
+      className="press flex w-full items-center gap-3 rounded-2xl bg-card p-4 text-left ring-1 ring-border transition-shadow hover:shadow-sm"
+    >
+      <span aria-hidden className="shrink-0 text-2xl">{copied ? "✓" : "📤"}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold">
+          {copied ? "Link copied!" : "Share this app with family"}
+        </p>
+        <p className="mt-0.5 text-xs text-foreground/60">
+          {copied ? "Paste it anywhere to invite someone." : "Send the link so anyone can join."}
+        </p>
+      </div>
+      <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>
+        ›
+      </span>
+    </button>
   );
 }
