@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import { BackLink } from "@/components/BackLink";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
@@ -83,6 +84,28 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [members, setMembers] = useState<FestMemberOption[]>([]);
   const [section, setSection] = useState<Section>("schedule");
+  // True while consuming an iOS → web session hand-off (tokens in the URL hash),
+  // so we wait for the silent sign-in instead of flashing the sign-in prompt.
+  const [handoff, setHandoff] = useState(false);
+
+  // Silent session hand-off from the iOS app: it opens this page with the
+  // member's Supabase tokens in the URL fragment so there's no second sign-in.
+  // Read them once, establish the session, and strip them from the URL/history.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (!hash.includes("mlr_at=")) return;
+    const p = new URLSearchParams(hash.slice(1));
+    const at = p.get("mlr_at");
+    const rt = p.get("mlr_rt");
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    if (at && rt && supabase) {
+      setHandoff(true);
+      supabase.auth
+        .setSession({ access_token: at, refresh_token: rt })
+        .finally(() => setHandoff(false));
+    }
+  }, []);
 
   const [schedule, setSchedule] = useState<ScheduleDraft[]>([]);
   const [dinners, setDinners] = useState<DinnerDraft[]>([]);
@@ -109,7 +132,8 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   useEffect(() => {
     let active = true;
     if (!user) {
-      setAllowed(false);
+      // Don't show "signed out" while a session hand-off is still resolving.
+      if (!handoff) setAllowed(false);
       return;
     }
     canEditFest().then((ok) => {
@@ -123,7 +147,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
     return () => {
       active = false;
     };
-  }, [user, reloadDrafts]);
+  }, [user, handoff, reloadDrafts]);
 
   const days = festDays(config.startDate, config.endDate);
 
