@@ -432,3 +432,12 @@ try {
 } catch (e) {
   console.error("[birthday] not started:", e && e.message);
 }
+
+// Optional: Work Checklist "did it get done?" follow-up pushes (see
+// work-followup.js). No-op unless the APNS_* + service-role env vars are set.
+// Isolated like the others.
+try {
+  require("./work-followup").start().catch((e) => console.error("[work-followup] start failed:", e && e.message));
+} catch (e) {
+  console.error("[work-followup] not started:", e && e.message);
+}

@@ -123,7 +123,8 @@ function createApnsDelivery() {
     if (!subs || !subs.length) return 0;
 
     const aps = { alert: { title: payload.title || "", body: payload.body || "" }, sound: "default", badge: 1 };
-    const cat = categoryFor(payload.type);
+    // An explicit payload.category wins; otherwise derive it from the type.
+    const cat = payload.category || categoryFor(payload.type);
     if (cat) aps.category = cat;
     const body = {
       aps,
@@ -131,6 +132,9 @@ function createApnsDelivery() {
       // iOS deep-link handler reads target_type / target_id when present.
       ...(payload.target_type ? { target_type: payload.target_type } : {}),
       ...(payload.target_id ? { target_id: payload.target_id } : {}),
+      // Extra top-level userInfo keys (e.g. work_item_id / request_id for the
+      // WORK_FOLLOWUP actions). The iOS handler reads these off userInfo.
+      ...(payload.userInfo && typeof payload.userInfo === "object" ? payload.userInfo : {}),
     };
 
     let sent = 0;
