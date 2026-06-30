@@ -248,10 +248,10 @@ async function start() {
     console.log(`[push] ${n.type}: notified recipient`);
   };
 
-  // A new member just signed up (handle_new_user inserts their profile row — for
-  // both self sign-ups and admin invites). Tell every admin who hasn't opted out
-  // (notify_new_members, default on, migration 0026) who joined and when. Email
-  // comes from the GoTrue admin API (service_role); the row carries the name.
+  // A new member just verified their email (profiles.joined_at was just stamped
+  // by the on_auth_user_email_confirmed trigger — migration 0054). Tell every
+  // admin who hasn't opted out (notify_new_members, default on, migration 0026)
+  // who joined and when. Email comes from the GoTrue admin API (service_role).
   const handleNewMember = async (id, nameFromRow) => {
     if (!id) return;
     if (!once(`nm:${id}`)) return;
@@ -342,16 +342,20 @@ async function start() {
         console.error("[push] feed notification error:", err && err.message),
       ),
     )
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) =>
-      handleNewMember(e.new.id, e.new.display_name).catch((err) =>
-        console.error("[push] new member error:", err && err.message),
-      ),
-    )
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => {
+      // Only fire when joined_at is first set (OTP verified). The trigger in
+      // migration 0054 stamps it exactly once per user on email confirmation.
+      if (e.new.joined_at && !e.old.joined_at) {
+        handleNewMember(e.new.id, e.new.display_name).catch((err) =>
+          console.error("[push] new member error:", err && err.message),
+        );
+      }
+    })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
       handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
     )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat + alerts + feed notifications + new members + cabin requests)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (chat + alerts + feed notifications + verified new members + cabin requests)");
     });
 }
 
