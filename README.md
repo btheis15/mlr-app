@@ -138,17 +138,7 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0046_help_bring_items_and_urgent_broadcast.sql`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql);
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
-- **Family Fest t-shirt vote** — during the planning run-up, Home shows a
-  call-out ([`components/TshirtCallout.tsx`](components/TshirtCallout.tsx)) and the
-  Family Fest hub a "Vote on Shirts" tile, both linking to an in-app design
-  gallery at `/family-fest/shirts`
-  ([`components/ShirtVoteView.tsx`](components/ShirtVoteView.tsx)) — tap any design
-  to see it full-screen. The app is the friendly front door; the actual vote +
-  RSVP is cast in the family's **existing Google Form**, not in-app. Edit the form
-  URL / deadline / designs in `TSHIRT_VOTE` ([`lib/data.ts`](lib/data.ts)); all
-  surfaces self-hide once the deadline passes. Design images live in
-  [`public/ff/shirts/`](public/ff/shirts/).
-- **Home call-out stack** — temporary Home call-outs (the t-shirt vote, future
+- **Home call-out stack** — temporary Home call-outs (future
   news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →
   [`components/CalloutStack.tsx`](components/CalloutStack.tsx)), Robinhood-style:

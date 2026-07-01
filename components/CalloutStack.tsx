@@ -12,8 +12,8 @@ import {
 } from "react";
 
 /**
- * A Robinhood-style stack of Home call-out cards. Temporary cards (the t-shirt
- * vote, future news/alerts) sit ON TOP of a permanent base card and can be
+ * A Robinhood-style stack of Home call-out cards. Temporary cards (future
+ * news/alerts) sit ON TOP of a permanent base card and can be
  * **swiped away** (left or right) or dismissed with the ✕; the next card slides
  * up to take its place, until only the base card is left. The base is marked
  * `swipeable: false`, so it can never be removed — that's what keeps something
