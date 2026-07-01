@@ -37,6 +37,7 @@ function categoryFor(type) {
     case "help_request":
     case "help_urgent": return "HELP_REQUEST";
     case "chat_mention": return "CHAT_MENTION";
+    case "committee_join_request": return "COMMITTEE_JOIN_REQUEST";
     default: return null;
   }
 }
@@ -240,6 +241,19 @@ async function start() {
       target_type: n.entity_type || undefined,
       target_id: n.entity_id || undefined,
     };
+    // For join requests the notification's entity_id is the REQUEST id (0060).
+    // Forward request_id + committee_id so the phone's inline Approve button can
+    // act on the specific request and deep-link to the committee.
+    if (n.type === "committee_join_request" && n.entity_id) {
+      const { data: reqRow } = await sb
+        .from("committee_join_requests")
+        .select("id, committee_id")
+        .eq("id", n.entity_id)
+        .maybeSingle();
+      if (reqRow) {
+        payload.userInfo = { request_id: reqRow.id, committee_id: reqRow.committee_id };
+      }
+    }
     const sent = await apns.sendToUser(sb, n.recipient_id, payload);
     if (sent) console.log(`[apns] ${n.type}: ${sent}`);
   };
