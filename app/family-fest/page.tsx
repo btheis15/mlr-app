@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { FestStatus } from "@/components/FestStatus";
 import { FestRsvp } from "@/components/FestRsvp";
 import { FestWeek } from "@/components/FestWeek";
-import { FestDuesShirts } from "@/components/FestDuesShirts";
+import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
 import { FAMILY_FEST, RESORT } from "@/lib/data";
@@ -81,8 +81,8 @@ export default function FamilyFestPage() {
       {/* Attendance — are you coming? (Going / Maybe / Can't make + day picker.) */}
       <FestRsvp />
 
-      {/* Pay Dues + Order T-Shirts, side by side (run-up only). */}
-      <FestDuesShirts />
+      {/* Pay Dues (run-up only). */}
+      <FestDuesCallout />
 
       {/* Committees stay reachable from the hub. */}
       <FestCommitteesLink />

@@ -289,7 +289,6 @@ MLRApp/
 │   │   ├── FestCrewView.swift
 │   │   ├── FestPhotosView.swift
 │   │   ├── FestPayView.swift
-│   │   ├── ShirtVoteView.swift
 │   │   └── FestStatus.swift
 │   ├── ActivityTab/
 │   │   ├── NotificationsView.swift
@@ -610,7 +609,7 @@ update their profile. Push notifications arrive for chat mentions.
 **Family Fest tab:**
 - [ ] `FestOverviewView` — poster + `FestStatus` + next-up event
 - [ ] In-section sub-nav (horizontal `ScrollView` of chip buttons — Schedule /
-  Dinners / Crew / Photos / Pay / Shirts) — mirrors `FamilyFestNav`
+  Dinners / Crew / Photos / Pay) — mirrors `FamilyFestNav`
 - [ ] `FestScheduleView` — grouped list of schedule items + `THINGS_TO_DO`
 - [ ] `FestScheduleDetailView` — single event, location (gated for guests),
   leads/crew contacts
@@ -619,7 +618,6 @@ update their profile. Push notifications arrive for chat mentions.
 - [ ] `FestCrewView` — households signed up, `CrewSignupSheet`
 - [ ] `FestPhotosView` — photo grid (Supabase storage), upload via `PhotosPicker`
 - [ ] `FestPayView` — Venmo/Zelle/Apple Cash buttons (deep links)
-- [ ] `ShirtVoteView` — design gallery, lightbox, link out to Google Form
 
 **Events calendar:**
 - [ ] `EventsView` — grouped by date, DB rows merged with seed events (Family

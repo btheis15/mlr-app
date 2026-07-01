@@ -12,7 +12,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 /**
  * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
  *   1) WHAT'S HAPPENING up top, front & center — the Family Fest season spotlight
- *      and the nearest event + RSVP (plus the in-season dues / t-shirt CTAs).
+ *      and the nearest event + RSVP (plus in-season call-outs like dues).
  *   2) GET INVOLVED right after the events (the most important ask), then the
  *      Ask-for-Help / People tiles, then the quieter "Around the resort" group.
  *   3) QUIET UTILITIES (install, share, help) tucked at the bottom, out of the way.
@@ -30,9 +30,9 @@ export default function HomePage() {
 
       {/* ── What's happening — kept front & center ──────────────────────────── */}
       {/* Family Fest spotlight (quiet banner → planning → live takeover) is the
-          permanent base; temporary call-outs (e.g. "vote on the shirt") stack
-          ON TOP as swipe-away cards. Stacking keeps this to one card tall so the
-          Ask-for-Help row below stays in view. See HomeSpotlight / CalloutStack. */}
+          permanent base; temporary call-outs stack ON TOP as swipe-away cards.
+          Stacking keeps this to one card tall so the Ask-for-Help row below
+          stays in view. See HomeSpotlight / CalloutStack. */}
       <HomeSpotlight />
 
       <UpcomingEvents />
