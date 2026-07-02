@@ -39,6 +39,8 @@ export function FeedView() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key
   const [summaries, setSummaries] = useState<Record<string, Summary>>({});
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
   const chatBoxRef = useRef<HTMLDivElement>(null);
 
   // Load my channels (Main Feed is implicit) + their previews.
@@ -170,6 +172,32 @@ export function FeedView() {
     };
   }, [active]);
 
+  // Load "who's in this chat" — for a role channel, roster members who hold that
+  // area; for General, everyone on the committee roster.
+  const openMembers = async (ch: Channel) => {
+    const sb = supabase;
+    if (!sb) return;
+    const { data } = await sb
+      .from("committee_roster")
+      .select("name, roles, profiles:linked_user_id(display_name)")
+      .eq("committee_slug", ch.slug);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (data ?? []) as any[];
+    const inArea = ch.area
+      ? rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role === ch.area || role === `${ch.area} · Lead`))
+      : rows;
+    setMembers(
+      inArea
+        .map((r) => {
+          const p = r.profiles;
+          const displayName = (Array.isArray(p) ? p[0]?.display_name : p?.display_name) as string | undefined;
+          return { name: displayName || r.name, lead: ((r.roles ?? []) as string[]).some((x) => x.endsWith(" · Lead")) };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    setShowMembers(true);
+  };
+
   const toggleMute = async (ch: Channel) => {
     const sb = supabase;
     if (!sb) return;
@@ -192,12 +220,40 @@ export function FeedView() {
   if (activeChannel) {
     return (
       <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
-        <button type="button" onClick={() => setActive("list")} className="press flex shrink-0 items-center gap-1 border-b border-border px-3 py-2 text-sm font-semibold text-primary">
-          ‹ Chats
-        </button>
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
+            ‹ Chats
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
+            {activeChannel.subtitle && <p className="truncate text-[11px] text-foreground/45">{activeChannel.subtitle}</p>}
+          </div>
+          <button type="button" onClick={() => openMembers(activeChannel)} aria-label="Members" className="press flex h-9 w-9 items-center justify-center rounded-full text-foreground/50">
+            ⋯
+          </button>
+        </div>
         <div className="min-h-0 flex-1">
           <CommitteeChat key={activeChannel.key} slug={activeChannel.slug} name={activeChannel.title} emoji={activeChannel.emoji} area={activeChannel.area} embedded knownMember />
         </div>
+        {showMembers && (
+          <div className="absolute inset-0 z-10 flex flex-col bg-black/30" onClick={() => setShowMembers(false)}>
+            <div className="mt-auto max-h-[70%] overflow-y-auto rounded-t-2xl bg-background p-4" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-sm font-bold">{activeChannel.title} · {members.length} {members.length === 1 ? "person" : "people"}</h2>
+                <button type="button" onClick={() => setShowMembers(false)} className="press text-sm font-semibold text-primary">Done</button>
+              </div>
+              <ul className="space-y-1">
+                {members.map((m) => (
+                  <li key={m.name} className="flex items-center justify-between rounded-xl bg-card px-3 py-2 ring-1 ring-border">
+                    <span className="text-sm font-medium">{m.name}</span>
+                    {m.lead && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">Lead</span>}
+                  </li>
+                ))}
+                {members.length === 0 && <li className="px-1 py-2 text-sm text-foreground/50">No one here yet.</li>}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

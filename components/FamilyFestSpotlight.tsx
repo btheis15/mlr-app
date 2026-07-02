@@ -58,14 +58,14 @@ export function FamilyFestSpotlight({
     };
   }, [user]);
 
-  const festCTA = (
+  // Members don't need a redirect — their chats live on the Feed/Chats tab now.
+  // Only non-members get a shortcut (to join the committee).
+  const festCTA = isMember ? null : (
     <Link
-      href={isMember ? "/committees/family-fest/chat" : "/committees/family-fest"}
+      href="/committees/family-fest"
       className="press flex items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-sm font-semibold text-primary ring-1 ring-border"
     >
-      <span>
-        {isMember ? "💬 Family Fest committee chat" : "🙋 Join the Family Fest committee"}
-      </span>
+      <span>🙋 Join the Family Fest committee</span>
       <span aria-hidden className="text-foreground/40">
         ›
       </span>
