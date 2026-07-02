@@ -23,6 +23,9 @@ export function FestRsvp() {
   const [open, setOpen] = useState(false);
   // Which day to open the sheet on (null = the overview / "Everyone").
   const [focusDay, setFocusDay] = useState<string | null>(null);
+  // Once you're going + have days, the card collapses to a compact summary so
+  // the big day picker isn't in the way; "Change" re-expands it.
+  const [expanded, setExpanded] = useState(false);
   const openSheet = (day: string | null = null) => {
     setFocusDay(day);
     setOpen(true);
@@ -45,15 +48,48 @@ export function FestRsvp() {
   const days = event.dayRsvp ? eventDays(event.startDate, event.endDate) : [];
   const byDay = goingByDay(summary.going, days);
 
+  // The days I'm actually here (no per-day picks = here the whole week).
+  const myGoingDays =
+    myStatus === "going"
+      ? days.filter(
+          (d) => !m?.days || Object.keys(m.days).length === 0 || m.days[d] === "going",
+        )
+      : [];
+  // Collapse the card once I've committed to going (only when there's a day grid
+  // that would otherwise take up room).
+  const collapsed = myStatus === "going" && days.length > 1 && !expanded;
+  const daysLabel =
+    myGoingDays.length === 0
+      ? "Tap Change to pick your days"
+      : myGoingDays.length === days.length
+        ? "You’re here all week"
+        : `Here ${myGoingDays
+            .map((d) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" }))
+            .join(", ")}`;
+
   return (
     <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">Are you coming to Family Fest?</p>
+        <p className="text-sm font-semibold">
+          {collapsed ? "You’re in for Family Fest ✅" : "Are you coming to Family Fest?"}
+        </p>
         <button onClick={() => openSheet()} className="press shrink-0 text-xs font-medium text-primary">
           Who&rsquo;s coming ›
         </button>
       </div>
 
+      {collapsed ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-xs text-foreground/60">{daysLabel}</p>
+          <button
+            onClick={() => setExpanded(true)}
+            className="press shrink-0 text-xs font-medium text-primary"
+          >
+            Change ›
+          </button>
+        </div>
+      ) : (
+      <>
       <AttendanceControl value={myStatus} onChange={(s) => setStatus(event.id, s)} hideMaybe />
 
       {days.length > 1 && (
@@ -105,6 +141,8 @@ export function FestRsvp() {
       <p className="text-xs text-foreground/55">
         {counts.length ? counts.join(" · ") : "No RSVPs yet — be the first"}
       </p>
+      </>
+      )}
 
       {open && (
         <EventSheet
