@@ -23,13 +23,11 @@ export function FestStatus({
   endDate,
   events,
   dinners,
-  volunteerContact,
 }: {
   startDate: string;
   endDate: string;
   events: ScheduleEvent[];
   dinners: Dinner[];
-  volunteerContact?: { name: string; email: string; phone: string };
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today: t } = useDemoDate();
@@ -88,8 +86,13 @@ export function FestStatus({
   return (
     <div className="space-y-3">
       <Countdown target={startDate} />
-      {season?.isPlanning && volunteerContact && (
-        <VolunteerContact contact={volunteerContact} />
+      {season?.isPlanning && (
+        <Link
+          href="/committees/family-fest"
+          className="press flex items-center justify-center gap-2 rounded-2xl bg-card px-4 py-3 text-center text-sm font-semibold text-primary ring-1 ring-border"
+        >
+          🙋 Want to help plan? Join the Family Fest committee ›
+        </Link>
       )}
     </div>
   );
@@ -181,48 +184,3 @@ function Contact({ label, name, phone }: { label: string; name: string; phone?: 
   );
 }
 
-function VolunteerContact({
-  contact,
-}: {
-  contact: { name: string; email: string; phone: string };
-}) {
-  const first = firstName(contact.name);
-  const body = `Hi ${first}, I'd like to help plan Family Fest. What can I pitch in on?`;
-  const mailto = `mailto:${contact.email}?subject=${encodeURIComponent(
-    "Family Fest — I'd like to help out",
-  )}&body=${encodeURIComponent(body)}`;
-  // `?&body=` is the cross-platform form that pre-fills the text on both iOS & Android.
-  const smsto = `sms:${contact.phone}?&body=${encodeURIComponent(body)}`;
-  return (
-    <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
-      <p className="text-center text-sm font-semibold text-primary">
-        🙋 Want to help plan Family Fest?
-      </p>
-      <p className="mt-0.5 text-center text-xs text-foreground/60">
-        Reach out to {first}
-      </p>
-      <Protected label="Sign in to contact" className="mt-3 w-full justify-center py-2.5">
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <a
-            href={mailto}
-            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-          >
-            ✉️ Email
-          </a>
-          <a
-            href={`tel:${contact.phone}`}
-            className="press rounded-xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-          >
-            📞 Call
-          </a>
-          <a
-            href={smsto}
-            className="press rounded-xl bg-accent/10 py-3 text-center text-sm font-semibold text-accent"
-          >
-            💬 Text
-          </a>
-        </div>
-      </Protected>
-    </div>
-  );
-}

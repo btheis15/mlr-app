@@ -75,7 +75,6 @@ export default function FamilyFestPage() {
         endDate={config.endDate}
         events={schedule}
         dinners={dinners}
-        volunteerContact={FAMILY_FEST.organizer}
       />
 
       {/* Attendance — are you coming? (Going / Maybe / Can't make + day picker.) */}
