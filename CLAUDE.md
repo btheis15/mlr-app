@@ -318,7 +318,7 @@ own RSVP) — the same shape as the cabin feature.
   slug like `family-fest-2026`) — *not* a FK — so synthesized events carry RSVPs
   just like DB ones. `delete_event()` cleans up their rows by id.
 - **Per-day drill-down:** multi-day events with `day_rsvp` (Family Fest) get an
-  optional Mon–Fri picker; the `days` JSON map rolls up to the overall status —
+  optional Sun–Sat picker; the `days` JSON map rolls up to the overall status —
   going at least one day reads as **Going** (`effectiveStatus()`).
 - **Surfaces:** [`UpcomingEvents`](components/UpcomingEvents.tsx) spotlights the
   nearest event on Home (skips Family Fest while its own takeover spotlight is

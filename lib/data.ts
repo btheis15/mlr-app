@@ -143,8 +143,8 @@ export const FAMILY_FEST = {
   tagline: "One week. The whole clan. The lake.",
   /** 2026 theme — official title, Renaissance / fantasy flavored. */
   theme: "Ye Olde Family Feste",
-  startDate: "2026-07-27",
-  endDate: "2026-07-31",
+  startDate: "2026-07-26",
+  endDate: "2026-08-01",
   location: "Muskellunge Lake Resort",
   address: "Muskellunge Lake · 5 mi from Tomahawk on Hwy 8 · Tomahawk, WI",
   /** Shared Facebook group — fallback target for photo sharing. */
@@ -214,17 +214,34 @@ export const RESORT_EVENTS: ResortEvent[] = [
   },
 ];
 
-/** The week's agenda — one headline activity per day so far. **Titles are
+/** The week's agenda — the full Sunday-to-Saturday lineup. **Titles are
  *  real**; times, locations, and details are still being set, so they read
  *  "TBD" (no placeholders). Times are omitted until set (the UI shows "TBD").
+ *  Each night's dinner is its own DINNERS entry below, not repeated here.
  *  Fill in `start`/`location`/`description`/`lead` as each is decided. */
 export const SCHEDULE: ScheduleEvent[] = [
   {
-    id: "games-up-top",
-    day: "2026-07-27",
-    title: "Games Up Top",
+    id: "setup-decorate",
+    day: "2026-07-26",
+    title: "Set Up & Decorate",
     location: "TBD",
-    emoji: "🏅",
+    emoji: "🎨",
+    description: "Details TBD.",
+  },
+  {
+    id: "ye-olde-family-faire",
+    day: "2026-07-27",
+    title: "“Ye Olde Family Faire” (Costumes!)",
+    location: "Up top",
+    emoji: "🏰",
+    description: "Costumes encouraged! Details TBD.",
+  },
+  {
+    id: "gene-pool-concert",
+    day: "2026-07-27",
+    title: "Gene Pool Concert",
+    location: "TBD",
+    emoji: "🎸",
     description: "Details TBD.",
   },
   {
@@ -236,11 +253,35 @@ export const SCHEDULE: ScheduleEvent[] = [
     description: "Details TBD.",
   },
   {
-    id: "golf-outing",
+    id: "cookout-by-the-lake",
+    day: "2026-07-28",
+    title: "Cook Out by the Lake",
+    location: "By the lake",
+    emoji: "🍔",
+    description: "Details TBD.",
+  },
+  {
+    id: "golf-day",
     day: "2026-07-29",
-    title: "Golf Outing",
+    title: "Golf Day (Costumes Welcome)",
     location: "TBD",
     emoji: "⛳",
+    description: "Costumes welcome. Details TBD.",
+  },
+  {
+    id: "trivia-night",
+    day: "2026-07-29",
+    title: "Trivia Night",
+    location: "TBD",
+    emoji: "🧠",
+    description: "Details TBD.",
+  },
+  {
+    id: "bags-tournament",
+    day: "2026-07-30",
+    title: "Bags Tournament",
+    location: "TBD",
+    emoji: "🎯",
     description: "Details TBD.",
   },
   {
@@ -253,11 +294,35 @@ export const SCHEDULE: ScheduleEvent[] = [
     lead: { name: "Michelle Birkholz" },
   },
   {
-    id: "friday-tbd",
+    id: "breakfast",
     day: "2026-07-31",
-    title: "TBD",
+    title: "Breakfast",
     location: "TBD",
-    emoji: "🗓️",
+    emoji: "🥞",
+    description: "Details TBD.",
+  },
+  {
+    id: "family-meeting",
+    day: "2026-07-31",
+    title: "Family Meeting",
+    location: "TBD",
+    emoji: "🗣️",
+    description: "Details TBD.",
+  },
+  {
+    id: "karaoke",
+    day: "2026-07-31",
+    title: "Karaoke",
+    location: "TBD",
+    emoji: "🎤",
+    description: "Details TBD.",
+  },
+  {
+    id: "teardown-cleanup",
+    day: "2026-08-01",
+    title: "Tear Down & Clean Up",
+    location: "TBD",
+    emoji: "🧹",
     description: "Details TBD.",
   },
 ];
@@ -273,6 +338,22 @@ export const THINGS_TO_DO: FestActivity[] = [
     details:
       "Pick up a hunt card at the lodge, then find each spot around Muskellunge Lake at your own pace — solo, as a family, or as a house. Finish the list any day and turn it in at the lodge for a prize at the farewell BBQ.",
     location: "Pick up your card at the Main Lodge",
+  },
+  {
+    id: "merch",
+    title: "Family Fest merch",
+    emoji: "👕",
+    blurb: "Grab this year's Family Fest gear — any time, all week.",
+    details: "Details TBD.",
+    location: "TBD",
+  },
+  {
+    id: "kids-activities",
+    title: "Kid-focused activities",
+    emoji: "🧒",
+    blurb: "Games and crafts for the youngest crew — any time, all week.",
+    details: "Details TBD.",
+    location: "TBD",
   },
 ];
 
