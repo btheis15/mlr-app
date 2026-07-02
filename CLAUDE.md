@@ -476,6 +476,9 @@ everything that happened involving you — comments & reactions on your posts,
 @mentions in posts/comments, @mentions in committee chat, new Feed posts,
 committee approve/decline, **committee join *requests* (to that committee's leads
 + every app admin — migration [`0042`](supabase/migrations/0042_committee_join_request_notif.sql))**,
+**new members joining the resort (admins, feed-durable — migration
+[`0062`](supabase/migrations/0062_new_member_notification_feed.sql); previously
+push-only via the mini, so a missed realtime window left no trace)**,
 **cabin-stay requests (admins) & decisions (requester)**, and admin broadcasts.
 Every kind has its own on/off toggle in Profile → Notifications
 (`profiles.notif_types`); the mini's push-sender checks the same `notif_types`

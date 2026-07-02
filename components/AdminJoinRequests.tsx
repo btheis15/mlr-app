@@ -19,7 +19,7 @@ interface Req {
   name: string;
   avatar?: string | null;
   message?: string | null;
-  requestedArea?: string | null;
+  requestedAreas: string[];
 }
 
 export function AdminJoinRequests({ slug, name }: { slug: string; name: string }) {
@@ -31,7 +31,7 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
     if (!sb) return;
     const { data } = await sb
       .from("committee_join_requests")
-      .select("id, user_id, message, requested_area, created_at")
+      .select("id, user_id, message, requested_area, requested_areas, created_at")
       .eq("committee_id", cid)
       .eq("status", "pending")
       .order("created_at", { ascending: true });
@@ -40,6 +40,7 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
       user_id: string;
       message: string | null;
       requested_area: string | null;
+      requested_areas: string[] | null;
     }[];
     if (!rows.length) {
       setReqs([]);
@@ -53,7 +54,13 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
         name: pm.get(r.user_id)?.name || "Member",
         avatar: pm.get(r.user_id)?.avatarUrl ?? null,
         message: r.message,
-        requestedArea: r.requested_area,
+        // Prefer the array; fall back to the legacy single column.
+        requestedAreas:
+          r.requested_areas && r.requested_areas.length
+            ? r.requested_areas
+            : r.requested_area
+              ? [r.requested_area]
+              : [],
       })),
     );
   };
@@ -81,10 +88,17 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
             <Avatar name={r.name} url={r.avatar} size={32} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{r.name}</p>
-              {r.requestedArea ? (
-                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  {r.requestedArea}
-                </span>
+              {r.requestedAreas.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {r.requestedAreas.map((area) => (
+                    <span
+                      key={area}
+                      className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                    >
+                      {area}
+                    </span>
+                  ))}
+                </div>
               ) : r.message ? (
                 <p className="truncate text-xs text-foreground/55">{r.message}</p>
               ) : null}

@@ -26,7 +26,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [committeeId, setCommitteeId] = useState<string | null>(null);
   const [state, setState] = useState<JoinState>("loading");
   const [busy, setBusy] = useState(false);
-  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
 
   // The Lead is the contact for join requests; fall back to the first member.
   const lead = committee.members.find((m) => m.role === "Lead") ?? committee.members[0];
@@ -70,7 +70,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     const { error } = await supabase.rpc("request_to_join", {
       cid: committeeId,
       msg: message,
-      requested_area: selectedArea,
+      requested_areas: selectedAreas,
     });
     setBusy(false);
     if (!error) setState("pending");
@@ -142,22 +142,29 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           {/* Area picker for role-based committees */}
           {areaOptions.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-foreground/60">Which area are you interested in? (optional)</p>
+              <p className="text-xs font-medium text-foreground/60">Which areas are you interested in? (optional — pick any)</p>
               <div className="flex flex-wrap gap-1.5">
-                {areaOptions.map((area) => (
-                  <button
-                    key={area}
-                    type="button"
-                    onClick={() => setSelectedArea(selectedArea === area ? null : area)}
-                    className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
-                      selectedArea === area
-                        ? "bg-primary text-white ring-primary"
-                        : "bg-background ring-border text-foreground/60"
-                    }`}
-                  >
-                    {area}
-                  </button>
-                ))}
+                {areaOptions.map((area) => {
+                  const on = selectedAreas.includes(area);
+                  return (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() =>
+                        setSelectedAreas((prev) =>
+                          on ? prev.filter((a) => a !== area) : [...prev, area],
+                        )
+                      }
+                      className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+                        on
+                          ? "bg-primary text-white ring-primary"
+                          : "bg-background ring-border text-foreground/60"
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
