@@ -27,7 +27,7 @@ export function FestCover({ alt }: { alt: string }) {
       <img
         src={src}
         alt={alt}
-        className="block w-full"
+        className="block max-h-40 w-full object-cover"
         onError={() => {
           if (src !== FALLBACK) setSrc(FALLBACK);
         }}
