@@ -115,21 +115,30 @@ async function start() {
 
     const { data: msg } = await sb
       .from("committee_messages")
-      .select("id, committee_id, author_id, text, reply_to_id")
+      .select("id, committee_id, author_id, text, reply_to_id, area")
       .eq("id", mid)
       .maybeSingle();
     if (!msg) return;
 
-    const [committeeRes, rosterRes, mediaRes] = await Promise.all([
+    const [committeeRes, mediaRes, muteRes] = await Promise.all([
       sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle(),
-      sb.from("committee_members").select("user_id").eq("committee_id", msg.committee_id),
       sb.from("committee_message_media").select("media_type").eq("message_id", mid),
+      sb.from("committee_area_reads").select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "").eq("muted", true),
     ]);
     const committee = committeeRes.data;
     if (!committee) return;
 
-    const rosterIds = (rosterRes.data || []).map((r) => r.user_id);
-    const others = rosterIds.filter((id) => id !== msg.author_id);
+    // Roster members — for a role channel only those who hold that area; for the
+    // General channel (area null) everyone on the committee roster.
+    const { data: roster } = await sb.from("committee_roster").select("linked_user_id, roles").eq("committee_slug", committee.slug);
+    const rosterIds = Array.from(new Set(
+      (roster || [])
+        .filter((r) => r.linked_user_id)
+        .filter((r) => !msg.area || (r.roles || []).includes(msg.area) || (r.roles || []).includes(`${msg.area} · Lead`))
+        .map((r) => r.linked_user_id),
+    ));
+    const muted = new Set(((muteRes && muteRes.data) || []).map((m) => m.user_id));
+    const others = rosterIds.filter((id) => id !== msg.author_id && !muted.has(id));
     const authorEligible = SELF_NOTIFY_IDS.has(msg.author_id);
     if (!others.length && !authorEligible) return;
 
@@ -151,12 +160,12 @@ async function start() {
       ? `${authorName}: ${msg.text.trim().slice(0, 140)}`
       : `${authorName} sent ${mediaLabel((mediaRes.data || [])[0])}`;
     const payload = {
-      title: `${committee.emoji ? committee.emoji + " " : ""}${committee.name}`,
+      title: `${committee.emoji ? committee.emoji + " " : ""}${committee.name}${msg.area ? ` — ${msg.area}` : ""}`,
       body,
       icon: ICON,
       badge: ICON,
-      tag: `committee-${committee.slug}`,
-      url: `${APP_URL}/posts?c=${committee.slug}`,
+      tag: `committee-${committee.slug}${msg.area ? "-" + msg.area : ""}`,
+      url: `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}`,
     };
 
     // Notify the committee (minus the author) — plus the author themselves if

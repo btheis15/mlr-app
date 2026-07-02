@@ -181,20 +181,32 @@ async function start() {
   const handleMessage = async (mid) => {
     if (!once(`m:${mid}`)) return;
     await new Promise((r) => setTimeout(r, 500));
+    // `area` scopes to a role channel (migration 0063); null = the General channel.
     const { data: msg } = await sb.from("committee_messages")
-      .select("id, committee_id, author_id, text").eq("id", mid).maybeSingle();
+      .select("id, committee_id, author_id, text, area").eq("id", mid).maybeSingle();
     if (!msg) return;
-    const [committeeRes, rosterRes] = await Promise.all([
-      sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle(),
-      sb.from("committee_members").select("user_id").eq("committee_id", msg.committee_id),
-    ]);
-    const committee = committeeRes.data;
+    const { data: committee } = await sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle();
     if (!committee) return;
-    const rosterIds = (rosterRes.data || []).map((r) => r.user_id);
-    const others = rosterIds.filter((id) => id !== msg.author_id);
+
+    // Recipients are the committee's roster members — for a role channel, only
+    // those who hold that area ('Meals' or 'Meals · Lead'); for General, all.
+    const { data: roster } = await sb.from("committee_roster").select("linked_user_id, roles").eq("committee_slug", committee.slug);
+    const memberIds = Array.from(new Set(
+      (roster || [])
+        .filter((r) => r.linked_user_id)
+        .filter((r) => !msg.area || (r.roles || []).includes(msg.area) || (r.roles || []).includes(`${msg.area} · Lead`))
+        .map((r) => r.linked_user_id),
+    ));
+    const others = memberIds.filter((id) => id !== msg.author_id);
     if (!others.length) return;
+
+    // Skip anyone who muted this channel.
+    const { data: muteRows } = await sb.from("committee_area_reads")
+      .select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "").eq("muted", true);
+    const muted = new Set((muteRows || []).map((m) => m.user_id));
+
     const { data: profs } = await sb.from("profiles")
-      .select("id, display_name, push_types").in("id", Array.from(new Set([...rosterIds, msg.author_id])));
+      .select("id, display_name, push_types").in("id", Array.from(new Set([...memberIds, msg.author_id])));
     const typesById = new Map();
     let authorName = "Someone";
     for (const p of profs || []) {
@@ -202,10 +214,12 @@ async function start() {
       if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
     }
     const body = msg.text && msg.text.trim() ? `${authorName}: ${msg.text.trim().slice(0, 140)}` : `${authorName} sent a message`;
-    const payload = { title: `${committee.emoji ? committee.emoji + " " : ""}${committee.name}`, body, url: `${APP_URL}/posts?c=${committee.slug}`, type: "chat" };
+    const title = `${committee.emoji ? committee.emoji + " " : ""}${committee.name}${msg.area ? ` — ${msg.area}` : ""}`;
+    const url = `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}`;
+    const payload = { title, body, url, type: "chat" };
     let sent = 0;
-    for (const uid of others) if ((typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
-    if (sent) console.log(`[apns] chat ${committee.slug}: ${sent}`);
+    for (const uid of others) if (!muted.has(uid) && (typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
+    if (sent) console.log(`[apns] chat ${committee.slug}${msg.area ? "/" + msg.area : ""}: ${sent}`);
   };
 
   // alerts — broadcast announcements (gated on push_types 'alerts')
