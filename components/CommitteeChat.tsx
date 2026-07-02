@@ -58,7 +58,7 @@ type Pending =
   | { kind: "sticker"; id: string }
   | { kind: "gif"; gif: PickedGif };
 
-export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; embedded?: boolean; knownMember?: boolean }) {
+export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean }) {
   const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
   const configured = isSupabaseConfigured;
 
@@ -188,17 +188,18 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
     if (!sb) return;
     // Prefer the soft-delete column (migration 0023). If it isn't there yet the
     // select errors — fall back to the older columns so the chat still loads.
-    const withDel = await sb
+    // Scope to this channel: a role area, or the General channel (area IS NULL).
+    const q1 = sb
       .from("committee_messages")
       .select("id, author_id, text, reply_to_id, created_at, edited_at, deleted_at")
-      .eq("committee_id", cid)
-      .order("created_at", { ascending: true });
+      .eq("committee_id", cid);
+    const withDel = await (area ? q1.eq("area", area) : q1.is("area", null)).order("created_at", { ascending: true });
+    const q2 = sb
+      .from("committee_messages")
+      .select("id, author_id, text, reply_to_id, created_at, edited_at")
+      .eq("committee_id", cid);
     const msgRows = withDel.error
-      ? (await sb
-          .from("committee_messages")
-          .select("id, author_id, text, reply_to_id, created_at, edited_at")
-          .eq("committee_id", cid)
-          .order("created_at", { ascending: true })).data
+      ? (await (area ? q2.eq("area", area) : q2.is("area", null)).order("created_at", { ascending: true })).data
       : withDel.data;
     const rows = (msgRows ?? []) as {
       id: string; author_id: string; text: string | null; reply_to_id: string | null; created_at: string; edited_at: string | null; deleted_at?: string | null;
@@ -259,9 +260,9 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
       })),
     );
     setLoaded(true);
-    // Mark the room read for me.
+    // Mark this channel read for me (per-area, migration 0063).
     const me = (await sb.auth.getUser()).data.user?.id;
-    if (me) await sb.from("committee_reads").upsert({ committee_id: cid, user_id: me, last_read_at: new Date().toISOString() }, { onConflict: "committee_id,user_id" });
+    if (me) await sb.rpc("mark_area_read", { cid, p_area: area ?? null });
   };
 
   // Keep pinned to the latest message.
@@ -422,7 +423,7 @@ export function CommitteeChat({ slug, name, emoji, embedded = false, knownMember
 
       const { data: ins, error: insErr } = await sb
         .from("committee_messages")
-        .insert({ committee_id: committeeId, author_id: uid, text: text.trim() || null, reply_to_id: replyTo?.id ?? null })
+        .insert({ committee_id: committeeId, author_id: uid, text: text.trim() || null, reply_to_id: replyTo?.id ?? null, area: area ?? null })
         .select("id")
         .single();
       if (insErr) throw insErr;

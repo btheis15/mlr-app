@@ -8,103 +8,129 @@ import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
 
 /**
- * The "Feed" tab — one place to catch up. A pill row switches between the
- * resort-wide Posts feed and a live chat for each committee you're in, each pill
- * with an unread badge. No committees → just Posts (no pills).
- *
- * v2 (post-incident): renders in NORMAL page flow — no fixed full-screen overlay,
- * and it does NOT render its own AnnouncementBanner (the layout already shows one;
- * a second instance opened a duplicate realtime channel that crashed iOS Safari's
- * page process for signed-in users). The committee chat sits inline in a bounded
- * box. Every realtime channel here has a distinct name.
+ * The "Feed" tab — a Messages-style conversation list. "Main Feed" (the resort
+ * posts) sits on top, then one row per committee chat channel you're in: a
+ * "General" channel plus one per role/area you hold (Family Fest → "Meals", …).
+ * Tap a row to open that chat. If you're in no committee, the tab drops straight
+ * into the Main Feed (no redundant one-row list). Each row shows a last-message
+ * preview, unread badge, and a mute toggle (iMessage-style, migration 0063).
  */
-interface MyCommittee {
-  id: string;
+interface Channel {
+  key: string;            // `${slug}|${area ?? ""}`
+  committeeId: string;
   slug: string;
   name: string;
   emoji: string;
+  area: string | null;    // null = the committee's General channel
+  title: string;
+  subtitle: string | null;
 }
-const POSTS_SEEN_KEY = "mlr-feed-posts-seen";
+interface Summary {
+  last?: string;
+  at?: string;
+  unread: number;
+  muted: boolean;
+}
+
+const stripLead = (role: string) => (role.endsWith(" · Lead") ? role.slice(0, -" · Lead".length) : role);
 
 export function FeedView() {
   const { user, previewAsId } = useIdentity();
-  const [committees, setCommittees] = useState<MyCommittee[]>([]);
-  const [active, setActive] = useState<string>("posts");
-  const [unread, setUnread] = useState<Record<string, number>>({});
-  const [postsUnread, setPostsUnread] = useState(0);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key
+  const [summaries, setSummaries] = useState<Record<string, Summary>>({});
   const chatBoxRef = useRef<HTMLDivElement>(null);
 
+  // Load my channels (Main Feed is implicit) + their previews.
   useEffect(() => {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb || !user) return;
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
-
     let me: string | null = null;
-    let mine: MyCommittee[] = [];
+    let mine: Channel[] = [];
 
-    const computeUnread = async () => {
+    const computeSummaries = async () => {
       if (!me) return;
       const meId = me;
-      const { data: reads } = await sb.from("committee_reads").select("committee_id, last_read_at").eq("user_id", meId);
-      const readMap = new Map(((reads ?? []) as { committee_id: string; last_read_at: string }[]).map((r) => [r.committee_id, r.last_read_at]));
-      const counts: Record<string, number> = {};
+      const next: Record<string, Summary> = {};
       await Promise.all(
-        mine.map(async (c) => {
-          let q = sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", c.id).neq("author_id", meId);
-          const since = readMap.get(c.id);
-          if (since) q = q.gt("created_at", since);
-          const { count } = await q;
-          counts[c.slug] = count ?? 0;
+        mine.map(async (ch) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const areaEq = (q: any) => (ch.area ? q.eq("area", ch.area) : q.is("area", null));
+          const [lastRes, readRes] = await Promise.all([
+            areaEq(
+              sb.from("committee_messages").select("text, created_at, profiles!author_id(display_name)").eq("committee_id", ch.committeeId),
+            ).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+            sb.from("committee_area_reads").select("last_read_at, muted").eq("committee_id", ch.committeeId).eq("user_id", meId).eq("area", ch.area ?? "").maybeSingle(),
+          ]);
+          const lastRow = lastRes.data as { text: string | null; created_at: string; profiles: { display_name: string | null } | null } | null;
+          const read = readRes.data as { last_read_at: string | null; muted: boolean | null } | null;
+          let unreadQ = areaEq(sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", ch.committeeId).neq("author_id", meId));
+          if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
+          const { count } = await unreadQ;
+          const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
+          next[ch.key] = {
+            last: lastRow ? who + (lastRow.text ?? "") : undefined,
+            at: lastRow?.created_at,
+            unread: count ?? 0,
+            muted: read?.muted ?? false,
+          };
         }),
       );
-      if (cancelled) return;
-      setUnread(counts);
-      try {
-        const seen = localStorage.getItem(POSTS_SEEN_KEY);
-        let pq = sb.from("posts").select("id", { count: "exact", head: true }).neq("author_id", meId);
-        if (seen) pq = pq.gt("created_at", seen);
-        const { count } = await pq;
-        if (!cancelled) setPostsUnread(seen ? count ?? 0 : 0);
-      } catch {
-        /* ignore */
-      }
+      if (!cancelled) setSummaries(next);
     };
 
-    // (Re)load the committees I'm in. Re-run on a membership change so the pills
-    // stay in sync when I join or LEAVE a committee — and if I just left the one
-    // I was viewing, fall back to Posts.
-    const loadCommittees = async () => {
+    const loadChannels = async () => {
       if (!me) return;
-      // Membership lives in the roster now (migration 0057): my committees are
-      // the ones where a roster entry is linked to my account.
-      const { data: ros } = await sb.from("committee_roster").select("committee_slug").eq("linked_user_id", me);
-      const slugs = Array.from(new Set(((ros ?? []) as { committee_slug: string }[]).map((r) => r.committee_slug)));
-      let next: MyCommittee[] = [];
+      const meId = me;
+      const { data: ros } = await sb.from("committee_roster").select("committee_slug, roles").eq("linked_user_id", meId);
+      const rosterRows = (ros ?? []) as { committee_slug: string; roles: string[] | null }[];
+      const slugs = Array.from(new Set(rosterRows.map((r) => r.committee_slug)));
+      let built: Channel[] = [];
       if (slugs.length) {
         const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("slug", slugs).order("position", { ascending: true });
-        next = (cs ?? []) as MyCommittee[];
+        const committees = (cs ?? []) as { id: string; slug: string; name: string; emoji: string }[];
+        for (const c of committees) {
+          const myAreas = Array.from(
+            new Set(
+              rosterRows.filter((r) => r.committee_slug === c.slug).flatMap((r) => (r.roles ?? []).map(stripLead)).filter(Boolean),
+            ),
+          );
+          if (myAreas.length === 0) {
+            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: c.name, subtitle: null });
+          } else {
+            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: "General", subtitle: c.name });
+            for (const a of myAreas) {
+              built.push({ key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, title: a, subtitle: c.name });
+            }
+          }
+        }
       }
       if (cancelled) return;
-      mine = next;
-      setCommittees(next);
-      setActive((prev) => (prev === "posts" || next.some((c) => c.slug === prev) ? prev : "posts"));
-      await computeUnread();
+      mine = built;
+      setChannels(built);
+      setActive((prev) => (built.length === 0 ? "posts" : prev === "posts" || prev === "list" || built.some((c) => c.key === prev) ? prev : "list"));
+      await computeSummaries();
     };
 
     (async () => {
-      // While previewing as a member, scope the room list to THEIR committees.
       me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
       if (cancelled || !me) return;
-      await loadCommittees();
+      await loadChannels();
       if (cancelled) return;
-      const want = new URLSearchParams(window.location.search).get("c");
-      if (want && mine.some((c) => c.slug === want)) setActive(want);
+      // Deep-link ?c=slug&area=
+      const params = new URLSearchParams(window.location.search);
+      const wantSlug = params.get("c");
+      const wantArea = params.get("area") ?? "";
+      if (wantSlug) {
+        const key = `${wantSlug}|${wantArea}`;
+        if (mine.some((c) => c.key === key)) setActive(key);
+      }
       channel = sb
-        .channel("feed-unread")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeUnread())
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, () => computeUnread())
-        .on("postgres_changes", { event: "*", schema: "public", table: "committee_roster" }, () => loadCommittees())
+        .channel("feed-conversations")
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeSummaries())
+        .on("postgres_changes", { event: "*", schema: "public", table: "committee_roster" }, () => loadChannels())
         .subscribe();
     })();
 
@@ -112,21 +138,13 @@ export function FeedView() {
       cancelled = true;
       if (channel) sb.removeChannel(channel);
     };
-    // Key on the stable email, not the whole `user` object — that reference
-    // changes on every (hourly) token refresh, which would needlessly tear down
-    // and re-subscribe the channel + re-run all the count queries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email, previewAsId]);
 
-  // The active committee chat is a fixed layer pinned to the *visual* viewport
-  // (see the JSX below), not an inline box in the scrolling page. iOS won't let
-  // an in-flow composer stay put when the keyboard opens — the page scrolls and
-  // the bottom-fixed TabBar strands mid-screen. Sizing this layer to the visible
-  // area (its height, shifted by its offset) keeps the composer locked just
-  // above the keyboard with no page movement; when the keyboard is closed we
-  // leave room for the TabBar so it stays reachable.
+  // Pin the active chat to the visual viewport so the iOS keyboard can't shove
+  // the page around (same technique as the old overlay).
   useEffect(() => {
-    if (active === "posts") return;
+    if (active === "list" || active === "posts") return;
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     const el = chatBoxRef.current;
     const apply = () => {
@@ -152,79 +170,122 @@ export function FeedView() {
     };
   }, [active]);
 
-  const select = (key: string) => {
-    setActive(key);
-    if (key === "posts") {
-      try {
-        localStorage.setItem(POSTS_SEEN_KEY, new Date().toISOString());
-      } catch {
-        /* ignore */
-      }
-      setPostsUnread(0);
-    } else {
-      setUnread((u) => ({ ...u, [key]: 0 }));
-    }
+  const toggleMute = async (ch: Channel) => {
+    const sb = supabase;
+    if (!sb) return;
+    const nextMuted = !(summaries[ch.key]?.muted ?? false);
+    setSummaries((s) => ({ ...s, [ch.key]: { ...(s[ch.key] ?? { unread: 0, muted: false }), muted: nextMuted } }));
+    await sb.rpc("set_area_mute", { cid: ch.committeeId, p_area: ch.area, p_muted: nextMuted });
   };
 
-  const activeCommittee = committees.find((c) => c.slug === active);
-
-  const pills = committees.length > 0 && (
-    <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-border bg-background px-4 pb-2 pt-1">
-      <Pill label="Posts" active={active === "posts"} badge={postsUnread} onClick={() => select("posts")} />
-      {committees.map((c) => (
-        <Pill key={c.slug} label={c.name} emoji={c.emoji} active={active === c.slug} badge={unread[c.slug] ?? 0} onClick={() => select(c.slug)} />
-      ))}
-    </div>
-  );
-
-  // Active committee chat → a fixed, visual-viewport-pinned conversation that
-  // covers the page (and the TabBar) so iOS keyboard behaviour can't shove
-  // anything around. The pills ride along as its header so you can still switch
-  // rooms or tap Posts to drop back to the feed. It renders no AnnouncementBanner
-  // and opens no extra realtime channel (the v1 overlay's duplicate banner is
-  // what crashed iOS Safari — this layer is layout-only).
-  if (active !== "posts" && activeCommittee) {
+  // No committees → straight to the Main Feed, no list.
+  if (channels.length === 0) {
     return (
-      <div
-        ref={chatBoxRef}
-        className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background"
-        style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}
-      >
-        {pills}
+      <div className="space-y-3 pt-1">
+        <PostsView seed={POSTS} showHeading />
+      </div>
+    );
+  }
+
+  // An open chat → the viewport-pinned conversation, with a back button to the list.
+  const activeChannel = channels.find((c) => c.key === active);
+  if (activeChannel) {
+    return (
+      <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <button type="button" onClick={() => setActive("list")} className="press flex shrink-0 items-center gap-1 border-b border-border px-3 py-2 text-sm font-semibold text-primary">
+          ‹ Chats
+        </button>
         <div className="min-h-0 flex-1">
-          <CommitteeChat key={activeCommittee.slug} slug={activeCommittee.slug} name={activeCommittee.name} emoji={activeCommittee.emoji} embedded knownMember />
+          <CommitteeChat key={activeChannel.key} slug={activeChannel.slug} name={activeChannel.title} emoji={activeChannel.emoji} area={activeChannel.area} embedded knownMember />
         </div>
       </div>
     );
   }
 
+  // Main Feed opened from the list.
+  if (active === "posts") {
+    return (
+      <div className="space-y-3 pt-1">
+        <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
+          ‹ Chats
+        </button>
+        <PostsView seed={POSTS} showHeading={false} />
+      </div>
+    );
+  }
+
+  // The conversation list.
   return (
-    <div className="space-y-3 pt-1">
-      {committees.length > 0 && <div className="sticky top-0 z-10 -mx-4">{pills}</div>}
-      {/* Pills already show a "Posts" label; only have PostsView render its own
-          heading when there are none (no committees → no pill row). */}
-      <PostsView seed={POSTS} showHeading={committees.length === 0} />
+    <div className="space-y-2 pt-1">
+      <h1 className="px-1 text-lg font-bold">Chats</h1>
+      <ConversationRow emoji="📰" title="Main Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+      {channels.map((ch) => (
+        <ConversationRow
+          key={ch.key}
+          emoji={ch.emoji}
+          title={ch.title}
+          subtitle={ch.subtitle}
+          summary={summaries[ch.key]}
+          onOpen={() => setActive(ch.key)}
+          onToggleMute={() => toggleMute(ch)}
+        />
+      ))}
     </div>
   );
 }
 
-function Pill({ label, emoji, active, badge, onClick }: { label: string; emoji?: string; active: boolean; badge: number; onClick: () => void }) {
+function ConversationRow({
+  emoji,
+  title,
+  subtitle,
+  summary,
+  onOpen,
+  onToggleMute,
+}: {
+  emoji: string;
+  title: string;
+  subtitle: string | null;
+  summary?: Summary;
+  onOpen: () => void;
+  onToggleMute?: () => void;
+}) {
+  const when = summary?.at ? formatWhen(summary.at) : null;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`press flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${
-        active ? "bg-primary text-white ring-primary" : "bg-card text-foreground/60 ring-border"
-      }`}
-    >
-      {emoji && <span aria-hidden>{emoji}</span>}
-      <span className="max-w-[8rem] truncate">{label}</span>
-      {badge > 0 && (
-        <span className={`ml-0.5 min-w-[1.1rem] rounded-full px-1 text-center text-[10px] font-bold ${active ? "bg-white/25 text-white" : "bg-accent text-white"}`}>
-          {badge > 99 ? "99+" : badge}
+    <div className="flex items-center gap-2 rounded-2xl bg-card px-3 py-2.5 ring-1 ring-border">
+      <button type="button" onClick={onOpen} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xl">{emoji}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-semibold">{title}</span>
+            {summary?.muted && <span aria-label="Muted">🔕</span>}
+            <span className="ml-auto shrink-0 text-[11px] text-foreground/45">{when}</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-foreground/55">{summary?.last ?? subtitle ?? ""}</span>
+            {!!summary?.unread && summary.unread > 0 && (
+              <span className={`shrink-0 rounded-full px-1.5 text-[10px] font-bold text-white ${summary.muted ? "bg-foreground/40" : "bg-accent"}`}>
+                {summary.unread > 99 ? "99+" : summary.unread}
+              </span>
+            )}
+          </span>
         </span>
+      </button>
+      {onToggleMute && (
+        <button type="button" onClick={onToggleMute} aria-label={summary?.muted ? "Unmute" : "Mute"} className="press shrink-0 rounded-full p-1.5 text-foreground/40">
+          {summary?.muted ? "🔕" : "🔔"}
+        </button>
       )}
-    </button>
+    </div>
   );
+}
+
+function formatWhen(ts: string): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
