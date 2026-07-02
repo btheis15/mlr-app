@@ -8,7 +8,7 @@ import { FestWeek } from "@/components/FestWeek";
 import { FestDuesCallout } from "@/components/FestDuesCallout";
 import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
-import { FAMILY_FEST, RESORT } from "@/lib/data";
+import { FAMILY_FEST } from "@/lib/data";
 import { useFestContent } from "@/lib/useFestContent";
 import { canEditFest } from "@/lib/festContent";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -44,20 +44,12 @@ export default function FamilyFestPage() {
   }, [user]);
 
   return (
-    <div className="space-y-6 pt-1">
-      <header className="space-y-3 text-center">
+    <div className="space-y-4 pt-1">
+      <header className="space-y-2 text-center">
         <FestCover alt="Ye Olde Family Feste — Family Fest 2026" />
-        <h1 className="text-2xl font-bold tracking-tight">{config.name}</h1>
-        <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
-          ⚜ {FAMILY_FEST.theme} ⚜
-        </p>
-        <p className="text-xs text-foreground/50">
-          {formatDateLong(config.startDate)} – {formatDateLong(config.endDate)}
-        </p>
-        {/* The Family Fest heritage stamp — the fest began in 1987 (what the logo
-            reads). The resort itself dates to 1959; that line lives on Home. */}
-        <p className="font-display text-[11px] uppercase tracking-[0.18em] text-primary/70">
-          ⚜ A family tradition since {RESORT.est} ⚜
+        <h1 className="text-xl font-bold tracking-tight">{config.name}</h1>
+        <p className="font-display text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
+          ⚜ {FAMILY_FEST.theme} ⚜ · {formatDateLong(config.startDate)} – {formatDateLong(config.endDate)}
         </p>
         {canEdit && (
           <Link

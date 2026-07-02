@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { Protected, useGuest } from "@/components/Guard";
+import { useIdentity } from "@/components/IdentityProvider";
+import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, plural } from "@/lib/format";
@@ -31,6 +34,26 @@ export function FestStatus({
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today: t } = useDemoDate();
+  const { user } = useIdentity();
+
+  // Members of the Family Fest committee don't need the "join" prompt.
+  const [isFestMember, setIsFestMember] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setIsFestMember(false);
+      return;
+    }
+    (async () => {
+      const cid = await fetchCommitteeId("family-fest");
+      if (!cid || !active) return;
+      const state = await fetchJoinState(cid);
+      if (active) setIsFestMember(state === "member");
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   if (season?.isLive) {
     const today = eventsForDay(events, t);
@@ -86,7 +109,7 @@ export function FestStatus({
   return (
     <div className="space-y-3">
       <Countdown target={startDate} />
-      {season?.isPlanning && (
+      {season?.isPlanning && !isFestMember && (
         <Link
           href="/committees/family-fest"
           className="press flex items-center justify-center gap-2 rounded-2xl bg-card px-4 py-3 text-center text-sm font-semibold text-primary ring-1 ring-border"
