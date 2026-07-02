@@ -1,27 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateRange, formatTime, plural } from "@/lib/format";
 import { eventsForDay } from "@/lib/schedule";
+import { useIdentity } from "@/components/IdentityProvider";
+import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import type { ScheduleEvent } from "@/lib/types";
 
 /**
- * The Family Fest presence on the resort home. It's the seam that makes the
- * fest feel like a season of MLR rather than a separate app, shifting with the
- * shared season model (lib/festSeason.ts):
+ * The Family Fest presence on the resort home — a compact, phase-aware summary
+ * (a glance, not the whole hub) that links to the fest tab, plus one smart
+ * shortcut: the Family Fest committee CHAT if you're a member, or the JOIN
+ * request if you're not.
  *
- * - off-season → a quiet banner that links to the hub (the original look);
- * - planning (from ~60 days out) → a partial takeover: rally volunteers + show
- *   what's being planned so far;
- * - the live week → a full takeover hero ("Day n of N" + today's events), and
- *   the resort's own content recedes below it;
- * - wrap (2 weeks after) → the full takeover lingers, nudging people to post
- *   the photos they didn't get to during the week.
- *
- * Phase is computed client-side (see useFestSeason) so it's correct on both the
- * static Pages build and Vercel.
+ * Phase shifts with the shared season model (lib/festSeason.ts): off-season →
+ * quiet banner; planning → a short "taking shape" line; live → today's events;
+ * wrap → a photos nudge. Phase is computed client-side so it's correct on both
+ * the static Pages build and Vercel.
  */
 export function FamilyFestSpotlight({
   name,
@@ -38,12 +36,48 @@ export function FamilyFestSpotlight({
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
+  const { user } = useIdentity();
+  const [isMember, setIsMember] = useState(false);
 
-  // Live week — the resort app puts Family Fest front and center, with today's
-  // events (time + where) right here so you see what's on without digging.
+  // Point the shortcut at the committee chat once we know you're a member.
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setIsMember(false);
+      return;
+    }
+    (async () => {
+      const cid = await fetchCommitteeId("family-fest");
+      if (!cid || !active) return;
+      // fetchJoinState resolves the signed-in user itself when no id is passed.
+      const state = await fetchJoinState(cid);
+      if (active) setIsMember(state === "member");
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  const festCTA = (
+    <Link
+      href={isMember ? "/committees/family-fest/chat" : "/committees/family-fest"}
+      className="press flex items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-sm font-semibold text-primary ring-1 ring-border"
+    >
+      <span>
+        {isMember ? "💬 Family Fest committee chat" : "🙋 Join the Family Fest committee"}
+      </span>
+      <span aria-hidden className="text-foreground/40">
+        ›
+      </span>
+    </Link>
+  );
+
+  let card: React.ReactNode;
+
   if (season?.isLive) {
+    // Live week — today's events (time + where) right here.
     const todays = eventsForDay(schedule, today);
-    return (
+    card = (
       <Link
         href="/family-fest"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
@@ -73,11 +107,9 @@ export function FamilyFestSpotlight({
         </p>
       </Link>
     );
-  }
-
-  // Wrap — the takeover lingers for two weeks so photos keep coming in.
-  if (season?.isWrap) {
-    return (
+  } else if (season?.isWrap) {
+    // Wrap — nudge photos for two weeks.
+    card = (
       <Link
         href="/family-fest"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
@@ -87,21 +119,18 @@ export function FamilyFestSpotlight({
         </p>
         <p className="mt-1 text-lg font-semibold">Thanks for a great week at the lake</p>
         <p className="mt-1 text-sm text-foreground/70">
-          Add the photos you didn&rsquo;t get to share yet.
+          Add the photos you didn&rsquo;t get to share yet
+          {season.wrapDaysLeft > 0
+            ? ` — album's open ${season.wrapDaysLeft} more ${plural(season.wrapDaysLeft, "day")}.`
+            : "."}
         </p>
         <p className="mt-2 text-xs font-medium text-campfire">Add your photos →</p>
-        {season.wrapDaysLeft > 0 && (
-          <p className="mt-2 text-[11px] text-foreground/45">
-            Album stays open for {season.wrapDaysLeft} more {plural(season.wrapDaysLeft, "day")}.
-          </p>
-        )}
       </Link>
     );
-  }
-
-  // Planning — partial takeover: gather volunteers and preview what's planned.
-  if (season?.isPlanning) {
-    return (
+  } else if (season?.isPlanning) {
+    // Planning — a short "taking shape" summary (no full schedule list here;
+    // that lives on the fest tab).
+    card = (
       <Link
         href="/family-fest"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/25"
@@ -119,52 +148,41 @@ export function FamilyFestSpotlight({
             ? "Almost here — final plans coming together"
             : `${season.daysUntilStart} days out — here's what's taking shape`}
         </p>
-        {schedule.length > 0 && (
-          <ul className="mt-2 space-y-1">
-            {schedule.map((h) => {
-              const d = new Date(`${h.day}T00:00:00`);
-              return (
-                <li key={h.id} className="flex items-center gap-2 text-sm">
-                  <span>{h.emoji}</span>
-                  <span className="flex-1 font-medium">{h.title}</span>
-                  <span className="shrink-0 text-[11px] text-foreground/45">
-                    {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <p className="mt-2 text-xs font-medium text-campfire">
-          🙋 Volunteers welcome — see the plans &amp; pitch in →
-        </p>
+        <p className="mt-1 text-sm text-foreground/60">See the week &amp; who&rsquo;s coming →</p>
+      </Link>
+    );
+  } else {
+    // Off-season — the quiet banner.
+    card = (
+      <Link
+        href="/family-fest"
+        className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
+              🎉 {name}
+            </p>
+            <p className="mt-1 text-sm font-semibold">{tagline}</p>
+            {season != null && (
+              <p className="mt-0.5 text-xs text-foreground/60">
+                {season.daysUntilStart > 0
+                  ? `Starts in ${season.daysUntilStart} days →`
+                  : "Returns next summer →"}
+              </p>
+            )}
+          </div>
+          <span className="text-3xl">🎆</span>
+        </div>
       </Link>
     );
   }
 
-  // Off-season — the quiet banner (original look).
   return (
-    <Link
-      href="/family-fest"
-      className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
-            🎉 {name}
-          </p>
-          <p className="mt-1 text-sm font-semibold">{tagline}</p>
-          {season != null && (
-            <p className="mt-0.5 text-xs text-foreground/60">
-              {season.daysUntilStart > 0
-                ? `Starts in ${season.daysUntilStart} days →`
-                : "Returns next summer →"}
-            </p>
-          )}
-        </div>
-        <span className="text-3xl">🎆</span>
-      </div>
-    </Link>
+    <div className="space-y-2">
+      {card}
+      {festCTA}
+    </div>
   );
 }
 
@@ -175,9 +193,7 @@ function LiveDotLabel({ children }: { children: React.ReactNode }) {
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-campfire/70" />
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-campfire" />
       </span>
-      <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
-        {children}
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-campfire">{children}</p>
     </div>
   );
 }
