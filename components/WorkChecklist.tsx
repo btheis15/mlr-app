@@ -8,7 +8,6 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { WorkItemSheet, type WorkItemMember } from "@/components/WorkItemSheet";
-import { MediaGrid } from "@/components/MediaGrid";
 
 interface MemberRow extends WorkItemMember {
   houseId: string | null;
@@ -180,6 +179,21 @@ export function WorkChecklist() {
           )}
         </div>
 
+        {/* Progress bar (done / total) — iOS-style linear gauge. */}
+        {cardOpen && !loading && totalOpen + totalDone > 0 && (
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-background ring-1 ring-border">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-[var(--dur-tap)]"
+                style={{ width: `${Math.round((totalDone / (totalOpen + totalDone)) * 100)}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-[11px] font-medium tabular-nums text-foreground/50">
+              {totalDone}/{totalOpen + totalDone}
+            </span>
+          </div>
+        )}
+
         {/* Sections — revealed when the card is expanded. */}
         {cardOpen && !loading && sections.map((section) => {
           // Always sorted by importance: ASAP → This year → Nice to have →
@@ -279,67 +293,83 @@ function WorkItemRow({
   onCheck: () => void;
   onOpen: () => void;
 }) {
+  const thumb = item.media[0];
   return (
-    <div className="px-4 py-3">
-      <div className="flex items-start gap-3">
-        {/* Checkbox tap target */}
-        <button
-          type="button"
-          onClick={onCheck}
-          disabled={checkingOff}
-          aria-label={`Mark "${item.title}" done`}
-          className="press mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border transition-colors hover:border-primary disabled:opacity-40"
-        >
-          {checkingOff && (
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-          )}
-        </button>
+    <div className="flex items-start gap-3 px-4 py-3">
+      {/* Checkbox tap target */}
+      <button
+        type="button"
+        onClick={onCheck}
+        disabled={checkingOff}
+        aria-label={`Mark "${item.title}" done`}
+        className="press mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border transition-colors hover:border-primary disabled:opacity-40"
+      >
+        {checkingOff && (
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+        )}
+      </button>
 
-        {/* Title + details — tap to open the item (details + comments). */}
-        <div
-          className="min-w-0 flex-1 cursor-pointer"
-          onClick={onOpen}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && onOpen()}
-        >
-          <span className="block text-sm font-medium leading-snug">{item.title}</span>
-          {item.notes && (
-            <span className="mt-0.5 block text-xs text-foreground/50 leading-snug">{item.notes}</span>
-          )}
-          <span className="mt-1 flex flex-wrap items-center gap-1">
-            {item.urgency && (
-              <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
-                {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
-              </span>
-            )}
-            {item.peopleNeeded != null && (
-              <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
-                👥 {item.peopleNeeded} needed
-              </span>
-            )}
-            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
-              💬 {item.commentCount > 0 ? item.commentCount : "Comment"}
+      {/* Title + details — tap to open the item (details + comments). */}
+      <div
+        className="min-w-0 flex-1 cursor-pointer"
+        onClick={onOpen}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onOpen()}
+      >
+        <span className="block text-sm font-medium leading-snug">{item.title}</span>
+        {item.notes && (
+          <span className="mt-0.5 block text-xs text-foreground/50 leading-snug line-clamp-2">{item.notes}</span>
+        )}
+        <span className="mt-1 flex flex-wrap items-center gap-1">
+          {item.urgency && (
+            <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
+              {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
             </span>
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`Open "${item.title}"`}
-          className="press shrink-0 self-center text-xs text-foreground/25 hover:text-foreground/60"
-        >
-          ›
-        </button>
+          )}
+          {item.peopleNeeded != null && (
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+              👥 {item.peopleNeeded} needed
+            </span>
+          )}
+          {item.commentCount > 0 && (
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+              💬 {item.commentCount}
+            </span>
+          )}
+        </span>
       </div>
 
-      {/* Attachments */}
-      {item.media.length > 0 && (
-        <div className="pl-8">
-          <MediaGrid media={item.media} />
-        </div>
+      {/* Compact inline thumbnail (iOS-style) instead of a full-width grid. */}
+      {thumb && (
+        thumb.type === "video" ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`Open "${item.title}"`}
+            className="press flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-lg bg-background text-primary ring-1 ring-border"
+          >
+            ▶
+          </button>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumb.url}
+            alt=""
+            onClick={onOpen}
+            className="h-10 w-10 shrink-0 cursor-pointer self-center rounded-lg object-cover ring-1 ring-border"
+          />
+        )
       )}
+
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open "${item.title}"`}
+        className="press shrink-0 self-center text-xs text-foreground/25 hover:text-foreground/60"
+      >
+        ›
+      </button>
     </div>
   );
 }
