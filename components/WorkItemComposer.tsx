@@ -192,7 +192,6 @@ export function WorkItemComposer({
           onChange={(e) => setTitle(e.target.value)}
           placeholder='e.g. "Caulk windows on red & white cabin"'
           className={`${sel} w-full`}
-          autoFocus
         />
         <textarea
           value={notes}
