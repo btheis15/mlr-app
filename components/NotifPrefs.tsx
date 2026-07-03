@@ -55,6 +55,13 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
+    title: "Work items",
+    rows: [
+      { value: "work_item_comment", icon: "💬", label: "Comments on work items", desc: "When someone comments on a work item you posted or commented on" },
+      { value: "work_item_mention", icon: "@", label: "Mentions on work items", desc: "When you're @mentioned in a work item comment" },
+    ],
+  },
+  {
     title: "Help requests",
     rows: [
       { value: "help_request", icon: "🙌", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },

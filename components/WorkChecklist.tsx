@@ -4,10 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
 import { fetchWorkItems, markWorkItemDone } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
+import { WorkItemSheet, type WorkItemMember } from "@/components/WorkItemSheet";
 import { MediaGrid } from "@/components/MediaGrid";
+
+interface MemberRow extends WorkItemMember {
+  houseId: string | null;
+  isAdmin: boolean;
+}
 
 // The work checklist card shown inside the "Around the resort" section on Home.
 // Any signed-in member can add items and check them off. Admins can also edit,
@@ -34,6 +40,8 @@ export function WorkChecklist() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [composing, setComposing] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
+  const [viewing, setViewing] = useState<WorkItem | null>(null);
+  const [members, setMembers] = useState<MemberRow[]>([]);
   const [checkingOff, setCheckingOff] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +53,38 @@ export function WorkChecklist() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Mention candidates for the comment threads (all members; scoped per-item below).
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb) return;
+    sb.from("profiles").select("id, display_name, avatar_url, house_id, is_admin").then(({ data }) => {
+      setMembers(((data ?? []) as { id: string; display_name: string | null; avatar_url: string | null; house_id: string | null; is_admin: boolean }[]).map((p) => ({
+        id: p.id,
+        name: p.display_name?.trim() || "Member",
+        avatarUrl: p.avatar_url,
+        houseId: p.house_id,
+        isAdmin: p.is_admin,
+      })));
+    });
+  }, []);
+
+  // Deep-link from a comment notification: /?work=<id> opens that item's thread.
+  useEffect(() => {
+    if (loading || typeof window === "undefined") return;
+    const want = new URLSearchParams(window.location.search).get("work");
+    if (!want) return;
+    const found = items.find((i) => i.id === want);
+    if (found) setViewing(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Candidates who can see a given item (MLR → everyone; house → its members + admins).
+  const candidatesFor = (item: WorkItem): WorkItemMember[] =>
+    (item.houseId
+      ? members.filter((m) => m.houseId === item.houseId || m.isAdmin)
+      : members
+    ).map((m) => ({ id: m.id, name: m.name, avatarUrl: m.avatarUrl }));
 
   const signedIn = Boolean(user);
 
@@ -147,7 +187,7 @@ export function WorkChecklist() {
                       item={item}
                       checkingOff={checkingOff === item.id}
                       onCheck={() => handleCheck(item)}
-                      onEdit={isAdmin ? () => handleEdit(item) : undefined}
+                      onOpen={() => setViewing(item)}
                     />
                   ))}
                   {hidden > 0 && (
@@ -193,6 +233,17 @@ export function WorkChecklist() {
           onSaved={() => { setEditing(null); load(); }}
         />
       )}
+
+      {/* Detail + comments sheet (any member) */}
+      {viewing && (
+        <WorkItemSheet
+          item={viewing}
+          members={candidatesFor(viewing)}
+          onClose={() => setViewing(null)}
+          onChanged={load}
+          onEdit={isAdmin ? () => handleEdit(viewing) : undefined}
+        />
+      )}
     </>
   );
 }
@@ -201,12 +252,12 @@ function WorkItemRow({
   item,
   checkingOff,
   onCheck,
-  onEdit,
+  onOpen,
 }: {
   item: WorkItem;
   checkingOff: boolean;
   onCheck: () => void;
-  onEdit?: () => void;
+  onOpen: () => void;
 }) {
   return (
     <div className="px-4 py-3">
@@ -224,37 +275,38 @@ function WorkItemRow({
           )}
         </button>
 
-        {/* Title + category — tap to edit (admin only) */}
+        {/* Title + details — tap to open the item (details + comments). */}
         <div
-          className={`min-w-0 flex-1 ${onEdit ? "cursor-pointer" : ""}`}
-          onClick={onEdit}
-          role={onEdit ? "button" : undefined}
-          tabIndex={onEdit ? 0 : undefined}
-          onKeyDown={onEdit ? (e) => e.key === "Enter" && onEdit() : undefined}
+          className="min-w-0 flex-1 cursor-pointer"
+          onClick={onOpen}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === "Enter" && onOpen()}
         >
           <span className="block text-sm font-medium leading-snug">{item.title}</span>
           {item.notes && (
             <span className="mt-0.5 block text-xs text-foreground/50 leading-snug">{item.notes}</span>
           )}
-          {item.peopleNeeded != null && (
-            <span className="mt-1 flex flex-wrap gap-1">
+          <span className="mt-1 flex flex-wrap items-center gap-1">
+            {item.peopleNeeded != null && (
               <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
                 👥 {item.peopleNeeded} needed
               </span>
+            )}
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+              💬 {item.commentCount > 0 ? item.commentCount : "Comment"}
             </span>
-          )}
+          </span>
         </div>
 
-        {onEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit "${item.title}"`}
-            className="press shrink-0 self-center text-xs text-foreground/25 hover:text-foreground/60"
-          >
-            ›
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open "${item.title}"`}
+          className="press shrink-0 self-center text-xs text-foreground/25 hover:text-foreground/60"
+        >
+          ›
+        </button>
       </div>
 
       {/* Attachments */}
