@@ -93,6 +93,7 @@ export type NotifType =
   | "help_urgent"
   | "work_item_comment"
   | "work_item_mention"
+  | "work_item_created"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -120,6 +121,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "help_urgent",
   "work_item_comment",
   "work_item_mention",
+  "work_item_created",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
