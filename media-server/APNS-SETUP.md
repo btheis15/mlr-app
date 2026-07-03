@@ -51,5 +51,7 @@ With those set, restart the media server. You should see
 - `apns-sender.js` is a self-contained fork of `push-sender.js` (it duplicates the
   chat/alerts/feed handlers). A later cleanup could merge APNs delivery into
   `push-sender.js`'s `sendToUser` so both transports share one set of handlers.
-- The daily birthday job (`birthday-notifier.js`) is still web-push only; fork it
-  the same way if birthday pushes are wanted on iOS.
+- The daily birthday job (`birthday-notifier.js`) now delivers over both
+  transports — it calls `apns-sender.js`'s `createApnsDelivery()` directly
+  (rather than forking a second listener) so iOS members get birthday pushes
+  too, once the same APNS_* env vars above are set.

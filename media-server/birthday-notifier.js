@@ -5,7 +5,13 @@
 //   "🎂 Jane's birthday — Jane is turning 42 today! Tap to text or call them."
 // Tapping opens Jane's contact card (?member=<id>) with Call / Text buttons.
 //
-// DORMANT unless the same env as push-sender is set (SERVICE_KEY + VAPID keys).
+// Delivers over BOTH transports so iOS members get it too, not just web/Android:
+// web push (VAPID) always; APNs as well, if APNS_KEY_PATH/APNS_KEY_ID/APNS_TEAM_ID/
+// APNS_BUNDLE_ID are set (same creds as apns-sender.js — this reuses its
+// createApnsDelivery() helper directly rather than running a second listener).
+//
+// DORMANT (web push) unless the same env as push-sender is set (SERVICE_KEY +
+// VAPID keys); APNs delivery is simply skipped if its env vars aren't set.
 // Optional config:
 //   BIRTHDAY_HOUR   local hour to send (0–23; default 8)
 //   BIRTHDAY_TZ     IANA timezone for "today" + the hour (default America/Chicago)
@@ -20,6 +26,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { createApnsDelivery } = require("./apns-sender");
 
 const APP_URL = (process.env.APP_URL || "https://mlr-app-omega.vercel.app").replace(/\/+$/, "");
 const ICON = `${APP_URL}/icon-192.png`;
@@ -60,6 +67,11 @@ async function start() {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+  // null if APNS_KEY_PATH/APNS_KEY_ID/APNS_TEAM_ID/APNS_BUNDLE_ID aren't set —
+  // iOS delivery is then just skipped, same "dormant unless configured" posture
+  // as the rest of the mini.
+  const apns = createApnsDelivery();
+
   const sendToUser = async (userId, payload) => {
     const { data: subs } = await sb.from("push_subscriptions").select("endpoint, p256dh, auth").eq("user_id", userId);
     let ok = 0;
@@ -72,6 +84,7 @@ async function start() {
         if (code === 404 || code === 410) await sb.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
       }
     }
+    if (apns) ok += await apns.sendToUser(sb, userId, payload);
     return ok;
   };
 
@@ -143,7 +156,7 @@ async function start() {
 
   await tick(); // catch up on startup
   setInterval(tick, 60 * 60 * 1000); // hourly
-  console.log(`[birthday] watching (sends ~${SEND_HOUR}:00 ${TZ})`);
+  console.log(`[birthday] watching (sends ~${SEND_HOUR}:00 ${TZ}, iOS: ${apns ? "on" : "off (APNs env not set)"})`);
 }
 
 module.exports = { start };
