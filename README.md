@@ -138,6 +138,19 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0046_help_bring_items_and_urgent_broadcast.sql`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql);
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
+- **Houses** — designate members into a house (e.g. "MJT House"); each member
+  belongs to **one** house (`profiles.house_id`), admin-assigned in Profile → Admin
+  → **Houses** ([`components/AdminHouses.tsx`](components/AdminHouses.tsx)). A house
+  gets a **private chat** (a channel in the Feed tab,
+  [`components/HouseChat.tsx`](components/HouseChat.tsx)) and its **own work items**.
+  The Work Checklist ([`components/WorkChecklist.tsx`](components/WorkChecklist.tsx))
+  is sectioned: an **MLR** section (resort-wide, everyone) + the viewer's **house**
+  section. Every work item can also carry **photo/video attachments**. Migrations
+  [`0064_houses.sql`](supabase/migrations/0064_houses.sql) …
+  [`0067_work_item_media.sql`](supabase/migrations/0067_work_item_media.sql);
+  [`lib/houses.ts`](lib/houses.ts) + [`lib/workItems.ts`](lib/workItems.ts). Web
+  only for now (no iOS port yet). See CLAUDE.md → **Houses (scoped chat + work
+  items)**.
 - **Home call-out stack** — temporary Home call-outs (future
   news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →

@@ -13,11 +13,20 @@ export const MEDIA_URL = (
 ).replace(/\/+$/, "");
 
 export interface UploadOptions {
-  /** Folder bucket on the mini: "posts" (default) or "chat". */
-  category?: "posts" | "chat";
-  /** For chat: the committee slug, so files group under chat/<room>/. */
+  /** Folder bucket on the mini: "posts" (default), "chat", or "work". */
+  category?: "posts" | "chat" | "work";
+  /** For chat: the committee/house slug, so files group under chat/<room>/. */
   room?: string;
   onProgress?: (loaded: number, total: number) => void;
+}
+
+/** A single photo/video attachment (shared across posts, work items, etc.). */
+export type MediaKind = "image" | "video";
+export interface Media {
+  url: string;
+  type: MediaKind;
+  /** The mini path (for delete), when known. */
+  path?: string;
 }
 
 // Ask the mini to AI-grade a caption/post's text for inappropriate language.
