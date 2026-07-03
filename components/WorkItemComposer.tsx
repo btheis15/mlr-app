@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { House, ResortEvent, WorkItem, WorkItemMedia } from "@/lib/types";
+import type { House, ResortEvent, WorkItem, WorkItemMedia, WorkItemUrgency } from "@/lib/types";
 import {
   createWorkItem,
   updateWorkItem,
@@ -9,6 +9,7 @@ import {
   addWorkItemToEvent,
   addWorkItemMedia,
   removeWorkItemMedia,
+  URGENCY_META,
 } from "@/lib/workItems";
 import { fetchEvents, upcomingEvents } from "@/lib/events";
 import { uploadToMini, compressImage } from "@/lib/media";
@@ -48,6 +49,7 @@ export function WorkItemComposer({
   const [notes, setNotes] = useState(item?.notes ?? "");
   const [peopleNeeded, setPeopleNeeded] = useState<number>(item?.peopleNeeded ?? 0);
   const [status, setStatus] = useState<"open" | "done">(item?.status ?? "open");
+  const [urgency, setUrgency] = useState<WorkItemUrgency>(item?.urgency ?? "this_year");
   const [houseId, setHouseId] = useState<string | null>(item?.houseId ?? null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(preLinkedEventId ?? null);
   const [events, setEvents] = useState<ResortEvent[]>([]);
@@ -102,6 +104,7 @@ export function WorkItemComposer({
           notes: notes.trim() || undefined,
           status,
           peopleNeeded: parsed,
+          urgency,
           houseId,
         });
         if (err) throw new Error(err);
@@ -115,6 +118,7 @@ export function WorkItemComposer({
           title: title.trim(),
           notes: notes.trim() || undefined,
           peopleNeeded: parsed,
+          urgency,
           houseId,
         });
         if (err) throw new Error(err);
@@ -198,6 +202,21 @@ export function WorkItemComposer({
           placeholder="Extra details (optional)"
           className={`${sel} w-full resize-none`}
         />
+      </div>
+
+      {/* Urgency */}
+      <div className="space-y-2">
+        <SectionLabel>How urgent?</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(URGENCY_META) as WorkItemUrgency[]).map((u) => (
+            <ScopeChip
+              key={u}
+              label={`${URGENCY_META[u].emoji} ${URGENCY_META[u].label}`}
+              active={urgency === u}
+              onClick={() => setUrgency(u)}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Scope: MLR (everyone) or a house */}

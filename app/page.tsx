@@ -2,6 +2,7 @@ import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { HomeSpotlight } from "@/components/HomeSpotlight";
 import { HomeCommunication, HomeAroundResort } from "@/components/HomeResortGroups";
+import { WorkChecklist } from "@/components/WorkChecklist";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
 import { InstallButton } from "@/components/InstallButton";
@@ -40,8 +41,12 @@ export default function HomePage() {
       {/* ── Communication — People, Committees, Ask for Help ─────────────────── */}
       <HomeCommunication />
 
-      {/* ── Around the resort — Events, Cabin Stay, Local Places, Work Checklist ── */}
+      {/* ── Around the resort — Events, Cabin Stay, Local Places ─────────────── */}
       <HomeAroundResort />
+
+      {/* Work Checklist — its own expandable card (collapsed by default so the
+          list stays tucked away until you open it). */}
+      <WorkChecklist />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}
       <CollapsibleSection title="App & help" icon="📲" subtitle="Take the tour · Add to phone · Share · Help">

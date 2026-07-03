@@ -194,6 +194,11 @@ export interface House {
 
 export type WorkItemStatus = "open" | "done";
 
+/** How urgent a work item is — drives its chip + sort order (ASAP first).
+ *  asap = needs doing right away · this_year = must happen this year ·
+ *  nice_to_have = would be nice but isn't pressing. */
+export type WorkItemUrgency = "asap" | "this_year" | "nice_to_have";
+
 /** A photo/video attached to a work item (so people can see what a task is about). */
 export interface WorkItemMedia {
   id: string;
@@ -214,6 +219,7 @@ export interface WorkItem {
   category: string | null;
   status: WorkItemStatus;
   peopleNeeded: number | null;
+  urgency: WorkItemUrgency | null;
   houseId: string | null;
   media: WorkItemMedia[];
   commentCount: number;
