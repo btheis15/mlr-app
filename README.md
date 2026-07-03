@@ -144,12 +144,15 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   gets a **private chat** (a channel in the Feed tab,
   [`components/HouseChat.tsx`](components/HouseChat.tsx)) and its **own work items**.
   The Work Checklist ([`components/WorkChecklist.tsx`](components/WorkChecklist.tsx))
-  is sectioned: an **MLR** section (resort-wide, everyone) + the viewer's **house**
-  section. Every work item can also carry **photo/video attachments** and a
-  **plain-text comment thread with @mentions** (tap a row → detail sheet; comments
-  follow the item's visibility, notify the creator + prior commenters). Migrations
+  is its own **collapsed-by-default expandable card** on Home, sectioned into an
+  **MLR** section (resort-wide, everyone) + the viewer's **house** section. Each item
+  has an **urgency rating** (🔴 ASAP · 🟡 This year · 🟢 Nice to have) and the list is
+  **always sorted by importance**. Every work item can also carry **photo/video
+  attachments** and a **plain-text comment thread with @mentions** (tap a row →
+  detail sheet; comments follow the item's visibility, notify the creator + prior
+  commenters). Migrations
   [`0064_houses.sql`](supabase/migrations/0064_houses.sql) …
-  [`0068_work_item_comments.sql`](supabase/migrations/0068_work_item_comments.sql);
+  [`0069_work_item_urgency.sql`](supabase/migrations/0069_work_item_urgency.sql);
   [`lib/houses.ts`](lib/houses.ts) + [`lib/workItems.ts`](lib/workItems.ts). Web
   only for now (no iOS port yet). See CLAUDE.md → **Houses (scoped chat + work
   items)**.

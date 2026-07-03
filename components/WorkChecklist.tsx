@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
-import { fetchWorkItems, markWorkItemDone } from "@/lib/workItems";
+import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -37,6 +37,7 @@ export function WorkChecklist() {
   const [houses, setHouses] = useState<House[]>([]);
   const [myHouseId, setMyHouseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cardOpen, setCardOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [composing, setComposing] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
@@ -104,6 +105,7 @@ export function WorkChecklist() {
 
   const totalOpen = items.filter((i) => i.status === "open").length;
   const totalDone = items.filter((i) => i.status === "done").length;
+  const asapCount = items.filter((i) => i.status === "open" && i.urgency === "asap").length;
   const showHeaders = sections.length > 1;
 
   const handleAdd = () => {
@@ -137,21 +139,35 @@ export function WorkChecklist() {
   return (
     <>
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
-        {/* Card header */}
+        {/* Card header — the whole bar toggles the card open/closed so the list
+            stays tucked away until you want it. */}
         <div className="flex items-center gap-3 px-4 py-3.5">
-          <span className="shrink-0 text-lg" aria-hidden>🔧</span>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-accent">Work Checklist</h3>
-            <p className="text-xs text-foreground/50">
-              {loading
-                ? "Loading…"
-                : totalOpen === 0 && totalDone === 0
-                  ? "Nothing on the list yet"
-                  : totalOpen === 0
-                    ? `All ${totalDone} item${totalDone !== 1 ? "s" : ""} done ✅`
-                    : `${totalOpen} open${totalDone > 0 ? ` · ${totalDone} done` : ""}`}
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setCardOpen((o) => !o)}
+            aria-expanded={cardOpen}
+            className="press flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
+            <span className="shrink-0 text-lg" aria-hidden>🔧</span>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-accent">Work Checklist</h3>
+              <p className="text-xs text-foreground/50">
+                {loading
+                  ? "Loading…"
+                  : totalOpen === 0 && totalDone === 0
+                    ? "Nothing on the list yet"
+                    : totalOpen === 0
+                      ? `All ${totalDone} item${totalDone !== 1 ? "s" : ""} done ✅`
+                      : `${totalOpen} open${totalDone > 0 ? ` · ${totalDone} done` : ""}${asapCount > 0 ? ` · 🔴 ${asapCount} ASAP` : ""}`}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 text-foreground/40 transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${cardOpen ? "rotate-90" : ""}`}
+              aria-hidden
+            >
+              ›
+            </span>
+          </button>
           {isSupabaseConfigured && (
             <button
               type="button"
@@ -164,9 +180,13 @@ export function WorkChecklist() {
           )}
         </div>
 
-        {/* Sections */}
-        {!loading && sections.map((section) => {
-          const open = section.items.filter((i) => i.status === "open");
+        {/* Sections — revealed when the card is expanded. */}
+        {cardOpen && !loading && sections.map((section) => {
+          // Always sorted by importance: ASAP → This year → Nice to have →
+          // unrated, keeping the newest-first order within each urgency.
+          const open = section.items
+            .filter((i) => i.status === "open")
+            .sort((a, b) => urgencyRank(a.urgency) - urgencyRank(b.urgency));
           const done = section.items.filter((i) => i.status === "done");
           const isExpanded = expanded.has(section.key);
           const visible = isExpanded ? open : open.slice(0, PREVIEW);
@@ -288,6 +308,11 @@ function WorkItemRow({
             <span className="mt-0.5 block text-xs text-foreground/50 leading-snug">{item.notes}</span>
           )}
           <span className="mt-1 flex flex-wrap items-center gap-1">
+            {item.urgency && (
+              <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
+                {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
+              </span>
+            )}
             {item.peopleNeeded != null && (
               <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
                 👥 {item.peopleNeeded} needed

@@ -242,6 +242,16 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   house items). Helpers in [`lib/workItems.ts`](lib/workItems.ts)
   (`fetchWorkItemComments`/`addWorkItemComment`/`removeWorkItemComment`; `fetchWorkItems`
   also returns `commentCount`).
+- **Work-item urgency + standalone card** — each item carries an urgency rating
+  (`work_items.urgency` ∈ `asap` | `this_year` | `nice_to_have`, migration
+  [`0069`](supabase/migrations/0069_work_item_urgency.sql); `create_work_item`/
+  `update_work_item` re-threaded with `p_urgency`). Shown as a colored chip
+  (`URGENCY_META` in [`lib/workItems.ts`](lib/workItems.ts)) and the list is **always
+  sorted by importance** (ASAP → This year → Nice to have → unrated, newest-first
+  within each). The composer defaults new items to `this_year`. The **Work Checklist
+  is now its own collapsed-by-default expandable card on Home**
+  ([`app/page.tsx`](app/page.tsx), no longer nested in "Around the resort"): the
+  header shows a live summary (incl. a `🔴 N ASAP` count) and toggles the list open.
 - **Admin** — Profile → Admin → **Houses** ([`AdminHouses`](components/AdminHouses.tsx)):
   create/rename/delete houses + assign each member (chips over the `admin_members()`
   directory, which was widened to return `house_id`/`house_name`).

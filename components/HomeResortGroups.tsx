@@ -1,6 +1,5 @@
 import { RowLink } from "@/components/RowLink";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
-import { WorkChecklist } from "@/components/WorkChecklist";
 import Link from "next/link";
 
 // Communication → People · Committees · Ask for Help.
@@ -36,15 +35,16 @@ export function HomeCommunication() {
   );
 }
 
-// Around the resort → Events & Work Weekends · Cabin Stay · Local Places · Work Checklist.
-// Sits below Communication on Home.
+// Around the resort → Events & Work Weekends · Cabin Stay · Local Places.
+// Sits below Communication on Home. (The Work Checklist is now its own
+// standalone expandable card on Home — see app/page.tsx.)
 //
 // Tagged data-fit-anchor-empty: when Home has no upcoming events, the hero
 // logo anchors on THIS group instead — see lib/appLogoFit.ts.
 export function HomeAroundResort() {
   return (
     <div data-fit-anchor-empty>
-      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Events · Cabin Stay · Local Places · Work Checklist">
+      <CollapsibleSection title="Around the resort" icon="🧭" subtitle="Events · Cabin Stay · Local Places">
         <RowLink
           href="/events"
           emoji="📅"
@@ -56,7 +56,6 @@ export function HomeAroundResort() {
           <TileCard href="/request-stay" emoji="🏡" title="Cabin Stay" body="Reserve a room for any week." tile="bg-dusk/12" />
           <TileCard href="/local-places" emoji="📍" title="Local Places" body="Tee times, food & favorites nearby." tile="bg-lake/12" />
         </div>
-        <WorkChecklist />
       </CollapsibleSection>
     </div>
   );

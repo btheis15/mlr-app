@@ -4,7 +4,20 @@
 // SECURITY DEFINER RPCs. Degrades to safe no-ops with no backend.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus } from "@/lib/types";
+import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency } from "@/lib/types";
+
+/** Display + sort metadata for each urgency level (most urgent first). Chip uses
+ *  Tailwind palette classes (like the amber Beta chip in AdminMembers). */
+export const URGENCY_META: Record<WorkItemUrgency, { label: string; emoji: string; rank: number; chip: string }> = {
+  asap:         { label: "ASAP",         emoji: "🔴", rank: 0, chip: "bg-red-500/15 text-red-700 ring-red-500/30" },
+  this_year:    { label: "This year",    emoji: "🟡", rank: 1, chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
+  nice_to_have: { label: "Nice to have", emoji: "🟢", rank: 2, chip: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" },
+};
+
+/** Sort rank for an item's urgency (unset sorts last). */
+export function urgencyRank(u: WorkItemUrgency | null): number {
+  return u ? URGENCY_META[u].rank : 3;
+}
 
 function mapMedia(rows: Record<string, unknown>[] | null | undefined): WorkItemMedia[] {
   return (rows ?? [])
@@ -25,6 +38,7 @@ function mapRow(r: Record<string, unknown>): WorkItem {
     category: (r.category as string | null) ?? null,
     status: (r.status as WorkItemStatus) ?? "open",
     peopleNeeded: (r.people_needed as number | null) ?? null,
+    urgency: (r.urgency as WorkItemUrgency | null) ?? null,
     houseId: (r.house_id as string | null) ?? null,
     media: mapMedia(r.work_item_media as Record<string, unknown>[] | undefined),
     commentCount: (() => {
@@ -77,6 +91,7 @@ export async function createWorkItem(input: {
   notes?: string;
   category?: string;
   peopleNeeded?: number | null;
+  urgency?: WorkItemUrgency | null;
   houseId?: string | null;
 }): Promise<{ id?: string; error?: string }> {
   if (!supabase) return { error: "Not connected" };
@@ -86,6 +101,7 @@ export async function createWorkItem(input: {
     p_category: input.category ?? null,
     p_people_needed: input.peopleNeeded ?? null,
     p_house_id: input.houseId ?? null,
+    p_urgency: input.urgency ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -201,7 +217,7 @@ export async function markWorkItemDone(id: string): Promise<{ error?: string }> 
 /** Edit an item's fields + status (admin only). */
 export async function updateWorkItem(
   id: string,
-  input: { title: string; notes?: string; category?: string; status: WorkItemStatus; peopleNeeded?: number | null; houseId?: string | null },
+  input: { title: string; notes?: string; category?: string; status: WorkItemStatus; peopleNeeded?: number | null; urgency?: WorkItemUrgency | null; houseId?: string | null },
 ): Promise<{ error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { error } = await supabase.rpc("update_work_item", {
@@ -212,6 +228,7 @@ export async function updateWorkItem(
     p_status: input.status,
     p_people_needed: input.peopleNeeded ?? null,
     p_house_id: input.houseId ?? null,
+    p_urgency: input.urgency ?? null,
   });
   return error ? { error: error.message } : {};
 }

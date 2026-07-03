@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WorkItem, WorkItemComment } from "@/lib/types";
-import { fetchWorkItemComments, addWorkItemComment, removeWorkItemComment } from "@/lib/workItems";
+import { fetchWorkItemComments, addWorkItemComment, removeWorkItemComment, URGENCY_META } from "@/lib/workItems";
 import { supabase } from "@/lib/supabase";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
@@ -97,11 +97,18 @@ export function WorkItemSheet({
       }
     >
       {item.notes && <p className="whitespace-pre-wrap text-sm text-foreground/70">{item.notes}</p>}
-      {item.peopleNeeded != null && (
-        <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground/50 ring-1 ring-border">
-          👥 {item.peopleNeeded} needed
-        </span>
-      )}
+      <span className="flex flex-wrap items-center gap-1.5">
+        {item.urgency && (
+          <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
+            {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
+          </span>
+        )}
+        {item.peopleNeeded != null && (
+          <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground/50 ring-1 ring-border">
+            👥 {item.peopleNeeded} needed
+          </span>
+        )}
+      </span>
       {item.media.length > 0 && <MediaGrid media={item.media} />}
 
       {/* Comments */}
