@@ -53,7 +53,8 @@ export type PushType =
   | "post_reply"
   | "event_rsvp"
   | "help_request"
-  | "help_response";
+  | "help_response"
+  | "work_item_created";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')

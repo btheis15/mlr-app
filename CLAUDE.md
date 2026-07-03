@@ -258,7 +258,11 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   notifies only that house's members + every app admin (mirrors the
   `committee_join_request` audience, 0042). Default **on**; toggle in Profile →
   Notifications → Work items (`NotifPrefs`). The actor is never notified of their
-  own item.
+  own item. Also rides a **phone push** — `work_item_created` is a `PushType`
+  (off by default, opt in via Profile → Notifications → Push, `PushToggle`) that
+  the mini's [`push-sender.js`](media-server/push-sender.js) (web push) and
+  [`apns-sender.js`](media-server/apns-sender.js) (iOS) both relay from the same
+  feed row.
 - **Admin** — Profile → Admin → **Houses** ([`AdminHouses`](components/AdminHouses.tsx)):
   create/rename/delete houses + assign each member (chips over the `admin_members()`
   directory, which was widened to return `house_id`/`house_name`).

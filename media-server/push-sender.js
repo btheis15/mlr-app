@@ -224,6 +224,9 @@ async function start() {
     // OVERRIDE push — anyone with phone push on gets buzzed regardless of their
     // per-category picks (handled below), so it isn't gated on push_types[type].
     "help_urgent",
+    // A new work item was added (migration 0070): relay to a phone push, gated
+    // on push_types (off by default — a member opts in via Profile → Notifications).
+    "work_item_created",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
