@@ -602,6 +602,10 @@ triggers/RPCs (no client insert); members can read/dismiss their own.
 ([`transcode.js`](media-server/transcode.js)) — photos are left full quality —
 and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
 [`push-sender.js`](media-server/push-sender.js) side jobs alongside uploads.
+The AI moderation path ([`moderation.js`](media-server/moderation.js)) uses
+`sharp` to downscale a **copy** of each image/sampled video frame to ≤1024px
+before base64 — the local `fm serve` classifier caps the request body at 1 MB, so
+full-res phone photos would otherwise 413. The stored/served media is untouched.
 
 ## AI Assistant ("Ask MLR")
 
