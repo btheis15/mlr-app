@@ -15,12 +15,24 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
+const sharp = require("sharp");
 
 const FM_SERVE_URL = process.env.FM_SERVE_URL || "http://127.0.0.1:8799/v1/chat/completions";
 const MOD_MODELS = (process.env.MOD_MODELS || "pcc,system").split(",").map((s) => s.trim()).filter(Boolean);
 const MOD_TIMEOUT_MS = Number(process.env.MOD_TIMEOUT_MS || 60000);
 const VIDEO_FRAMES = Number(process.env.MOD_VIDEO_FRAMES || 6); // max frames to sample
 const VIDEO_EVERY_S = Number(process.env.MOD_VIDEO_EVERY_S || 8); // seconds between frames
+
+// `fm serve` caps the request body at 1 MB, and base64 inflates bytes ~4/3, so
+// the raw image we encode must stay well under ~750 KB. We downscale every image
+// (and sampled video frame) to a modest longest-edge before base64 — a safety
+// classifier doesn't need full resolution, and this is ONLY the copy sent to the
+// model. The stored/served media is never touched (photos stay full quality,
+// video stays ≤1080p via transcode.js). Without this, full-res phone photos
+// (~2 MB base64) are rejected with HTTP 413 before any model even runs.
+const MOD_MAX_DIM = Number(process.env.MOD_MAX_DIM || 1024); // longest edge sent to the classifier
+const MOD_JPEG_QUALITY = Number(process.env.MOD_JPEG_QUALITY || 80);
+const MOD_MAX_IMG_BYTES = Number(process.env.MOD_MAX_IMG_BYTES || 700000); // encoded cap (~930 KB base64, under the 1 MB body limit)
 
 const PROMPT =
   'You are a content-safety filter for a family resort community app used by all ages. ' +
@@ -49,9 +61,20 @@ function parseVerdict(text) {
   }
 }
 
-function imageExt(p) {
-  const e = path.extname(p).slice(1).toLowerCase();
-  return e === "jpg" ? "jpeg" : e || "jpeg";
+// Downscale to a modest resolution and re-encode as JPEG before base64, so the
+// request body stays under `fm serve`'s 1 MB limit (see the constants above).
+// Auto-orients via EXIF; a second, smaller pass guards the rare dense image that
+// still exceeds the cap at MOD_MAX_DIM.
+async function downscaledJpegB64(filePath) {
+  const shrink = (dim, quality) =>
+    sharp(filePath, { failOn: "none" })
+      .rotate()
+      .resize({ width: dim, height: dim, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality })
+      .toBuffer();
+  let buf = await shrink(MOD_MAX_DIM, MOD_JPEG_QUALITY);
+  if (buf.length > MOD_MAX_IMG_BYTES) buf = await shrink(768, 60);
+  return buf.toString("base64");
 }
 
 async function classifyImageBase64(b64, ext) {
@@ -89,17 +112,19 @@ async function classifyImageBase64(b64, ext) {
 async function moderateImageFile(filePath) {
   let b64;
   try {
-    b64 = fs.readFileSync(filePath).toString("base64");
+    b64 = await downscaledJpegB64(filePath);
   } catch (e) {
-    console.warn(`[moderate] read failed: ${e.message}`);
+    console.warn(`[moderate] read/resize failed: ${e.message}`);
     return null;
   }
-  return classifyImageBase64(b64, imageExt(filePath));
+  return classifyImageBase64(b64, "jpeg");
 }
 
 function extractFrames(videoPath, outDir) {
   return new Promise((resolve) => {
-    const args = ["-y", "-i", videoPath, "-vf", `fps=1/${VIDEO_EVERY_S}`, "-frames:v", String(VIDEO_FRAMES), path.join(outDir, "f%02d.jpg")];
+    // Scale frames down at extraction so the temp JPEGs (and the base64 we send)
+    // stay small; moderateImageFile downscales again as a safety net.
+    const args = ["-y", "-i", videoPath, "-vf", `fps=1/${VIDEO_EVERY_S},scale='min(${MOD_MAX_DIM},iw)':-2`, "-frames:v", String(VIDEO_FRAMES), path.join(outDir, "f%02d.jpg")];
     execFile("ffmpeg", args, { timeout: 120000 }, (err) => {
       if (err) {
         console.warn(`[moderate] ffmpeg frame sampling failed: ${err.message}`);
