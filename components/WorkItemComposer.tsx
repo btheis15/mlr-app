@@ -223,7 +223,7 @@ export function WorkItemComposer({
         <div className="space-y-2">
           <SectionLabel>Who's this for?</SectionLabel>
           <div className="flex flex-wrap gap-2">
-            <ScopeChip label="🌲 MLR (everyone)" active={houseId === null} onClick={() => setHouseId(null)} />
+            <ScopeChip label="🌲 Around the Resort (everyone)" active={houseId === null} onClick={() => setHouseId(null)} />
             {houseOptions.map((h) => (
               <ScopeChip
                 key={h.id}
