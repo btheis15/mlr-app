@@ -91,6 +91,8 @@ export type NotifType =
   | "help_request"
   | "help_response"
   | "help_urgent"
+  | "work_item_comment"
+  | "work_item_mention"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -116,6 +118,8 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "help_request",
   "help_response",
   "help_urgent",
+  "work_item_comment",
+  "work_item_mention",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
@@ -212,9 +216,23 @@ export interface WorkItem {
   peopleNeeded: number | null;
   houseId: string | null;
   media: WorkItemMedia[];
+  commentCount: number;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A plain-text comment on a work item (with @mentions of members who can see
+ *  the item). Author name/avatar are stitched in client-side for display. */
+export interface WorkItemComment {
+  id: string;
+  workItemId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatarUrl: string | null;
+  text: string;
+  mentions: string[];
+  createdAt: string;
 }
 
 /** A post in the shared feed — a photo and/or a note, by a member. (Combines

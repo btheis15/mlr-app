@@ -227,6 +227,21 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   shared renderer [`MediaGrid`](components/MediaGrid.tsx) (extracted from PostsView's
   inline carousel/lightbox) displays them; `Media` type now lives in
   [`lib/media.ts`](lib/media.ts).
+- **Work-item comments** — every work item (MLR and house) has a plain-text
+  comment thread with `@mentions` (no reactions/media), so a task can hold a little
+  Q&A (the requestor asks, others reply). Migration
+  [`0068`](supabase/migrations/0068_work_item_comments.sql): `work_item_comments` +
+  `work_item_comment_mentions`, RLS that **follows the parent item's visibility**
+  (MLR-public vs house-only via `is_house_member`), and two new Activity kinds
+  `work_item_comment` (→ item creator + prior commenters) / `work_item_mention`
+  (deep-link `/?work=<id>`), added to `notif_types` (default on). Tapping any row in
+  [`WorkChecklist`](components/WorkChecklist.tsx) opens
+  [`WorkItemSheet`](components/WorkItemSheet.tsx) (details + media + the thread);
+  admins get an Edit button there (the composer moved off the row tap). Mention
+  candidates are scoped to who can see the item (everyone for MLR, house members for
+  house items). Helpers in [`lib/workItems.ts`](lib/workItems.ts)
+  (`fetchWorkItemComments`/`addWorkItemComment`/`removeWorkItemComment`; `fetchWorkItems`
+  also returns `commentCount`).
 - **Admin** — Profile → Admin → **Houses** ([`AdminHouses`](components/AdminHouses.tsx)):
   create/rename/delete houses + assign each member (chips over the `admin_members()`
   directory, which was widened to return `house_id`/`house_name`).
