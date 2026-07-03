@@ -252,6 +252,13 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   is now its own collapsed-by-default expandable card on Home**
   ([`app/page.tsx`](app/page.tsx), no longer nested in "Around the resort"): the
   header shows a live summary (incl. a `🔴 N ASAP` count) and toggles the list open.
+- **New-work-item notifications** — adding a task fans out a `work_item_created`
+  Activity notification (migration [`0070`](supabase/migrations/0070_work_item_created_notif.sql)):
+  an MLR item notifies every member (resort-wide, like `new_post`); a house item
+  notifies only that house's members + every app admin (mirrors the
+  `committee_join_request` audience, 0042). Default **on**; toggle in Profile →
+  Notifications → Work items (`NotifPrefs`). The actor is never notified of their
+  own item.
 - **Admin** — Profile → Admin → **Houses** ([`AdminHouses`](components/AdminHouses.tsx)):
   create/rename/delete houses + assign each member (chips over the `admin_members()`
   directory, which was widened to return `house_id`/`house_name`).

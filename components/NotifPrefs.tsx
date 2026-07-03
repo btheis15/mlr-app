@@ -57,6 +57,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
   {
     title: "Work items",
     rows: [
+      { value: "work_item_created", icon: "🔧", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },
       { value: "work_item_comment", icon: "💬", label: "Comments on work items", desc: "When someone comments on a work item you posted or commented on" },
       { value: "work_item_mention", icon: "@", label: "Mentions on work items", desc: "When you're @mentioned in a work item comment" },
     ],
