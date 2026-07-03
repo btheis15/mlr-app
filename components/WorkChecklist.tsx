@@ -93,7 +93,7 @@ export function WorkChecklist() {
   const houseById = new Map(houses.map((h) => [h.id, h]));
   const sections: Section[] = [];
   const mlr = items.filter((i) => i.houseId === null);
-  if (mlr.length) sections.push({ key: "mlr", title: "MLR", emoji: "🌲", items: mlr });
+  if (mlr.length) sections.push({ key: "mlr", title: "Around the Resort", emoji: "🌲", items: mlr });
   for (const h of houses) {
     const hi = items.filter((i) => i.houseId === h.id);
     if (hi.length) sections.push({ key: h.id, title: h.name, emoji: h.emoji, items: hi });
