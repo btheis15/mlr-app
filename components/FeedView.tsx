@@ -6,14 +6,15 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
+import { HouseChat } from "@/components/HouseChat";
 
 /**
  * The "Feed" tab — a Messages-style conversation list. "Main Feed" (the resort
- * posts) sits on top, then one row per committee chat channel you're in: a
- * "General" channel plus one per role/area you hold (Family Fest → "Meals", …).
- * Tap a row to open that chat. If you're in no committee, the tab drops straight
- * into the Main Feed (no redundant one-row list). Each row shows a last-message
- * preview, unread badge, and a mute toggle (iMessage-style, migration 0063).
+ * posts) sits on top, then your House chat (if you're in a house), then one row
+ * per committee chat channel you're in: a "General" channel plus one per role/area
+ * you hold (Family Fest → "Meals", …). Tap a row to open that chat. If you're in
+ * no house or committee, the tab drops straight into the Main Feed. Each row shows
+ * a last-message preview + unread badge (committee rows add a mute toggle, 0063).
  */
 interface Channel {
   key: string;            // `${slug}|${area ?? ""}`
@@ -24,6 +25,13 @@ interface Channel {
   area: string | null;    // null = the committee's General channel
   title: string;
   subtitle: string | null;
+}
+interface HouseChannel {
+  key: string;            // `house|${slug}`
+  houseId: string;
+  slug: string;
+  name: string;
+  emoji: string;
 }
 interface Summary {
   last?: string;
@@ -37,7 +45,8 @@ const stripLead = (role: string) => (role.endsWith(" · Lead") ? role.slice(0, -
 export function FeedView() {
   const { user, previewAsId } = useIdentity();
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key
+  const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(null);
+  const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key | house key
   const [summaries, setSummaries] = useState<Record<string, Summary>>({});
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
@@ -51,6 +60,7 @@ export function FeedView() {
     let channel: ReturnType<typeof sb.channel> | null = null;
     let me: string | null = null;
     let mine: Channel[] = [];
+    let houseCh: HouseChannel | null = null;
 
     const computeSummaries = async () => {
       if (!me) return;
@@ -80,7 +90,36 @@ export function FeedView() {
           };
         }),
       );
+      // House channel summary (its own tables; no per-room mute).
+      if (houseCh) {
+        const hid = houseCh.houseId;
+        const [lastRes, readRes] = await Promise.all([
+          sb.from("house_messages").select("text, created_at, profiles!author_id(display_name)").eq("house_id", hid).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+          sb.from("house_reads").select("last_read_at").eq("house_id", hid).eq("user_id", meId).maybeSingle(),
+        ]);
+        const lastRow = lastRes.data as { text: string | null; created_at: string; profiles: { display_name: string | null } | null } | null;
+        const read = readRes.data as { last_read_at: string | null } | null;
+        let unreadQ = sb.from("house_messages").select("id", { count: "exact", head: true }).eq("house_id", hid).neq("author_id", meId);
+        if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
+        const { count } = await unreadQ;
+        const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
+        next[houseCh.key] = {
+          last: lastRow ? who + (lastRow.text ?? "") : undefined,
+          at: lastRow?.created_at,
+          unread: count ?? 0,
+          muted: false,
+        };
+      }
       if (!cancelled) setSummaries(next);
+    };
+
+    const loadHouse = async (): Promise<HouseChannel | null> => {
+      if (!me) return null;
+      const { data } = await sb.from("profiles").select("house_id, houses:house_id(id, slug, name, emoji)").eq("id", me).maybeSingle();
+      const h = (data as { houses: { id: string; slug: string; name: string; emoji: string } | null } | null)?.houses ?? null;
+      houseCh = h ? { key: `house|${h.slug}`, houseId: h.id, slug: h.slug, name: h.name, emoji: h.emoji || "🏠" } : null;
+      if (!cancelled) setHouseChannel(houseCh);
+      return houseCh;
     };
 
     const loadChannels = async () => {
@@ -89,7 +128,7 @@ export function FeedView() {
       const { data: ros } = await sb.from("committee_roster").select("committee_slug, roles").eq("linked_user_id", meId);
       const rosterRows = (ros ?? []) as { committee_slug: string; roles: string[] | null }[];
       const slugs = Array.from(new Set(rosterRows.map((r) => r.committee_slug)));
-      let built: Channel[] = [];
+      const built: Channel[] = [];
       if (slugs.length) {
         const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("slug", slugs).order("position", { ascending: true });
         const committees = (cs ?? []) as { id: string; slug: string; name: string; emoji: string }[];
@@ -112,27 +151,40 @@ export function FeedView() {
       if (cancelled) return;
       mine = built;
       setChannels(built);
-      setActive((prev) => (built.length === 0 ? "posts" : prev === "posts" || prev === "list" || built.some((c) => c.key === prev) ? prev : "list"));
+      const hasAny = built.length > 0 || houseCh !== null;
+      setActive((prev) =>
+        !hasAny
+          ? "posts"
+          : prev === "posts" || prev === "list" || prev === houseCh?.key || built.some((c) => c.key === prev)
+            ? prev
+            : "list",
+      );
       await computeSummaries();
     };
 
     (async () => {
       me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
       if (cancelled || !me) return;
+      const hc = await loadHouse();
       await loadChannels();
       if (cancelled) return;
-      // Deep-link ?c=slug&area=
+      // Deep-links: ?c=slug&area= (committee) or ?house=slug (house).
       const params = new URLSearchParams(window.location.search);
       const wantSlug = params.get("c");
       const wantArea = params.get("area") ?? "";
+      const wantHouse = params.get("house");
       if (wantSlug) {
         const key = `${wantSlug}|${wantArea}`;
         if (mine.some((c) => c.key === key)) setActive(key);
+      } else if (wantHouse && hc && hc.slug === wantHouse) {
+        setActive(hc.key);
       }
       channel = sb
         .channel("feed-conversations")
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeSummaries())
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" }, () => computeSummaries())
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_roster" }, () => loadChannels())
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${me}` }, () => { void loadHouse().then(loadChannels); })
         .subscribe();
     })();
 
@@ -206,8 +258,8 @@ export function FeedView() {
     await sb.rpc("set_area_mute", { cid: ch.committeeId, p_area: ch.area, p_muted: nextMuted });
   };
 
-  // No committees → straight to the Main Feed, no list.
-  if (channels.length === 0) {
+  // No house and no committees → straight to the Main Feed, no list.
+  if (channels.length === 0 && !houseChannel) {
     return (
       <div className="space-y-3 pt-1">
         <PostsView seed={POSTS} showHeading />
@@ -215,7 +267,27 @@ export function FeedView() {
     );
   }
 
-  // An open chat → the viewport-pinned conversation, with a back button to the list.
+  // The house chat opened from the list.
+  if (houseChannel && active === houseChannel.key) {
+    return (
+      <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
+            ‹ Chats
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
+          </div>
+          <span className="h-9 w-9" aria-hidden />
+        </div>
+        <div className="min-h-0 flex-1">
+          <HouseChat key={houseChannel.key} slug={houseChannel.slug} name={houseChannel.name} emoji={houseChannel.emoji} houseId={houseChannel.houseId} embedded knownMember />
+        </div>
+      </div>
+    );
+  }
+
+  // An open committee chat → the viewport-pinned conversation, with a back button.
   const activeChannel = channels.find((c) => c.key === active);
   if (activeChannel) {
     return (
@@ -275,6 +347,15 @@ export function FeedView() {
     <div className="space-y-2 pt-1">
       <h1 className="px-1 text-lg font-bold">Chats</h1>
       <ConversationRow emoji="📰" title="Main Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+      {houseChannel && (
+        <ConversationRow
+          emoji={houseChannel.emoji}
+          title={houseChannel.name}
+          subtitle="Your house"
+          summary={summaries[houseChannel.key]}
+          onOpen={() => setActive(houseChannel.key)}
+        />
+      )}
       {channels.map((ch) => (
         <ConversationRow
           key={ch.key}

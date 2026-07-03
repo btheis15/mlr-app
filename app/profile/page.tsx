@@ -6,6 +6,7 @@ import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
 import { AdminCommittees } from "@/components/AdminCommittees";
+import { AdminHouses } from "@/components/AdminHouses";
 import { AdminCabinBookings } from "@/components/AdminCabinBookings";
 import { AdminSignins } from "@/components/AdminSignins";
 import { PreviewAs } from "@/components/PreviewAs";
@@ -245,6 +246,9 @@ export default function ProfilePage() {
           </CollapsibleSection>
           <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
             <AdminCommittees />
+          </CollapsibleSection>
+          <CollapsibleSection title="Houses" icon="🏠" subtitle="Create houses & assign members">
+            <AdminHouses />
           </CollapsibleSection>
           <CollapsibleSection title="Cabin Stays" icon="🏡" subtitle="Approve room requests">
             <AdminCabinBookings />

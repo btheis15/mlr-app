@@ -17,6 +17,7 @@ interface MemberRow {
   email?: string | null; // only present via the admin RPC (private)
   is_admin: boolean;
   beta_tester?: boolean; // present via admin_members() once migration 0029 is run
+  house_name?: string | null; // present via admin_members() once migration 0064 is run
 }
 
 /**
@@ -267,6 +268,9 @@ export function AdminMembers() {
                       )}
                       {m.beta_tester && (
                         <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Beta</span>
+                      )}
+                      {m.house_name && (
+                        <span className="shrink-0 rounded-full bg-lake/15 px-1.5 py-0.5 text-[10px] font-semibold text-lake">🏠 {m.house_name}</span>
                       )}
                     </p>
                     {(m.email || m.household) && (

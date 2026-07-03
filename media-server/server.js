@@ -113,6 +113,9 @@ function uploadSubdir(req) {
   if (category === "chat") {
     return path.join("chat", safeSeg(req.query.room, "general"), ym);
   }
+  if (category === "work") {
+    return path.join("work", ym); // work-item attachments
+  }
   return path.join("posts", ym); // default: Posts feed
 }
 

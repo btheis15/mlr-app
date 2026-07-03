@@ -184,6 +184,59 @@ are linked to real accounts**. Wired into the People directory + `MemberSheet`,
 Posts + comments ([`PostsView`](components/PostsView.tsx)),
 [`CommitteeChat`](components/CommitteeChat.tsx), and the committee roster itself.
 
+## Houses (scoped chat + work items)
+
+A **House** is a group members are designated into (e.g. "MJT House"). Each member
+belongs to **at most one house** — modeled as a single `profiles.house_id` FK
+(migration [`0064`](supabase/migrations/0064_houses.sql)), not a roster/membership
+table like committees, because the relationship is one-per-person. **MLR is the
+universal baseline**: everyone is always MLR and always sees resort-wide content; a
+house is a *narrower* group layered on top, never a replacement. Assignment is
+**admin-only** — `house_id` is deliberately kept out of the client update allowlist
+(same escalation guard as `is_admin`), so the only write path is the
+`set_member_house(target, hid)` RPC. The gate every house feature leans on is
+`is_house_member(hid)` (admin OR `profiles.house_id = hid`), a `SECURITY DEFINER`
+mirror of `is_committee_member` but simpler (a house is one room, no areas).
+
+- **House chat** — a private, full-parity room per house (media/reactions/
+  @mentions/replies/24h edit+soft-delete/unread), mirroring committee chat.
+  Tables + RLS gated on `is_house_member` in migration
+  [`0065`](supabase/migrations/0065_house_chat.sql) (`house_messages` +
+  `house_message_media`/`_reactions`/`_mentions` + `house_reads`; `mark_house_read`
+  RPC; an `@mention → chat_mention` notification trigger deep-linking
+  `/posts?house=<slug>&m=<id>`). UI is [`HouseChat`](components/HouseChat.tsx) — a
+  near-copy of [`CommitteeChat`](components/CommitteeChat.tsx) minus the area
+  sub-scoping. **Surfaced as a channel in the Feed tab**
+  ([`FeedView`](components/FeedView.tsx)): your house appears right after "Main
+  Feed", above committee channels, with its own last-message/unread summary. Unlike
+  committees, houses are **admin-assigned** — there's no request-to-join; a
+  non-member sees a "ask an admin to add you" lock.
+- **Scoped work items** — the checklist ([`WorkChecklist`](components/WorkChecklist.tsx))
+  now sections by scope: `work_items.house_id` is `null` for **MLR** (resort-wide,
+  everyone incl. guests — the old public-read behavior) or a house id for a
+  **house-only** item (migration [`0066`](supabase/migrations/0066_work_item_house_scope.sql)
+  swaps the `using(true)` read policy for `house_id is null or is_house_member(...)`).
+  A house member sees an **MLR** section + their **house** section in one card; the
+  RPCs (`create_work_item`/`mark_work_item_done`/`update_work_item`) were re-threaded
+  with `p_house_id` and gate house writes on membership.
+- **Work-item media** — every work item (MLR and house) can carry photo/video
+  attachments (migration [`0067`](supabase/migrations/0067_work_item_media.sql),
+  `work_item_media`, `add_work_item_media`/`remove_work_item_media` RPCs). The
+  composer ([`WorkItemComposer`](components/WorkItemComposer.tsx)) reuses the shared
+  upload pipeline (`uploadToMini` with `category:"work"`, `useMediaPicker`) and a new
+  shared renderer [`MediaGrid`](components/MediaGrid.tsx) (extracted from PostsView's
+  inline carousel/lightbox) displays them; `Media` type now lives in
+  [`lib/media.ts`](lib/media.ts).
+- **Admin** — Profile → Admin → **Houses** ([`AdminHouses`](components/AdminHouses.tsx)):
+  create/rename/delete houses + assign each member (chips over the `admin_members()`
+  directory, which was widened to return `house_id`/`house_name`).
+  [`AdminMembers`](components/AdminMembers.tsx) shows each member's house as a chip.
+- Client seam: [`lib/houses.ts`](lib/houses.ts) (`fetchHouses`, `fetchMyHouse`,
+  `setMemberHouse`, `saveHouse`/`deleteHouse`); types `House` + `WorkItemMedia` in
+  [`lib/types.ts`](lib/types.ts).
+- ⚠️ **Web only so far** — the native iOS app (`mlr-app-ios`) has no house
+  equivalent yet (its `Committees/`, `WorkItems/` dirs would each need one).
+
 ## Identity, admins & alerts
 
 - **Identity (on-demand, not a gate)** — the whole app is **public to browse**.

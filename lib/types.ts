@@ -176,11 +176,33 @@ export interface User {
   avatarUrl?: string | null;
 }
 
+/** A house — a group members are designated into (e.g. "MJT House"). Each house
+ *  gets its own private chat + its own scoped work items. A member belongs to at
+ *  most one house; everyone is always "MLR" (resort-wide) by default. */
+export interface House {
+  id: string;
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string;
+  position: number;
+}
+
 export type WorkItemStatus = "open" | "done";
+
+/** A photo/video attached to a work item (so people can see what a task is about). */
+export interface WorkItemMedia {
+  id: string;
+  url: string;
+  type: "image" | "video";
+  position: number;
+}
 
 /** One item on the resort work checklist. Any signed-in member can add items;
  *  admins can edit, delete, and mark done. Items can also be attached to events
- *  (see event_work_items) so attendees know what's planned for a work weekend. */
+ *  (see event_work_items) so attendees know what's planned for a work weekend.
+ *  `houseId` scopes an item: null = MLR / resort-wide (everyone sees it), a house
+ *  id = visible only to that house's members. */
 export interface WorkItem {
   id: string;
   title: string;
@@ -188,6 +210,8 @@ export interface WorkItem {
   category: string | null;
   status: WorkItemStatus;
   peopleNeeded: number | null;
+  houseId: string | null;
+  media: WorkItemMedia[];
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
