@@ -273,6 +273,55 @@ async function start() {
     if (sent) console.log(`[apns] ${n.type}: ${sent}`);
   };
 
+  // A new member just verified their email (profiles.joined_at freshly stamped —
+  // migration 0054). Tell every admin who hasn't opted out (notify_new_members,
+  // default on). Mirrors push-sender.js's handleNewMember/maybeNewMember exactly,
+  // just delivered over APNs instead of web push.
+  const handleNewMember = async (id, nameFromRow) => {
+    if (!id) return;
+    if (!once(`nm:${id}`)) return;
+
+    const { data: admins } = await sb
+      .from("profiles")
+      .select("id")
+      .eq("is_admin", true)
+      .eq("notify_new_members", true);
+    const targets = (admins || []).map((a) => a.id).filter((aid) => aid !== id);
+    if (!targets.length) return;
+
+    let name = (nameFromRow || "").trim();
+    let email = "";
+    try {
+      const { data: u } = await sb.auth.admin.getUserById(id);
+      email = (u && u.user && u.user.email) || "";
+    } catch { /* email is best-effort */ }
+    if (!name) name = email ? email.split("@")[0] : "A new member";
+
+    const payload = {
+      title: "👋 New member joined",
+      body: email ? `${name} (${email}) just joined` : `${name} just joined`,
+      url: `${APP_URL}/profile`,
+      type: "new_member",
+    };
+    let sent = 0;
+    for (const uid of targets) sent += await apns.sendToUser(sb, uid, payload);
+    if (sent) console.log(`[apns] new member ${name}: notified ${sent} admin(s)`);
+  };
+
+  // Same freshness guard as push-sender.js: profiles uses the default REPLICA
+  // IDENTITY, so a realtime UPDATE's `old` carries only the primary key — gate
+  // on joined_at being freshly set rather than "changed" to avoid re-firing on
+  // every edit / re-sign-in of an existing member.
+  const JOIN_FRESH_MS = 10 * 60 * 1000;
+  const maybeNewMember = (row) => {
+    if (!row || !row.joined_at) return;
+    const t = Date.parse(row.joined_at);
+    if (!Number.isFinite(t) || Date.now() - t > JOIN_FRESH_MS) return;
+    handleNewMember(row.id, row.display_name).catch((err) =>
+      console.error("[apns] new member error:", err && err.message),
+    );
+  };
+
   sb.channel("apns-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" },
       (e) => handleMessage(e.new.id).catch((err) => console.error("[apns] msg error:", err && err.message)))
@@ -280,7 +329,9 @@ async function start() {
       (e) => handleAlert(e.new.id).catch((err) => console.error("[apns] alert error:", err && err.message)))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
       (e) => handleFeed(e.new).catch((err) => console.error("[apns] feed error:", err && err.message)))
-    .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[apns] listening (chat + alerts + feed notifications)"); });
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+    .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[apns] listening (chat + alerts + feed notifications + verified new members)"); });
 }
 
 module.exports = { start, createApnsDelivery };
