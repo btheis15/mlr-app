@@ -19,6 +19,7 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
   { value: "post_reply", label: "Replies on posts", desc: "When someone replies on a post you're on" },
   { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
+  { value: "work_item_created", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 
