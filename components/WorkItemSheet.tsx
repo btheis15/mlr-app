@@ -81,7 +81,8 @@ export function WorkItemSheet({
       onDismiss={close}
       labelledBy="work-item-sheet-title"
       header={
-        <div className="flex items-center gap-2">
+        // pr-10 keeps the Edit button clear of the sheet's absolute ✕ close.
+        <div className="flex items-center gap-2 pr-10">
           <span aria-hidden>🔧</span>
           <h2 id="work-item-sheet-title" className="min-w-0 flex-1 truncate text-lg font-bold">{item.title}</h2>
           {isAdmin && onEdit && (
