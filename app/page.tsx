@@ -1,6 +1,7 @@
 import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { HomeSpotlight } from "@/components/HomeSpotlight";
+import { HouseHubCard } from "@/components/HouseHubCard";
 import { HomeCommunication, HomeAroundResort } from "@/components/HomeResortGroups";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
@@ -28,6 +29,11 @@ export default function HomePage() {
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
       <WelcomeCard />
       <HomeSignInCTA />
+
+      {/* Your house — a single tap to your house's calendar, chat & to-do list.
+          Self-hides for guests and anyone not assigned to a house. Sits high
+          because many people are focused on their house most of the year. */}
+      <HouseHubCard />
 
       {/* ── What's happening — kept front & center ──────────────────────────── */}
       {/* Family Fest spotlight (quiet banner → planning → live takeover) is the

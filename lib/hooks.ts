@@ -16,11 +16,21 @@ import {
   summarize,
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
+import {
+  createHouseStay,
+  deleteHouseStay,
+  fetchHouseStays,
+  updateHouseStay,
+  type StayInput,
+} from "@/lib/houseCalendar";
+import { fetchHouseBySlug, fetchMyHouse } from "@/lib/houses";
 import type {
   AttendanceStatus,
   AttendanceSummary,
   EventAttendance,
   HelpRequest,
+  House,
+  HouseStay,
   ResortEvent,
 } from "@/lib/types";
 
@@ -493,4 +503,152 @@ export function useHelpRequests(): {
   }, [reload, schedule]);
 
   return { requests, loading, reload };
+}
+
+/**
+ * Resolve which house the House Hub / calendar should show, and whether the
+ * viewer may see it. With a `slug` (a deep-link like `?house=mjt-house`) it loads
+ * that house and gates on membership (admins can view any); without a slug it
+ * resolves the viewer's OWN house (they're always a member of it). Returns
+ * `house = null` when the viewer is in no house and none was named. Re-runs when
+ * the identity (and thus the viewer's house) changes.
+ */
+export function useResolvedHouse(slug?: string | null): {
+  house: House | null;
+  isMember: boolean;
+  loading: boolean;
+} {
+  const { user, isAdmin, previewAsId } = useIdentity();
+  const [house, setHouse] = useState<House | null>(null);
+  const [isMember, setIsMember] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const mine = await fetchMyHouse(previewAsId ?? undefined);
+      if (slug) {
+        const h = await fetchHouseBySlug(slug);
+        if (cancelled) return;
+        setHouse(h);
+        setIsMember(!!h && (isAdmin || mine?.id === h.id));
+      } else {
+        if (cancelled) return;
+        setHouse(mine);
+        setIsMember(!!mine);
+      }
+      if (!cancelled) setLoading(false);
+    })().catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // user id drives a re-resolve after sign-in / account switch.
+  }, [slug, user?.email, isAdmin, previewAsId]);
+
+  return { house, isMember, loading };
+}
+
+/**
+ * Loads a house's calendar of stays (migration 0071) and keeps it live. Mirrors
+ * `useEvents`/`useHelpRequests`: an initial load + a debounced Realtime
+ * subscription on house_stays (filtered to this house), plus write wrappers that
+ * write then `reload()` for an immediate local refresh (Realtime keeps everyone
+ * else in sync). MLR resort-wide events are NOT loaded here — the calendar view
+ * pairs this with `useEvents()` to overlay them. Guests get `promptSignIn()` on
+ * write; no backend ⇒ safe empty. Pass `houseId = null` (not in a house) for a
+ * no-op that never fetches.
+ */
+export function useHouseCalendar(houseId: string | null): {
+  stays: HouseStay[];
+  loading: boolean;
+  canWrite: boolean;
+  reload: () => Promise<void>;
+  addStay: (input: StayInput) => Promise<{ error?: string }>;
+  editStay: (id: string, input: StayInput) => Promise<{ error?: string }>;
+  removeStay: (id: string) => Promise<{ error?: string }>;
+} {
+  const { user, previewAsId, promptSignIn } = useIdentity();
+  const [stays, setStays] = useState<HouseStay[]>([]);
+  const [loading, setLoading] = useState(!!houseId);
+  const [schedule] = useDebouncedCallback(250);
+
+  const reload = useCallback(async () => {
+    if (!houseId) {
+      setStays([]);
+      setLoading(false);
+      return;
+    }
+    try {
+      setStays(await fetchHouseStays(houseId));
+    } finally {
+      setLoading(false);
+    }
+  }, [houseId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(!!houseId);
+    void reload();
+    const sb = supabase;
+    if (!houseId || !isSupabaseConfigured || !sb) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const channel = sb
+      .channel(`house-stays-${houseId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "house_stays", filter: `house_id=eq.${houseId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      sb.removeChannel(channel);
+    };
+  }, [houseId, reload, schedule]);
+
+  // Guests → sign-in sheet; no backend / preview-as ⇒ blocked (never writes as
+  // the real member while an admin previews). Mirrors useEvents.setStatus.
+  const guarded = useCallback(
+    async (fn: () => Promise<{ error?: string }>): Promise<{ error?: string }> => {
+      if (!isSupabaseConfigured) return {};
+      if (!user) {
+        promptSignIn();
+        return {};
+      }
+      if (previewAsId) return {};
+      const res = await fn();
+      if (!res.error) await reload();
+      return res;
+    },
+    [user, previewAsId, promptSignIn, reload],
+  );
+
+  const addStay = useCallback(
+    (input: StayInput) => guarded(() => createHouseStay(houseId!, input)),
+    [guarded, houseId],
+  );
+  const editStay = useCallback(
+    (id: string, input: StayInput) => guarded(() => updateHouseStay(id, input)),
+    [guarded],
+  );
+  const removeStay = useCallback(
+    (id: string) => guarded(() => deleteHouseStay(id)),
+    [guarded],
+  );
+
+  return {
+    stays,
+    loading,
+    canWrite: isSupabaseConfigured && !!user && !previewAsId,
+    reload,
+    addStay,
+    editStay,
+    removeStay,
+  };
 }

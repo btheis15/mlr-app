@@ -20,6 +20,7 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "post_reply", label: "Replies on posts", desc: "When someone replies on a post you're on" },
   { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "work_item_created", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },
+  { value: "house_stay_created", label: "New stays at your house", desc: "When someone in your house adds a stay to the house calendar" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 

@@ -227,6 +227,10 @@ async function start() {
     // A new work item was added (migration 0070): relay to a phone push, gated
     // on push_types (off by default — a member opts in via Profile → Notifications).
     "work_item_created",
+    // A new stay was added to a house calendar (migration 0071): the feed fans a
+    // row out to that house's members + every app admin; relay to a phone push,
+    // gated on push_types (off by default — opt in via Profile → Notifications).
+    "house_stay_created",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

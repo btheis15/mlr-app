@@ -54,7 +54,8 @@ export type PushType =
   | "event_rsvp"
   | "help_request"
   | "help_response"
-  | "work_item_created";
+  | "work_item_created"
+  | "house_stay_created";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -95,6 +96,7 @@ export type NotifType =
   | "work_item_comment"
   | "work_item_mention"
   | "work_item_created"
+  | "house_stay_created"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -123,6 +125,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "work_item_comment",
   "work_item_mention",
   "work_item_created",
+  "house_stay_created",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
@@ -193,6 +196,28 @@ export interface House {
   emoji: string;
   description: string;
   position: number;
+}
+
+/** One member's stay on a house calendar (migration 0071) — "I'm going up to
+ *  the house on these dates, with these people." Everyone in the house sees who's
+ *  staying and when; overlapping stays show who's up at the same time.
+ *  `authorName`/`authorAvatarUrl` are joined from the creator's profile for
+ *  display. Dates are ISO `YYYY-MM-DD`; `endDate` is inclusive (single-night ⇒
+ *  end === start). */
+export interface HouseStay {
+  id: string;
+  houseId: string;
+  createdBy: string;
+  authorName: string;
+  authorAvatarUrl: string | null;
+  title: string | null;
+  startDate: string;
+  endDate: string;
+  /** The added people coming along — free names, no account needed (spouse,
+   *  kids, the dog, a friend). Head count = 1 (the member) + this list. */
+  guestNames: string[];
+  note: string | null;
+  createdAt: string;
 }
 
 export type WorkItemStatus = "open" | "done";
