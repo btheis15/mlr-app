@@ -33,10 +33,11 @@ async function fetchLatest(): Promise<string | null> {
   }
 }
 
-async function hardReload() {
-  // The SW doesn't cache (public/sw.js), but clear any Cache Storage anyway so a
-  // future caching layer can't strand people. Then a real navigation refetches
-  // the shell (served must-revalidate), updating the standalone PWA in place.
+async function purgeCachesAndSW() {
+  // 1. Wipe all Cache Storage. Our current sw.js doesn't cache, but an OLD
+  //    caching service worker left on someone's device (from an earlier app
+  //    version) is exactly what serves the "weird old version" on launch — so
+  //    clear whatever's there.
   try {
     if (typeof caches !== "undefined") {
       const keys = await caches.keys();
@@ -45,6 +46,29 @@ async function hardReload() {
   } catch {
     /* ignore */
   }
+  // 2. Force any registered service worker to fetch its latest version. Our
+  //    sw.js self-activates (skipWaiting + clients.claim), so this REPLACES a
+  //    stale caching SW instead of leaving it in control. We deliberately do
+  //    NOT unregister — that would drop the push subscription.
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.update().catch(() => {})));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function hardReload() {
+  // Don't let a slow network hold the reload hostage — clear what we can, but
+  // reload within ~1.5s regardless. The reload itself refetches the shell
+  // (served must-revalidate) and, via the new content-hashed chunk URLs in the
+  // fresh HTML, every asset — updating the standalone PWA in place.
+  await Promise.race([
+    purgeCachesAndSW(),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]);
   window.location.reload();
 }
 
@@ -67,10 +91,19 @@ export function UpdateBanner() {
     // moment someone's been sitting on an old build.
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);
+    // A standalone PWA resumed from the background is often restored from the
+    // back/forward cache (persisted page) — the exact case where you see the
+    // old version "flash" before it corrects. pageshow.persisted fires on that
+    // restore, so re-check then too.
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) check();
+    };
+    window.addEventListener("pageshow", onPageShow);
     const id = window.setInterval(check, POLL_MS);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", check);
+      window.removeEventListener("pageshow", onPageShow);
       window.clearInterval(id);
     };
   }, [check]);
