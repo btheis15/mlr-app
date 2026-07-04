@@ -267,11 +267,36 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   create/rename/delete houses + assign each member (chips over the `admin_members()`
   directory, which was widened to return `house_id`/`house_name`).
   [`AdminMembers`](components/AdminMembers.tsx) shows each member's house as a chip.
+- **House calendar + Hub** — a shared calendar of **stays** per house: one member
+  says "I'm going up on these dates," so everyone sees who's staying and when, and
+  overlapping stays show who's up at the same time. Resort-wide **MLR events** (the
+  `events` table) are overlaid on the calendar so a house never misses a family-wide
+  gathering. A stay's **added people** (spouse, kids, the dog, a friend) are a free
+  list of names — no account needed; only the submitter has one. Migration
+  [`0071`](supabase/migrations/0071_house_calendar.sql): `house_stays` (`house_id`,
+  `created_by`, `title`, `start_date`/`end_date`, `guest_names text[]`, `note`),
+  RLS read gated on `is_house_member`, SECURITY DEFINER `create_house_stay` /
+  `update_house_stay` / `delete_house_stay` (member writes own; author-or-admin
+  edits), and a `house_stay_created` Activity notification (→ the house + admins,
+  default on, also a `PushType`). Surfaced via a **House Hub** — a Home card
+  ([`HouseHubCard`](components/HouseHubCard.tsx), self-hides off-house) → `/house`
+  ([`HouseHub`](components/HouseHub.tsx)) that gathers the house's **calendar, chat,
+  and work-item to-do list** in one place; the full calendar (month grid + agenda)
+  is `/house/calendar` ([`HouseCalendar`](components/HouseCalendar.tsx),
+  [`HouseCalendarScreen`](components/HouseCalendarScreen.tsx)) with
+  [`HouseStayComposer`](components/HouseStayComposer.tsx) /
+  [`HouseStaySheet`](components/HouseStaySheet.tsx). Both routes are **non-dynamic**
+  (static-export safe) and resolve the viewer's own house, or a `?house=<slug>`
+  deep-link (admins can view any) via `useResolvedHouse` +
+  [`useHouseCalendar`](lib/hooks.ts); client seam [`lib/houseCalendar.ts`](lib/houseCalendar.ts).
 - Client seam: [`lib/houses.ts`](lib/houses.ts) (`fetchHouses`, `fetchMyHouse`,
-  `setMemberHouse`, `saveHouse`/`deleteHouse`); types `House` + `WorkItemMedia` in
-  [`lib/types.ts`](lib/types.ts).
-- ⚠️ **Web only so far** — the native iOS app (`mlr-app-ios`) has no house
-  equivalent yet (its `Committees/`, `WorkItems/` dirs would each need one).
+  `setMemberHouse`, `saveHouse`/`deleteHouse`); types `House` + `HouseStay` +
+  `WorkItemMedia` in [`lib/types.ts`](lib/types.ts).
+- 📱 **iOS parity** — the native app (`mlr-app-ios`) has house **chat**,
+  house-scoped **work items**, and now the **house calendar + Hub** (mirroring the
+  same `house_stays` tables/RPCs, so both apps sync): `HouseStay` model,
+  `HousesService` stay CRUD + realtime, `HouseCalendarView` (month grid + agenda),
+  `HouseStayComposer`, `HouseHubView`, and a self-hiding House Hub card on Home.
 
 ## Identity, admins & alerts
 

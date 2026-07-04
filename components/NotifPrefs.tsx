@@ -55,6 +55,12 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
+    title: "House calendar",
+    rows: [
+      { value: "house_stay_created", icon: "🏡", label: "New stays at your house", desc: "When someone in your house adds a stay to the house calendar" },
+    ],
+  },
+  {
     title: "Work items",
     rows: [
       { value: "work_item_created", icon: "🔧", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },

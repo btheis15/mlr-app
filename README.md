@@ -152,10 +152,16 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   detail sheet; comments follow the item's visibility, notify the creator + prior
   commenters). Migrations
   [`0064_houses.sql`](supabase/migrations/0064_houses.sql) …
-  [`0069_work_item_urgency.sql`](supabase/migrations/0069_work_item_urgency.sql);
-  [`lib/houses.ts`](lib/houses.ts) + [`lib/workItems.ts`](lib/workItems.ts). Web
-  only for now (no iOS port yet). See CLAUDE.md → **Houses (scoped chat + work
-  items)**.
+  [`0071_house_calendar.sql`](supabase/migrations/0071_house_calendar.sql);
+  [`lib/houses.ts`](lib/houses.ts) + [`lib/houseCalendar.ts`](lib/houseCalendar.ts)
+  + [`lib/workItems.ts`](lib/workItems.ts). A house also has its own **calendar of
+  stays** — one member marks when they're going up and who they're bringing (a free
+  list of names, no account needed), everyone sees who's staying when, and
+  resort-wide MLR events are overlaid so a house never misses a family-wide
+  gathering. It comes together in a **House Hub** (a Home card → `/house`) gathering
+  the house's calendar, chat, and to-do list; the full calendar (month grid +
+  agenda) is `/house/calendar`. Now on **both** web and iOS (shared Supabase tables,
+  so they sync). See CLAUDE.md → **Houses (scoped chat + work items)**.
 - **Home call-out stack** — temporary Home call-outs (future
   news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →
