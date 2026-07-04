@@ -13,6 +13,7 @@ import { SplashIntro } from "@/components/SplashIntro";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { AppHeader } from "@/components/AppHeader";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { getAnnouncements } from "@/lib/announcements";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -101,6 +102,7 @@ export default async function RootLayout({
           >
             <AppHeader />
             <div className="pt-1">
+              <UpdateBanner />
               <AnnouncementBanner items={announcements} />
             </div>
             {children}

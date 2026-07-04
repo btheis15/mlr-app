@@ -719,6 +719,18 @@ handler breaks the Pages `output: export`); its wrapper + env vars are in
 - **`npm run typecheck`** (`tsc --noEmit`) is the static check — there's no
   ESLint setup (`next lint` was removed in Next 16).
 - Client components (`TabBar`, `InstallHint`) carry `"use client"`.
+- **App version / update nudge** — each build stamps `NEXT_PUBLIC_BUILD_ID`
+  (commit SHA on Vercel/Pages via `VERCEL_GIT_COMMIT_SHA`/`GITHUB_SHA`, a
+  timestamp locally) into the bundle **and** writes `public/version.json` — both
+  from one source in [`next.config.ts`](next.config.ts) so they can't disagree
+  (`version.json` is gitignored — it's a build artifact). [`UpdateBanner`](components/UpdateBanner.tsx)
+  (mounted in [`layout.tsx`](app/layout.tsx)) polls `version.json` (on focus +
+  every 5 min, `no-store`) and shows a one-tap **Refresh** bar when it differs
+  from the running id — so a Home-Screen PWA stuck on an old build gets nudged
+  instead of going silently stale, without a manual close/reopen. Refresh clears
+  Cache Storage then reloads (the shell is served `must-revalidate`; `sw.js`
+  doesn't cache). `NEXT_PUBLIC_BASE_PATH` is exposed so the fetch resolves under
+  the Pages subpath.
 
 ## Keep this current
 
