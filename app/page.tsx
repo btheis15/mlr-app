@@ -30,11 +30,6 @@ export default function HomePage() {
       <WelcomeCard />
       <HomeSignInCTA />
 
-      {/* Your house — a single tap to your house's calendar, chat & to-do list.
-          Self-hides for guests and anyone not assigned to a house. Sits high
-          because many people are focused on their house most of the year. */}
-      <HouseHubCard />
-
       {/* ── What's happening — kept front & center ──────────────────────────── */}
       {/* Family Fest spotlight (quiet banner → planning → live takeover) is the
           permanent base; temporary call-outs stack ON TOP as swipe-away cards.
@@ -44,15 +39,21 @@ export default function HomePage() {
 
       <UpcomingEvents />
 
+      {/* Work Checklist — kept directly under the Family Fest summary card. Its
+          own expandable card (collapsed by default so the list stays tucked away
+          until you open it). */}
+      <WorkChecklist />
+
       {/* ── Communication — People, Committees, Ask for Help ─────────────────── */}
       <HomeCommunication />
 
       {/* ── Around the resort — Events, Cabin Stay, Local Places ─────────────── */}
       <HomeAroundResort />
 
-      {/* Work Checklist — its own expandable card (collapsed by default so the
-          list stays tucked away until you open it). */}
-      <WorkChecklist />
+      {/* Your house — a single tap to your house's calendar, chat & to-do list.
+          Self-hides for guests and anyone not assigned to a house. Sits near the
+          bottom, just above the App & help utilities. */}
+      <HouseHubCard />
 
       {/* Quiet utilities, collapsed into one group at the bottom. */}
       <CollapsibleSection title="App & help" icon="📲" subtitle="Take the tour · Add to phone · Share · Help">

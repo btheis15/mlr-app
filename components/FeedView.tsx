@@ -7,6 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
+import { useRouter } from "next/navigation";
 
 /**
  * The "Feed" tab — a Messages-style conversation list. "Main Feed" (the resort
@@ -51,6 +52,14 @@ export function FeedView() {
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
   const chatBoxRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  // Opened from the House hub (/posts?house=slug): back should return to /house,
+  // and we hold the feed/list render until loaded so we don't flash it on the way.
+  const openedFromHouseRef = useRef(false);
+  const [bootHouseSlug] = useState<string | null>(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("house") : null
+  );
+  const [loaded, setLoaded] = useState(false);
 
   // Load my channels (Main Feed is implicit) + their previews.
   useEffect(() => {
@@ -177,8 +186,10 @@ export function FeedView() {
         const key = `${wantSlug}|${wantArea}`;
         if (mine.some((c) => c.key === key)) setActive(key);
       } else if (wantHouse && hc && hc.slug === wantHouse) {
+        openedFromHouseRef.current = true;
         setActive(hc.key);
       }
+      if (!cancelled) setLoaded(true);
       channel = sb
         .channel("feed-conversations")
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, () => computeSummaries())
@@ -258,6 +269,14 @@ export function FeedView() {
     await sb.rpc("set_area_mute", { cid: ch.committeeId, p_area: ch.area, p_muted: nextMuted });
   };
 
+  // Opened via a house deep-link (from the House hub): wait for load so we drop
+  // straight into the house chat instead of flashing the feed/list on the way in.
+  if (bootHouseSlug && !loaded) {
+    return (
+      <div className="flex h-[50dvh] items-center justify-center text-sm text-foreground/40">Loading…</div>
+    );
+  }
+
   // No house and no committees → straight to the Main Feed, no list.
   if (channels.length === 0 && !houseChannel) {
     return (
@@ -272,8 +291,12 @@ export function FeedView() {
     return (
       <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
-            ‹ Chats
+          <button
+            type="button"
+            onClick={() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); }}
+            className="press flex items-center gap-1 text-sm font-semibold text-primary"
+          >
+            ‹ {openedFromHouseRef.current ? "House" : "Chats"}
           </button>
           <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
