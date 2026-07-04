@@ -34,6 +34,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated at build (next.config.ts) — the PWA update-check version stamp
+public/version.json
+
 # claude code (local dev only)
 .claude/
 
