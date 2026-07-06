@@ -61,7 +61,11 @@ public-read like comments), and `@name` renders highlighted (shared
 **Committee chat** ([`CommitteeChat`](components/CommitteeChat.tsx)) `@mentions`
 are scoped to **that committee's roster only** — you can only tag people who can
 see the room (Beautification members can tag Beautification members, etc.).
-Messages can also be **edited or deleted within 24h** by their author (admins
+Reactions show **who reacted**: tapping a reaction pill expands an inline list
+of the people behind that emoji (resolved from the room roster, "You" for
+yourself), mirroring the Posts feed — reacting itself stays on the long-press
+tray. Same behavior in [`HouseChat`](components/HouseChat.tsx). Messages can also
+be **edited or deleted within 24h** by their author (admins
 anytime); delete is a **soft delete** — it stamps `committee_messages.deleted_at`
 and the bubble (and any reply that quotes it) becomes a **"message deleted"**
 tombstone for everyone, regardless of who removed it; edits stamp `edited_at` and

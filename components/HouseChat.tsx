@@ -708,6 +708,9 @@ function MessageRow({
   onOpenMember: (m: Member) => void; onOpenPhoto: (url: string) => void; onJumpToReply: (id: string) => void;
 }) {
   const [dx, setDx] = useState(0);
+  // Which emoji's reactor list is expanded (tap a reaction pill to reveal who
+  // reacted, mirroring the Posts feed). null = none shown.
+  const [showReactors, setShowReactors] = useState<string | null>(null);
   const drag = useRef({ x0: 0, y0: 0, active: false, swiping: false });
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -814,15 +817,32 @@ function MessageRow({
           </span>
         </div>
 
-        {counts.length > 0 && (
-          <div className={`mt-0.5 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
-            {counts.map(([e, c]) => (
-              <button key={e} onClick={() => onReact(e)} className={`rounded-full px-1.5 py-0.5 text-[11px] ring-1 ${mineEmoji === e ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}>
-                {e} {c}
-              </button>
-            ))}
-          </div>
-        )}
+        {counts.length > 0 && (() => {
+          const reactors = showReactors ? m.reactions.filter((r) => r.emoji === showReactors) : [];
+          const reactorName = (userId: string) => (userId === uid ? "You" : members.find((mm) => mm.id === userId)?.name || "Member");
+          return (
+            <>
+              <div className={`mt-0.5 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
+                {counts.map(([e, c]) => (
+                  <button
+                    key={e}
+                    onClick={() => setShowReactors((cur) => (cur === e ? null : e))}
+                    aria-label={`See who reacted ${e}`}
+                    className={`rounded-full px-1.5 py-0.5 text-[11px] ring-1 ${mineEmoji === e ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${showReactors === e ? "ring-2 ring-primary/40" : ""}`}
+                  >
+                    {e} {c}
+                  </button>
+                ))}
+              </div>
+              {reactors.length > 0 && (
+                <p className={`mt-1 text-[11px] leading-snug text-foreground/55 ${mine ? "text-right" : ""}`}>
+                  <span className="mr-1">{showReactors}</span>
+                  {reactors.map((r) => reactorName(r.userId)).join(", ")}
+                </p>
+              )}
+            </>
+          );
+        })()}
 
         {reacting && (
           <div className={`absolute z-10 -top-9 flex gap-0.5 rounded-full bg-background px-1.5 py-1 shadow-lg ring-1 ring-border ${mine ? "right-0" : "left-0"}`}>
