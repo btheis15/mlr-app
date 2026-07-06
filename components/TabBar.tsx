@@ -10,7 +10,7 @@ import { useUnreadNotifications } from "@/lib/hooks";
 const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/posts", label: "Feed", icon: "📣" },
-  { href: "/family-fest", label: "Family Fest", icon: "🎉" },
+  { href: "/family-fest", label: "Family Fest", icon: "⚔️" },
   // The Notifications feed — everything that happened involving you. Labelled
   // "Activity" so it fits the bar (the page itself is titled "Notifications").
   { href: "/notifications", label: "Activity", icon: "🔔" },
