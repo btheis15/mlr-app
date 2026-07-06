@@ -1,4 +1,4 @@
--- 0075_reject_committee_admin.sql
+-- 0076_reject_committee_admin.sql
 -- "Committee Admin" is no longer a thing: within a committee there are only role
 -- Leads + regular members; the only admins are overall APP admins (profiles.is_admin).
 -- Migration 0073 already rejects any area that isn't a real committee area (so an
