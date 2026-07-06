@@ -20,14 +20,33 @@ import type { Committee } from "@/lib/types";
  */
 type JoinState = "loading" | "none" | "pending" | "member";
 
+/**
+ * Stale-while-revalidate cache for the join panel, mirroring `eventsCache` in
+ * lib/hooks.ts. This card remounts on every visit to a committee page; without
+ * this it resets to "loading" and its body (Request-to-join button vs. "You're
+ * on X" + areas editor vs. "Request sent") shifts/reflows before the fetch
+ * lands. Holding the last resolved state per committee+viewer lets a return
+ * visit paint the right body immediately while the effect refetches in the
+ * background. Keyed on committee slug AND the viewer's email so one member's
+ * state can't leak to another (or to a guest). Memory-only (per session) and
+ * written ONLY inside effects/handlers (client-only) — never at module-eval or
+ * during render — so a cold first load starts empty (the original "loading"
+ * default), matching the static-export/SSR HTML with no hydration mismatch.
+ * Permission revocation is safe: the effect always overwrites state from
+ * fetchJoinState (member → none if they've been removed / left elsewhere).
+ */
+const joinStateCache = new Map<string, { state: JoinState; committeeId: string | null; myAreas: string[] }>();
+
 export function CommitteeJoin({ committee }: { committee: Committee }) {
   const { user, promptSignIn } = useIdentity();
   const configured = isSupabaseConfigured;
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [state, setState] = useState<JoinState>("loading");
+  const key = `${committee.slug}|${user?.email ?? "self"}`;
+  const cached = joinStateCache.get(key);
+  const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
+  const [state, setState] = useState<JoinState>(cached?.state ?? "loading");
   const [busy, setBusy] = useState(false);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
-  const [myAreas, setMyAreas] = useState<string[]>([]);
+  const [myAreas, setMyAreas] = useState<string[]>(cached?.myAreas ?? []);
   const [editingMyAreas, setEditingMyAreas] = useState(false);
   const [myAreaSelection, setMyAreaSelection] = useState<string[]>([]);
 
@@ -64,7 +83,12 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
       setState(s);
       if (s === "member") {
         const areas = await fetchMyAreas(cid);
-        if (!cancelled) setMyAreas(areas);
+        if (!cancelled) {
+          setMyAreas(areas);
+          joinStateCache.set(key, { state: s, committeeId: cid, myAreas: areas });
+        }
+      } else {
+        joinStateCache.set(key, { state: s, committeeId: cid, myAreas: [] });
       }
     })();
     return () => {
@@ -81,7 +105,10 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
       requested_areas: selectedAreas,
     });
     setBusy(false);
-    if (!error) setState("pending");
+    if (!error) {
+      setState("pending");
+      joinStateCache.set(key, { state: "pending", committeeId, myAreas });
+    }
   };
 
   const startEditMyAreas = () => {
@@ -104,6 +131,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     }
     setMyAreas(myAreaSelection);
     setEditingMyAreas(false);
+    joinStateCache.set(key, { state, committeeId, myAreas: myAreaSelection });
   };
 
   const leaveSelf = async () => {
@@ -113,7 +141,10 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     const { error } = await supabase.rpc("leave_committee", { cid: committeeId });
     setBusy(false);
     if (error) window.alert(error.message);
-    else setState("none");
+    else {
+      setState("none");
+      joinStateCache.set(key, { state: "none", committeeId, myAreas: [] });
+    }
   };
 
   if (!lead) return null;

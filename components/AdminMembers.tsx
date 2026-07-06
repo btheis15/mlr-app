@@ -21,6 +21,22 @@ interface MemberRow {
 }
 
 /**
+ * Stale-while-revalidate cache for the admin member directory. This panel
+ * remounts every time you open Profile → Admin → Members; without this it
+ * resets to an empty list + `loading`, so the directory blanks out and shows a
+ * "Loading members…" line before popping back in. Holding the last result in
+ * memory lets a returning open paint instantly while a background refetch keeps
+ * it current. This is admin-only *global* data (every member, not scoped to a
+ * viewer/committee/house), so a plain module-scope singleton suffices — no key.
+ * Memory-only (per session) and only ever written *after* a successful client
+ * fetch (inside `load`, below) — never during SSR/render — so a cold first
+ * render starts from the empty default, matching the server/static-export HTML
+ * and avoiding a hydration mismatch. The background refetch still runs and can
+ * revoke stale rows/admin flags, so nothing sticks.
+ */
+let adminMembersCache: { members: MemberRow[]; meId: string | null; rpcReady: boolean } | null = null;
+
+/**
  * Admin-only member directory: every registered member, with the ability to
  * grant/revoke admin. Emails are private — they come from `admin_members()`, a
  * SECURITY DEFINER function gated to admins (migration 0008). Until that
@@ -28,15 +44,20 @@ interface MemberRow {
  * and the promote/remove buttons explain what's needed to enable them.
  */
 export function AdminMembers() {
-  const [members, setMembers] = useState<MemberRow[]>([]);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<MemberRow[]>(adminMembersCache?.members ?? []);
+  const [meId, setMeId] = useState<string | null>(adminMembersCache?.meId ?? null);
+  // Warm cache ⇒ paint immediately (no "Loading members…" flash); the effect
+  // below still refetches in the background to bring the cached view up to date.
+  const [loading, setLoading] = useState(!adminMembersCache);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const { busy: busyId, run } = useBusyAction();
   // True once the admin_members RPC answers — i.e. migration 0008 is applied,
   // so emails are visible and promote/remove works.
-  const [rpcReady, setRpcReady] = useState(false);
+  // Seed from cache too: rpcReady gates the migration hint + the per-member
+  // action buttons, so a warm remount that left it false would flash the
+  // "run migration 0008" notice and hide the controls until the refetch lands.
+  const [rpcReady, setRpcReady] = useState(adminMembersCache?.rpcReady ?? false);
   // Whether the two-admin override window is open (migration 0025) — gates the
   // per-member "Edit info" action. The server (RPC + mini) re-checks it too.
   const [editUnlocked, setEditUnlocked] = useState(false);
@@ -68,14 +89,19 @@ export function AdminMembers() {
     if (!sb) return;
     setLoading(true);
     setError(null);
-    sb.auth.getUser().then(({ data }) => setMeId(data.user?.id ?? null));
+    const meIdNow = (await sb.auth.getUser()).data.user?.id ?? null;
+    setMeId(meIdNow);
     refreshUnlock();
 
     const viaRpc = await sb.rpc("admin_members");
     if (!viaRpc.error && viaRpc.data) {
-      setMembers(viaRpc.data as MemberRow[]);
+      const rows = viaRpc.data as MemberRow[];
+      setMembers(rows);
       setRpcReady(true);
       setLoading(false);
+      // Write the cache only here — after a successful client fetch — so a
+      // return visit paints instantly. Never written during render/SSR.
+      adminMembersCache = { members: rows, meId: meIdNow, rpcReady: true };
       return;
     }
     // Fallback: public profiles (no emails, no promote) until 0008 is applied.
@@ -84,9 +110,11 @@ export function AdminMembers() {
       .select("id, display_name, avatar_url, household, is_admin")
       .order("display_name", { ascending: true });
     if (e) setError("Couldn't load members.");
-    setMembers((data ?? []) as MemberRow[]);
+    const rows = (data ?? []) as MemberRow[];
+    setMembers(rows);
     setRpcReady(false);
     setLoading(false);
+    adminMembersCache = { members: rows, meId: meIdNow, rpcReady: false };
   };
 
   const sendInvite = () =>

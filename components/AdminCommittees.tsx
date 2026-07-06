@@ -13,9 +13,23 @@ import { CommitteeMembers } from "@/components/CommitteeMembers";
  * the committee page, reused) mount only when expanded — and a badge flags
  * committees that have pending requests so they're easy to spot.
  */
+/**
+ * Stale-while-revalidate cache for the admin pending-request counts (mirrors
+ * `eventsCache` in lib/hooks.ts). This component remounts every time Profile →
+ * Admin is reopened; without this the per-committee counts reset to `{}` and
+ * blank out until the refetch lands, so the request badges flicker away and pop
+ * back. Holding the last map in memory lets a returning admin paint the badges
+ * instantly while a background refetch keeps them current. Admin-only, global
+ * (not per-viewer) data ⇒ a plain singleton. Memory-only (per session) and only
+ * ever written *after* a client fetch — never during SSR/render — so it can't
+ * change the server/first-paint output and can't cause a hydration mismatch (a
+ * cold load starts with an empty cache, i.e. the original `{}` behavior).
+ */
+let adminCommitteesCache: Record<string, number> | null = null;
+
 export function AdminCommittees() {
   const [open, setOpen] = useState<string | null>(null);
-  const [pending, setPending] = useState<Record<string, number>>({}); // slug -> pending count
+  const [pending, setPending] = useState<Record<string, number>>(adminCommitteesCache ?? {}); // slug -> pending count
 
   useEffect(() => {
     const sb = supabase;
@@ -34,6 +48,7 @@ export function AdminCommittees() {
         if (slug) counts[slug] = (counts[slug] ?? 0) + 1;
       }
       setPending(counts);
+      adminCommitteesCache = counts;
     };
     loadCounts();
     const ch = sb

@@ -14,6 +14,22 @@ import { firstName } from "@/lib/privacy";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
+ * Stale-while-revalidate cache for "is the viewer a Family Fest committee member?".
+ * `FestStatus` remounts on every navigation into the Family Fest section; without
+ * this, `isFestMember` resets to `false` and the "Want to help plan? Join the
+ * Family Fest committee" CTA flashes for members who actually belong, until the
+ * async join-state fetch resolves. Holding the last-known value in memory lets a
+ * returning member paint the correct (no-CTA) view immediately while a background
+ * refetch reconciles it. Keyed by viewer identity (login email, "self" for a
+ * guest) so one member's membership can't leak to another. Memory-only (per
+ * session) and written *only after* a client fetch — never during SSR/render — so
+ * a cold load starts empty (matching the original `false` default) and can't cause
+ * a hydration mismatch. The refetch can still flip it back to `false`, so a
+ * revoked membership never sticks. Mirrors `eventsCache`/`useEvents` in lib/hooks.ts.
+ */
+const festStatusMemberCache = new Map<string, boolean>();
+
+/**
  * The focal block at the top of the Family Fest section. During the event week
  * it surfaces EVERYTHING for today inline — each event with time, location,
  * description, what to bring, and who's in charge (tap-to-call/text), plus
@@ -37,7 +53,10 @@ export function FestStatus({
   const { user } = useIdentity();
 
   // Members of the Family Fest committee don't need the "join" prompt.
-  const [isFestMember, setIsFestMember] = useState(false);
+  // Warm cache ⇒ paint the resolved value immediately (no CTA flash for members);
+  // the effect below still refetches to keep it current (and can revoke).
+  const key = user?.email ?? "self";
+  const [isFestMember, setIsFestMember] = useState(festStatusMemberCache.get(key) ?? false);
   useEffect(() => {
     let active = true;
     if (!user) {
@@ -48,7 +67,13 @@ export function FestStatus({
       const cid = await fetchCommitteeId("family-fest");
       if (!cid || !active) return;
       const state = await fetchJoinState(cid);
-      if (active) setIsFestMember(state === "member");
+      if (active) {
+        const member = state === "member";
+        setIsFestMember(member);
+        // Client-only write (post-fetch) — never during SSR/render. Stores the
+        // latest truth, so a revoked membership overwrites a cached `true`.
+        festStatusMemberCache.set(user.email ?? "self", member);
+      }
     })();
     return () => {
       active = false;

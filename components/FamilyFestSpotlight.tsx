@@ -11,6 +11,24 @@ import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import type { ScheduleEvent } from "@/lib/types";
 
 /**
+ * Stale-while-revalidate cache for Family Fest committee membership, keyed by the
+ * viewer's email (guests share the "self" bucket). This component remounts on every
+ * home visit; without the cache `isMember` resets to `false`, so for an actual
+ * member the "🙋 Join the Family Fest committee" CTA flashes in and then vanishes
+ * once the async membership check resolves. Holding the last-known value lets a
+ * returning member paint the correct (CTA-hidden) state immediately while the
+ * effect still re-derives membership in the background — so a member who *left* the
+ * committee gets the CTA back on the next refetch (never sticks). Memory-only, and
+ * written *only* inside the effect (client-only), never at module top level or
+ * during render: the map is empty at module-eval and `user` is null during
+ * prerender, so a cold first render still starts `false` (CTA shown) — matching the
+ * static-export / server HTML and avoiding a hydration mismatch. Mirrors
+ * `useEvents`/`eventsCache` in lib/hooks.ts. (FestStatus.tsx duplicates this check;
+ * kept bespoke for now.)
+ */
+const festMemberCache = new Map<string, boolean>();
+
+/**
  * The Family Fest presence on the resort home — a compact, phase-aware summary
  * (a glance, not the whole hub) that links to the fest tab, plus one smart
  * shortcut: the Family Fest committee CHAT if you're a member, or the JOIN
@@ -37,7 +55,8 @@ export function FamilyFestSpotlight({
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
   const { user } = useIdentity();
-  const [isMember, setIsMember] = useState(false);
+  const key = user?.email ?? "self";
+  const [isMember, setIsMember] = useState(festMemberCache.get(key) ?? false);
 
   // Point the shortcut at the committee chat once we know you're a member.
   useEffect(() => {
@@ -51,7 +70,12 @@ export function FamilyFestSpotlight({
       if (!cid || !active) return;
       // fetchJoinState resolves the signed-in user itself when no id is passed.
       const state = await fetchJoinState(cid);
-      if (active) setIsMember(state === "member");
+      if (active) {
+        setIsMember(state === "member");
+        // Cache the last-known result so a returning member paints without the
+        // CTA flash; the effect always re-derives, so leaving re-shows the CTA.
+        festMemberCache.set(key, state === "member");
+      }
     })();
     return () => {
       active = false;

@@ -6,14 +6,29 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 
 /**
- * The committee-page entry into its chat. Always links through (the chat screen
- * itself handles sign-in / request-to-join for non-members); for members it
- * also shows an unread count — messages from others since their last_read_at
- * (committee_reads, migration 0014).
+ * The committee-page entry into its chat. Links STRAIGHT to the committee's own
+ * chat route (`/committees/<slug>/chat`, which opens the General channel and
+ * whose header "‹" returns here) — NOT through `/posts?c=<slug>`, which lands on
+ * the all-chats list first and then jumps into the room (a visible flash, and a
+ * Back that wrongly returned to the chats list).
+ *
+ * The unread badge reflects the GENERAL channel — the channel this button opens
+ * — using the per-channel read model (committee_area_reads, area '' = General,
+ * migration 0063). The old count read the pre-0063 committee_reads table and
+ * summed every channel against one stale timestamp, so "N new" never matched
+ * what you saw on arrival. Role-channel unread still surfaces per-channel in the
+ * Feed → Chats list. RLS gates the count, so a non-member simply sees 0.
  */
+
+// Stale-while-revalidate cache so the badge doesn't pop in on every revisit.
+// Empty at module-eval + null user during prerender ⇒ cold render is 0 (the
+// prior default), matching the static/SSR HTML; only ever written in the effect.
+const unreadEntryCache = new Map<string, number>();
+
 export function ChatEntryButton({ slug, name }: { slug: string; name: string }) {
-  const { user, isAdmin, previewAsId } = useIdentity();
-  const [unread, setUnread] = useState(0);
+  const { user, previewAsId } = useIdentity();
+  const cacheKey = `${slug}|${user?.email ?? "guest"}|${previewAsId ?? "self"}`;
+  const [unread, setUnread] = useState(unreadEntryCache.get(cacheKey) ?? 0);
 
   useEffect(() => {
     const sb = supabase;
@@ -25,27 +40,37 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
       if (!cid) return;
       const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id;
       if (!me) return;
-      let member = isAdmin;
-      if (!member) {
-        const { data: m } = await sb.from("committee_members").select("user_id").eq("committee_id", cid).eq("user_id", me).maybeSingle();
-        member = !!m;
-      }
-      if (!member) return;
-      const { data: rd } = await sb.from("committee_reads").select("last_read_at").eq("committee_id", cid).eq("user_id", me).maybeSingle();
+      // General-channel unread: messages from others newer than my last read of
+      // the General channel (committee_area_reads keys General as area '').
+      const { data: rd } = await sb
+        .from("committee_area_reads")
+        .select("last_read_at")
+        .eq("committee_id", cid)
+        .eq("user_id", me)
+        .eq("area", "")
+        .maybeSingle();
       const since = (rd as { last_read_at: string } | null)?.last_read_at;
-      let q = sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", cid).neq("author_id", me);
+      let q = sb
+        .from("committee_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("committee_id", cid)
+        .is("area", null)
+        .neq("author_id", me);
       if (since) q = q.gt("created_at", since);
       const { count } = await q;
-      if (!cancelled) setUnread(count ?? 0);
+      if (!cancelled) {
+        setUnread(count ?? 0);
+        unreadEntryCache.set(cacheKey, count ?? 0);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [slug, user, isAdmin, previewAsId]);
+  }, [slug, user, previewAsId, cacheKey]);
 
   return (
     <Link
-      href={`/posts?c=${slug}`}
+      href={`/committees/${slug}/chat`}
       className="press flex items-center justify-between gap-3 rounded-2xl bg-primary px-4 py-3.5 text-white shadow-sm"
     >
       <span className="flex items-center gap-2 text-sm font-semibold">💬 Open {name} chat</span>

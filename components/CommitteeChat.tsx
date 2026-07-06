@@ -19,6 +19,20 @@ const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 type Access = "loading" | "coming-soon" | "guest" | "member" | "pending" | "none" | "setup";
 
+// Stale-while-revalidate cache for a committee chat, mirroring `useEvents`'
+// `eventsCache` (see lib/hooks.ts). CommitteeChat remounts on every tab/room
+// switch and re-entry; without this, access resets to "loading" (spinner, then a
+// possible 🔒 flash before resolving to member) and the message list blanks until
+// the refetch lands. Holding the last result in memory lets a returning room
+// paint instantly from cache while loadAccess + refetchMessages run in the
+// background and reconcile it. Keyed per room+channel+viewer so a preview-as or a
+// different area can't read another view's snapshot. Memory-only (per session)
+// and written ONLY inside effects after a client fetch — never during SSR/render
+// — so a cold first render sees an empty map (the original default output) and
+// can't cause a hydration mismatch. loadAccess still always runs and can DOWNGRADE
+// a cached "member" to guest/pending/none, so a revoked permission never sticks.
+const committeeChatCache = new Map<string, { access: Access; committeeId: string | null; messages: Msg[]; members: Member[] }>();
+
 interface Member {
   id: string;
   name: string;
@@ -64,17 +78,32 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
   const configured = isSupabaseConfigured;
 
+  // Per-room+channel+VIEWER cache key. The viewer segment MUST include the real
+  // signed-in identity (user?.email), not just previewAsId: this cache holds
+  // private chat messages, and signOut() doesn't reload the page, so a key that
+  // resolved to the same "self" for every account would let one member's cached
+  // messages be served to the next person on a shared device. Empty map at
+  // module-eval + null user/previewAsId during prerender ⇒ `cached` is undefined
+  // on a cold first render, so the initializers below fall through to the exact
+  // prior defaults and the server/first-paint HTML is unchanged.
+  const key = `${slug}|${area ?? ""}|${user?.email ?? "guest"}|${previewAsId ?? "self"}`;
+  const cached = committeeChatCache.get(key);
+
   const [uid, setUid] = useState<string | null>(null);
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
+  const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
   // When the caller already knows you're a member (the Feed only lists rooms you
   // belong to), open straight into the chat — no loading/lock flash on switch.
-  // loadAccess still runs and self-corrects in the rare case it's wrong.
-  const [access, setAccess] = useState<Access>(configured ? (knownMember ? "member" : "loading") : "coming-soon");
+  // Prefer a warm cache (last-known access for this room) so a re-entry paints
+  // immediately; still honor knownMember and the no-backend "coming-soon" case.
+  // loadAccess still runs and self-corrects (incl. revoking a stale "member") in
+  // the rare case it's wrong.
+  const [access, setAccess] = useState<Access>(!configured ? "coming-soon" : cached?.access ?? (knownMember ? "member" : "loading"));
   const [requesting, setRequesting] = useState(false);
 
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [messages, setMessages] = useState<Msg[]>(cached?.messages ?? []);
+  const [members, setMembers] = useState<Member[]>(cached?.members ?? []);
+  // Warm cache ⇒ already loaded, so the empty-state line + initial scroll behave.
+  const [loaded, setLoaded] = useState(!!cached);
 
   // Composer
   const [text, setText] = useState("");
@@ -112,19 +141,26 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     if (!sb) return;
     const cid = id ?? committeeId;
     if (!cid) return;
+    // Set access AND write it to the cache so a re-entry paints this state right
+    // away. This always overwrites the cached access — including DOWNGRADING a
+    // stale "member" to guest/pending/none — so a revoked permission can't stick.
+    const setAndCache = (a: Access) => {
+      setAccess(a);
+      committeeChatCache.set(key, { ...(committeeChatCache.get(key) ?? { messages: [], members: [] }), access: a, committeeId: cid });
+    };
     // While previewing as a member, gate access as THEY would see it.
     const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
     setUid(me);
     if (!me) {
-      setAccess("guest");
+      setAndCache("guest");
       return;
     }
     if (isAdminRef.current) {
-      setAccess("member");
+      setAndCache("member");
       return;
     }
     // "member" | "pending" | "none" are all valid Access states.
-    setAccess(await fetchJoinState(cid, me));
+    setAndCache(await fetchJoinState(cid, me));
   };
 
   // Resolve the committee id from its slug, then load access. Realtime keeps
@@ -253,23 +289,26 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       (mentionByMsg[m.message_id] ||= []).push(m.mentioned_user_id);
     }
 
-    setMessages(
-      rows.map((r) => ({
-        id: r.id,
-        authorId: r.author_id,
-        author: names.get(r.author_id) || "Member",
-        authorAvatar: avatars.get(r.author_id) ?? null,
-        text: r.text || undefined,
-        ts: r.created_at,
-        editedAt: r.edited_at,
-        deletedAt: r.deleted_at,
-        replyToId: r.reply_to_id,
-        media: mediaByMsg[r.id] ?? [],
-        reactions: reactByMsg[r.id] ?? [],
-        mentions: mentionByMsg[r.id] ?? [],
-      })),
-    );
+    const msgs: Msg[] = rows.map((r) => ({
+      id: r.id,
+      authorId: r.author_id,
+      author: names.get(r.author_id) || "Member",
+      authorAvatar: avatars.get(r.author_id) ?? null,
+      text: r.text || undefined,
+      ts: r.created_at,
+      editedAt: r.edited_at,
+      deletedAt: r.deleted_at,
+      replyToId: r.reply_to_id,
+      media: mediaByMsg[r.id] ?? [],
+      reactions: reactByMsg[r.id] ?? [],
+      mentions: mentionByMsg[r.id] ?? [],
+    }));
+    setMessages(msgs);
     setLoaded(true);
+    // Persist this fresh snapshot so a re-entry paints the list instantly. Keep
+    // the cached access (loadAccess owns it); reaching a successful member fetch
+    // means access is "member", so record that too and stamp committeeId.
+    committeeChatCache.set(key, { access: "member", committeeId: cid, messages: msgs, members: roster });
     // Mark this channel read for me (per-area, migration 0063).
     const me = (await sb.auth.getUser()).data.user?.id;
     if (me) await sb.rpc("mark_area_read", { cid, p_area: area ?? null });

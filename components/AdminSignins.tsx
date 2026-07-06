@@ -92,14 +92,35 @@ function whenFor(iso: string): string {
   });
 }
 
+/**
+ * Stale-while-revalidate cache for the admin activity panel — mirrors
+ * `eventsCache`/`useEvents` in lib/hooks.ts (the reference implementation).
+ * This component remounts every time the admin reopens Profile → Admin; without
+ * this it resets to empty + `loading`, so "Recent activity" blanks and reloads
+ * and every already-resolved geolocation re-fetches. Holding the last result in
+ * memory lets a returning visit paint instantly while the background refetch
+ * keeps it current. Singleton (admin-only, one viewer). Memory-only (per
+ * session) and written ONLY inside effects after a client fetch — never during
+ * SSR/render — so it can't change the server/first-paint render and can't cause
+ * a hydration mismatch (a cold load starts with a null cache, i.e. the original
+ * empty default). The `geo` slice is refreshed as rows are geolocated so cached
+ * revisits keep their resolved locations.
+ */
+let adminSigninsCache: { joins: MemberRow[]; signins: SigninRow[]; geo: Record<string, Geo>; signinsReady: boolean } | null = null;
+
 export function AdminSignins() {
-  const [joins, setJoins] = useState<MemberRow[]>([]);
-  const [signins, setSignins] = useState<SigninRow[]>([]);
-  const [geo, setGeo] = useState<Record<string, Geo>>({});
+  const [joins, setJoins] = useState<MemberRow[]>(adminSigninsCache?.joins ?? []);
+  const [signins, setSignins] = useState<SigninRow[]>(adminSigninsCache?.signins ?? []);
+  const [geo, setGeo] = useState<Record<string, Geo>>(adminSigninsCache?.geo ?? {});
   const [open, setOpen] = useState<string | null>(null); // key of the expanded row
-  const [loading, setLoading] = useState(true);
+  // Warm cache ⇒ paint immediately (no "Loading activity…" flash); the effect
+  // below still refetches in the background to bring the cached view up to date.
+  const [loading, setLoading] = useState(!adminSigninsCache);
   // True once the GoTrue audit-log function answers (migration 0011 applied).
-  const [signinsReady, setSigninsReady] = useState(false);
+  // Seed from the cached READINESS flag, not the row count — recent_signins()
+  // can legitimately return zero rows (migration applied, no audit events yet),
+  // and seeding off `.length` would then flash the migration hint on a warm revisit.
+  const [signinsReady, setSigninsReady] = useState(adminSigninsCache?.signinsReady ?? false);
 
   useEffect(() => {
     const sb = supabase;
@@ -117,15 +138,26 @@ export function AdminSignins() {
       ]);
       if (!active) return;
 
+      const nextJoins = !members.error && members.data ? (members.data as MemberRow[]) : joins;
       if (!members.error && members.data) {
         setJoins(members.data as MemberRow[]);
       }
-      if (!audit.error && audit.data) {
-        setSignins(audit.data as SigninRow[]);
-        setSigninsReady(true);
-      } else {
-        setSigninsReady(false);
+      let nextSignins = signins;
+      const nextSigninsReady = !audit.error && !!audit.data;
+      if (nextSigninsReady) {
+        nextSignins = audit.data as SigninRow[];
+        setSignins(nextSignins);
       }
+      setSigninsReady(nextSigninsReady);
+      // Cache the fresh result for an instant paint on the next remount. Written
+      // here (client-only, post-fetch) — never during render/SSR. Preserve any
+      // geo already resolved this session by merging onto the current cache.
+      adminSigninsCache = {
+        joins: nextJoins,
+        signins: nextSignins,
+        geo: adminSigninsCache?.geo ?? {},
+        signinsReady: nextSigninsReady,
+      };
       setLoading(false);
     })();
     return () => {
@@ -133,17 +165,28 @@ export function AdminSignins() {
     };
   }, []);
 
+  // Set one IP's geo in state AND mirror it into the module cache, so a revisit
+  // that paints from cache keeps the locations already resolved this session.
+  // Runs only in client event handlers (never during render/SSR).
+  const setGeoEntry = (ip: string, g: Geo) => {
+    setGeo((prev) => {
+      const next = { ...prev, [ip]: g };
+      if (adminSigninsCache) adminSigninsCache.geo = next;
+      return next;
+    });
+  };
+
   // Resolve one IP to an approximate location, on demand (when its row opens).
   // Cached in `geo` so re-opening a row doesn't look it up again.
   const lookupGeo = async (ip: string) => {
     if (geo[ip]) return;
-    setGeo((prev) => ({ ...prev, [ip]: { ok: false } })); // optimistic placeholder
+    setGeoEntry(ip, { ok: false }); // optimistic placeholder
     try {
       const res = await fetch(`https://ipwho.is/${ip}`);
       const j = await res.json();
-      setGeo((prev) => ({
-        ...prev,
-        [ip]: j?.success
+      setGeoEntry(
+        ip,
+        j?.success
           ? {
               ok: true,
               city: j.city,
@@ -156,9 +199,9 @@ export function AdminSignins() {
               lon: j.longitude,
             }
           : { ok: false },
-      }));
+      );
     } catch {
-      setGeo((prev) => ({ ...prev, [ip]: { ok: false } }));
+      setGeoEntry(ip, { ok: false });
     }
   };
 

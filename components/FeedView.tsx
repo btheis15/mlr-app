@@ -43,12 +43,30 @@ interface Summary {
 
 const stripLead = (role: string) => (role.endsWith(" · Lead") ? role.slice(0, -" · Lead".length) : role);
 
+/**
+ * Stale-while-revalidate cache, mirroring lib/hooks.ts `eventsCache`. FeedView
+ * remounts on every tab navigation; without this, channels/houseChannel reset to
+ * empty/null and the "no house & no committee → Main Feed" guard (~line 281)
+ * fires for a beat before the load effect resolves — so anyone in a house or
+ * committee sees the Main Feed flash, then pops to the Chats list. Holding the
+ * last result per viewer lets a returning tab paint the list immediately while
+ * the effect refetches in the background. Keyed on `${email}|${previewAs}` so a
+ * different viewer (or an admin previewing as someone) never reads another's
+ * channels. Memory-only (per session) and written ONLY inside effects, never
+ * during render/SSR — the map is empty at module-eval, so a cold first render
+ * still hits the []/null defaults that match the static/prerendered HTML (where
+ * `user` is null), avoiding any hydration mismatch.
+ */
+const feedCache = new Map<string, { channels: Channel[]; houseChannel: HouseChannel | null; summaries: Record<string, Summary> }>();
+
 export function FeedView() {
   const { user, previewAsId } = useIdentity();
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(null);
+  const cacheKey = `${user?.email ?? ""}|${previewAsId ?? "self"}`;
+  const cached = feedCache.get(cacheKey);
+  const [channels, setChannels] = useState<Channel[]>(cached?.channels ?? []);
+  const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(cached?.houseChannel ?? null);
   const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key | house key
-  const [summaries, setSummaries] = useState<Record<string, Summary>>({});
+  const [summaries, setSummaries] = useState<Record<string, Summary>>(cached?.summaries ?? {});
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
   const chatBoxRef = useRef<HTMLDivElement>(null);
@@ -119,6 +137,11 @@ export function FeedView() {
           muted: false,
         };
       }
+      // Keep the cached snapshot's summaries current so a returning tab paints
+      // the latest previews (only if a structural entry already exists — the
+      // channels/houseChannel structural write below is what creates it).
+      const prevSnap = feedCache.get(cacheKey);
+      if (prevSnap) feedCache.set(cacheKey, { ...prevSnap, summaries: next });
       if (!cancelled) setSummaries(next);
     };
 
@@ -160,6 +183,11 @@ export function FeedView() {
       if (cancelled) return;
       mine = built;
       setChannels(built);
+      // Structural write: keep the cache's channels/houseChannel current. Also
+      // runs on realtime roster/profile changes (this fn re-runs), so a removed
+      // committee/house is reflected in the cache and can't stick on revisit.
+      const prevSnap = feedCache.get(cacheKey);
+      feedCache.set(cacheKey, { channels: built, houseChannel: houseCh, summaries: prevSnap?.summaries ?? {} });
       const hasAny = built.length > 0 || houseCh !== null;
       setActive((prev) =>
         !hasAny
@@ -189,6 +217,9 @@ export function FeedView() {
         openedFromHouseRef.current = true;
         setActive(hc.key);
       }
+      // Snapshot the resolved structure so the next remount paints the list
+      // instantly instead of flashing the Main Feed guard.
+      feedCache.set(cacheKey, { channels: mine, houseChannel: houseCh, summaries: feedCache.get(cacheKey)?.summaries ?? {} });
       if (!cancelled) setLoaded(true);
       channel = sb
         .channel("feed-conversations")
