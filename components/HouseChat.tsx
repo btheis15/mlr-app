@@ -179,8 +179,17 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     }[];
     const ids = rows.map((r) => r.id);
 
+    // Media select prefers the file_name column (migration 0073). If that
+    // migration isn't applied yet, selecting it errors — fall back to the older
+    // columns so media still loads (never blank the chat on deploy ordering).
+    const fetchMedia = async () => {
+      if (!ids.length) return { data: [] as Record<string, unknown>[] };
+      const withName = await sb.from("house_message_media").select("message_id, storage_path, media_type, width, height, file_name, position").in("message_id", ids);
+      if (!withName.error) return withName;
+      return await sb.from("house_message_media").select("message_id, storage_path, media_type, width, height, position").in("message_id", ids);
+    };
     const [mediaRes, reactRes, mentionRes, profilesRes, rosterRes] = await Promise.all([
-      ids.length ? sb.from("house_message_media").select("message_id, storage_path, media_type, width, height, file_name, position").in("message_id", ids) : Promise.resolve({ data: [] }),
+      fetchMedia(),
       ids.length ? sb.from("house_message_reactions").select("message_id, user_id, emoji").in("message_id", ids) : Promise.resolve({ data: [] }),
       ids.length ? sb.from("house_message_mentions").select("message_id, mentioned_user_id").in("message_id", ids) : Promise.resolve({ data: [] }),
       sb.from("profiles").select("id, display_name, avatar_url"),
@@ -371,9 +380,11 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
       const mid = (ins as { id: string }).id;
 
       if (uploaded.length) {
-        await sb.from("house_message_media").insert(
-          uploaded.map((m, i) => ({ message_id: mid, storage_path: m.url, media_type: m.type, width: m.width ?? null, height: m.height ?? null, file_name: m.name ?? null, position: i })),
-        );
+        const rows = uploaded.map((m, i) => ({ message_id: mid, storage_path: m.url, media_type: m.type, width: m.width ?? null, height: m.height ?? null, file_name: m.name ?? null, position: i }));
+        const insMedia = await sb.from("house_message_media").insert(rows);
+        // Before migration 0073, file_name doesn't exist — retry without it so
+        // photos/videos still attach (file-type sends need the migration).
+        if (insMedia.error) await sb.from("house_message_media").insert(rows.map(({ file_name, ...r }) => r));
       }
       if (mentionIds.length) {
         await sb.from("house_message_mentions").insert(mentionIds.map((id) => ({ message_id: mid, mentioned_user_id: id })));
@@ -604,10 +615,12 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
             value={text}
             onChange={(e) => onComposerChange(e.target.value)}
             onPaste={onPasteComposer}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            // Enter inserts a newline (too easy to send by accident otherwise) —
+            // send with the button, or ⌘/Ctrl+Enter as a shortcut.
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }}
             placeholder={editing ? "Edit message…" : "Message…"}
             rows={1}
-            enterKeyHint="send"
+            enterKeyHint="enter"
             className="max-h-28 min-h-10 flex-1 resize-none overflow-y-auto rounded-2xl bg-background px-3 py-2 text-base leading-snug ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
           <button onClick={() => void send()} disabled={!canSend} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40" aria-label={editing ? "Save edit" : "Send"}>
