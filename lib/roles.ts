@@ -71,6 +71,21 @@ export async function fetchJoinState(
   return (req as { status: string } | null)?.status === "pending" ? "pending" : "none";
 }
 
+/** My own areas/roles in a committee (empty if none set, not a member, or no backend). */
+export async function fetchMyAreas(committeeId: string): Promise<string[]> {
+  const sb = supabase;
+  if (!sb) return [];
+  const me = await getCurrentUserId();
+  if (!me) return [];
+  const { data } = await sb
+    .from("committee_members")
+    .select("areas")
+    .eq("committee_id", committeeId)
+    .eq("user_id", me)
+    .maybeSingle();
+  return (data as { areas: string[] | null } | null)?.areas ?? [];
+}
+
 /** Resolve a committee's id from its slug (null if no backend / not found). */
 export async function fetchCommitteeId(slug: string): Promise<string | null> {
   const sb = supabase;

@@ -5,7 +5,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Protected } from "@/components/Guard";
-import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
+import { fetchCommitteeId, fetchJoinState, fetchMyAreas } from "@/lib/roles";
 import type { Committee } from "@/lib/types";
 
 /**
@@ -27,6 +27,9 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [state, setState] = useState<JoinState>("loading");
   const [busy, setBusy] = useState(false);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [myAreas, setMyAreas] = useState<string[]>([]);
+  const [editingMyAreas, setEditingMyAreas] = useState(false);
+  const [myAreaSelection, setMyAreaSelection] = useState<string[]>([]);
 
   // The Lead is the contact for join requests; fall back to the first member.
   const lead = committee.members.find((m) => m.role === "Lead") ?? committee.members[0];
@@ -57,7 +60,12 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
       }
       setCommitteeId(cid);
       const s = await fetchJoinState(cid);
-      if (!cancelled) setState(s);
+      if (cancelled) return;
+      setState(s);
+      if (s === "member") {
+        const areas = await fetchMyAreas(cid);
+        if (!cancelled) setMyAreas(areas);
+      }
     })();
     return () => {
       cancelled = true;
@@ -74,6 +82,28 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     });
     setBusy(false);
     if (!error) setState("pending");
+  };
+
+  const startEditMyAreas = () => {
+    setMyAreaSelection([...myAreas]);
+    setEditingMyAreas(true);
+  };
+  const toggleMyArea = (area: string) =>
+    setMyAreaSelection((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]));
+  const saveMyAreas = async () => {
+    if (!supabase || !committeeId) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("set_my_committee_areas", {
+      cid: committeeId,
+      areas: myAreaSelection,
+    });
+    setBusy(false);
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    setMyAreas(myAreaSelection);
+    setEditingMyAreas(false);
   };
 
   const leaveSelf = async () => {
@@ -129,6 +159,61 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           <p className="rounded-2xl border border-dashed border-primary/30 bg-card px-4 py-3 text-center text-sm font-medium text-primary">
             ✓ You&rsquo;re on {committee.name} — open the chat above.
           </p>
+
+          {areaOptions.length > 0 && (
+            <div className="space-y-1.5 rounded-xl bg-card p-3 ring-1 ring-border">
+              <p className="text-xs font-medium text-foreground/60">Your areas — change anytime, no approval needed</p>
+              {editingMyAreas ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {areaOptions.map((area) => {
+                      const on = myAreaSelection.includes(area);
+                      return (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => toggleMyArea(area)}
+                          className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+                            on ? "bg-primary text-white ring-primary" : "bg-background ring-border text-foreground/60"
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveMyAreas}
+                      disabled={busy}
+                      className="press rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setEditingMyAreas(false)} className="press px-3 py-1.5 text-xs font-medium text-foreground/50">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1">
+                  {myAreas.length > 0 ? (
+                    myAreas.map((a) => (
+                      <span key={a} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        {a}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-foreground/40">No area yet</span>
+                  )}
+                  <button type="button" onClick={startEditMyAreas} className="press ml-0.5 text-[10px] font-semibold text-primary">
+                    {myAreas.length > 0 ? "· Edit" : "+ Add"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <button onClick={leaveSelf} disabled={busy} className="press w-full rounded-xl bg-background py-2.5 text-xs font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50">
             {busy ? "Leaving…" : `Leave ${committee.name}`}
           </button>

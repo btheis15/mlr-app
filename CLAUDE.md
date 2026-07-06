@@ -151,6 +151,23 @@ and readable only by that committee's members (RLS, [`0012`](supabase/migrations
 They count different things, so an admin can see e.g. "[2] members" (DB chat
 membership) alongside a different static roster — that's expected, not a bug.
 
+**Area validation + self-service (migration [`0072`](supabase/migrations/0072_committee_area_validation.sql)).**
+Every area value that gets persisted (`request_to_join`, `review_join_request`,
+`set_committee_areas`) is checked against a real allow-list
+(`committee_areas`, seeded from `FAMILY_FEST_AREAS`) — "general"/"General" is
+always rejected since that word is reserved for the committee-wide default
+channel (area `IS NULL`, [`0063`](supabase/migrations/0063_committee_area_chats.sql)),
+never a real role. This closes the gap that let a bad `area = "general"` land
+in a join request with no UI ever having offered it. A **member already in the
+committee** can add/remove their own areas with **no admin approval** via the
+new `set_my_committee_areas` RPC (UI: `CommitteeJoin`'s "Your areas" editor,
+member state) — it can't self-appoint `"· Lead"`. **Only someone not yet in the
+committee** needs `request_to_join` → Lead/admin approval, for any area(s) they
+want. `leave_committee` now also unlinks the caller's `committee_roster` row
+(was `committee_members`-only, which stopped mattering for access once
+[`0057`](supabase/migrations/0057_roster_is_membership.sql) made the roster the
+real gate — leaving silently didn't revoke chat access until this fix).
+
 **Account linking (no duplicate slot).** `CommitteeRoster` resolves each static
 slot to a real account by **email** (`profiles.contact_email`, which Supabase
 seeds from the login email on signup; profiles are public-read) with a
