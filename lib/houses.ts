@@ -15,6 +15,7 @@ function mapHouse(r: Record<string, unknown>): House {
     emoji: (r.emoji as string) || "🏠",
     description: (r.description as string) ?? "",
     position: (r.position as number | null) ?? 0,
+    rules: (r.rules as string) ?? "",
   };
 }
 
@@ -65,6 +66,14 @@ export async function fetchHouseBySlug(slug: string): Promise<House | null> {
 export async function setMemberHouse(target: string, hid: string | null): Promise<{ error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { error } = await supabase.rpc("set_member_house", { target, hid });
+  return error ? { error: error.message } : {};
+}
+
+/** Save a house's shared "house rules" doc. Any member of the house (RPC-gated
+ *  by is_house_member, migration 0072). Last write wins. */
+export async function setHouseRules(hid: string, rules: string): Promise<{ error?: string }> {
+  if (!supabase) return { error: "Not connected" };
+  const { error } = await supabase.rpc("set_house_rules", { hid, p_rules: rules });
   return error ? { error: error.message } : {};
 }
 

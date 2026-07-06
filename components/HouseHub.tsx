@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { setHouseRules } from "@/lib/houses";
 import { useResolvedHouse, useHouseCalendar } from "@/lib/hooks";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isStayPast, stayLabel, stayHeadCount } from "@/lib/houseCalendar";
@@ -62,7 +64,7 @@ export function HouseHub({ slug }: { slug?: string | null }) {
     );
   }
 
-  return <HouseHubBody houseId={house.id} houseName={house.name} houseEmoji={house.emoji} slug={house.slug} description={house.description} />;
+  return <HouseHubBody houseId={house.id} houseName={house.name} houseEmoji={house.emoji} slug={house.slug} description={house.description} rules={house.rules} />;
 }
 
 function HouseHubBody({
@@ -71,12 +73,14 @@ function HouseHubBody({
   houseEmoji,
   slug,
   description,
+  rules,
 }: {
   houseId: string;
   houseName: string;
   houseEmoji: string;
   slug: string;
   description: string;
+  rules: string;
 }) {
   const { today } = useDemoDate();
   const { stays, loading } = useHouseCalendar(houseId);
@@ -122,6 +126,9 @@ function HouseHubBody({
         subtitle="Talk with everyone in your house."
       />
 
+      {/* House rules — a shared, editable open-text doc (any member). */}
+      <HouseRulesCard houseId={houseId} initialRules={rules} />
+
       {/* Upcoming stays preview (so the hub has real content, not just links) */}
       {upcoming.length > 0 && (
         <section className="space-y-2">
@@ -158,6 +165,89 @@ function HouseHubBody({
         <WorkChecklist />
       </section>
     </div>
+  );
+}
+
+/** A shared, editable open-text "house rules" doc. Any house member can edit it
+ *  (RPC-gated server-side); last write wins. */
+function HouseRulesCard({ houseId, initialRules }: { houseId: string; initialRules: string }) {
+  const [rules, setRules] = useState(initialRules);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initialRules);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const { error: err } = await setHouseRules(houseId, draft);
+    setSaving(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setRules(draft);
+    setEditing(false);
+  }
+
+  return (
+    <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold">
+          <span className="mr-1" aria-hidden>
+            📋
+          </span>
+          House rules
+        </h2>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(rules);
+              setEditing(true);
+            }}
+            className="press text-sm font-semibold text-primary"
+          >
+            {rules.trim() ? "Edit" : "Add"}
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={8}
+            placeholder="Add your house rules — quiet hours, who feeds the dog, cabin close-up checklist…"
+            className="w-full rounded-xl bg-background p-3 text-sm ring-1 ring-border focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+              className="press rounded-full px-3 py-1 text-sm font-semibold text-foreground/60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="press rounded-full bg-primary px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-foreground/70">
+          {rules.trim() ? rules : "No house rules yet — tap Add to write them."}
+        </p>
+      )}
+    </section>
   );
 }
 

@@ -196,6 +196,7 @@ export interface House {
   emoji: string;
   description: string;
   position: number;
+  rules: string; // shared, member-editable open-text "house rules" doc (0072)
 }
 
 /** One member's stay on a house calendar (migration 0071) — "I'm going up to
