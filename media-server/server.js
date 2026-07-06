@@ -313,26 +313,34 @@ app.post("/upload", requireUser, (req, res) => {
     if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
     if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
 
-    // Tier-0 guard: confirm the bytes really are an image or video. Reject
-    // (and delete) anything else before it's transcoded, served, or referenced.
+    // Tier-0 guard: sniff the bytes. Posts/work uploads stay images/videos only.
+    // CHAT allows any file (PDFs, docs, etc. — iMessage-style), so a sniff miss
+    // there means "generic file", not a rejection.
     const kind = sniffMediaKind(req.file.path);
-    if (kind !== "image" && kind !== "video") {
+    const category = safeSeg(req.query.category, "posts");
+    const isMedia = kind === "image" || kind === "video";
+    if (!isMedia && category !== "chat") {
       try { fs.unlinkSync(req.file.path); } catch {}
       console.warn(`[upload] rejected non-media file ${req.file.originalname} (${req.file.mimetype})`);
       return res.status(415).json({ error: "Only photos and videos can be uploaded." });
     }
+    // What the client stores as media_type: 'image' | 'video' | 'file'.
+    const mediaType = isMedia ? kind : "file";
 
     // Videos → normalize to a web-friendly H.264 MP4 (≤1080p). Photos pass
-    // through untouched. Never fatal: on any hiccup we serve the original file.
+    // through untouched. Non-media chat files (PDFs/docs) are served as-is —
+    // never transcoded. Never fatal: on any hiccup we serve the original file.
     let served = req.file.path;
-    try {
-      const r = await maybeTranscode(req.file.path, req.file.mimetype);
-      served = r.path;
-      if (r.transcoded) console.log(`[transcode] ${req.file.filename} → ${path.basename(served)}`);
-      else if (r.reason) console.log(`[transcode] kept original (${r.reason})`);
-    } catch (e) {
-      console.error(`[transcode] error, keeping original: ${e && e.message}`);
-      served = req.file.path;
+    if (isMedia) {
+      try {
+        const r = await maybeTranscode(req.file.path, req.file.mimetype);
+        served = r.path;
+        if (r.transcoded) console.log(`[transcode] ${req.file.filename} → ${path.basename(served)}`);
+        else if (r.reason) console.log(`[transcode] kept original (${r.reason})`);
+      } catch (e) {
+        console.error(`[transcode] error, keeping original: ${e && e.message}`);
+        served = req.file.path;
+      }
     }
 
     const rel = path.relative(MEDIA_DIR, served).split(path.sep).join("/");
@@ -347,7 +355,7 @@ app.post("/upload", requireUser, (req, res) => {
     // just lets the upload through (the Flag-as-inappropriate reports + admin
     // queue are the backstop).
     let moderation = null;
-    if (MOD_ENABLED) {
+    if (MOD_ENABLED && isMedia) {
       try {
         const v = await moderateMedia(served, kind);
         if (v) {
@@ -365,7 +373,7 @@ app.post("/upload", requireUser, (req, res) => {
         console.error(`[moderate] error (fail-open): ${e.message}`);
       }
     }
-    res.json({ url: fileUrl, name: path.basename(served), path: rel, moderation });
+    res.json({ url: fileUrl, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel, moderation });
   });
 });
 

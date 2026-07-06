@@ -7,8 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { MemberSheet } from "@/components/MemberSheet";
-import { GifPicker, type PickedGif } from "@/components/GifPicker";
-import { STICKERS, StickerArt } from "@/components/Stickers";
+import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { fetchJoinState } from "@/lib/roles";
 import { useDebouncedCallback } from "@/lib/hooks";
@@ -26,10 +25,11 @@ interface Member {
   avatarUrl?: string | null;
 }
 interface ChatMedia {
-  url: string; // mini URL, Tenor URL, or a sticker id
-  type: "image" | "video" | "sticker" | "gif";
+  url: string; // mini URL (or, for old messages, a Tenor URL / sticker id)
+  type: "image" | "video" | "sticker" | "gif" | "file";
   width?: number | null;
   height?: number | null;
+  name?: string | null; // original filename, for "file" attachments
 }
 interface Msg {
   id: string;
@@ -51,12 +51,14 @@ interface Msg {
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const within24h = (ts: string) => Date.now() - new Date(ts).getTime() < EDIT_WINDOW_MS;
 
-// One pending attachment in the composer: an uploaded-on-send file, a sticker
-// id, or a hotlinked GIF. Only one "special" (sticker/gif) at a time.
-type Pending =
-  | { kind: "file"; file: File; url: string; type: "image" | "video" }
-  | { kind: "sticker"; id: string }
-  | { kind: "gif"; gif: PickedGif };
+// One pending attachment in the composer: a file uploaded on send. Photos and
+// videos preview inline; anything else (PDFs, docs, …) shows as a file chip.
+interface Pending {
+  file: File;
+  url: string; // object URL for the preview
+  type: "image" | "video" | "file";
+  name: string; // original filename
+}
 
 export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean }) {
   const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
@@ -80,8 +82,6 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [editing, setEditing] = useState<Msg | null>(null);
-  const [showGif, setShowGif] = useState(false);
-  const [showStickers, setShowStickers] = useState(false);
   const [reactingId, setReactingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -207,7 +207,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     const ids = rows.map((r) => r.id);
 
     const [mediaRes, reactRes, mentionRes, profilesRes, rosterRes] = await Promise.all([
-      ids.length ? sb.from("committee_message_media").select("message_id, storage_path, media_type, width, height, position").in("message_id", ids) : Promise.resolve({ data: [] }),
+      ids.length ? sb.from("committee_message_media").select("message_id, storage_path, media_type, width, height, file_name, position").in("message_id", ids) : Promise.resolve({ data: [] }),
       ids.length ? sb.from("committee_message_reactions").select("message_id, user_id, emoji").in("message_id", ids) : Promise.resolve({ data: [] }),
       ids.length ? sb.from("committee_message_mentions").select("message_id, mentioned_user_id").in("message_id", ids) : Promise.resolve({ data: [] }),
       sb.from("profiles").select("id, display_name, avatar_url"),
@@ -226,12 +226,13 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     setMembers(roster);
 
     const mediaByMsg: Record<string, ChatMedia[]> = {};
-    for (const m of (mediaRes.data ?? []) as { message_id: string; storage_path: string; media_type: string; width: number | null; height: number | null; position: number }[]) {
+    for (const m of (mediaRes.data ?? []) as { message_id: string; storage_path: string; media_type: string; width: number | null; height: number | null; file_name: string | null; position: number }[]) {
       (mediaByMsg[m.message_id] ||= []).push({
         url: m.storage_path,
-        type: (["image", "video", "sticker", "gif"].includes(m.media_type) ? m.media_type : "image") as ChatMedia["type"],
+        type: (["image", "video", "sticker", "gif", "file"].includes(m.media_type) ? m.media_type : "image") as ChatMedia["type"],
         width: m.width,
         height: m.height,
+        name: m.file_name,
       });
     }
     const reactByMsg: Record<string, { userId: string; emoji: string }[]> = {};
@@ -299,7 +300,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   useEffect(() => {
     repinIfAtBottom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending.length, showStickers, showGif, replyTo, editing]);
+  }, [pending.length, replyTo, editing]);
 
   // Grow the composer to fit what you type (one line up to a cap), so a line is
   // never clipped, and snap it back to one line after sending. Re-runs when the
@@ -328,25 +329,28 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     if (!error) setAccess("pending");
   };
 
+  // Classify a File into how we preview + store it: photos/videos inline, and
+  // anything else (PDFs, docs, …) as a generic "file".
+  const pendingFromFile = (f: File): Pending => {
+    const url = URL.createObjectURL(f);
+    objectUrls.current.push(url);
+    const type = f.type.startsWith("video") ? "video" : f.type.startsWith("image") ? "image" : "file";
+    return { file: f, url, type, name: f.name || "file" };
+  };
   const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (!list?.length) return;
-    const next: Pending[] = [];
-    for (const f of Array.from(list)) {
-      const url = URL.createObjectURL(f);
-      objectUrls.current.push(url);
-      next.push({ kind: "file", file: f, url, type: f.type.startsWith("video") ? "video" : "image" });
-    }
-    setPending((p) => [...p.filter((x) => x.kind === "file"), ...next]);
+    setPending((p) => [...p, ...Array.from(list).map(pendingFromFile)]);
     e.target.value = "";
   };
-  const addSticker = (id: string) => {
-    setPending([{ kind: "sticker", id }]);
-    setShowStickers(false);
-  };
-  const addGif = (gif: PickedGif) => {
-    setPending([{ kind: "gif", gif }]);
-    setShowGif(false);
+  // Paste images/files straight from the clipboard, iMessage-style. Text pastes
+  // fall through to the textarea. Not while editing (media isn't part of an edit).
+  const onPasteComposer = (e: React.ClipboardEvent) => {
+    if (editing) return;
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (!files.length) return;
+    e.preventDefault();
+    setPending((p) => [...p, ...files.map(pendingFromFile)]);
   };
   const removePending = (i: number) => setPending((p) => p.filter((_, idx) => idx !== i));
 
@@ -409,16 +413,11 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       const uploaded: ChatMedia[] = [];
       const token = (await sb.auth.getSession()).data.session?.access_token;
       for (const p of pending) {
-        if (p.kind === "file") {
-          if (!token) throw new Error("Not signed in.");
-          const f = p.type === "video" ? p.file : await compressImage(p.file);
-          const url = await uploadToMini(f, token, { category: "chat", room: slug });
-          uploaded.push({ url, type: p.type });
-        } else if (p.kind === "sticker") {
-          uploaded.push({ url: p.id, type: "sticker" });
-        } else {
-          uploaded.push({ url: p.gif.url, type: "gif", width: p.gif.width, height: p.gif.height });
-        }
+        if (!token) throw new Error("Not signed in.");
+        // Only photos are re-encoded; videos + files upload as-is.
+        const f = p.type === "image" ? await compressImage(p.file) : p.file;
+        const url = await uploadToMini(f, token, { category: "chat", room: slug });
+        uploaded.push({ url, type: p.type, name: p.type === "file" ? p.name : undefined });
       }
 
       const { data: ins, error: insErr } = await sb
@@ -431,7 +430,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
 
       if (uploaded.length) {
         await sb.from("committee_message_media").insert(
-          uploaded.map((m, i) => ({ message_id: mid, storage_path: m.url, media_type: m.type, width: m.width ?? null, height: m.height ?? null, position: i })),
+          uploaded.map((m, i) => ({ message_id: mid, storage_path: m.url, media_type: m.type, width: m.width ?? null, height: m.height ?? null, file_name: m.name ?? null, position: i })),
         );
       }
       if (mentionIds.length) {
@@ -656,35 +655,18 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           <div className="flex gap-2 overflow-x-auto px-3 pt-2">
             {pending.map((p, i) => (
               <div key={i} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-background ring-1 ring-border">
-                {p.kind === "file" && p.type === "video" && <video src={p.url} className="h-full w-full object-cover" muted playsInline />}
+                {p.type === "video" && <video src={p.url} className="h-full w-full object-cover" muted playsInline />}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {p.kind === "file" && p.type === "image" && <img src={p.url} alt="" className="h-full w-full object-cover" />}
-                {p.kind === "gif" && /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.gif.url} alt="" className="h-full w-full object-cover" />}
-                {p.kind === "sticker" && <StickerArt id={p.id} size={64} />}
+                {p.type === "image" && <img src={p.url} alt="" className="h-full w-full object-cover" />}
+                {p.type === "file" && (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1">
+                    <span className="text-xl leading-none">📄</span>
+                    <span className="w-full truncate text-center text-[9px] text-foreground/60">{p.name}</span>
+                  </div>
+                )}
                 <button onClick={() => removePending(i)} className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white" aria-label="Remove">×</button>
               </div>
             ))}
-          </div>
-        )}
-
-        {showStickers && (
-          <div className="border-b border-border px-3 py-2">
-            <div className="flex items-center justify-between pb-1">
-              <p className="text-xs font-semibold text-foreground/60">Stickers</p>
-              <button onClick={() => setShowStickers(false)} className="press text-xs font-medium text-foreground/50">Close</button>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {STICKERS.map((s) => (
-                <button key={s.id} onClick={() => addSticker(s.id)} className="press overflow-hidden rounded-xl" aria-label={s.label}>
-                  <StickerArt id={s.id} size={72} className="h-full w-full" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {showGif && (
-          <div className="border-b border-border px-3 py-2">
-            <GifPicker onSelect={addGif} onClose={() => setShowGif(false)} />
           </div>
         )}
 
@@ -704,16 +686,15 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
               media isn't part of an edit (and to leave more room for the text). */}
           {!editing && (
             <>
-              <button type="button" onClick={() => fileRef.current?.click()} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg" aria-label="Add photo or video">📷</button>
-              <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={pickFiles} className="hidden" />
-              <button type="button" onClick={() => { setShowStickers((s) => !s); setShowGif(false); }} className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${showStickers ? "bg-primary/10" : ""}`} aria-label="Stickers">🦦</button>
-              <button type="button" onClick={() => { setShowGif((s) => !s); setShowStickers(false); }} className={`press flex h-9 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold ${showGif ? "bg-primary/10 text-primary" : "text-foreground/55"}`} aria-label="GIFs">GIF</button>
+              <button type="button" onClick={() => fileRef.current?.click()} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground/55" aria-label="Attach a photo, video, or file">📎</button>
+              <input ref={fileRef} type="file" multiple onChange={pickFiles} className="hidden" />
             </>
           )}
           <textarea
             ref={textareaRef}
             value={text}
             onChange={(e) => onComposerChange(e.target.value)}
+            onPaste={onPasteComposer}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
             placeholder={editing ? "Edit message…" : "Message…"}
             rows={1}
@@ -784,7 +765,7 @@ function replyPreview(m: Msg): string {
   if (m.text) return m.text;
   const med = m.media[0];
   if (!med) return "Message";
-  return med.type === "sticker" ? "Sticker" : med.type === "gif" ? "GIF" : med.type === "video" ? "🎬 Video" : "📷 Photo";
+  return med.type === "sticker" ? "Sticker" : med.type === "gif" ? "GIF" : med.type === "file" ? "📄 File" : med.type === "video" ? "🎬 Video" : "📷 Photo";
 }
 
 // Render message text with @mentions of known members highlighted.
@@ -903,6 +884,12 @@ function MessageRow({
                 <img src={md.url} alt="GIF" className="max-h-56 rounded-xl" />
               ) : md.type === "video" ? (
                 <video src={md.url} controls playsInline className="max-h-60 rounded-xl" />
+              ) : md.type === "file" ? (
+                <a href={md.url} target="_blank" rel="noopener noreferrer" download={md.name ?? undefined} className={`press flex max-w-[15rem] items-center gap-2 rounded-xl px-3 py-2 ${mine ? "bg-white/15" : "bg-background ring-1 ring-border"}`}>
+                  <span className="shrink-0 text-xl leading-none">📄</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{md.name || "File"}</span>
+                  <span className={`shrink-0 text-xs ${mine ? "text-white/70" : "text-foreground/50"}`}>↓</span>
+                </a>
               ) : (
                 <button type="button" onClick={() => onOpenPhoto(md.url)} className="press block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
