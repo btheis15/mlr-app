@@ -1,4 +1,4 @@
--- 0073_chat_files.sql
+-- 0074_chat_files.sql
 -- Let chat attachments be ANY file (PDFs, docs, etc.), not just photos/videos —
 -- matching iMessage-style "send me the file". Adds a 'file' media_type to both
 -- chat media tables and a nullable file_name so the client can show the original
