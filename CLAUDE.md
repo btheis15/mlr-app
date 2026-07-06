@@ -151,7 +151,7 @@ and readable only by that committee's members (RLS, [`0012`](supabase/migrations
 They count different things, so an admin can see e.g. "[2] members" (DB chat
 membership) alongside a different static roster — that's expected, not a bug.
 
-**Area validation + self-service (migration [`0072`](supabase/migrations/0072_committee_area_validation.sql)).**
+**Area validation + self-service (migration [`0073`](supabase/migrations/0073_committee_area_validation.sql)).**
 Every area value that gets persisted (`request_to_join`, `review_join_request`,
 `set_committee_areas`) is checked against a real allow-list
 (`committee_areas`, seeded from `FAMILY_FEST_AREAS`) — "general"/"General" is

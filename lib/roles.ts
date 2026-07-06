@@ -71,19 +71,28 @@ export async function fetchJoinState(
   return (req as { status: string } | null)?.status === "pending" ? "pending" : "none";
 }
 
-/** My own areas/roles in a committee (empty if none set, not a member, or no backend). */
+/**
+ * My own areas/roles in a committee (empty if none set, not a member, or no
+ * backend). Reads `committee_roster`, NOT `committee_members` — the roster
+ * has been the real source of areas/access since migration 0057, while
+ * `committee_members.areas` only ever gets populated by the request-to-join /
+ * lead-editor flows, so it's empty for anyone seeded straight into the roster.
+ */
 export async function fetchMyAreas(committeeId: string): Promise<string[]> {
   const sb = supabase;
   if (!sb) return [];
   const me = await getCurrentUserId();
   if (!me) return [];
+  const { data: committee } = await sb.from("committees").select("slug").eq("id", committeeId).maybeSingle();
+  const slug = (committee as { slug: string } | null)?.slug;
+  if (!slug) return [];
   const { data } = await sb
-    .from("committee_members")
-    .select("areas")
-    .eq("committee_id", committeeId)
-    .eq("user_id", me)
+    .from("committee_roster")
+    .select("roles")
+    .eq("committee_slug", slug)
+    .eq("linked_user_id", me)
     .maybeSingle();
-  return (data as { areas: string[] | null } | null)?.areas ?? [];
+  return ((data as { roles: string[] | null } | null)?.roles ?? []).map((r) => r.replace(/ · Lead$/, ""));
 }
 
 /** Resolve a committee's id from its slug (null if no backend / not found). */
