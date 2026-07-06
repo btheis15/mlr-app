@@ -23,11 +23,27 @@ interface MemberRow {
   house_name?: string | null;
 }
 
+// Stale-while-revalidate cache for the Houses admin, mirroring `eventsCache` in
+// lib/hooks.ts. AdminHouses remounts on every Profile → Admin → Houses visit;
+// without this the houses list + member-assignment directory reset to empty +
+// `loading` and blank/pop back in each open. Holding the last result in memory
+// lets a returning view paint instantly while the background load keeps it
+// current. Memory-only (per session) and written ONLY inside `load` (client-
+// only, after the fetch) — never during SSR/render — so a cold first render
+// starts empty (the original default output), matching the prerendered HTML and
+// avoiding any hydration mismatch. Admin-only surface, so a singleton is fine.
+let adminHousesCache: { houses: House[]; members: MemberRow[]; rpcReady: boolean } | null = null;
+
 export function AdminHouses() {
-  const [houses, setHouses] = useState<House[]>([]);
-  const [members, setMembers] = useState<MemberRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [rpcReady, setRpcReady] = useState(false);
+  const [houses, setHouses] = useState<House[]>(adminHousesCache?.houses ?? []);
+  const [members, setMembers] = useState<MemberRow[]>(adminHousesCache?.members ?? []);
+  // Warm cache ⇒ paint immediately (no "Loading…"); the effect still refetches
+  // below so the cached view is reconciled with the server.
+  const [loading, setLoading] = useState(!adminHousesCache);
+  // Seed rpcReady from cache: it gates the member-assignment directory vs. the
+  // "run migration 0064" hint, so a warm remount that left it false would flash
+  // the migration notice and hide the assign panel until the refetch resolves.
+  const [rpcReady, setRpcReady] = useState(adminHousesCache?.rpcReady ?? false);
   const [query, setQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("🏠");
@@ -38,15 +54,22 @@ export function AdminHouses() {
   const load = async () => {
     const sb = supabase;
     if (!sb) return;
-    setLoading(true);
+    // Only skeleton on a cold load; a warm-cache remount keeps the cached view
+    // painted while this refetch reconciles in the background.
+    if (!adminHousesCache) setLoading(true);
     const hs = await fetchHouses();
     setHouses(hs);
     const viaRpc = await sb.rpc("admin_members");
     if (!viaRpc.error && viaRpc.data) {
-      setMembers(viaRpc.data as MemberRow[]);
+      const rows = viaRpc.data as MemberRow[];
+      setMembers(rows);
       setRpcReady(true);
+      adminHousesCache = { houses: hs, members: rows, rpcReady: true };
     } else {
       setRpcReady(false);
+      // Cache the houses even when the members RPC isn't available yet (pre-
+      // migration), so a revisit still paints the list instantly.
+      adminHousesCache = { houses: hs, members: adminHousesCache?.members ?? [], rpcReady: false };
     }
     setLoading(false);
   };
@@ -89,7 +112,13 @@ export function AdminHouses() {
     const { error } = await run(m.id, () => setMemberHouse(m.id, hid));
     if (error) { window.alert(error || "Couldn't assign."); return; }
     const house = hid ? houses.find((h) => h.id === hid) ?? null : null;
-    setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, house_id: hid, house_name: house?.name ?? null } : x)));
+    setMembers((prev) => {
+      const next = prev.map((x) => (x.id === m.id ? { ...x, house_id: hid, house_name: house?.name ?? null } : x));
+      // Keep the module cache in step so a remount doesn't paint the pre-assign
+      // house/counts until the next background load reconciles.
+      if (adminHousesCache) adminHousesCache = { ...adminHousesCache, members: next };
+      return next;
+    });
   };
 
   if (!isSupabaseConfigured) {

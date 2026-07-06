@@ -218,16 +218,25 @@ export function useMediaPicker() {
  * rows (debounced), and re-runs when sign-in state flips. Always reads the REAL
  * session id (not an admin "view as" preview) — the badge is your own account's.
  */
+// Stale-while-revalidate cache for the unread badge, keyed by account. Without
+// it the count resets to 0 on every tab switch (the hook remounts in TabBar) and
+// then repopulates — a visible flicker. Memory-only, written only after a client
+// fetch (never during SSR), so a cold render still starts at 0 (matches the
+// server-rendered HTML) and there's no hydration mismatch.
+const unreadCountCache = new Map<string, number>();
+
 export function useUnreadNotifications(): number {
   const { user } = useIdentity();
   const signedIn = !!user;
-  const [count, setCount] = useState(0);
+  const key = user?.email ?? "self";
+  const [count, setCount] = useState(unreadCountCache.get(key) ?? 0);
   const [schedule] = useDebouncedCallback(250);
 
   useEffect(() => {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb || !signedIn) {
       setCount(0);
+      unreadCountCache.set(key, 0);
       return;
     }
     let cancelled = false;
@@ -241,7 +250,10 @@ export function useUnreadNotifications(): number {
         .eq("recipient_id", uid)
         .is("seen_at", null)
         .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
-      if (!cancelled) setCount(c ?? 0);
+      if (!cancelled) {
+        setCount(c ?? 0);
+        unreadCountCache.set(key, c ?? 0);
+      }
     };
 
     (async () => {
@@ -266,18 +278,33 @@ export function useUnreadNotifications(): number {
       cancelled = true;
       if (channel) sb.removeChannel(channel);
     };
-  }, [signedIn, schedule]);
+  }, [signedIn, schedule, key]);
 
   return count;
 }
+
+// Stale-while-revalidate cache for the committee-management gate, keyed by
+// slug + viewer identity (admin flag + previewed member, mirroring useEvents'
+// previewAsId key). Without it the Lead/admin-only panels start hidden
+// (canManage=false) on every visit and pop in a moment later — reads like an RLS
+// glitch. Memory-only, written only inside the effect / exposed setter (never
+// during SSR), so a cold render still yields canManage=false to match the
+// server-rendered HTML — no hydration mismatch. The effect always re-fetches and
+// calls setCanManage with the fresh value, so a revoked Lead flips back to false.
+const managedCommitteeCache = new Map<string, { committeeId: string | null; canManage: boolean }>();
 
 export function useManagedCommittee(
   slug: string,
   opts: { watch: string; load: (committeeId: string) => Promise<void> | void },
 ) {
-  const { isAdmin, previewAsId } = useIdentity();
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [canManage, setCanManage] = useState(false);
+  const { user, isAdmin, previewAsId } = useIdentity();
+  // Include the real viewer identity: without it two different non-admin members
+  // collide on `slug|false|self`, so a non-Lead briefly paints the Lead/admin
+  // management panel from another viewer's cached canManage:true.
+  const key = `${slug}|${user?.email ?? "guest"}|${isAdmin}|${previewAsId ?? "self"}`;
+  const cached = managedCommitteeCache.get(key);
+  const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
+  const [canManage, setCanManage] = useState(cached?.canManage ?? false);
   // Always call the latest `load` without making it a dependency (it's a fresh
   // closure each render), so the effect only re-runs on slug/admin changes.
   const loadRef = useRef(opts.load);
@@ -297,6 +324,9 @@ export function useManagedCommittee(
       const manage = isAdmin || (await fetchMyCommitteeRole(cid, previewAsId ?? undefined)) === "Lead";
       if (cancelled) return;
       setCanManage(manage);
+      // Source of truth for the cache — the effect always runs and overwrites
+      // with the freshly fetched gate, so a revoked Lead corrects to false.
+      managedCommitteeCache.set(key, { committeeId: cid, canManage: manage });
       if (!manage) return;
       await loadRef.current(cid);
       if (cancelled) return;
@@ -316,7 +346,17 @@ export function useManagedCommittee(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, isAdmin, previewAsId]);
 
-  return { committeeId, canManage, setCanManage, isAdmin };
+  // Wrapped setter for the leave-self path (CommitteeMembers): keep the cache in
+  // sync so revisiting doesn't paint a stale `true` before the refetch corrects.
+  const setCanManageCached = useCallback(
+    (v: boolean) => {
+      managedCommitteeCache.set(key, { committeeId, canManage: v });
+      setCanManage(v);
+    },
+    [key, committeeId],
+  );
+
+  return { committeeId, canManage, setCanManage: setCanManageCached, isAdmin };
 }
 
 export interface UseEvents {
@@ -464,18 +504,27 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
  * for an immediate refresh; Realtime keeps everyone else's view in sync. Safe
  * no-op (empty list) with no backend.
  */
+// Stale-while-revalidate cache for the Ask-for-Help log (mirrors eventsCache).
+// The log is a shared member-wide feed, so a singleton is fine. Without it the
+// log blanks to empty + skeleton on every open of /help-requests. Written only
+// after a client fetch (never during SSR), so a cold render still starts empty +
+// loading — matches the server HTML, no hydration mismatch.
+let helpRequestsCache: HelpRequest[] | null = null;
+
 export function useHelpRequests(): {
   requests: HelpRequest[];
   loading: boolean;
   reload: () => Promise<void>;
 } {
-  const [requests, setRequests] = useState<HelpRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [requests, setRequests] = useState<HelpRequest[]>(helpRequestsCache ?? []);
+  const [loading, setLoading] = useState(!helpRequestsCache);
   const [schedule] = useDebouncedCallback(250);
 
   const reload = useCallback(async () => {
     try {
-      setRequests(await fetchHelpRequests());
+      const rows = await fetchHelpRequests();
+      setRequests(rows);
+      helpRequestsCache = rows;
     } finally {
       setLoading(false);
     }
@@ -513,30 +562,48 @@ export function useHelpRequests(): {
  * `house = null` when the viewer is in no house and none was named. Re-runs when
  * the identity (and thus the viewer's house) changes.
  */
+// Stale-while-revalidate cache for the resolved house + membership, keyed by
+// slug + viewer identity (email + admin + previewed member — anything that
+// changes the resolved value). Without it HouseHub / HouseCalendarScreen rebuild
+// from a full SkeletonList on every visit (loading starts true, house/isMember
+// reset). Written only inside the effect (never during SSR), so a cold render
+// with an empty map + null prerender user still starts loading=true with the
+// default house/isMember — matches the server HTML, no hydration mismatch. The
+// effect always re-resolves membership and overwrites, so lost access corrects.
+const resolvedHouseCache = new Map<string, { house: House | null; isMember: boolean }>();
+
 export function useResolvedHouse(slug?: string | null): {
   house: House | null;
   isMember: boolean;
   loading: boolean;
 } {
   const { user, isAdmin, previewAsId } = useIdentity();
-  const [house, setHouse] = useState<House | null>(null);
-  const [isMember, setIsMember] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const key = `${slug ?? "mine"}|${user?.email ?? ""}|${isAdmin}|${previewAsId ?? "self"}`;
+  const cached = resolvedHouseCache.get(key);
+  const [house, setHouse] = useState<House | null>(cached?.house ?? null);
+  const [isMember, setIsMember] = useState(cached?.isMember ?? false);
+  // Warm cache ⇒ skip the skeleton; a revisit never flips back to loading.
+  const [loading, setLoading] = useState(!cached);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    // Only show the skeleton on a cold key; a warm revisit paints from cache and
+    // refetches silently in the background.
+    if (!resolvedHouseCache.has(key)) setLoading(true);
     (async () => {
       const mine = await fetchMyHouse(previewAsId ?? undefined);
       if (slug) {
         const h = await fetchHouseBySlug(slug);
         if (cancelled) return;
+        const member = !!h && (isAdmin || mine?.id === h.id);
         setHouse(h);
-        setIsMember(!!h && (isAdmin || mine?.id === h.id));
+        setIsMember(member);
+        resolvedHouseCache.set(key, { house: h, isMember: member });
       } else {
         if (cancelled) return;
         setHouse(mine);
         setIsMember(!!mine);
+        resolvedHouseCache.set(key, { house: mine, isMember: !!mine });
       }
       if (!cancelled) setLoading(false);
     })().catch(() => {
@@ -561,6 +628,12 @@ export function useResolvedHouse(slug?: string | null): {
  * write; no backend ⇒ safe empty. Pass `houseId = null` (not in a house) for a
  * no-op that never fetches.
  */
+// Stale-while-revalidate cache for a house's stays, keyed by house id. Without it
+// the calendar/agenda blanks to empty + loading on every open. Written only after
+// a client fetch (never during SSR), so a cold render (empty map) still starts
+// loading with no stays — matches the server HTML, no hydration mismatch.
+const houseCalendarCache = new Map<string, HouseStay[]>();
+
 export function useHouseCalendar(houseId: string | null): {
   stays: HouseStay[];
   loading: boolean;
@@ -571,8 +644,11 @@ export function useHouseCalendar(houseId: string | null): {
   removeStay: (id: string) => Promise<{ error?: string }>;
 } {
   const { user, previewAsId, promptSignIn } = useIdentity();
-  const [stays, setStays] = useState<HouseStay[]>([]);
-  const [loading, setLoading] = useState(!!houseId);
+  const [stays, setStays] = useState<HouseStay[]>(
+    houseId ? (houseCalendarCache.get(houseId) ?? []) : [],
+  );
+  // Warm cache for this house ⇒ no skeleton; a revisit paints from cache.
+  const [loading, setLoading] = useState(houseId ? !houseCalendarCache.has(houseId) : false);
   const [schedule] = useDebouncedCallback(250);
 
   const reload = useCallback(async () => {
@@ -582,7 +658,9 @@ export function useHouseCalendar(houseId: string | null): {
       return;
     }
     try {
-      setStays(await fetchHouseStays(houseId));
+      const rows = await fetchHouseStays(houseId);
+      setStays(rows);
+      houseCalendarCache.set(houseId, rows);
     } finally {
       setLoading(false);
     }
@@ -590,7 +668,8 @@ export function useHouseCalendar(houseId: string | null): {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(!!houseId);
+    // Only skeleton on a cold house id; a warm revisit refetches silently.
+    if (houseId && !houseCalendarCache.has(houseId)) setLoading(true);
     void reload();
     const sb = supabase;
     if (!houseId || !isSupabaseConfigured || !sb) {

@@ -22,6 +22,18 @@ interface Person extends MemberContact {
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
 
+// Stale-while-revalidate cache for the member directory. PeopleDirectory remounts
+// on every open of the People screen; without this it resets to empty + `loading`,
+// so "Loading people…" flashes before the list paints back in. Holding the last
+// result in memory lets a returning screen paint instantly while a background
+// refetch keeps it current. Everyone signed in sees the same directory (it's behind
+// SignInWall), so a module-scope singleton is fine — no per-viewer key needed.
+// Memory-only (per session) and only ever written *after* a client fetch — never
+// during SSR/render — so it can't change the server/first-paint render and can't
+// cause a hydration mismatch (a cold load starts with a null cache + the gate, i.e.
+// the original empty default). Mirrors `eventsCache` in lib/hooks.ts.
+let peopleCache: Person[] | null = null;
+
 /**
  * People — the member directory. Every account, sorted by first name, with a
  * search box on top and a quick-action bar on each row (Text, Call, and their
@@ -30,8 +42,10 @@ const tel = (s: string) => s.replace(/[^\d+]/g, "");
  * details are gated behind the sign-in wall.
  */
 export function PeopleDirectory() {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [people, setPeople] = useState<Person[]>(peopleCache ?? []);
+  // Warm cache ⇒ paint immediately (no "Loading people…" flash); still refetch in
+  // the background below so the cached view is brought up to date.
+  const [loading, setLoading] = useState(!peopleCache);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState<{ id: string; name: string; avatar?: string | null } | null>(null);
@@ -50,8 +64,17 @@ export function PeopleDirectory() {
           "id, display_name, avatar_url, phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, apple_cash",
         );
       if (!active) return;
-      if (e) setError("Couldn't load people.");
-      setPeople((data ?? []) as Person[]);
+      // On a transient fetch error, keep whatever we already have (stale-while-
+      // revalidate) — don't blank the list and, crucially, don't poison the
+      // module cache with an empty array that a later remount would paint from.
+      if (e) {
+        setError("Couldn't load people.");
+        setLoading(false);
+        return;
+      }
+      const rows = (data ?? []) as Person[];
+      setPeople(rows);
+      peopleCache = rows;
       setLoading(false);
     })();
     return () => {

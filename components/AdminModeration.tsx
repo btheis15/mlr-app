@@ -27,6 +27,20 @@ interface BlockRow {
 }
 
 /**
+ * Stale-while-revalidate cache for the moderation panel. `AdminModeration`
+ * remounts every time Profile → Admin is reopened; without this the review queue
+ * and blocklist reset to empty + `loading`, so the panel blanks out and pops back
+ * in on every visit. Holding the last result in memory lets a returning admin
+ * paint instantly from cache while a background refetch keeps it current. It's an
+ * admin-only global, so a single module-scope singleton (not keyed) is enough.
+ * Memory-only (per session) and only ever written *after* a client fetch — never
+ * during SSR/render — so it can't change the server/first-paint render and can't
+ * cause a hydration mismatch (a cold load starts with a null cache, i.e. the
+ * original empty + loading behavior). Mirrors `eventsCache` in `lib/hooks.ts`.
+ */
+let adminModerationCache: { queue: QueueRow[]; block: BlockRow[]; rpcReady: boolean } | null = null;
+
+/**
  * Admin content review (migration 0040). Two parts:
  *   • the review QUEUE — every post/comment that was auto-held (blocked term or
  *     enough reports) or reported, with Approve / Remove;
@@ -35,17 +49,24 @@ interface BlockRow {
  * other admin panels.
  */
 export function AdminModeration() {
-  const [queue, setQueue] = useState<QueueRow[]>([]);
-  const [block, setBlock] = useState<BlockRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [rpcReady, setRpcReady] = useState(false);
+  const [queue, setQueue] = useState<QueueRow[]>(adminModerationCache?.queue ?? []);
+  const [block, setBlock] = useState<BlockRow[]>(adminModerationCache?.block ?? []);
+  // Warm cache ⇒ paint immediately (no skeleton/blank); still refetch in the
+  // background below so the cached view is brought up to date.
+  const [loading, setLoading] = useState(!adminModerationCache);
+  // Seed rpcReady from cache: it gates the queue/blocklist vs. the "run migration
+  // 0040" hint, so leaving it false on a warm remount would flash the migration
+  // notice over the cached data until the background RPC resolves.
+  const [rpcReady, setRpcReady] = useState(adminModerationCache?.rpcReady ?? false);
   const [newTerm, setNewTerm] = useState("");
   const { busy, run } = useBusyAction();
 
   const load = async () => {
     const sb = supabase;
     if (!sb) return;
-    setLoading(true);
+    // Don't flip back to `loading` here: a warm-cache remount keeps the cached
+    // view painted while this refetch runs in the background (a cold load already
+    // starts `loading` true from initial state).
     const q = await sb.rpc("moderation_queue");
     if (q.error) {
       setRpcReady(false);
@@ -53,9 +74,13 @@ export function AdminModeration() {
       return;
     }
     setRpcReady(true);
-    setQueue((q.data ?? []) as QueueRow[]);
+    const nextQueue = (q.data ?? []) as QueueRow[];
+    setQueue(nextQueue);
     const b = await sb.from("moderation_blocklist").select("id, pattern, note").order("pattern");
-    setBlock((b.data ?? []) as BlockRow[]);
+    const nextBlock = (b.data ?? []) as BlockRow[];
+    setBlock(nextBlock);
+    // Client-only write (inside an effect-driven fetch) — never during SSR/render.
+    adminModerationCache = { queue: nextQueue, block: nextBlock, rpcReady: true };
     setLoading(false);
   };
 

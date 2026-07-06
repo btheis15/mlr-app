@@ -15,6 +15,30 @@ import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEn
 import type { Committee } from "@/lib/types";
 
 /**
+ * Stale-while-revalidate caches for the committee roster, mirroring `eventsCache`
+ * in lib/hooks.ts. `CommitteeRoster` remounts on every visit to a committee page;
+ * without these the view resets to the static seed and the linked real-account
+ * names/avatars, the profile tap-through, and the contact buttons pop in a beat
+ * later (and the "Pending verification" chips flip) on every visit. Holding the
+ * last result in memory lets a returning view paint the resolved roster instantly
+ * while a background refetch keeps it current. Memory-only (per session) and
+ * written ONLY inside effects / `.then` callbacks after a client fetch — never at
+ * module top level and never during SSR/render — so a cold load (empty caches)
+ * reproduces the original static-seed first paint exactly (matching the
+ * server-rendered / static-export HTML) and can't cause a hydration mismatch. The
+ * roster is keyed by committee slug; the profile/contact maps are additionally
+ * keyed by the viewer's email because contact + link visibility is RLS-gated on
+ * the viewer. Display data only, so there's no permission to revoke.
+ */
+const rosterCache = new Map<string, RosterEntry[]>();
+interface RosterProfileSnapshot {
+  allProfiles: ProfileLite[];
+  byEmail: Record<string, ProfileLite>;
+  contactById: Record<string, { phone: string | null; email: string | null }>;
+}
+const rosterProfileCache = new Map<string, RosterProfileSnapshot>();
+
+/**
  * The committee roster — the single membership list (migration 0057). Each slot
  * links to a real account when one exists (matched by email, auto-stamped on
  * verify), so a placeholder upgrades in place. App admins can add/remove people
@@ -23,14 +47,27 @@ import type { Committee } from "@/lib/types";
  */
 export function CommitteeRoster({ committee }: { committee: Committee }) {
   const { user, isAdmin } = useIdentity();
+  // Contact/link visibility is RLS-gated on the viewer, so the profile/contact
+  // caches key on the viewer's email as well as the slug. `user` is null during
+  // prerender ⇒ key `${slug}|`, matching the guest first paint.
+  const profileCacheKey = `${committee.slug}|${user?.email ?? ""}`;
 
   const [members, setMembers] = useState<RosterEntry[]>(
-    () => (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null })),
+    () =>
+      rosterCache.get(committee.slug) ??
+      (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null })),
   );
-  const reload = () => fetchCommitteeRoster(committee.slug).then(setMembers);
+  const reload = () =>
+    fetchCommitteeRoster(committee.slug).then((r) => {
+      rosterCache.set(committee.slug, r);
+      setMembers(r);
+    });
   useEffect(() => {
     let alive = true;
-    fetchCommitteeRoster(committee.slug).then((r) => alive && setMembers(r));
+    fetchCommitteeRoster(committee.slug).then((r) => {
+      rosterCache.set(committee.slug, r);
+      if (alive) setMembers(r);
+    });
     return () => {
       alive = false;
     };
@@ -43,19 +80,30 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     [members],
   );
 
-  const [allProfiles, setAllProfiles] = useState<ProfileLite[]>([]);
-  const [byEmail, setByEmail] = useState<Record<string, ProfileLite>>({});
+  const cachedProfiles = rosterProfileCache.get(profileCacheKey);
+  const [allProfiles, setAllProfiles] = useState<ProfileLite[]>(cachedProfiles?.allProfiles ?? []);
+  const [byEmail, setByEmail] = useState<Record<string, ProfileLite>>(cachedProfiles?.byEmail ?? {});
   const [sheet, setSheet] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
   const [editing, setEditing] = useState<RosterEntry | "new" | null>(null);
   // Phone/email of the linked accounts (by profile id), so a linked person's own
   // profile contact info wins over whatever's on the roster row.
-  const [contactById, setContactById] = useState<Record<string, { phone: string | null; email: string | null }>>({});
+  const [contactById, setContactById] = useState<Record<string, { phone: string | null; email: string | null }>>(
+    cachedProfiles?.contactById ?? {},
+  );
+
+  // The two profile-loading effects below each fill part of the snapshot at
+  // different times; merge so a cache entry keeps whichever half is fresher.
+  const patchProfileCache = (patch: Partial<RosterProfileSnapshot>) => {
+    const prev = rosterProfileCache.get(profileCacheKey) ?? { allProfiles: [], byEmail: {}, contactById: {} };
+    rosterProfileCache.set(profileCacheKey, { ...prev, ...patch });
+  };
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
     const ids = Array.from(new Set(members.map((m) => m.linkedUserId).filter((i): i is string => !!i)));
     if (!ids.length) {
       setContactById({});
+      patchProfileCache({ contactById: {} });
       return;
     }
     let alive = true;
@@ -65,6 +113,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
       for (const p of (data ?? []) as { id: string; phone: string | null; contact_email: string | null }[]) {
         map[p.id] = { phone: p.phone, email: p.contact_email };
       }
+      patchProfileCache({ contactById: map });
       if (alive) setContactById(map);
     })();
     return () => {
@@ -88,6 +137,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           if (e) map[e] = { id: p.id, name: p.display_name?.trim() || "Member", avatarUrl: p.avatar_url ?? null };
         }
       }
+      patchProfileCache({ allProfiles: all, byEmail: map });
       if (alive) {
         setAllProfiles(all);
         setByEmail(map);

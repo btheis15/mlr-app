@@ -15,11 +15,31 @@ import { nameMatches } from "@/lib/committees";
  * committee** (and app admins), per migration 0031 (was Lead/admin only). They
  * can email the whole committee or pick specific people from it. The
  * committee_member_recipients RPC re-checks the member gate server-side.
+ *
+ * Stale-while-revalidate cache (mirrors `useEvents`/`eventsCache` in lib/hooks.ts):
+ * this component remounts on every committee-page visit and the whole "Email these
+ * members" section is gated on `canEmail`, so without a cache it re-resolves the
+ * member gate from scratch each time and the section pops in after the async check.
+ * Holding the last-resolved gate per key lets a returning visit paint the section
+ * immediately while the effect re-checks in the background. Keyed by slug + the
+ * identity that decides the gate (isAdmin + previewAsId), so a different viewer or
+ * a preview switch never reuses another identity's verdict. Memory-only, written
+ * ONLY after a client fetch (never at module-eval, never during render), so a cold
+ * first render starts empty — identical to the original `false`/`null` default —
+ * and can't cause a hydration mismatch. The background re-check always overwrites,
+ * so a revoked gate (now a non-member) paints then correctly hides.
  */
+const committeeEmailCache = new Map<string, { canEmail: boolean; committeeId: string | null }>();
+
 export function CommitteeEmailMembers({ slug, name }: { slug: string; name: string }) {
-  const { isAdmin, previewAsId } = useIdentity();
-  const [committeeId, setCommitteeId] = useState<string | null>(null);
-  const [canEmail, setCanEmail] = useState(false);
+  const { user, isAdmin, previewAsId } = useIdentity();
+  // Key on the real viewer identity too — otherwise two different non-admin,
+  // non-previewing members both hash to `slug|false|self` and one flashes the
+  // other's "Email everyone" panel before the background fetch reconciles.
+  const key = `${slug}|${user?.email ?? "guest"}|${isAdmin}|${previewAsId ?? "self"}`;
+  const cached = committeeEmailCache.get(key);
+  const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
+  const [canEmail, setCanEmail] = useState(cached?.canEmail ?? false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -32,7 +52,11 @@ export function CommitteeEmailMembers({ slug, name }: { slug: string; name: stri
       // While previewing as a member, judge by THAT member's membership (isAdmin
       // is already off in preview), so a non-member preview can't email it.
       const ok = isAdmin || (await fetchMyCommitteeRole(cid, previewAsId ?? undefined)) !== null;
-      if (!cancelled) setCanEmail(ok);
+      if (cancelled) return;
+      // Cache the resolved gate (incl. a now-false one) so a return visit paints
+      // immediately AND a revoked verdict can't stick.
+      committeeEmailCache.set(key, { canEmail: ok, committeeId: cid });
+      setCanEmail(ok);
     })();
     return () => {
       cancelled = true;

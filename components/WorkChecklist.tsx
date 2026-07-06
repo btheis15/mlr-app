@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
 import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
@@ -30,12 +30,30 @@ interface Section {
   items: WorkItem[];
 }
 
+// Stale-while-revalidate cache for the work checklist (mirrors `eventsCache` in
+// lib/hooks.ts). This component remounts on every Home visit; without this it
+// resets to empty + `loading`, so the header flips to "Loading…" and the
+// open/ASAP summary + collapsed list blank out and pop back in. Holding the last
+// result lets a returning Home paint instantly from cache while a background
+// refetch keeps it current. Keyed by the viewer's email because item visibility
+// is RLS-gated on house membership (an MLR item is public, a house item only
+// shows to that house's members), so two viewers can resolve different lists.
+// Memory-only (per session) and written ONLY after a successful client fetch —
+// never during SSR/render — so a cold load starts empty (the original default
+// behavior) and the first paint matches the server-rendered HTML: no hydration
+// mismatch. `user` is null during prerender, so the key is "" there.
+const workChecklistCache = new Map<string, { items: WorkItem[]; houses: House[]; myHouseId: string | null }>();
+
 export function WorkChecklist() {
   const { user, isAdmin, promptSignIn } = useIdentity();
-  const [items, setItems] = useState<WorkItem[]>([]);
-  const [houses, setHouses] = useState<House[]>([]);
-  const [myHouseId, setMyHouseId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const key = user?.email ?? "";
+  const cached = workChecklistCache.get(key);
+  const [items, setItems] = useState<WorkItem[]>(cached?.items ?? []);
+  const [houses, setHouses] = useState<House[]>(cached?.houses ?? []);
+  const [myHouseId, setMyHouseId] = useState<string | null>(cached?.myHouseId ?? null);
+  // Warm cache ⇒ paint immediately (no "Loading…"); the effect below still
+  // refetches in the background so the cached view is brought up to date.
+  const [loading, setLoading] = useState(!cached);
   const [cardOpen, setCardOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [composing, setComposing] = useState(false);
@@ -49,8 +67,9 @@ export function WorkChecklist() {
     setItems(data);
     setHouses(hs);
     setMyHouseId(mine?.id ?? null);
+    workChecklistCache.set(key, { items: data, houses: hs, myHouseId: mine?.id ?? null });
     setLoading(false);
-  }, []);
+  }, [key]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -70,14 +89,23 @@ export function WorkChecklist() {
   }, []);
 
   // Deep-link from a comment notification: /?work=<id> opens that item's thread.
+  // Keyed on `items`, not `loading`: with the warm cache `loading` starts false,
+  // so a lone `[loading]` effect would fire once against the cached snapshot and
+  // miss an item created since the cache was populated (load() finishing is
+  // false→false, no re-fire). Re-running on `items` catches the freshly-fetched
+  // item; the ref makes it fire at most once so it can't re-open after the user
+  // closes the sheet.
+  const deepLinkHandled = useRef(false);
   useEffect(() => {
-    if (loading || typeof window === "undefined") return;
+    if (deepLinkHandled.current || typeof window === "undefined") return;
     const want = new URLSearchParams(window.location.search).get("work");
     if (!want) return;
     const found = items.find((i) => i.id === want);
-    if (found) setViewing(found);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+    if (found) {
+      setViewing(found);
+      deepLinkHandled.current = true;
+    }
+  }, [items]);
 
   // Candidates who can see a given item (MLR → everyone; house → its members + admins).
   const candidatesFor = (item: WorkItem): WorkItemMember[] =>

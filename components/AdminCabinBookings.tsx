@@ -10,6 +10,25 @@ import { fetchBookings, formatStay, reviewStay } from "@/lib/cabins";
 import type { CabinBooking } from "@/lib/types";
 
 /**
+ * Stale-while-revalidate cache for the admin cabin-stay queue. This component
+ * remounts every time the admin section is opened; without this it resets to
+ * empty and the "Pending" + "Upcoming stays" lists blank out and then pop back
+ * in when the fetch lands. Holding the last result in memory lets a returning
+ * admin paint instantly from cache while the background refetch (and Realtime)
+ * keep it current. Memory-only (per session, admin-only) and only ever written
+ * *after* a client fetch in load() — never during SSR/render — so it can't
+ * change the server/first-paint render and can't cause a hydration mismatch (a
+ * cold load starts with an empty cache, i.e. the original empty-lists behavior;
+ * `user`/`isAdmin` are null during prerender so this component renders null
+ * server-side regardless).
+ */
+let adminCabinCache: {
+  pending: CabinBooking[];
+  approved: CabinBooking[];
+  people: Map<string, ProfileLite>;
+} | null = null;
+
+/**
  * Admin queue for cabin stay requests (Profile → Cabin Stays). Lists pending
  * requests with Approve / Deny (+ an optional note that rides along in the
  * confirmation email), and an "Upcoming stays" roster of what's approved.
@@ -18,9 +37,9 @@ import type { CabinBooking } from "@/lib/types";
  */
 export function AdminCabinBookings() {
   const { isAdmin } = useIdentity();
-  const [pending, setPending] = useState<CabinBooking[]>([]);
-  const [approved, setApproved] = useState<CabinBooking[]>([]);
-  const [people, setPeople] = useState<Map<string, ProfileLite>>(new Map());
+  const [pending, setPending] = useState<CabinBooking[]>(adminCabinCache?.pending ?? []);
+  const [approved, setApproved] = useState<CabinBooking[]>(adminCabinCache?.approved ?? []);
+  const [people, setPeople] = useState<Map<string, ProfileLite>>(adminCabinCache?.people ?? new Map());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const { busy, run } = useBusyAction();
 
@@ -29,7 +48,11 @@ export function AdminCabinBookings() {
     setPending(p);
     setApproved(a);
     const ids = Array.from(new Set([...p, ...a].map((b) => b.userId).filter(Boolean) as string[]));
-    setPeople(profileMap(await fetchProfiles(ids)));
+    const ppl = profileMap(await fetchProfiles(ids));
+    setPeople(ppl);
+    // Warm the cache after the successful fetch so revisiting paints instantly;
+    // Realtime + the next load() keep it current.
+    adminCabinCache = { pending: p, approved: a, people: ppl };
   }, []);
 
   useEffect(() => {

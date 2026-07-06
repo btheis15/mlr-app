@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
 import { SkeletonList } from "@/components/Skeleton";
@@ -54,6 +55,20 @@ function isExpired(n: AppNotification): boolean {
 }
 
 /**
+ * Stale-while-revalidate cache for the notifications feed, keyed by viewer email.
+ * `NotificationsView` remounts on every visit to the Activity tab; without this it
+ * resets to `[]` + `loading`, so the feed shows a full SkeletonList before the list
+ * paints. Holding the last result in memory (per viewer) lets a returning tab paint
+ * instantly from cache while `load()` refetches in the background to reconcile.
+ * Memory-only (per session) and only ever written *after* a client fetch — never
+ * during SSR/render — so it can't change the server/first-paint render and can't
+ * cause a hydration mismatch (a cold load starts with an empty map, i.e. the
+ * original behavior; this view is also behind <SignInWall>, so `user` is null and
+ * the key is "self" during prerender).
+ */
+const notifFeedCache = new Map<string, AppNotification[]>();
+
+/**
  * The Notifications tab feed (migration 0030). A durable, Facebook-style list of
  * everything that happened involving you — comments and reactions on your posts,
  * @mentions in posts and committee chat, new Feed posts, committee approvals, and
@@ -65,8 +80,13 @@ function isExpired(n: AppNotification): boolean {
  */
 export function NotificationsView() {
   const router = useRouter();
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useIdentity();
+  // Key on the viewer's email so a warm revisit paints their own feed instantly.
+  // Null during prerender / guest → "self", matching the empty server render.
+  const key = user?.email ?? "self";
+  const [items, setItems] = useState<AppNotification[]>(notifFeedCache.get(key) ?? []);
+  // Warm cache ⇒ paint immediately (no skeleton); still refetch below to reconcile.
+  const [loading, setLoading] = useState(!notifFeedCache.has(key));
   const [needsMigration, setNeedsMigration] = useState(false);
   const [schedule] = useDebouncedCallback(300);
   const uidRef = useRef<string | null>(null);
@@ -93,28 +113,30 @@ export function NotificationsView() {
       return;
     }
     const rows = (data ?? []) as unknown as RawRow[];
-    setItems(
-      rows.map((r) => ({
-        id: r.id,
-        type: r.type,
-        actorId: r.actor_id,
-        actorName: r.actor?.display_name ?? null,
-        actorAvatarUrl: r.actor?.avatar_url ?? null,
-        title: r.title,
-        body: r.body,
-        url: r.url,
-        createdAt: r.created_at,
-        seenAt: r.seen_at,
-        readAt: r.read_at,
-        expiresAt: r.expires_at,
-      })),
-    );
+    const mapped: AppNotification[] = rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      actorId: r.actor_id,
+      actorName: r.actor?.display_name ?? null,
+      actorAvatarUrl: r.actor?.avatar_url ?? null,
+      title: r.title,
+      body: r.body,
+      url: r.url,
+      createdAt: r.created_at,
+      seenAt: r.seen_at,
+      readAt: r.read_at,
+      expiresAt: r.expires_at,
+    }));
+    setItems(mapped);
+    // Warm the cache so the next visit to this tab paints instantly (client-only,
+    // after a successful fetch — never during render/SSR).
+    notifFeedCache.set(key, mapped);
     setNeedsMigration(false);
     setLoading(false);
     // Clear the badge: everything currently here counts as "seen" now. Keeps the
     // count at zero while the tab is open (new arrivals get re-marked on reload).
     sb.rpc("mark_notifications_seen").then(() => {});
-  }, []);
+  }, [key]);
 
   useEffect(() => {
     const sb = supabase;
