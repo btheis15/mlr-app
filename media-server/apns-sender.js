@@ -222,6 +222,48 @@ async function start() {
     if (sent) console.log(`[apns] chat ${committee.slug}${msg.area ? "/" + msg.area : ""}: ${sent}`);
   };
 
+  // chat — every new house message (gated on the SAME push_types 'chat' category
+  // as committee chat, so "chat push on" covers every chat the member is in). A
+  // house is a single room (no area channels, no mute table), scoped to its
+  // members via profiles.house_id. Mirrors handleMessage above, minus the split.
+  const handleHouseMessage = async (mid) => {
+    if (!once(`hm:${mid}`)) return;
+    await new Promise((r) => setTimeout(r, 500));
+    const { data: msg } = await sb.from("house_messages")
+      .select("id, house_id, author_id, text, deleted_at").eq("id", mid).maybeSingle();
+    if (!msg || msg.deleted_at) return;
+    const { data: house } = await sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle();
+    if (!house) return;
+
+    // Recipients are this house's members (profiles.house_id) — minus the author.
+    const { data: members } = await sb.from("profiles")
+      .select("id, display_name, push_types").eq("house_id", msg.house_id);
+    const memberIds = (members || []).map((m) => m.id);
+    const others = memberIds.filter((id) => id !== msg.author_id);
+    if (!others.length) return;
+
+    const typesById = new Map();
+    let authorName = "Someone";
+    for (const p of members || []) {
+      typesById.set(p.id, p.push_types || []);
+      if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
+    }
+    // The author may be an admin who isn't a member of this house — look up the name.
+    if (authorName === "Someone") {
+      const { data: ap } = await sb.from("profiles").select("display_name").eq("id", msg.author_id).maybeSingle();
+      if (ap && ap.display_name) authorName = ap.display_name.trim();
+    }
+
+    const body = msg.text && msg.text.trim() ? `${authorName}: ${msg.text.trim().slice(0, 140)}` : `${authorName} sent a message`;
+    const title = `${house.emoji ? house.emoji + " " : ""}${house.name}`;
+    // target_type/target_id let the phone deep-link straight to the house chat
+    // (RootView.resolveHouse resolves the house from the message id).
+    const payload = { title, body, url: `${APP_URL}/posts?house=${house.slug}`, type: "chat", target_type: "house_message", target_id: msg.id };
+    let sent = 0;
+    for (const uid of others) if ((typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
+    if (sent) console.log(`[apns] house chat ${house.slug}: ${sent}`);
+  };
+
   // alerts — broadcast announcements (gated on push_types 'alerts')
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
@@ -325,13 +367,15 @@ async function start() {
   sb.channel("apns-sender")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" },
       (e) => handleMessage(e.new.id).catch((err) => console.error("[apns] msg error:", err && err.message)))
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" },
+      (e) => handleHouseMessage(e.new.id).catch((err) => console.error("[apns] house msg error:", err && err.message)))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
       (e) => handleAlert(e.new.id).catch((err) => console.error("[apns] alert error:", err && err.message)))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
       (e) => handleFeed(e.new).catch((err) => console.error("[apns] feed error:", err && err.message)))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
-    .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[apns] listening (chat + alerts + feed notifications + verified new members)"); });
+    .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[apns] listening (committee + house chat + alerts + feed notifications + verified new members)"); });
 }
 
 module.exports = { start, createApnsDelivery };

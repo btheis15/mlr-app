@@ -183,6 +183,73 @@ async function start() {
     if (sent) console.log(`[push] chat ${committee.slug}: notified ${sent}`);
   };
 
+  // Every new house message → a phone push, gated on the SAME push_types 'chat'
+  // category as committee chat (so "chat push on" covers every chat the member is
+  // in). A house is a single room scoped to its members (profiles.house_id) — no
+  // area channels, no per-channel mute table — so this mirrors handleMessage
+  // above minus the committee role-channel/mute logic.
+  const handleHouseMessage = async (mid) => {
+    if (!once(`hm:${mid}`)) return;
+    // Let any @mentions for this message land (they're inserted right after).
+    await new Promise((r) => setTimeout(r, 500));
+
+    const { data: msg } = await sb
+      .from("house_messages")
+      .select("id, house_id, author_id, text, reply_to_id, deleted_at")
+      .eq("id", mid)
+      .maybeSingle();
+    if (!msg || msg.deleted_at) return;
+
+    const [houseRes, mediaRes, membersRes] = await Promise.all([
+      sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle(),
+      sb.from("house_message_media").select("media_type").eq("message_id", mid),
+      sb.from("profiles").select("id, display_name, push_types, push_self_notify").eq("house_id", msg.house_id),
+    ]);
+    const house = houseRes.data;
+    if (!house) return;
+
+    // Recipients are this house's members (profiles.house_id) — minus the author.
+    const members = membersRes.data || [];
+    const memberIds = members.map((m) => m.id);
+    const others = memberIds.filter((id) => id !== msg.author_id);
+    const authorEligible = SELF_NOTIFY_IDS.has(msg.author_id);
+    if (!others.length && !authorEligible) return;
+
+    const typesById = new Map();
+    const selfNotify = new Map();
+    let authorName = "Someone";
+    for (const p of members) {
+      typesById.set(p.id, p.push_types || []);
+      selfNotify.set(p.id, Boolean(p.push_self_notify));
+      if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
+    }
+    // The author may be an admin who isn't a member of this house.
+    if (authorName === "Someone") {
+      const { data: ap } = await sb.from("profiles").select("display_name, push_self_notify").eq("id", msg.author_id).maybeSingle();
+      if (ap) { authorName = (ap.display_name || "Someone").trim(); selfNotify.set(msg.author_id, Boolean(ap.push_self_notify)); }
+    }
+
+    const body = msg.text && msg.text.trim()
+      ? `${authorName}: ${msg.text.trim().slice(0, 140)}`
+      : `${authorName} sent ${mediaLabel((mediaRes.data || [])[0])}`;
+    const payload = {
+      title: `${house.emoji ? house.emoji + " " : ""}${house.name}`,
+      body,
+      icon: ICON,
+      badge: ICON,
+      tag: `house-${house.slug}`,
+      url: `${APP_URL}/posts?house=${house.slug}`,
+    };
+
+    const targets = others.slice();
+    if (authorEligible && selfNotify.get(msg.author_id)) targets.push(msg.author_id);
+    let sent = 0;
+    for (const uid of targets) {
+      if ((typesById.get(uid) || []).includes("chat")) { await sendToUser(uid, payload); sent++; }
+    }
+    if (sent) console.log(`[push] house chat ${house.slug}: notified ${sent}`);
+  };
+
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
     const { data: a } = await sb.from("announcements").select("id, title, body").eq("id", alertId).maybeSingle();
@@ -369,6 +436,9 @@ async function start() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
       handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
     )
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" }, (e) =>
+      handleHouseMessage(e.new.id).catch((err) => console.error("[push] house msg error:", err && err.message)),
+    )
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
       handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
     )
@@ -387,7 +457,7 @@ async function start() {
       handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
     )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (chat + alerts + feed notifications + verified new members + cabin requests)");
+      if (status === "SUBSCRIBED") console.log("[push] listening (committee + house chat + alerts + feed notifications + verified new members + cabin requests)");
     });
 }
 
