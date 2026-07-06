@@ -1,7 +1,7 @@
 "use client";
 
 // "Bare" routes render as a focused, full-window page WITHOUT the app chrome
-// (install nag, splash, push prompt, floating assistant). The Family Fest master
+// (install nag, splash, push prompt). The Family Fest master
 // editor is opened from the iOS app, so it must drop straight into the editor —
 // no "Add to Home Screen" flash or splash on the way in.
 

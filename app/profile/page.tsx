@@ -26,11 +26,10 @@ import { AdminNotificationComposer } from "@/components/AdminNotificationCompose
 import { AdminModeration } from "@/components/AdminModeration";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
-import { AssistantToggle } from "@/components/AssistantToggle";
 import { WillingToHelpToggle } from "@/components/WillingToHelpToggle";
 
 export default function ProfilePage() {
-  const { user, isAdmin, isBetaTester, updateUser, promptSignIn, signOut } = useIdentity();
+  const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -284,14 +283,6 @@ export default function ProfilePage() {
         </Link>
       </div>
 
-      {isBetaTester && (
-        <div className="space-y-2">
-          <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
-            Beta features
-          </p>
-          <AssistantToggle />
-        </div>
-      )}
 
       <div className="space-y-2">
         <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">

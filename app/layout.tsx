@@ -8,7 +8,6 @@ import { PushKeepAlive } from "@/components/PushKeepAlive";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
-import { AssistantButton } from "@/components/AssistantButton";
 import { SplashIntro } from "@/components/SplashIntro";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
@@ -108,7 +107,6 @@ export default async function RootLayout({
             {children}
           </main>
           <TabBar />
-          <AssistantButton />
           <PreviewBanner />
           <MemberSheetHost />
           </IdentityProvider>
