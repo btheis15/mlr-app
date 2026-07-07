@@ -353,6 +353,12 @@ async function start() {
       const { data: u } = await sb.auth.admin.getUserById(id);
       email = (u && u.user && u.user.email) || "";
     } catch { /* email is best-effort */ }
+    // App Review account: never announce it to admins (matches the SQL guard in
+    // notif_on_new_member). Keeps the reviewer login invisible to the family.
+    if (email && email.toLowerCase() === "appreview@muskellungelakeresort.com") {
+      console.log("[push] skipping App Review account");
+      return;
+    }
     if (!name) name = email ? email.split("@")[0] : "A new member";
 
     const payload = {

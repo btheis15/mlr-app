@@ -99,6 +99,10 @@ app.use("/f", (_req, res) => res.status(404).json({ error: "Not found." }));
 // from here so they live on the mini (free) instead of Supabase storage.
 app.use("/assets", express.static(path.join(__dirname, "assets"), { maxAge: "30d" }));
 
+// Public privacy policy (App Store requires a reachable, no-login URL). Served
+// from the repo file so it deploys with a normal git pull. → <PUBLIC_URL>/privacy
+app.get("/privacy", (_req, res) => res.sendFile(path.join(__dirname, "privacy-policy.html")));
+
 // Where a given upload is filed. Driven by query params (available immediately,
 // unlike multipart body fields which depend on field order). Inputs are
 // sanitized hard — they become real folder names, so only [a-z0-9_-].
