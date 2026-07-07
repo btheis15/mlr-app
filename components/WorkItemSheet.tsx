@@ -8,7 +8,6 @@ import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
-import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { MediaGrid } from "@/components/MediaGrid";
 
 // Work-item detail + comment thread. Opens when any member taps a checklist row,
@@ -129,7 +128,6 @@ export function WorkItemSheet({
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 text-xs font-semibold text-foreground/70">
                     {c.authorName}
-                    <CommitteeBadge name={c.authorName} />
                     <span className="ml-1 font-normal text-foreground/40">{formatWhen(c.createdAt)}</span>
                   </p>
                   <p className="whitespace-pre-wrap break-words text-sm">

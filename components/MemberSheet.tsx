@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
-import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { contactActions, payActions, birthdayInfo, directionsLinks, type Action, type MemberContact } from "@/lib/contact";
@@ -218,7 +217,6 @@ export function MemberSheet({
             <Avatar name={name} url={avatarUrl} size={72} />
             <p id="member-sheet-name" className="inline-flex items-center text-lg font-bold">
               {guest ? firstName(name) : name}
-              <CommitteeBadge name={name} />
             </p>
           </div>
         </div>

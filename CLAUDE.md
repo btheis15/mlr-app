@@ -130,7 +130,7 @@ technical members are smoothed:
 - **Text size + zoom** — [`TextSizeControl`](components/TextSizeControl.tsx) overrides the `<html>` rem root (17/19/21px); a boot script in [`layout.tsx`](app/layout.tsx) re-applies the saved choice before paint. Pinch-zoom is now allowed (viewport `userScalable: true`, was disabled). `body` uses `font-size: 1rem` so the override scales the whole app — **don't re-pin a px font-size on `body`/`html`** or you break it.
 - **Sign-in walls** ([`Guard`](components/Guard.tsx), `CommitteeJoin`, `CommitteeChat`) carry a "just your name & email, no password" reassurance.
 
-## Committees & the name badge
+## Committees & account linking
 
 Committee rosters are **static** in [`lib/data.ts`](lib/data.ts) `COMMITTEES`
 (see also `FAMILY_FEST_AREAS`). The real data is **Family Fest** — one committee
@@ -196,14 +196,13 @@ both the link key and `mailto:`); consistent with the app's existing "seed
 contact ships in the bundle" posture (see the privacy wall note) — display is
 still gated behind sign-in.
 
-**Name badge** — [`CommitteeBadge`](components/CommitteeBadge.tsx) is a tiny
-emoji tag shown next to a person's name (committee name as the accessible
-label/tooltip). It keys off the roster names via
-[`committeesForName()`](lib/committees.ts) (token-prefix match, so "Brian" ↔
-"Brian Theis", "Michelle B" ↔ "Michelle Birkholz"), so it **lights up as people
-are linked to real accounts**. Wired into the People directory + `MemberSheet`,
-Posts + comments ([`PostsView`](components/PostsView.tsx)),
-[`CommitteeChat`](components/CommitteeChat.tsx), and the committee roster itself.
+**No name badge** — there used to be a tiny committee emoji tag next to a
+person's name throughout the app (`CommitteeBadge`, keyed off the roster via a
+`committeesForName()` helper); it was **removed**, so names now render plain
+everywhere (People directory, `MemberSheet`, Posts + comments, committee/house
+chat, the committee roster). The roster-name matcher that survives is
+[`nameMatches()`](lib/committees.ts), used only for **account linking** (mapping a
+static roster slot to a real profile), not for any badge.
 
 ## Houses (scoped chat + work items)
 
