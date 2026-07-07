@@ -1,9 +1,7 @@
-// Helpers for the little "committee" name badge. The source of truth for who's
-// on a committee is the static roster in lib/data (COMMITTEES) — keyed by a
-// display name. Match that against a profile/display name so the badge lights up
-// next to people throughout the app as they're linked to real accounts.
-
-import { COMMITTEES } from "@/lib/data";
+// Committee name-matching helper. The source of truth for who's on a committee
+// is the static roster in lib/data (COMMITTEES) — keyed by a display name. Match
+// that against a profile/display name so a roster slot can be linked to a real
+// account as people sign up.
 
 function tokens(s: string): string[] {
   return s.toLowerCase().replace(/[.,]/g, "").split(/\s+/).filter(Boolean);
@@ -24,20 +22,4 @@ export function nameMatches(rosterName: string, candidate: string): boolean {
     if (!(r[i].startsWith(c[i]) || c[i].startsWith(r[i]))) return false;
   }
   return true;
-}
-
-export interface CommitteeTag {
-  slug: string;
-  name: string;
-  emoji: string;
-}
-
-/** Committees a person (by display name) belongs to, for the name badge. */
-export function committeesForName(name: string | null | undefined): CommitteeTag[] {
-  if (!name) return [];
-  return COMMITTEES.filter((c) => c.members.some((m) => nameMatches(m.name, name))).map((c) => ({
-    slug: c.slug,
-    name: c.name,
-    emoji: c.emoji,
-  }));
 }

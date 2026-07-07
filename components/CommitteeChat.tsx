@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
-import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { MemberSheet } from "@/components/MemberSheet";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
@@ -920,7 +919,7 @@ function MessageRow({
       >
         {dx > 12 && <span className="absolute -left-7 top-1/2 -translate-y-1/2 text-primary" aria-hidden>↩︎</span>}
 
-        {!mine && !grouped && <p className="mb-0.5 ml-1 inline-flex items-center text-[11px] font-semibold text-foreground/55">{m.author}<CommitteeBadge name={m.author} /></p>}
+        {!mine && !grouped && <p className="mb-0.5 ml-1 inline-flex items-center text-[11px] font-semibold text-foreground/55">{m.author}</p>}
 
         {reply && (
           <button onClick={() => onJumpToReply(reply.id)} className={`press mb-0.5 block w-full rounded-lg border-l-2 border-primary/60 px-2 py-1 text-left text-[11px] ${mine ? "bg-white/15" : "bg-background"}`}>

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
-import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { SignInWall } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { plural } from "@/lib/format";
@@ -167,7 +166,6 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
         <Avatar name={name} url={person.avatar_url} size={40} />
         <span className="flex min-w-0 flex-1 items-center truncate text-sm font-semibold">
           <span className="truncate">{name}</span>
-          <CommitteeBadge name={name} />
         </span>
         <span aria-hidden className="shrink-0 text-base leading-none text-foreground/40">›</span>
       </button>

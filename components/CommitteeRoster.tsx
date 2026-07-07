@@ -8,7 +8,6 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName } from "@/components/Guard";
-import { CommitteeBadge } from "@/components/CommitteeBadge";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
 import { FAMILY_FEST_AREAS } from "@/lib/data";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
@@ -193,7 +192,6 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         ) : (
           <span className="truncate text-sm"><PrivateName name={display} /></span>
         )}
-        <CommitteeBadge name={display} />
         {isLead && (
           <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">Lead</span>
         )}
