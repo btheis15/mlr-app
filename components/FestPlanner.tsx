@@ -15,7 +15,7 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useFestContent } from "@/lib/useFestContent";
-import { formatDateLong } from "@/lib/format";
+import { formatDateLong, formatTime, toTimeInputValue } from "@/lib/format";
 import {
   fetchAppImages,
   siteImageSrc,
@@ -400,7 +400,7 @@ function ScheduleEditor({
               <RowCard
                 key={it.id}
                 title={`${it.emoji ?? ""} ${it.title}`.trim()}
-                subtitle={[it.startTime || "Time TBD", it.location || "Location TBD"].join(" · ")}
+                subtitle={[it.startTime ? formatTime(it.startTime) : "Time TBD", it.location || "Location TBD"].join(" · ")}
                 onEdit={() => setEditing(it)}
                 onDelete={() => confirmDelete(it.title, () => deleteScheduleItem(it.id), onChanged)}
               />
@@ -452,8 +452,8 @@ function ScheduleSheet({
   const [title, setTitle] = useState(draft?.title ?? "");
   const [emoji, setEmoji] = useState(draft?.emoji ?? "");
   const [hasTime, setHasTime] = useState(Boolean(draft?.startTime));
-  const [startTime, setStartTime] = useState(draft?.startTime ?? "");
-  const [endTime, setEndTime] = useState(draft?.endTime ?? "");
+  const [startTime, setStartTime] = useState(toTimeInputValue(draft?.startTime));
+  const [endTime, setEndTime] = useState(toTimeInputValue(draft?.endTime));
   const [location, setLocation] = useState(draft?.location ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [bring, setBring] = useState(draft?.bring ?? "");
@@ -518,8 +518,8 @@ function ScheduleSheet({
         </label>
         {hasTime && (
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <input value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="Start (e.g. 14:00)" className={FIELD} />
-            <input value={endTime} onChange={(e) => setEndTime(e.target.value)} placeholder="End (optional)" className={FIELD} />
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Start time" className={FIELD} />
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="End time (optional)" className={FIELD} />
           </div>
         )}
       </Field>
@@ -635,9 +635,9 @@ function DinnerSheet({
   const [chefPhone, setChefPhone] = useState(draft?.chefPhone ?? "");
   const [houses, setHouses] = useState((draft?.houses ?? []).join(", "));
   const [menu, setMenu] = useState(draft?.menu ?? "");
-  const [servedTime, setServedTime] = useState(draft?.servedTime ?? "");
+  const [servedTime, setServedTime] = useState(toTimeInputValue(draft?.servedTime));
   const [servedLocation, setServedLocation] = useState(draft?.servedLocation ?? "");
-  const [prepTime, setPrepTime] = useState(draft?.prepTime ?? "");
+  const [prepTime, setPrepTime] = useState(toTimeInputValue(draft?.prepTime));
   const [prepLocation, setPrepLocation] = useState(draft?.prepLocation ?? "");
   const [picking, setPicking] = useState(false);
 
@@ -714,13 +714,13 @@ function DinnerSheet({
       </Field>
       <Field label="Served">
         <div className="grid grid-cols-2 gap-2">
-          <input value={servedTime} onChange={(e) => setServedTime(e.target.value)} placeholder="Time (e.g. 6:00 PM)" className={FIELD} />
+          <input type="time" value={servedTime} onChange={(e) => setServedTime(e.target.value)} aria-label="Served time" className={FIELD} />
           <input value={servedLocation} onChange={(e) => setServedLocation(e.target.value)} placeholder="Location" className={FIELD} />
         </div>
       </Field>
       <Field label="Prep">
         <div className="grid grid-cols-2 gap-2">
-          <input value={prepTime} onChange={(e) => setPrepTime(e.target.value)} placeholder="Time" className={FIELD} />
+          <input type="time" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} aria-label="Prep time" className={FIELD} />
           <input value={prepLocation} onChange={(e) => setPrepLocation(e.target.value)} placeholder="Location" className={FIELD} />
         </div>
       </Field>

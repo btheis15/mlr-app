@@ -4,7 +4,7 @@ import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { useFestContent } from "@/lib/useFestContent";
-import { formatDateLong } from "@/lib/format";
+import { formatDateLong, formatTime } from "@/lib/format";
 import type { Dinner } from "@/lib/types";
 
 /**
@@ -47,10 +47,10 @@ export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinne
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <DetailTile label="Served" value={dinner.time} sub={<Protected label="Sign in for location">{dinner.location}</Protected>} emoji="🍽️" />
+        <DetailTile label="Served" value={formatTime(dinner.time)} sub={<Protected label="Sign in for location">{dinner.location}</Protected>} emoji="🍽️" />
         <DetailTile
           label="Crew preps"
-          value={dinner.prepTime}
+          value={formatTime(dinner.prepTime)}
           sub={<Protected label="Sign in for location">{dinner.prepLocation ?? dinner.location}</Protected>}
           emoji="⏱️"
         />

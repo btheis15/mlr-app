@@ -23,14 +23,53 @@ export function formatDateLong(input: string | number | Date): string {
   });
 }
 
-/** "18:00" → "6:00 PM". Accepts an "HH:MM" 24h string. */
-export function formatTime(hhmm?: string): string {
+/**
+ * Parses either a 24h "H:MM"/"HH:MM" string or a 12h "H:MM AM/PM" string
+ * (the two formats this app's own time fields have ever produced). Returns
+ * null rather than throwing/NaN-ing on anything else, so callers can fall
+ * back gracefully instead of ever building an Invalid Date.
+ */
+function parseTimeParts(raw: string): { h: number; m: number } | null {
+  const s = raw.trim();
+  const ampm = s.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+  if (ampm) {
+    let h = Number(ampm[1]);
+    const m = Number(ampm[2]);
+    if (h < 1 || h > 12 || m > 59) return null;
+    const isPm = ampm[3].toUpperCase() === "PM";
+    h = h === 12 ? (isPm ? 12 : 0) : isPm ? h + 12 : h;
+    return { h, m };
+  }
+  const plain = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (plain) {
+    const h = Number(plain[1]);
+    const m = Number(plain[2]);
+    if (h > 23 || m > 59) return null;
+    return { h, m };
+  }
+  return null;
+}
+
+/** "18:00" or "6:00 PM" → "6:00 PM". Never returns "Invalid Date" — anything
+ *  it can't confidently parse is shown back as-typed instead. */
+export function formatTime(input?: string): string {
   // Schedule items whose time isn't set yet read "TBD" rather than a fake slot.
-  if (!hhmm) return "TBD";
-  const [h, m] = hhmm.split(":").map(Number);
+  if (!input || !input.trim()) return "TBD";
+  const parts = parseTimeParts(input);
+  if (!parts) return input.trim();
   const d = new Date();
-  d.setHours(h, m, 0, 0);
+  d.setHours(parts.h, parts.m, 0, 0);
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** Normalizes either time format to zero-padded 24h "HH:MM" for an
+ *  `<input type="time">` value — "" (not "TBD") when unset/unparseable, since
+ *  that's what the native time input expects for "no value". */
+export function toTimeInputValue(input?: string | null): string {
+  if (!input) return "";
+  const parts = parseTimeParts(input);
+  if (!parts) return "";
+  return `${String(parts.h).padStart(2, "0")}:${String(parts.m).padStart(2, "0")}`;
 }
 
 /** "just now", "5m", "3h", "2d" — compact relative time for chat/announcements. */
