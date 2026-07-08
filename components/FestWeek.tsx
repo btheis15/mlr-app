@@ -203,7 +203,7 @@ function DinnerRow({ dinner }: { dinner: Dinner }) {
         <span className="text-lg">{dinner.emoji}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">Dinner · {dinner.title}</p>
-          <p className="text-xs text-foreground/50">{dinner.time}</p>
+          <p className="text-xs text-foreground/50">{formatTime(dinner.time)}</p>
         </div>
         <RowChevron open={open} />
       </button>
@@ -220,13 +220,13 @@ function DinnerRow({ dinner }: { dinner: Dinner }) {
             <DinnerTile
               emoji="🍽️"
               label="Served"
-              value={dinner.time}
+              value={formatTime(dinner.time)}
               sub={<Protected label="Sign in for location">{dinner.location}</Protected>}
             />
             <DinnerTile
               emoji="⏱️"
               label="Crew preps"
-              value={dinner.prepTime}
+              value={formatTime(dinner.prepTime)}
               sub={
                 <Protected label="Sign in for location">
                   {dinner.prepLocation ?? dinner.location}
