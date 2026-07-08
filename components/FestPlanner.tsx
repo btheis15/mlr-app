@@ -747,7 +747,7 @@ function DuesEditor({ items, onChanged }: { items: DuesDraft[]; onChanged: () =>
         <RowCard
           key={t.id}
           title={t.label}
-          subtitle={`${t.amount != null ? `$${t.amount}` : "TBD"}${t.note ? ` · ${t.note}` : ""}`}
+          subtitle={`${t.amount != null ? `$${t.amount}${t.perDay ? "/day" : ""}` : "TBD"}${t.note ? ` · ${t.note}` : ""}`}
           onEdit={() => setEditing(t)}
           onDelete={() => confirmDelete(t.label, () => deleteDuesTier(t.id), onChanged)}
         />
@@ -780,6 +780,7 @@ function DuesSheet({
   const [label, setLabel] = useState(draft?.label ?? "");
   const [amount, setAmount] = useState(draft?.amount != null ? String(draft.amount) : "");
   const [note, setNote] = useState(draft?.note ?? "");
+  const [perDay, setPerDay] = useState(draft?.perDay ?? false);
 
   const canSave = label.trim().length > 0 && !save.pending;
   const submit = () =>
@@ -790,6 +791,7 @@ function DuesSheet({
         label: label.trim(),
         amount: Number.isFinite(parsed as number) ? (parsed as number) : null,
         note: orNull(note),
+        perDay,
         position: draft?.position ?? nextPosition,
       });
       if (error) return error;
@@ -817,6 +819,10 @@ function DuesSheet({
       <Field label="Note (optional)">
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. per person" className={`${FIELD} w-full`} />
       </Field>
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+        <span className="text-sm">Billed per day (multiply by days attending)</span>
+        <input type="checkbox" checked={perDay} onChange={(e) => setPerDay(e.target.checked)} className="h-5 w-5 accent-[var(--color-primary)]" />
+      </label>
     </Sheet>
   );
 }

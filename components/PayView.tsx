@@ -8,11 +8,24 @@ import type { Payee } from "@/lib/types";
  * pre-filled with the amount and note, so the payment happens in the user's own
  * Venmo account. Zelle has no universal deep link, so we surface the handle with
  * a copy button. No payment credentials live in the app.
+ *
+ * Amount/note are controlled from the parent so the dues calculator
+ * (`FestDuesCalculator`) can auto-fill them from a member's stepper picks —
+ * typing directly into either field still works exactly the same.
  */
-export function PayView({ payees }: { payees: Payee[] }) {
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("Family Fest");
-
+export function PayView({
+  payees,
+  amount,
+  note,
+  onAmountChange,
+  onNoteChange,
+}: {
+  payees: Payee[];
+  amount: string;
+  note: string;
+  onAmountChange: (value: string) => void;
+  onNoteChange: (value: string) => void;
+}) {
   return (
     <div className="space-y-6 pt-2">
       <header className="space-y-1">
@@ -31,7 +44,7 @@ export function PayView({ payees }: { payees: Payee[] }) {
               <input
                 inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                onChange={(e) => onAmountChange(e.target.value.replace(/[^0-9.]/g, ""))}
                 placeholder="0.00"
                 className="w-full bg-transparent px-1 py-2 text-sm outline-none"
               />
@@ -41,7 +54,7 @@ export function PayView({ payees }: { payees: Payee[] }) {
             Note
             <input
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) => onNoteChange(e.target.value)}
               className="rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
           </label>

@@ -401,6 +401,26 @@ not a separate app — no backend needed:
 - The §0b full code merge is unchanged/deferred; this is the lighter-touch
   "feels like one app" layer that ships before the backend.
 
+## Family Fest dues calculator
+
+`family-fest/pay` doesn't just list dues tiers — [`FestDuesCalculator`](components/FestDuesCalculator.tsx)
+puts a +/- stepper on each tier and auto-fills [`PayView`](components/PayView.tsx)'s
+Amount + Note (and so the Venmo deep link) from the picks, so "2 adults" turns
+into the right dollar total without anyone doing the math. A tier is either
+**flat** (one-time/full-week — just a headcount) or **`DuesTier.perDay`**
+(e.g. "Adult (Per day)") — per-day tiers share one "how many days" stepper
+(capped to the fest's actual length via `getFestSeason(...).totalDays`) since
+a single payment assumes everyone in it is here for the same span; a
+household with mixed day-counts just runs the calculator (Reset clears it)
+and taps Pay again for the second group. `PayView`'s Amount/Note are now
+**controlled by the parent** (`app/family-fest/pay/page.tsx`) instead of
+owning their own state, specifically so the calculator can drive them —
+typing directly into either field still works exactly the same. Data model:
+migration [`0078`](supabase/migrations/0078_fest_dues_per_day.sql) adds
+`fest_dues.per_day` (backfilled from existing `"...(Per day)"` labels); the
+Planner's dues editor ([`FestPlanner.tsx`](components/FestPlanner.tsx)
+`DuesSheet`) has a matching "Billed per day" checkbox.
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

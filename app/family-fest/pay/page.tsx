@@ -1,12 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { PayView } from "@/components/PayView";
+import { FestDuesCalculator } from "@/components/FestDuesCalculator";
 import { SignInWall } from "@/components/Guard";
 import { useFestContent } from "@/lib/useFestContent";
 
 export default function PayPage() {
-  const { dues, payees } = useFestContent({ realtime: true });
+  const { dues, payees, config } = useFestContent({ realtime: true });
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("Family Fest");
 
   return (
     <div className="space-y-3 pt-1">
@@ -17,26 +21,22 @@ export default function PayPage() {
         note="Payment details (who to pay and how) are kept private. Add your name & email to see them."
       >
         {/* Dues tiers — admin-editable amounts (TBD until set in the Planner). */}
-        <div className="rounded-2xl bg-primary/10 p-4">
-          <p className="text-center text-xs font-semibold uppercase tracking-wide text-primary">
-            Family Fest dues
-          </p>
-          <ul className="mt-3 space-y-2">
-            {dues.map((tier) => (
-              <li key={tier.id} className="flex items-baseline justify-between gap-3">
-                <span className="text-sm text-foreground/80">
-                  {tier.label}
-                  {tier.note && <span className="text-foreground/50"> · {tier.note}</span>}
-                </span>
-                <span className="shrink-0 text-base font-bold text-primary">
-                  {tier.amount != null ? `$${tier.amount}` : "TBD"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <FestDuesCalculator
+          dues={dues}
+          config={config}
+          onChange={(nextAmount, nextNote) => {
+            setAmount(nextAmount);
+            setNote(nextNote);
+          }}
+        />
 
-        <PayView payees={payees} />
+        <PayView
+          payees={payees}
+          amount={amount}
+          note={note}
+          onAmountChange={setAmount}
+          onNoteChange={setNote}
+        />
       </SignInWall>
     </div>
   );
