@@ -10,12 +10,15 @@ import { HouseChat } from "@/components/HouseChat";
 import { useRouter } from "next/navigation";
 
 /**
- * The "Feed" tab — a Messages-style conversation list. "Main Feed" (the resort
- * posts) sits on top, then your House chat (if you're in a house), then one row
- * per committee chat channel you're in: a "General" channel plus one per role/area
- * you hold (Family Fest → "Meals", …). Tap a row to open that chat. If you're in
- * no house or committee, the tab drops straight into the Main Feed. Each row shows
- * a last-message preview + unread badge (committee rows add a mute toggle, 0063).
+ * The "Feed" tab — a Messages-style conversation list grouped into sections
+ * (mirrors the iOS app's inset-grouped Chats screen): "Main Feed" (the resort
+ * posts) pinned on top, a "Your house" section (if you're in a house), then a
+ * "Committee chats" section — a "{Committee} General" channel (e.g. "Family Fest
+ * General") plus one row per role/area you hold (Family Fest → "Meals", …). Each
+ * section is one card with inset dividers between its rows. Tap a row to open that
+ * chat. If you're in no house or committee, the tab drops straight into the Main
+ * Feed. Each row shows a last-message preview + unread badge (committee rows add a
+ * mute toggle, 0063).
  */
 interface Channel {
   key: string;            // `${slug}|${area ?? ""}`
@@ -173,7 +176,10 @@ export function FeedView() {
           if (myAreas.length === 0) {
             built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: c.name, subtitle: null });
           } else {
-            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: "General", subtitle: c.name });
+            // The committee-wide channel: title carries the committee name (e.g.
+            // "Family Fest General") so it's clear which committee's General this
+            // is once real messages replace the subtitle fallback.
+            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: `${c.name} General`, subtitle: null });
             for (const a of myAreas) {
               built.push({ key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, title: a, subtitle: c.name });
             }
@@ -396,32 +402,64 @@ export function FeedView() {
     );
   }
 
-  // The conversation list.
+  // The conversation list — a Messages-style, grouped layout mirroring the iOS
+  // app: Main Feed pinned on top, then a "Your house" section, then a "Committee
+  // chats" section. Each section is one rounded card with inset dividers between
+  // its rows (not a stack of separate cards), so the list reads clean.
   return (
-    <div className="space-y-2 pt-1">
+    <div className="space-y-5 pt-1">
       <h1 className="px-1 text-lg font-bold">Chats</h1>
-      <ConversationRow emoji="📰" title="Main Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+
+      {/* Main Feed — pinned on top, its own card. */}
+      <ChatCard>
+        <ConversationRow emoji="📰" title="Main Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+      </ChatCard>
+
       {houseChannel && (
-        <ConversationRow
-          emoji={houseChannel.emoji}
-          title={houseChannel.name}
-          subtitle="Your house"
-          summary={summaries[houseChannel.key]}
-          onOpen={() => setActive(houseChannel.key)}
-        />
+        <ChatSection label="Your house">
+          <ConversationRow
+            emoji={houseChannel.emoji}
+            title={houseChannel.name}
+            subtitle="Your house"
+            summary={summaries[houseChannel.key]}
+            onOpen={() => setActive(houseChannel.key)}
+          />
+        </ChatSection>
       )}
-      {channels.map((ch) => (
-        <ConversationRow
-          key={ch.key}
-          emoji={ch.emoji}
-          title={ch.title}
-          subtitle={ch.subtitle}
-          summary={summaries[ch.key]}
-          onOpen={() => setActive(ch.key)}
-          onToggleMute={() => toggleMute(ch)}
-        />
-      ))}
+
+      {channels.length > 0 && (
+        <ChatSection label="Committee chats">
+          {channels.map((ch, i) => (
+            <div key={ch.key}>
+              {i > 0 && <div className="ml-[68px] border-t border-border" aria-hidden />}
+              <ConversationRow
+                emoji={ch.emoji}
+                title={ch.title}
+                subtitle={ch.subtitle}
+                summary={summaries[ch.key]}
+                onOpen={() => setActive(ch.key)}
+                onToggleMute={() => toggleMute(ch)}
+              />
+            </div>
+          ))}
+        </ChatSection>
+      )}
     </div>
+  );
+}
+
+/** A rounded, ringed card that groups conversation rows (iOS inset-grouped look). */
+function ChatCard({ children }: { children: React.ReactNode }) {
+  return <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">{children}</div>;
+}
+
+/** A labeled group of conversation rows: a small header over one ChatCard. */
+function ChatSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-1.5">
+      <h2 className="px-3 text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</h2>
+      <ChatCard>{children}</ChatCard>
+    </section>
   );
 }
 
@@ -442,7 +480,7 @@ function ConversationRow({
 }) {
   const when = summary?.at ? formatWhen(summary.at) : null;
   return (
-    <div className="flex items-center gap-2 rounded-2xl bg-card px-3 py-2.5 ring-1 ring-border">
+    <div className="flex items-center gap-2 px-3 py-2.5">
       <button type="button" onClick={onOpen} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xl">{emoji}</span>
         <span className="min-w-0 flex-1">
