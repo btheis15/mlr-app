@@ -18,9 +18,10 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useMediaPicker } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 
-// Add/edit sheet for a work checklist item. Any signed-in member can add items;
-// admins get the extra status toggle + delete button when editing. Items can be
-// scoped MLR (everyone) or to a house, and can carry photo/video attachments.
+// Add/edit sheet for a work checklist item. Any signed-in member can add items,
+// and can edit an item they created; admins can edit any item. Admins also get
+// the extra status toggle + delete button when editing. Items can be scoped MLR
+// (everyone) or to a house, and can carry photo/video attachments.
 
 export function WorkItemComposer({
   item,

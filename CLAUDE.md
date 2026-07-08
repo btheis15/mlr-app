@@ -257,7 +257,10 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   (deep-link `/?work=<id>`), added to `notif_types` (default on). Tapping any row in
   [`WorkChecklist`](components/WorkChecklist.tsx) opens
   [`WorkItemSheet`](components/WorkItemSheet.tsx) (details + media + the thread);
-  admins get an Edit button there (the composer moved off the row tap). Mention
+  an Edit button appears there for **admins (any item) and the item's author
+  (their own)** — the `update_work_item` RPC enforces the same author-or-admin
+  rule server-side (migration [`0079`](supabase/migrations/0079_work_item_author_edit.sql));
+  delete stays admin-only. (The composer moved off the row tap.) Mention
   candidates are scoped to who can see the item (everyone for MLR, house members for
   house items). Helpers in [`lib/workItems.ts`](lib/workItems.ts)
   (`fetchWorkItemComments`/`addWorkItemComment`/`removeWorkItemComment`; `fetchWorkItems`

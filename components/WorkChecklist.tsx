@@ -45,8 +45,16 @@ interface Section {
 const workChecklistCache = new Map<string, { items: WorkItem[]; houses: House[]; myHouseId: string | null }>();
 
 export function WorkChecklist() {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
   const key = user?.email ?? "";
+  // The signed-in account's own id, so a member can edit the item THEY created
+  // (author-or-admin edit). `user` (localStorage identity) doesn't carry the
+  // auth uid, so read it from Supabase; honor an admin's "view as" preview.
+  const [uid, setUid] = useState<string | null>(previewAsId ?? null);
+  useEffect(() => {
+    if (previewAsId) { setUid(previewAsId); return; }
+    supabase?.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+  }, [previewAsId]);
   const cached = workChecklistCache.get(key);
   const [items, setItems] = useState<WorkItem[]>(cached?.items ?? []);
   const [houses, setHouses] = useState<House[]>(cached?.houses ?? []);
@@ -151,8 +159,12 @@ export function WorkChecklist() {
     setCheckingOff(null);
   };
 
+  // Who may edit an item: an admin (any item) or the person who created it (their
+  // own). Everyone else can view + comment + check off, but not edit the fields.
+  const canEdit = (item: WorkItem) => isAdmin || (!!uid && item.createdBy === uid);
+
   const handleEdit = (item: WorkItem) => {
-    if (!isAdmin) return;
+    if (!canEdit(item)) return;
     setEditing(item);
   };
 
@@ -285,7 +297,7 @@ export function WorkChecklist() {
         />
       )}
 
-      {/* Edit sheet (admin only) */}
+      {/* Edit sheet (admin — any item; author — their own) */}
       {editing && (
         <WorkItemComposer
           item={editing}
@@ -303,7 +315,7 @@ export function WorkChecklist() {
           members={candidatesFor(viewing)}
           onClose={() => setViewing(null)}
           onChanged={load}
-          onEdit={isAdmin ? () => handleEdit(viewing) : undefined}
+          onEdit={canEdit(viewing) ? () => handleEdit(viewing) : undefined}
         />
       )}
     </>
