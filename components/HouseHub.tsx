@@ -5,8 +5,8 @@ import { useState } from "react";
 import { setHouseRules } from "@/lib/houses";
 import { useResolvedHouse, useHouseCalendar } from "@/lib/hooks";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { isStayPast, stayLabel, stayHeadCount } from "@/lib/houseCalendar";
-import { formatDateRange, relativeDays, plural } from "@/lib/format";
+import { isStayPast, stayLabel } from "@/lib/houseCalendar";
+import { formatDateRange } from "@/lib/format";
 import { BackLink } from "@/components/BackLink";
 import { SkeletonList } from "@/components/Skeleton";
 import { WorkChecklist } from "@/components/WorkChecklist";
@@ -129,35 +129,8 @@ function HouseHubBody({
       {/* House rules — a shared, editable open-text doc (any member). */}
       <HouseRulesCard houseId={houseId} initialRules={rules} />
 
-      {/* Upcoming stays preview (so the hub has real content, not just links) */}
-      {upcoming.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="px-0.5 text-sm font-bold">Who&rsquo;s staying</h2>
-          {upcoming.slice(0, 3).map((s) => (
-            <Link
-              key={s.id}
-              href={calHref}
-              className="press block rounded-2xl bg-card p-3 ring-1 ring-border transition-shadow hover:shadow-sm"
-            >
-              <p className="truncate text-sm font-semibold">{stayLabel(s)}</p>
-              <p className="truncate text-xs text-foreground/60">
-                {formatDateRange(s.startDate, s.endDate)}
-                {today && relativeDays(today, s.startDate) && (
-                  <span className="text-foreground/45"> · {relativeDays(today, s.startDate)}</span>
-                )}
-                {stayHeadCount(s) > 1 && (
-                  <span className="text-foreground/45"> · {plural(stayHeadCount(s), "person", "people")}</span>
-                )}
-              </p>
-            </Link>
-          ))}
-          {upcoming.length > 3 && (
-            <Link href={calHref} className="press block px-0.5 text-sm font-semibold text-primary">
-              See all {upcoming.length} on the calendar →
-            </Link>
-          )}
-        </section>
-      )}
+      {/* Who's staying lives on the House calendar (surfaced via the "Next up"
+          line on the calendar card above) — no separate preview here. */}
 
       {/* Work items — the house's to-do list (the checklist also shows MLR items). */}
       <section className="space-y-2">
