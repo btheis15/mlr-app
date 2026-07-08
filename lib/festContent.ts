@@ -34,7 +34,7 @@ export const FALLBACK_CONFIG: FestConfigContent = {
 export const FALLBACK_DUES: DuesTier[] = [
   { id: "adult", label: "Adult (high school & up)", amount: null },
   { id: "kid", label: "Kid (K–8th grade)", amount: null },
-  { id: "per-day", label: "Per day", amount: null, note: "per person" },
+  { id: "per-day", label: "Per day", amount: null, note: "per person", perDay: true },
   { id: "no-food", label: "Without food", amount: null, note: "per person" },
 ];
 
@@ -71,6 +71,7 @@ interface DuesRow {
   label: string;
   amount: number | null;
   note: string | null;
+  per_day: boolean;
 }
 interface ScheduleRow {
   id: string;
@@ -127,7 +128,7 @@ function mapConfig(r: ConfigRow): FestConfigContent {
   return { name: r.name, tagline: r.tagline ?? "", startDate: r.start_date, endDate: r.end_date };
 }
 function mapDues(r: DuesRow): DuesTier {
-  return { id: r.id, label: r.label, amount: r.amount, note: r.note ?? undefined };
+  return { id: r.id, label: r.label, amount: r.amount, note: r.note ?? undefined, perDay: r.per_day };
 }
 function mapSchedule(r: ScheduleRow): ScheduleEvent {
   return {
@@ -191,7 +192,7 @@ export async function fetchFestContent(): Promise<FestContent> {
   try {
     const [config, dues, schedule, dinners, payees, activities] = await Promise.all([
       sb.from("fest_config").select("name, tagline, start_date, end_date").eq("fest_year", FEST_YEAR).maybeSingle(),
-      sb.from("fest_dues").select("id, label, amount, note").eq("fest_year", FEST_YEAR).order("position"),
+      sb.from("fest_dues").select("id, label, amount, note, per_day").eq("fest_year", FEST_YEAR).order("position"),
       sb
         .from("fest_schedule_items")
         .select(
@@ -386,10 +387,17 @@ export interface DuesInput {
   label: string;
   amount: number | null;
   note: string | null;
+  perDay: boolean;
   position: number;
 }
 export const saveDuesTier = (i: DuesInput) =>
-  writeRow("fest_dues", i.id, { label: i.label, amount: i.amount, note: i.note, position: i.position });
+  writeRow("fest_dues", i.id, {
+    label: i.label,
+    amount: i.amount,
+    note: i.note,
+    per_day: i.perDay,
+    position: i.position,
+  });
 export const deleteDuesTier = (id: string) => deleteRow("fest_dues", id);
 
 export interface ActivityInput {
@@ -548,7 +556,7 @@ export async function fetchDuesDrafts(): Promise<DuesDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_dues")
-    .select("id, label, amount, note, position")
+    .select("id, label, amount, note, per_day, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as DuesDraftRow[]).map((r) => ({
@@ -556,6 +564,7 @@ export async function fetchDuesDrafts(): Promise<DuesDraft[]> {
     label: r.label,
     amount: r.amount,
     note: r.note,
+    perDay: r.per_day,
     position: r.position,
   }));
 }

@@ -404,6 +404,10 @@ export interface DuesTier {
   amount: number | null;
   /** Optional qualifier, e.g. "per person", "covers meals". */
   note?: string;
+  /** True for a per-day rate (e.g. "Adult (Per day)") — the Pay calculator
+   *  multiplies it by a shared "how many days" count instead of treating it
+   *  like a flat one-time/per-week amount. */
+  perDay?: boolean;
 }
 
 /** Editable Family Fest meta (name, tagline, date window) — the `fest_config`
