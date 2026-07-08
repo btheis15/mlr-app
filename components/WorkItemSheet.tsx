@@ -12,8 +12,10 @@ import { MediaGrid } from "@/components/MediaGrid";
 
 // Work-item detail + comment thread. Opens when any member taps a checklist row,
 // so a task can hold a little Q&A (the requestor asks, others reply to help).
-// Plain text comments + @mentions only. Admins get an Edit button that hands off
-// to WorkItemComposer via the onEdit callback.
+// Plain text comments + @mentions only. An Edit button (admins for any item, the
+// author for their own) hands off to WorkItemComposer via the onEdit callback —
+// the caller passes onEdit only when the viewer may edit, so its presence gates
+// the button.
 
 export interface WorkItemMember {
   id: string;
@@ -84,7 +86,7 @@ export function WorkItemSheet({
         <div className="flex items-center gap-2 pr-10">
           <span aria-hidden>🔧</span>
           <h2 id="work-item-sheet-title" className="min-w-0 flex-1 truncate text-lg font-bold">{item.title}</h2>
-          {isAdmin && onEdit && (
+          {onEdit && (
             <button
               type="button"
               onClick={() => { onEdit(); close(); }}

@@ -214,7 +214,8 @@ export async function markWorkItemDone(id: string): Promise<{ error?: string }> 
   return error ? { error: error.message } : {};
 }
 
-/** Edit an item's fields + status (admin only). */
+/** Edit an item's fields + status (admins for any item; the author for their own —
+ *  the update_work_item RPC enforces this, migration 0079). */
 export async function updateWorkItem(
   id: string,
   input: { title: string; notes?: string; category?: string; status: WorkItemStatus; peopleNeeded?: number | null; urgency?: WorkItemUrgency | null; houseId?: string | null },
