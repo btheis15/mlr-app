@@ -214,7 +214,9 @@ async function start() {
       if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
     }
     const body = msg.text && msg.text.trim() ? `${authorName}: ${msg.text.trim().slice(0, 140)}` : `${authorName} sent a message`;
-    const title = `${committee.emoji ? committee.emoji + " " : ""}${committee.name}${msg.area ? ` — ${msg.area}` : ""}`;
+    // Always name the channel (role area, or the General channel for area null),
+    // so the push says which chat it's from — mirrors push-sender.js.
+    const title = `${committee.emoji ? committee.emoji + " " : ""}${committee.name} — ${msg.area || "General"}`;
     const url = `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}`;
     const payload = { title, body, url, type: "chat" };
     let sent = 0;
