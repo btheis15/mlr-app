@@ -160,7 +160,10 @@ async function start() {
       ? `${authorName}: ${msg.text.trim().slice(0, 140)}`
       : `${authorName} sent ${mediaLabel((mediaRes.data || [])[0])}`;
     const payload = {
-      title: `${committee.emoji ? committee.emoji + " " : ""}${committee.name}${msg.area ? ` — ${msg.area}` : ""}`,
+      // Always name the channel so a push says WHICH chat it's from — a role
+      // area (e.g. "Family Fest — Meals") or the committee-wide General channel
+      // (area null → "Family Fest — General"), matching the in-app channel list.
+      title: `${committee.emoji ? committee.emoji + " " : ""}${committee.name} — ${msg.area || "General"}`,
       body,
       icon: ICON,
       badge: ICON,
