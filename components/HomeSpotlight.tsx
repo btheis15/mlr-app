@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useFestContent } from "@/lib/useFestContent";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { CalloutStack, type StackItem } from "@/components/CalloutStack";
@@ -10,40 +11,26 @@ const TSHIRT_DEADLINE = "2026-07-16"; // hide on/after this date (day after dead
 
 function TShirtOrderCallout() {
   return (
-    <div className="rounded-2xl bg-card p-4 ring-1 ring-border shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            👕 Family Fest T-Shirts
-          </p>
-          <p className="mt-0.5 text-base font-semibold leading-snug">
-            Order now — deadline Wed, July 15
-          </p>
-        </div>
-        <span className="shrink-0 text-2xl">👕</span>
-      </div>
-
-      <div className="mt-2.5 space-y-1 text-sm text-foreground/80">
-        <p>
-          <span className="font-medium">Colors:</span> Maroon · Forest Green · Navy Blue
+    <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border shadow-sm">
+      <Image
+        src="/ff2026-tshirt-order.jpg"
+        alt="Family Fest 2026 t-shirt order flyer — Ye Olde Family Feste design in Maroon, Forest Green, or Navy Blue. $14 (Youth XS–Adult XL), $19 (5XL). Call Tricia at Metro 715-365-3195. Orders due Wednesday July 15th."
+        width={2794}
+        height={2312}
+        className="w-full"
+      />
+      <div className="px-3.5 pb-3.5 pt-3">
+        <a
+          href="tel:7153653195"
+          className="press flex items-center justify-between rounded-xl bg-primary/10 px-3.5 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+        >
+          <span>📞 Call Tricia at Metro to order</span>
+          <span className="font-normal text-primary/70">715-365-3195</span>
+        </a>
+        <p className="mt-2 text-center text-[11px] text-foreground/45">
+          Orders due Wed, July 15 · picked up shortly after
         </p>
-        <p>
-          <span className="font-medium">Pricing:</span> $14 (Youth XS–Adult XL) · $19 (5XL)
-        </p>
-        <p className="text-foreground/60 text-xs">FF sweatshirts available again as well.</p>
       </div>
-
-      <a
-        href="tel:7153653195"
-        className="press mt-3 flex items-center justify-between rounded-xl bg-primary/10 px-3.5 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
-      >
-        <span>📞 Call Tricia at Metro to order</span>
-        <span className="font-normal text-primary/70">715-365-3195</span>
-      </a>
-
-      <p className="mt-2 text-[11px] text-foreground/45 text-center">
-        Orders picked up shortly after July 15
-      </p>
     </div>
   );
 }
