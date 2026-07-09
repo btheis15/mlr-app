@@ -67,7 +67,8 @@ export function HomeSpotlight() {
   const items: StackItem[] = [];
 
   // T-shirt order callout — visible until the July 15 deadline passes.
-  if (today < TSHIRT_DEADLINE) {
+  // today is null until mounted; treat null as "before deadline" so the card shows on hydration.
+  if (today === null || today < TSHIRT_DEADLINE) {
     items.push({
       id: "tshirt-order-jul15-2026",
       swipeable: true,
