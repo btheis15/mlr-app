@@ -6,7 +6,7 @@ import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
 import { fetchEventWorkItems } from "@/lib/workItems";
 import { Avatar } from "@/components/Avatar";
-import { PrivateName, Protected } from "@/components/Guard";
+import { PrivateName, Protected, useGuest } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
@@ -48,6 +48,11 @@ export function EventSheet({
   initialDay?: string | null;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
+  // Guests can't read event_attendance (RLS lockdown, 0081) — their summary is
+  // an empty roster, so the "Who's coming" section and the per-day tallies
+  // would read as a false "no RSVPs yet". Show a sign-in affordance instead
+  // (RSVP taps already route through promptSignIn via useEvents.setStatus).
+  const { guest, promptSignIn } = useGuest();
   const [deleting, setDeleting] = useState(false);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [addingWorkItem, setAddingWorkItem] = useState(false);
@@ -196,7 +201,7 @@ export function EventSheet({
                       type="button"
                       onClick={() => toggleDay(day)}
                       aria-pressed={on}
-                      aria-label={`${formatDateLong(day)} — ${count} going. ${on ? "You’re here" : "Tap if you’ll be here"}.`}
+                      aria-label={`${formatDateLong(day)}${guest ? "" : ` — ${count} going`}. ${on ? "You’re here" : "Tap if you’ll be here"}.`}
                       className={`press flex flex-col items-center gap-0.5 rounded-xl py-2 ring-1 ${
                         on ? "bg-primary text-white ring-primary" : "bg-card text-foreground/70 ring-border"
                       }`}
@@ -205,23 +210,29 @@ export function EventSheet({
                         {d.toLocaleDateString(undefined, { weekday: "short" })}
                       </span>
                       <span className="text-base font-bold leading-none">{d.getDate()}</span>
-                      <span
-                        className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold ${
-                          on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
-                        }`}
-                      >
+                      {/* Guests can't see attendance, so a per-day "0" would be
+                          a lie — hide the tally until they sign in. */}
+                      {!guest && (
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${on ? "bg-white/80" : count > 0 ? "bg-primary" : "bg-foreground/25"}`}
-                          aria-hidden
-                        />
-                        {count}
-                      </span>
+                          className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold ${
+                            on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${on ? "bg-white/80" : count > 0 ? "bg-primary" : "bg-foreground/25"}`}
+                            aria-hidden
+                          />
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
               <p className="px-0.5 text-[11px] text-foreground/45">
-                Numbers show how many are here each day · tap a day to add or drop it.
+                {guest
+                  ? "Tap the days you’ll be here — we’ll ask you to sign in first."
+                  : "Numbers show how many are here each day · tap a day to add or drop it."}
               </p>
             </div>
           )}
@@ -281,7 +292,17 @@ export function EventSheet({
           {/* Who's coming */}
           <div className="space-y-2">
             <SectionLabel>Who&rsquo;s coming</SectionLabel>
-            {summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
+            {guest ? (
+              // Guests can't read the roster (members-only under RLS) — an
+              // honest sign-in nudge instead of a false "No RSVPs yet".
+              <button
+                type="button"
+                onClick={promptSignIn}
+                className="press w-full rounded-xl bg-card px-3 py-3 text-left text-sm text-foreground/60 ring-1 ring-border"
+              >
+                🔒 Sign in to see who&rsquo;s coming — and RSVP yourself.
+              </button>
+            ) : summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
               <p className="text-sm text-foreground/45">No RSVPs yet.</p>
             ) : showDays ? (
               <div className="space-y-3">

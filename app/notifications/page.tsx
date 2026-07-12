@@ -7,8 +7,8 @@ import { SignInWall } from "@/components/Guard";
 export default function NotificationsPage() {
   return (
     <SignInWall
-      title="Notifications"
-      note="Your notifications are personal. Add your name & email to see what's happened involving you."
+      title="Activity"
+      note="Your activity is personal. Add your name & email to see what's happened involving you."
     >
       <NotificationsView />
     </SignInWall>

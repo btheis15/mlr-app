@@ -32,8 +32,21 @@ export function MemberSheetHost() {
         .select("display_name, avatar_url")
         .eq("id", id)
         .maybeSingle();
+      let row = data as { display_name: string | null; avatar_url: string | null } | null;
+      // Guests can't read `profiles` under the RLS lockdown (0081) — fall back
+      // to the guest-tier `public_profiles` view (first name + avatar) so a
+      // deep link still shows who the card is about. If the view doesn't exist
+      // yet (pre-migration) this read just errors and we keep the "Member"
+      // default — never a hard failure.
+      if (!row) {
+        const pub = await supabase
+          .from("public_profiles")
+          .select("display_name, avatar_url")
+          .eq("id", id)
+          .maybeSingle();
+        if (!pub.error) row = pub.data as typeof row;
+      }
       if (!active) return;
-      const row = data as { display_name: string | null; avatar_url: string | null } | null;
       setMember({ id, name: row?.display_name?.trim() || "Member", avatarUrl: row?.avatar_url ?? null });
     })();
     return () => {

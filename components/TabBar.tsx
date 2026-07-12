@@ -11,8 +11,8 @@ const TABS = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/posts", label: "Feed", icon: "📣" },
   { href: "/family-fest", label: "Family Fest", icon: "⚔️" },
-  // The Notifications feed — everything that happened involving you. Labelled
-  // "Activity" so it fits the bar (the page itself is titled "Notifications").
+  // The Activity feed — everything that happened involving you. Tab label and
+  // page title are aligned on "Activity" (one name per thing).
   { href: "/notifications", label: "Activity", icon: "🔔" },
   // Profile (your account, settings, sign-out) is back in the last slot. People
   // (the member directory) moved off the tab bar to a card on Home.

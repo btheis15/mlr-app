@@ -4,8 +4,9 @@
 // content (migration 0053). Gated to can_edit_fest() (app admin OR a member of
 // the family-fest committee). Mirrors the iOS FamilyFestPlannerView: list →
 // add/edit (bottom sheet) → delete, for the Schedule, Dinners, Dues, Payees,
-// Activities, and the fest Details (name/tagline/dates). Saves write straight to
-// Supabase (RLS-gated) and both apps re-read, so web and iOS stay in lockstep.
+// Activities, the Home call-out cards (migration 0083), and the fest Details
+// (name/tagline/dates). Saves write straight to Supabase (RLS-gated) and both
+// apps re-read, so web and iOS stay in lockstep.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -15,7 +16,8 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useFestContent } from "@/lib/useFestContent";
-import { formatDateLong, formatTime, toTimeInputValue } from "@/lib/format";
+import { CalloutCard } from "@/components/CalloutCard";
+import { formatDate, formatDateLong, formatTime, toTimeInputValue } from "@/lib/format";
 import {
   fetchAppImages,
   siteImageSrc,
@@ -31,6 +33,7 @@ import {
   fetchPayeeDrafts,
   fetchDuesDrafts,
   fetchActivityDrafts,
+  fetchCallouts,
   saveScheduleItem,
   deleteScheduleItem,
   saveDinner,
@@ -41,6 +44,8 @@ import {
   deleteDuesTier,
   saveActivity,
   deleteActivity,
+  saveCallout,
+  deleteCallout,
   saveConfig,
   type FestMemberOption,
   type ScheduleDraft,
@@ -48,9 +53,10 @@ import {
   type PayeeDraft,
   type DuesDraft,
   type ActivityDraft,
+  type HomeCallout,
 } from "@/lib/festContent";
 
-type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "details" | "images";
+type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "callouts" | "details" | "images";
 
 const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
@@ -58,6 +64,7 @@ const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "dues", label: "Dues", icon: "💵" },
   { key: "payees", label: "Payees", icon: "💸" },
   { key: "activities", label: "Anytime", icon: "🗺️" },
+  { key: "callouts", label: "Callouts", icon: "📣" },
   { key: "images", label: "Images", icon: "🖼️" },
   { key: "details", label: "Details", icon: "⚙️" },
 ];
@@ -112,20 +119,23 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   const [dues, setDues] = useState<DuesDraft[]>([]);
   const [payees, setPayees] = useState<PayeeDraft[]>([]);
   const [activities, setActivities] = useState<ActivityDraft[]>([]);
+  const [callouts, setCallouts] = useState<HomeCallout[]>([]);
 
   const reloadDrafts = useCallback(async () => {
-    const [s, d, du, p, a] = await Promise.all([
+    const [s, d, du, p, a, c] = await Promise.all([
       fetchScheduleDrafts(),
       fetchDinnerDrafts(),
       fetchDuesDrafts(),
       fetchPayeeDrafts(),
       fetchActivityDrafts(),
+      fetchCallouts(),
     ]);
     setSchedule(s);
     setDinners(d);
     setDues(du);
     setPayees(p);
     setActivities(a);
+    setCallouts(c);
     await reloadContent();
   }, [reloadContent]);
 
@@ -215,6 +225,9 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
         <PageSection icon="🗺️" title="Anytime activities">
           <ActivityEditor items={activities} onChanged={reloadDrafts} />
         </PageSection>
+        <PageSection icon="📣" title="Home callouts">
+          <CalloutEditor items={callouts} onChanged={reloadDrafts} />
+        </PageSection>
         <PageSection icon="🖼️" title="Images">
           <ImagesEditor />
         </PageSection>
@@ -252,6 +265,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
       {section === "activities" && <ActivityEditor items={activities} onChanged={reloadDrafts} />}
+      {section === "callouts" && <CalloutEditor items={callouts} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>
@@ -995,6 +1009,253 @@ function ActivitySheet({
       <Field label="Blurb (one-liner)"><input value={blurb} onChange={(e) => setBlurb(e.target.value)} className={`${FIELD} w-full`} /></Field>
       <Field label="Details (optional)"><textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} /></Field>
       <Field label="Where to start (optional)"><input value={location} onChange={(e) => setLocation(e.target.value)} className={`${FIELD} w-full`} /></Field>
+    </Sheet>
+  );
+}
+
+// ── Home callouts (the swipe-away cards above the Home spotlight) ─────────────
+
+/** "Jul 1 – Jul 15" / "through Jul 15" / "from Jul 1" / "always" — the show
+ *  window, for the list row summary. */
+function calloutWindow(c: HomeCallout): string {
+  const day = (d: string) => formatDate(`${d}T00:00:00`);
+  if (c.startsOn && c.endsOn) return `${day(c.startsOn)} – ${day(c.endsOn)}`;
+  if (c.endsOn) return `through ${day(c.endsOn)}`;
+  if (c.startsOn) return `from ${day(c.startsOn)}`;
+  return "always";
+}
+
+/** "Fall Work Weekend!" → "fall-work-weekend" (for the suggested dismiss id). */
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function CalloutEditor({ items, onChanged }: { items: HomeCallout[]; onChanged: () => void }) {
+  const [editing, setEditing] = useState<HomeCallout | "new" | null>(null);
+  return (
+    <div className="space-y-3">
+      <p className="px-0.5 text-xs text-foreground/55">
+        Temporary cards stacked on the Home screen&rsquo;s Family Fest spotlight — people can
+        swipe each one away. The flyer image, text, button, and dates are all optional.
+      </p>
+      <AddButton label="Add a Home callout" onClick={() => setEditing("new")} />
+      {items.map((c) => (
+        <RowCard
+          key={c.id}
+          title={c.title?.trim() || c.linkLabel?.trim() || "Untitled callout"}
+          subtitle={`${c.isActive ? "🟢 Active" : "⚪ Off"} · shows ${calloutWindow(c)}`}
+          onEdit={() => setEditing(c)}
+          onDelete={() =>
+            confirmDelete(c.title?.trim() || "this callout", () => deleteCallout(c.id), onChanged)
+          }
+        />
+      ))}
+      {items.length === 0 && (
+        <p className="rounded-2xl bg-card p-4 text-center text-xs text-foreground/55 ring-1 ring-border">
+          No callouts yet — add one and it appears on Home for everyone.
+        </p>
+      )}
+      {editing && (
+        <CalloutSheet
+          draft={editing === "new" ? null : editing}
+          nextPosition={items.length}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); onChanged(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CalloutSheet({
+  draft,
+  nextPosition,
+  onClose,
+  onSaved,
+}: {
+  draft: HomeCallout | null;
+  nextPosition: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const save = useSaveStatus();
+  const [title, setTitle] = useState(draft?.title ?? "");
+  const [body, setBody] = useState(draft?.body ?? "");
+  const [imageUrl, setImageUrl] = useState<string | null>(draft?.imageUrl ?? null);
+  const [linkHref, setLinkHref] = useState(draft?.linkHref ?? "");
+  const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
+  const [startsOn, setStartsOn] = useState(draft?.startsOn ?? "");
+  const [endsOn, setEndsOn] = useState(draft?.endsOn ?? "");
+  const [dismissId, setDismissId] = useState(draft?.dismissId ?? "");
+  // Auto-suggest the dismiss id (slug + date) until the editor types their own.
+  const [dismissTouched, setDismissTouched] = useState(Boolean(draft));
+  const [active, setActive] = useState(draft?.isActive ?? true);
+  const [position, setPosition] = useState(String(draft?.position ?? nextPosition));
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // A swiped card stays dismissed by id (see CalloutStack) — so the id carries
+  // a date suffix, and re-versioning it resurfaces the card for everyone.
+  const suggestedId = () =>
+    `${slugify(title.trim() || linkLabel.trim() || "callout") || "callout"}-${
+      endsOn || new Date().toISOString().slice(0, 10)
+    }`;
+  const effectiveDismissId = dismissTouched ? dismissId : suggestedId();
+
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      setImageUrl(await uploadSiteImage(file, "home_callout"));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const parsedPosition = (() => {
+    const n = parseInt(position, 10);
+    return Number.isFinite(n) ? n : draft?.position ?? nextPosition;
+  })();
+
+  const preview: HomeCallout = {
+    id: draft?.id ?? "preview",
+    title: orNull(title),
+    body: orNull(body),
+    imageUrl,
+    linkHref: orNull(linkHref),
+    linkLabel: orNull(linkLabel),
+    startsOn: startsOn || null,
+    endsOn: endsOn || null,
+    dismissId: effectiveDismissId,
+    position: parsedPosition,
+    isActive: active,
+  };
+
+  const hasContent = Boolean(title.trim() || body.trim() || imageUrl);
+  const validRange = !startsOn || !endsOn || endsOn >= startsOn;
+  const canSave = hasContent && effectiveDismissId.trim().length > 0 && validRange && !save.pending && !uploading;
+  const submit = () =>
+    save.run(async () => {
+      const { error } = await saveCallout({
+        id: draft?.id,
+        title: orNull(title),
+        body: orNull(body),
+        imageUrl,
+        linkHref: orNull(linkHref),
+        linkLabel: orNull(linkLabel),
+        startsOn: startsOn || null,
+        endsOn: endsOn || null,
+        dismissId: effectiveDismissId.trim(),
+        position: parsedPosition,
+        isActive: active,
+      });
+      if (error) return error;
+      onSaved();
+      return null;
+    });
+
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="callout-sheet"
+      header={<h2 id="callout-sheet" className="text-lg font-bold">{draft ? "✏️ Edit callout" : "📣 New callout"}</h2>}
+      footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} />}
+    >
+      <Field label="Title (optional)">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. T-shirt orders due soon" className={`${FIELD} w-full`} />
+      </Field>
+      <Field label="Body (optional)">
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} />
+      </Field>
+      <Field label="Image (optional)">
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="Callout" className="max-h-40 w-full rounded-xl object-contain ring-1 ring-border" />
+        )}
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <div className={`flex items-center gap-2 ${imageUrl ? "mt-2" : ""}`}>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="press rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {uploading ? "Uploading…" : imageUrl ? "Replace photo" : "Add a photo"}
+          </button>
+          {imageUrl && (
+            <button
+              type="button"
+              onClick={() => setImageUrl(null)}
+              disabled={uploading}
+              className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-border disabled:opacity-50"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        {uploadError && (
+          <p className="mt-2 rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">
+            {uploadError}
+          </p>
+        )}
+      </Field>
+      <Field label="Button link (optional)">
+        <input value={linkHref} onChange={(e) => setLinkHref(e.target.value)} placeholder="tel:7155550123" className={`${FIELD} w-full`} />
+        <input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} placeholder="Button label, e.g. 📞 Call Tricia to order" className={`${FIELD} mt-2 w-full`} />
+        <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+          <code>tel:</code> (call), <code>mailto:</code> (email), and <code>https://</code> (website) links all work.
+        </p>
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Show from (optional)">
+          <input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} className={`${FIELD} w-full`} />
+        </Field>
+        <Field label="Show through (optional)">
+          <input type="date" value={endsOn} min={startsOn || undefined} onChange={(e) => setEndsOn(e.target.value)} className={`${FIELD} w-full`} />
+        </Field>
+      </div>
+      {!validRange && <p className="text-xs text-accent">&ldquo;Show through&rdquo; must be on or after &ldquo;show from&rdquo;.</p>}
+      <Field label="Dismiss id">
+        <input
+          value={effectiveDismissId}
+          onChange={(e) => { setDismissTouched(true); setDismissId(e.target.value); }}
+          className={`${FIELD} w-full`}
+        />
+        <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+          Swiping a card away hides it by this id for the rest of that person&rsquo;s session.
+          Change it (a new date works) to bring an updated card back for everyone.
+        </p>
+      </Field>
+      <Field label="Position (lower shows first)">
+        <input
+          value={position}
+          inputMode="numeric"
+          onChange={(e) => setPosition(e.target.value.replace(/[^0-9]/g, ""))}
+          className={`${FIELD} w-full`}
+        />
+      </Field>
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+        <span className="text-sm">Active (shown on Home)</span>
+        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-5 w-5 accent-[var(--color-primary)]" />
+      </label>
+      {hasContent && (
+        <Field label="Preview">
+          <CalloutCard callout={preview} />
+        </Field>
+      )}
     </Sheet>
   );
 }

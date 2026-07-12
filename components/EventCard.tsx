@@ -4,6 +4,7 @@ import type { AttendanceStatus, AttendanceSummary, EventKind, ResortEvent } from
 import { formatDateRange, relativeDays } from "@/lib/format";
 import { isOngoing } from "@/lib/events";
 import { AttendanceControl } from "@/components/AttendanceControl";
+import { useGuest } from "@/components/Guard";
 
 // One event on the resort calendar. Three shapes from one component:
 //  • "spotlight" — the nearest event on Home: full card + inline RSVP + "UP NEXT".
@@ -76,6 +77,10 @@ export function EventCard({
 }) {
   const chip = KIND_CHIP[event.kind];
   const when = whenLabel(event, today);
+  // Guests can't read event_attendance (RLS lockdown, 0081), so their counts
+  // would be a false "no RSVPs yet" — show a sign-in affordance instead. The
+  // RSVP control below already routes guests through promptSignIn on tap.
+  const { guest, promptSignIn } = useGuest();
 
   // Compact one-liner.
   if (variant === "compact") {
@@ -131,7 +136,17 @@ export function EventCard({
       </button>
 
       <div className="mt-3">
-        <CountChips counts={summary.counts} hideMaybe={event.dayRsvp} />
+        {guest ? (
+          <button
+            type="button"
+            onClick={promptSignIn}
+            className="press inline-flex items-center gap-1 text-xs font-medium text-foreground/45"
+          >
+            🔒 Sign in to see who&rsquo;s coming
+          </button>
+        ) : (
+          <CountChips counts={summary.counts} hideMaybe={event.dayRsvp} />
+        )}
       </div>
 
       {onSetStatus && (

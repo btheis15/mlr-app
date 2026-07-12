@@ -178,6 +178,20 @@ on `cabin_bookings` that fan out into the in-app feed via `_notify()`. The mini'
 push-sender now checks the same `notif_types` before pushing cabin events, so the
 Profile → Notifications toggle turns feed **and** push on/off per type.
 
+⚠️ **For the privacy-wall lockdown, run
+[`0081`](migrations/0081_rls_lockdown.sql).** Flips the `using (true)` SELECT
+policies to members-only (`auth.uid() is not null`) on profiles, posts (+
+comments/media/tags/reactions/mentions/albums — keeping the 0040 moderation
+logic), committee_roster, event_attendance, work_items (the MLR branch too,
+preserving the 0066 house scoping), and houses — so the guest privacy wall is
+enforced in the database, not just the UI. Adds the guest-tier
+`public_profiles` view (id + first-name-only display_name + avatar_url, masked
+server-side; readable by `anon`) so guest browsing keeps names next to faces.
+Events, cabins, announcements, committees, committee_areas, app_images, and the
+fest_content tables deliberately stay public (browse-first content, no PII).
+Until it's run the app behaves exactly as before — the guest clients fall back
+to the old reads when the view is missing (42P01).
+
 ## Auth note
 
 Passwordless **email OTP** (NEXT-STEPS §3b). Supabase's built-in mailer is

@@ -189,7 +189,7 @@ export function NotificationsView() {
   return (
     <div className="space-y-4 pt-6">
       <header className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Activity</h1>
         {hasUnread && (
           <button
             onClick={markAllRead}

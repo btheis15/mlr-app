@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { fetchProfiles, type ProfileLite } from "@/lib/roles";
+import { fetchProfiles, fetchGuestProfiles, type ProfileLite } from "@/lib/roles";
 import { nameMatches } from "@/lib/committees";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
-import { PrivateName } from "@/components/Guard";
+import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
 import { FAMILY_FEST_AREAS } from "@/lib/data";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
@@ -46,6 +46,7 @@ const rosterProfileCache = new Map<string, RosterProfileSnapshot>();
  */
 export function CommitteeRoster({ committee }: { committee: Committee }) {
   const { user, isAdmin } = useIdentity();
+  const { guest } = useGuest();
   // Contact/link visibility is RLS-gated on the viewer, so the profile/contact
   // caches key on the viewer's email as well as the slug. `user` is null during
   // prerender ⇒ key `${slug}|`, matching the guest first paint.
@@ -99,7 +100,10 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
-    const ids = Array.from(new Set(members.map((m) => m.linkedUserId).filter((i): i is string => !!i)));
+    // Guests never see the contact buttons (Protected) — and under the 0081 RLS
+    // lockdown `profiles` is members-only anyway — so don't fetch phone/email
+    // for them at all.
+    const ids = guest ? [] : Array.from(new Set(members.map((m) => m.linkedUserId).filter((i): i is string => !!i)));
     if (!ids.length) {
       setContactById({});
       patchProfileCache({ contactById: {} });
@@ -118,15 +122,20 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     return () => {
       alive = false;
     };
-  }, [members]);
+  }, [members, guest]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
     let alive = true;
     (async () => {
-      const all = await fetchProfiles();
+      // Guests read the `public_profiles` view (first name + avatar only,
+      // migration 0081) so the roster still shows faces next to the seed names;
+      // it self-falls-back to the old `profiles` read pre-migration. The
+      // email-link lookup below needs `profiles.contact_email` (members-only),
+      // so guests skip it — their linking is the display-only nameMatches path.
+      const all = guest ? await fetchGuestProfiles() : await fetchProfiles();
       const map: Record<string, ProfileLite> = {};
-      if (supabase && rosterEmails.length) {
+      if (supabase && !guest && rosterEmails.length) {
         const { data } = await supabase
           .from("profiles")
           .select("id, display_name, avatar_url, contact_email")
@@ -145,7 +154,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     return () => {
       alive = false;
     };
-  }, [rosterEmails]);
+  }, [rosterEmails, guest]);
 
   const linkFor = (m: RosterEntry): ProfileLite | null => {
     if (m.linkedUserId) {

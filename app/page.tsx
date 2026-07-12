@@ -2,7 +2,7 @@ import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { HomeSpotlight } from "@/components/HomeSpotlight";
 import { HouseHubCard } from "@/components/HouseHubCard";
-import { HomeCommunication, HomeAroundResort } from "@/components/HomeResortGroups";
+import { HomeQuickActions } from "@/components/HomeQuickActions";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
 import { ShareApp } from "@/components/ShareApp";
@@ -15,8 +15,9 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
  * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
  *   1) WHAT'S HAPPENING up top, front & center — the Family Fest season spotlight
  *      and the nearest event + RSVP (plus in-season call-outs like dues).
- *   2) GET INVOLVED right after the events (the most important ask), then the
- *      Ask-for-Help / People tiles, then the quieter "Around the resort" group.
+ *   2) QUICK ACTIONS right after — an always-visible grid of the six places
+ *      people go (Events · People · Cabin Stay · Lend a Hand · Local Places ·
+ *      Committees), no accordion to open.
  *   3) QUIET UTILITIES (install, share, help) tucked at the bottom, out of the way.
  */
 export default function HomePage() {
@@ -33,7 +34,7 @@ export default function HomePage() {
       {/* ── What's happening — kept front & center ──────────────────────────── */}
       {/* Family Fest spotlight (quiet banner → planning → live takeover) is the
           permanent base; temporary call-outs stack ON TOP as swipe-away cards.
-          Stacking keeps this to one card tall so the Ask-for-Help row below
+          Stacking keeps this to one card tall so the quick-actions grid below
           stays in view. See HomeSpotlight / CalloutStack. */}
       <HomeSpotlight />
 
@@ -44,18 +45,25 @@ export default function HomePage() {
           until you open it). */}
       <WorkChecklist />
 
-      {/* ── Communication — People, Committees, Ask for Help ─────────────────── */}
-      <HomeCommunication />
-
-      {/* ── Around the resort — Events, Cabin Stay, Local Places ─────────────── */}
-      <HomeAroundResort />
+      {/* ── Quick actions — every destination, always visible ────────────────── */}
+      {/* Replaced the two default-collapsed accordions (Communication / Around
+          the resort) that buried Events, People, Cabin Stay, Lend a Hand, Local
+          Places and Committees behind an extra tap. Tagged data-fit-anchor
+          (inside the component) so the hero logo sizes to land it above the
+          tab bar — see lib/appLogoFit.ts. */}
+      <HomeQuickActions />
 
       {/* Your house — a single tap to your house's calendar, chat & to-do list.
           Self-hides for guests and anyone not assigned to a house. Sits near the
           bottom, just above the App & help utilities. */}
       <HouseHubCard />
 
-      {/* Quiet utilities, collapsed into one group at the bottom. */}
+      {/* Quiet utilities, collapsed into one group at the bottom.
+          Tagged data-fit-anchor-empty: when Home has no upcoming events, the
+          hero logo anchors on this group (the first thing past the quick-action
+          grid — HouseHubCard above self-hides for most people) instead of
+          ballooning to fill the freed space — see lib/appLogoFit.ts. */}
+      <div data-fit-anchor-empty>
       <CollapsibleSection title="App & help" icon="📲" subtitle="Take the tour · Add to phone · Share · Help">
         <RowLink
           href="/guide"
@@ -72,6 +80,7 @@ export default function HomePage() {
           subtitle="New here, or stuck? Start here."
         />
       </CollapsibleSection>
+      </div>
 
       {/* Heritage, condensed to a single line. The resort has been in the family
           since 1959 (1987 — when Family Fest began — lives on the Family Fest tab). */}

@@ -612,10 +612,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       {/* One tidy row instead of a stacked title + wordy subtitle + link. The
           verbose blurb is dropped (the composer's placeholder is instruction
           enough); the title shows only when FeedView isn't already labelling
-          this view with its "Posts" pill (i.e. the member is in no committees),
-          so we never double up or leave the feed unlabelled. */}
+          this view via its "Family Feed" row (i.e. the member is in no house or
+          committee), so we never double up or leave the feed unlabelled. */}
       <header className="flex items-center gap-3">
-        {showHeading && <h1 className="text-2xl font-bold tracking-tight">Posts</h1>}
+        {showHeading && <h1 className="text-2xl font-bold tracking-tight">Family Feed</h1>}
         <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary">
           📘 Facebook group ↗
         </a>

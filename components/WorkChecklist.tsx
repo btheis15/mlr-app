@@ -6,6 +6,7 @@ import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/l
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
+import { useGuest } from "@/components/Guard";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { WorkItemSheet, type WorkItemMember } from "@/components/WorkItemSheet";
 
@@ -46,6 +47,10 @@ const workChecklistCache = new Map<string, { items: WorkItem[]; houses: House[];
 
 export function WorkChecklist() {
   const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
+  // The checklist is members-only under the RLS lockdown (0081) — even the MLR
+  // section. Guests keep the card but get a quiet sign-in line instead of an
+  // empty "Nothing on the list yet".
+  const { guest } = useGuest();
   const key = user?.email ?? "";
   // The signed-in account's own id, so a member can edit the item THEY created
   // (author-or-admin edit). `user` (localStorage identity) doesn't carry the
@@ -81,10 +86,11 @@ export function WorkChecklist() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Mention candidates for the comment threads (all members; scoped per-item below).
+  // Mention candidates for the comment threads (all members; scoped per-item
+  // below). Guests can't comment (and can't read profiles) — skip the fetch.
   useEffect(() => {
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb) return;
+    if (!isSupabaseConfigured || !sb || guest) return;
     sb.from("profiles").select("id, display_name, avatar_url, house_id, is_admin").then(({ data }) => {
       setMembers(((data ?? []) as { id: string; display_name: string | null; avatar_url: string | null; house_id: string | null; is_admin: boolean }[]).map((p) => ({
         id: p.id,
@@ -94,7 +100,7 @@ export function WorkChecklist() {
         isAdmin: p.is_admin,
       })));
     });
-  }, []);
+  }, [guest]);
 
   // Deep-link from a comment notification: /?work=<id> opens that item's thread.
   // Keyed on `items`, not `loading`: with the warm cache `loading` starts false,
@@ -183,7 +189,7 @@ export function WorkChecklist() {
         <div className="flex items-center gap-3 px-4 py-3.5">
           <button
             type="button"
-            onClick={() => setCardOpen((o) => !o)}
+            onClick={() => (guest ? promptSignIn() : setCardOpen((o) => !o))}
             aria-expanded={cardOpen}
             className="press flex min-w-0 flex-1 items-center gap-3 text-left"
           >
@@ -191,13 +197,15 @@ export function WorkChecklist() {
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-accent">Work Checklist</h3>
               <p className="text-xs text-foreground/50">
-                {loading
-                  ? "Loading…"
-                  : totalOpen === 0 && totalDone === 0
-                    ? "Nothing on the list yet"
-                    : totalOpen === 0
-                      ? `All ${totalDone} item${totalDone !== 1 ? "s" : ""} done ✅`
-                      : `${totalOpen} open${totalDone > 0 ? ` · ${totalDone} done` : ""}${asapCount > 0 ? ` · 🔴 ${asapCount} ASAP` : ""}`}
+                {guest
+                  ? "🔒 Sign in to see the resort to-do list"
+                  : loading
+                    ? "Loading…"
+                    : totalOpen === 0 && totalDone === 0
+                      ? "Nothing on the list yet"
+                      : totalOpen === 0
+                        ? `All ${totalDone} item${totalDone !== 1 ? "s" : ""} done ✅`
+                        : `${totalOpen} open${totalDone > 0 ? ` · ${totalDone} done` : ""}${asapCount > 0 ? ` · 🔴 ${asapCount} ASAP` : ""}`}
               </p>
             </div>
             <span
@@ -220,7 +228,7 @@ export function WorkChecklist() {
         </div>
 
         {/* Progress bar (done / total) — iOS-style linear gauge. */}
-        {cardOpen && !loading && totalOpen + totalDone > 0 && (
+        {!guest && cardOpen && !loading && totalOpen + totalDone > 0 && (
           <div className="flex items-center gap-2 px-4 pb-3">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-background ring-1 ring-border">
               <div
@@ -234,8 +242,8 @@ export function WorkChecklist() {
           </div>
         )}
 
-        {/* Sections — revealed when the card is expanded. */}
-        {cardOpen && !loading && sections.map((section) => {
+        {/* Sections — revealed when the card is expanded (members only). */}
+        {!guest && cardOpen && !loading && sections.map((section) => {
           // Always sorted by importance: ASAP → This year → Nice to have →
           // unrated, keeping the newest-first order within each urgency.
           const open = section.items

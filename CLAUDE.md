@@ -374,10 +374,20 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   ships the gated/guest view. Applied to: Posts, Pay/dues, MemberSheet
   (contact+pay), schedule/dinner/committee detail pages (locations, chef/lead/member
   contacts, "houses on crew"), FestStatus/FestWeek (today's locations + contacts),
-  DinnerCrew, CrewView (household names), CommitteeJoin. ⚠️ **This is the UI layer
-  only** — sensitive seed data still ships in the client bundle and Supabase
-  posts/profiles are still public-read; the real hardening (gated server reads +
-  RLS lockdown, keeping PII out of the bundle) is the planned next step.
+  DinnerCrew, CrewView (household names), CommitteeJoin. **The database now
+  enforces this wall too** (migration
+  [`0081`](supabase/migrations/0081_rls_lockdown.sql)): profiles, posts (+
+  comments/media/tags/reactions/mentions/albums), committee_roster,
+  event_attendance, work_items (incl. the MLR branch), and houses are
+  members-only reads (`auth.uid() is not null`); events, cabins, announcements,
+  committees, committee_areas, app_images, and the fest_content tables stay
+  public (browse-first content, no PII). Guests get names/avatars from the
+  `public_profiles` view (first name only, masked server-side); client fallbacks
+  catch a missing view (42P01) pre-migration. Guest-visible surfaces degrade to
+  sign-in nudges instead of false empties (EventCard/EventSheet/FestRsvp "Sign
+  in to see who's coming", WorkChecklist "Sign in to see the resort to-do
+  list"). ⚠️ Sensitive **seed** data (roster emails etc.) still ships in the
+  client bundle — keeping PII out of the bundle is the remaining step.
 
 ## Family Fest season (the "one app" spine)
 
@@ -452,8 +462,22 @@ page down — keeping the **Ask for Help** row below always in view.
   opened** (a fresh session). Give a temporary call-out a *versioned* id (e.g.
   a date- or deadline-suffixed string) so a brand-new alert reappears even
   within a session where an old, same-purpose card was swiped.
-- **Add a future call-out** by pushing another swipeable `StackItem` above the
-  base in `HomeSpotlight`, gated by whatever decides it should show.
+- **Call-outs are admin-managed rows**, not code: the `home_callouts` table
+  (migration [`0083`](supabase/migrations/0083_home_callouts.sql) — public-read,
+  writes gated to `can_edit_fest()`, realtime) is edited in the Family Fest
+  Planner's **Callouts** section ([`FestPlanner`](components/FestPlanner.tsx) —
+  title/body, optional site-assets image, a `tel:`/`mailto:`/`https` action
+  button, a show window, position, active toggle, and the versioned
+  `dismiss_id`, with a live [`CalloutCard`](components/CalloutCard.tsx)
+  preview). `HomeSpotlight` maps the active, in-window rows (via
+  `useFestContent`; `useDemoDate().today` drives the window) into swipeable
+  `StackItem`s keyed by each row's `dismiss_id`. Pre-migration/offline,
+  `fetchFestContent()` degrades to `FALLBACK_CALLOUTS` in
+  [`lib/festContent.ts`](lib/festContent.ts) (the seeded t-shirt flyer, identical
+  to the 0083 seed row) — but **only on a missing-table error**: an empty table
+  legitimately means "no call-outs". The `home_callouts` realtime subscription
+  sits on its **own channel** in [`lib/useFestContent.ts`](lib/useFestContent.ts)
+  so a pre-0083 database can't fail the fest tables' shared channel join.
 
 ## Resort events & attendance
 

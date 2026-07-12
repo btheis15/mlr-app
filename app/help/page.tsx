@@ -1,74 +1,102 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
-import { HELP_CONTACT } from "@/lib/help";
+import { useEffect, useState } from "react";
+import { fetchResortConfig, type ResortConfig } from "@/lib/resortConfig";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
-
-export const metadata: Metadata = {
-  title: "Help · Muskellunge Lake Resort",
-  description: "How the MLR app works, sign-in help, and who to contact.",
-};
+import { SkeletonCard } from "@/components/Skeleton";
 
 /**
  * The Help / how-to page. Written for the least-technical family members, so it
  * leads with a real human to contact, keeps every answer short and concrete, and
  * avoids jargon. Linked from Profile and from the sign-in sheet.
+ *
+ * The escape-hatch contact (name/phone/email) is fetched live from
+ * `resort_config` (lib/resortConfig.ts `fetchResortConfig()`) instead of being
+ * hard-coded, so this is a client component — no page-level `metadata` export
+ * (same trade-off already made by /events and /family-fest; the page just
+ * inherits the root layout's default title).
  */
 export default function HelpPage() {
-  const { name, phone, email } = HELP_CONTACT;
+  const [config, setConfig] = useState<ResortConfig | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchResortConfig().then((c) => {
+      if (active) setConfig(c);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loading = config === null;
+  const name = config?.helpContactName?.trim() || "the resort admin";
+  const phone = config?.helpContactPhone?.trim() ?? "";
+  const email = config?.helpContactEmail?.trim() ?? "";
+  const hasContact = !loading && (phone || email);
 
   return (
     <div className="space-y-6 pt-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Help &amp; how-to</h1>
         <p className="text-sm text-foreground/65">
-          New here, or stuck on something? Start below — and you can always just
-          text {name}.
+          New here, or stuck on something? Start below — there&rsquo;s always a
+          real person you can reach too.
         </p>
       </header>
 
       {/* Escape hatch FIRST — a real person beats any feature for the least
-          technical folks. */}
-      <section className="space-y-3 rounded-2xl bg-primary/5 p-5 ring-1 ring-primary/15">
-        <h2 className="text-base font-bold">Need a hand? Text {name}.</h2>
-        <p className="text-sm text-foreground/70">
-          If anything here doesn&rsquo;t work or doesn&rsquo;t make sense, send a
-          quick text and {name} will help you out.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {phone ? (
-            <>
+          technical folks. While the live contact is loading, show a skeleton
+          instead of a broken/blank "Text " button; if no phone or email is
+          configured at all, this section quietly hides rather than render
+          dead buttons. */}
+      {loading && <SkeletonCard />}
+      {hasContact && (
+        <section className="space-y-3 rounded-2xl bg-primary/5 p-5 ring-1 ring-primary/15">
+          <h2 className="text-base font-bold">
+            Need a hand? {phone ? `Text ${name}.` : `Reach ${name}.`}
+          </h2>
+          <p className="text-sm text-foreground/70">
+            If anything here doesn&rsquo;t work or doesn&rsquo;t make sense, send a
+            quick {phone ? "text" : "note"} and {name} will help you out.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {phone ? (
+              <>
+                <a
+                  href={`sms:${phone}`}
+                  className="press flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+                >
+                  💬 Text {name}
+                </a>
+                <a
+                  href={`tel:${phone}`}
+                  className="press flex flex-1 items-center justify-center gap-2 rounded-xl bg-card py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
+                >
+                  📞 Call {name}
+                </a>
+              </>
+            ) : (
               <a
-                href={`sms:${phone}`}
+                href={`mailto:${email}?subject=${encodeURIComponent("MLR app — I need help")}`}
                 className="press flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white"
               >
-                💬 Text {name}
+                ✉️ Email {name}
               </a>
-              <a
-                href={`tel:${phone}`}
-                className="press flex flex-1 items-center justify-center gap-2 rounded-xl bg-card py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
-              >
-                📞 Call {name}
-              </a>
-            </>
-          ) : (
+            )}
+          </div>
+          {phone && email && (
             <a
               href={`mailto:${email}?subject=${encodeURIComponent("MLR app — I need help")}`}
-              className="press flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white"
+              className="press block text-center text-xs text-foreground/55 underline-offset-2 hover:underline"
             >
-              ✉️ Email {name}
+              Prefer email? {email}
             </a>
           )}
-        </div>
-        {phone && (
-          <a
-            href={`mailto:${email}?subject=${encodeURIComponent("MLR app — I need help")}`}
-            className="press block text-center text-xs text-foreground/55 underline-offset-2 hover:underline"
-          >
-            Prefer email? {email}
-          </a>
-        )}
-      </section>
+        </section>
+      )}
 
       <HelpItem emoji="🌲" title="What is this app?">
         It&rsquo;s the home base for Muskellunge Lake Resort — the schedule,
@@ -116,7 +144,7 @@ export default function HelpPage() {
             fresh one.
           </li>
           <li>
-            Still stuck? <b>Text {name}</b> (top of this page).
+            Still stuck? <b>Use the contact info above</b> to reach {name}.
           </li>
         </ul>
       </HelpItem>

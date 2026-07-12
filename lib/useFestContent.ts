@@ -22,6 +22,14 @@ const FEST_TABLES = [
   "fest_activities",
 ] as const;
 
+// home_callouts (migration 0083) subscribes on its OWN channel, not appended to
+// FEST_TABLES: a postgres_changes binding to a table that doesn't exist yet
+// fails that channel's join, which would silently kill realtime for every fest
+// table sharing it on a pre-0083 database. Isolated, the worst case is just "no
+// live call-out updates until the migration runs" — reads still work (the fetch
+// falls back to the in-code seed).
+const CALLOUT_TABLE = "home_callouts";
+
 // Last-known content, held across remounts so navigating back to a fest page
 // paints the live data immediately rather than flashing the seed again.
 let cache: FestContent | null = null;
@@ -58,8 +66,15 @@ export function useFestContent(opts?: { realtime?: boolean }): UseFestContent {
       );
     }
     channel.subscribe();
+    const calloutChannel = sb
+      .channel("home-callouts-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: CALLOUT_TABLE }, () =>
+        scheduleRefetch(reload),
+      );
+    calloutChannel.subscribe();
     return () => {
       sb.removeChannel(channel);
+      sb.removeChannel(calloutChannel);
     };
   }, [reload, realtime, scheduleRefetch]);
 

@@ -11,12 +11,12 @@ import { useRouter } from "next/navigation";
 
 /**
  * The "Feed" tab — a Messages-style conversation list grouped into sections
- * (mirrors the iOS app's inset-grouped Chats screen): "Main Feed" (the resort
+ * (mirrors the iOS app's inset-grouped screen): "Family Feed" (the resort
  * posts) pinned on top, a "Your house" section (if you're in a house), then a
  * "Committee chats" section — a "{Committee} General" channel (e.g. "Family Fest
  * General") plus one row per role/area you hold (Family Fest → "Meals", …). Each
  * section is one card with inset dividers between its rows. Tap a row to open that
- * chat. If you're in no house or committee, the tab drops straight into the Main
+ * chat. If you're in no house or committee, the tab drops straight into the Family
  * Feed. Each row shows a last-message preview + unread badge (committee rows add a
  * mute toggle, 0063).
  */
@@ -371,7 +371,7 @@ export function FeedView() {
     );
   }
 
-  // No house and no committees → straight to the Main Feed, no list.
+  // No house and no committees → straight to the Family Feed, no list.
   if (channels.length === 0 && !houseChannel) {
     return (
       <div className="space-y-3 pt-1">
@@ -390,7 +390,7 @@ export function FeedView() {
             onClick={() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); }}
             className="press flex items-center gap-1 text-sm font-semibold text-primary"
           >
-            ‹ {openedFromHouseRef.current ? "House" : "Chats"}
+            ‹ {openedFromHouseRef.current ? "House" : "Feed"}
           </button>
           <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
@@ -411,7 +411,7 @@ export function FeedView() {
       <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
           <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
-            ‹ Chats
+            ‹ Feed
           </button>
           <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
@@ -447,12 +447,12 @@ export function FeedView() {
     );
   }
 
-  // Main Feed opened from the list.
+  // Family Feed opened from the list.
   if (active === "posts") {
     return (
       <div className="space-y-3 pt-1">
         <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
-          ‹ Chats
+          ‹ Feed
         </button>
         <PostsView seed={POSTS} showHeading={false} />
       </div>
@@ -460,16 +460,16 @@ export function FeedView() {
   }
 
   // The conversation list — a Messages-style, grouped layout mirroring the iOS
-  // app: Main Feed pinned on top, then a "Your house" section, then a "Committee
+  // app: Family Feed pinned on top, then a "Your house" section, then a "Committee
   // chats" section. Each section is one rounded card with inset dividers between
   // its rows (not a stack of separate cards), so the list reads clean.
   return (
     <div className="space-y-5 pt-1">
-      <h1 className="px-1 text-lg font-bold">Chats</h1>
+      <h1 className="px-1 text-lg font-bold">Feed</h1>
 
-      {/* Main Feed — pinned on top, its own card. */}
+      {/* Family Feed — pinned on top, its own card. */}
       <ChatCard>
-        <ConversationRow emoji="📰" title="Main Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+        <ConversationRow emoji="📰" title="Family Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
       </ChatCard>
 
       {houseChannel && (

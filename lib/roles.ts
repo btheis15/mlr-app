@@ -37,6 +37,32 @@ export async function fetchProfiles(ids?: string[]): Promise<ProfileLite[]> {
   }));
 }
 
+/**
+ * Guest-tier profiles: names + avatars for someone who ISN'T signed in. Reads
+ * the `public_profiles` view (migration 0081 — first name only, masked
+ * server-side) since the full `profiles` table is members-only under the RLS
+ * lockdown. Pre-migration the view doesn't exist yet — that read fails with
+ * 42P01 (missing relation, same check as NotificationsView) and we fall back
+ * to the old public `profiles` read, which still works until 0081 is applied.
+ * Members should keep calling `fetchProfiles()` — this is the guest path only.
+ */
+export async function fetchGuestProfiles(): Promise<ProfileLite[]> {
+  const sb = supabase;
+  if (!sb) return [];
+  const { data, error } = await sb.from("public_profiles").select("id, display_name, avatar_url");
+  if (error) {
+    if (error.code === "42P01" || /relation .* does not exist/i.test(error.message)) {
+      return fetchProfiles();
+    }
+    return [];
+  }
+  return ((data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map((p) => ({
+    id: p.id,
+    name: p.display_name?.trim() || "Member",
+    avatarUrl: p.avatar_url ?? null,
+  }));
+}
+
 /** Index profiles by id for quick name/avatar lookups. */
 export function profileMap(profiles: ProfileLite[]): Map<string, ProfileLite> {
   return new Map(profiles.map((p) => [p.id, p]));

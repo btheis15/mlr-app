@@ -8,6 +8,7 @@ import { formatDateLong } from "@/lib/format";
 import { useIdentity } from "@/components/IdentityProvider";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { EventSheet } from "@/components/EventSheet";
+import { useGuest } from "@/components/Guard";
 
 // The Family Fest RSVP, surfaced near the top of the Family Fest hub: tap Going or
 // Can't make (no Maybe for fest planning), see how many are here each day, and tap
@@ -20,6 +21,9 @@ export function FestRsvp() {
   const { today } = useDemoDate();
   const { isAdmin } = useIdentity();
   const { events, summaries, mine, loading, setStatus } = useEvents();
+  // Guests can't read event_attendance (RLS lockdown, 0081) — their counts are
+  // all zero, so show a sign-in nudge instead of a false "No RSVPs yet".
+  const { guest, promptSignIn } = useGuest();
   const [open, setOpen] = useState(false);
   // Which day to open the sheet on (null = the overview / "Everyone").
   const [focusDay, setFocusDay] = useState<string | null>(null);
@@ -114,7 +118,7 @@ export function FestRsvp() {
                   key={day}
                   type="button"
                   onClick={() => openSheet(day)}
-                  aria-label={`${formatDateLong(day)} — ${count} going. Tap to see who’s here.`}
+                  aria-label={`${formatDateLong(day)}${guest ? "" : ` — ${count} going`}. Tap to see who’s here.`}
                   className={`press flex flex-col items-center gap-0.5 rounded-xl py-1.5 ring-1 ${
                     on ? "bg-primary text-white ring-primary" : "bg-background text-foreground/70 ring-border"
                   }`}
@@ -123,13 +127,16 @@ export function FestRsvp() {
                     {d.toLocaleDateString(undefined, { weekday: "short" })}
                   </span>
                   <span className="text-sm font-bold leading-none">{d.getDate()}</span>
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
-                    }`}
-                  >
-                    {count}
-                  </span>
+                  {/* Guests can't see attendance — hide the (always-zero) tally. */}
+                  {!guest && (
+                    <span
+                      className={`text-[10px] font-semibold ${
+                        on ? "text-white/85" : count > 0 ? "text-primary" : "text-foreground/35"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -138,9 +145,19 @@ export function FestRsvp() {
         </div>
       )}
 
-      <p className="text-xs text-foreground/55">
-        {counts.length ? counts.join(" · ") : "No RSVPs yet — be the first"}
-      </p>
+      {guest ? (
+        <button
+          type="button"
+          onClick={promptSignIn}
+          className="press inline-flex items-center gap-1 text-xs font-medium text-foreground/45"
+        >
+          🔒 Sign in to see who&rsquo;s coming
+        </button>
+      ) : (
+        <p className="text-xs text-foreground/55">
+          {counts.length ? counts.join(" · ") : "No RSVPs yet — be the first"}
+        </p>
+      )}
       </>
       )}
 

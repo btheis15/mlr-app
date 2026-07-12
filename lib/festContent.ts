@@ -38,6 +38,44 @@ export const FALLBACK_DUES: DuesTier[] = [
   { id: "no-food", label: "Without food", amount: null, note: "per person" },
 ];
 
+/** A Home call-out card — a swipe-away StackItem above the permanent Family
+ *  Fest spotlight (see HomeSpotlight/CalloutStack). Admin-managed rows in
+ *  `home_callouts` (migration 0083); `dismissId` is the CalloutStack
+ *  session-dismissal key, versioned by editors so an updated card resurfaces. */
+export interface HomeCallout {
+  id: string;
+  title: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  linkHref: string | null; // tel:… / mailto:… / https:…
+  linkLabel: string | null;
+  startsOn: string | null; // ISO date; null = show immediately
+  endsOn: string | null; // ISO date, inclusive; null = open-ended
+  dismissId: string;
+  position: number;
+  isActive: boolean;
+}
+
+/** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
+ *  0083 seed row so Home looks the same whether or not the migration has run.
+ *  Used only when the `home_callouts` table doesn't exist yet (pre-migration /
+ *  no backend) — an empty table means "no call-outs", not "show the seed". */
+export const FALLBACK_CALLOUTS: HomeCallout[] = [
+  {
+    id: "tshirt-order-jul15-2026",
+    title: null,
+    body: null,
+    imageUrl: "/ff2026-tshirt-order.jpg",
+    linkHref: "tel:7153653195",
+    linkLabel: "📞 Call Tricia at Metro to order",
+    startsOn: null,
+    endsOn: "2026-07-15",
+    dismissId: "tshirt-order-jul15-2026",
+    position: 0,
+    isActive: true,
+  },
+];
+
 /** Everything the Family Fest views need, in one bundle. */
 export interface FestContent {
   config: FestConfigContent;
@@ -46,6 +84,7 @@ export interface FestContent {
   payees: Payee[];
   activities: FestActivity[];
   dues: DuesTier[];
+  callouts: HomeCallout[];
 }
 
 /** The in-code seed bundle — the first-paint value and the offline fallback. */
@@ -56,6 +95,7 @@ export const SEED_CONTENT: FestContent = {
   payees: PAYEES,
   activities: THINGS_TO_DO,
   dues: FALLBACK_DUES,
+  callouts: FALLBACK_CALLOUTS,
 };
 
 // ── Row shapes (snake_case, straight from Postgres) ───────────────────────────
@@ -121,6 +161,22 @@ interface ActivityRow {
   details: string | null;
   location: string | null;
 }
+interface CalloutRow {
+  id: string;
+  title: string | null;
+  body: string | null;
+  image_url: string | null;
+  link_href: string | null;
+  link_label: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  dismiss_id: string;
+  position: number;
+  is_active: boolean;
+}
+
+const CALLOUT_COLUMNS =
+  "id, title, body, image_url, link_href, link_label, starts_on, ends_on, dismiss_id, position, is_active";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -183,6 +239,21 @@ function mapActivity(r: ActivityRow): FestActivity {
     location: r.location ?? undefined,
   };
 }
+function mapCallout(r: CalloutRow): HomeCallout {
+  return {
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    imageUrl: r.image_url,
+    linkHref: r.link_href,
+    linkLabel: r.link_label,
+    startsOn: r.starts_on,
+    endsOn: r.ends_on,
+    dismissId: r.dismiss_id,
+    position: r.position,
+    isActive: r.is_active,
+  };
+}
 
 // ── Reads (public; fall back to the seed on empty / error / no backend) ───────
 
@@ -190,7 +261,7 @@ export async function fetchFestContent(): Promise<FestContent> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return SEED_CONTENT;
   try {
-    const [config, dues, schedule, dinners, payees, activities] = await Promise.all([
+    const [config, dues, schedule, dinners, payees, activities, callouts] = await Promise.all([
       sb.from("fest_config").select("name, tagline, start_date, end_date").eq("fest_year", FEST_YEAR).maybeSingle(),
       sb.from("fest_dues").select("id, label, amount, note, per_day").eq("fest_year", FEST_YEAR).order("position"),
       sb
@@ -211,6 +282,7 @@ export async function fetchFestContent(): Promise<FestContent> {
         .order("position"),
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
       sb.from("fest_activities").select("id, title, emoji, blurb, details, location").eq("fest_year", FEST_YEAR).order("position"),
+      sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
     ]);
 
     const scheduleRows = (schedule.data ?? []) as ScheduleRow[];
@@ -218,6 +290,7 @@ export async function fetchFestContent(): Promise<FestContent> {
     const payeeRows = (payees.data ?? []) as PayeeRow[];
     const activityRows = (activities.data ?? []) as ActivityRow[];
     const duesRows = (dues.data ?? []) as DuesRow[];
+    const calloutRows = (callouts.data ?? []) as CalloutRow[];
 
     return {
       config: config.data ? mapConfig(config.data as ConfigRow) : FALLBACK_CONFIG,
@@ -227,6 +300,11 @@ export async function fetchFestContent(): Promise<FestContent> {
       payees: payeeRows.length ? payeeRows.map(mapPayee) : PAYEES,
       activities: activityRows.length ? activityRows.map(mapActivity) : THINGS_TO_DO,
       dues: duesRows.length ? duesRows.map(mapDues) : FALLBACK_DUES,
+      // Call-outs degrade on ERROR only (pre-0083 the table doesn't exist —
+      // show the in-code t-shirt seed so Home is unchanged). An EMPTY table is
+      // a real state ("no call-outs"): the seed must not resurrect a card an
+      // editor deliberately deleted.
+      callouts: callouts.error ? FALLBACK_CALLOUTS : calloutRows.map(mapCallout),
     };
   } catch {
     return SEED_CONTENT;
@@ -419,6 +497,58 @@ export const saveActivity = (i: ActivityInput) =>
     position: i.position,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
+
+// Home call-outs (migration 0083) — not year-keyed like the fest tables, so
+// these write directly instead of through writeRow (which stamps fest_year).
+
+export interface CalloutInput {
+  id?: string;
+  title: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  linkHref: string | null;
+  linkLabel: string | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  dismissId: string;
+  position: number;
+  isActive: boolean;
+}
+export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const row = {
+    title: i.title,
+    body: i.body,
+    image_url: i.imageUrl,
+    link_href: i.linkHref,
+    link_label: i.linkLabel,
+    starts_on: i.startsOn,
+    ends_on: i.endsOn,
+    dismiss_id: i.dismissId,
+    position: i.position,
+    is_active: i.isActive,
+  };
+  const q = i.id
+    ? sb.from("home_callouts").update(row).eq("id", i.id)
+    : sb.from("home_callouts").insert({ ...row, created_by: await currentUid() });
+  const { error } = await q;
+  return error ? { error: error.message } : {};
+}
+export const deleteCallout = (id: string) => deleteRow("home_callouts", id);
+
+/** All call-out rows (active or not) for the Planner's list. Empty with no
+ *  backend or pre-0083 (the editor shows nothing to edit until the table exists). */
+export async function fetchCallouts(): Promise<HomeCallout[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  try {
+    const { data } = await sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position");
+    return ((data ?? []) as CalloutRow[]).map(mapCallout);
+  } catch {
+    return [];
+  }
+}
 
 export interface ConfigInput {
   name: string;

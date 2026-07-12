@@ -32,10 +32,14 @@ export const POSTS: Post[] = [
  *
  * Family Fest's roster is the **real** committee: each person's `roles[]` are
  * the areas they own within the one Family Fest committee (Meals, Entertainment
- * & Games, etc. — these are roles, not separate committees). Most don't have an
- * account yet, so they have a display first name but no `email`/`phone`; those
- * get filled in (and the name swapped to their account) once they link up. Brian
- * is the one with contact on file for now. Phones are E.164 so tel:/sms: work.
+ * & Games, etc. — these are roles, not separate committees). This static seed
+ * carries **names + roles only** — no `email`/`phone` — because it ships in the
+ * public client JS bundle; contact info now lives server-side in the Supabase
+ * `committee_roster` table (migrations 0056/0060, admin-edited via
+ * `AdminCommittees`), which is the real roster nowadays and is what
+ * `CommitteeRoster`/`nameMatches()` (lib/committees.ts) resolve each slot
+ * against for account linking + contact display. This list is just the
+ * display fallback (names/areas) for people who haven't linked an account yet.
  *
  * Resort Maintenance + Beautification have **no roster yet** — their old
  * illustrative placeholders were cleared. Add real people as they sign on.
@@ -65,34 +69,34 @@ export const COMMITTEES: Committee[] = [
     emoji: "🎉",
     description:
       "The big one — plans the whole week. Each person owns one or more areas (meals, entertainment & games, art & decorating, merchandise/fundraising/polling, logistics & finance); each area has a Lead.",
-    // `email` is the stable identity key: it's how a roster slot LINKS to a real
-    // account (matched against `profiles.contact_email`, which Supabase seeds
-    // from each person's login email on signup) so the placeholder upgrades to
-    // their account — name/avatar then follow their profile — with no duplicate
-    // entry. See lib/committees.ts + components/CommitteeRoster.tsx. A few people
-    // haven't given an email yet (name-match is the fallback there).
+    // No `email`/`phone` here on purpose — this list ships in the public
+    // client JS bundle. The stable identity key that LINKS a roster slot to a
+    // real account (matched against `profiles.contact_email`, which Supabase
+    // seeds from each person's login email on signup) now lives server-side in
+    // the `committee_roster` table (migrations 0056/0060), not in this seed.
+    // See lib/committees.ts + components/CommitteeRoster.tsx.
     members: [
       { name: "Lauren Zerfas", roles: ["Meals · Lead"] },
       { name: "Jessica Stewart", roles: ["Meals", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
-      { name: "Rob Hermanson", roles: ["Meals", "Logistics, Scheduling & Finance"], email: "rob.hermanson@yahoo.com" },
-      { name: "Lisa Gorge", roles: ["Meals"], email: "lisagorge20@gmail.com" },
-      { name: "Matthew Vinezeano", roles: ["Meals", "Entertainment & Games"], email: "mvinezeano10@gmail.com" },
-      { name: "Kity Theis", roles: ["Meals", "Logistics, Scheduling & Finance"], email: "grandmakity@gmail.com" },
-      { name: "Natalie Theis de Pareja", roles: ["Meals", "Entertainment & Games"], email: "windycity531@yahoo.com" },
-      { name: "Keith Thibodeau", roles: ["Entertainment & Games · Lead"], email: "kay.are.tibbs@gmail.com" },
-      { name: "Rick Gorge", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling · Lead"], email: "rickgorge@gmail.com" },
-      { name: "Markus Hofer", roles: ["Entertainment & Games"], email: "hofermarkus82@gmail.com" },
-      { name: "Karen Theis", roles: ["Entertainment & Games"], email: "kaelth6255@gmail.com" },
-      { name: "Zack Kauranen", roles: ["Entertainment & Games"], email: "zkauranen@yahoo.com" },
-      { name: "Abbie Theis", roles: ["Entertainment & Games", "Art & Decorating", "Merchandise, Fundraising & Polling"], email: "theisabigail@gmail.com" },
-      { name: "Brian Theis", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"], email: "brian.theis15@gmail.com", phone: "+12248005389" },
-      { name: "Jenny Snively", roles: ["Art & Decorating · Lead"], email: "jayellebee29@gmail.com" },
-      { name: "Christy Gorge", roles: ["Art & Decorating"], email: "christymgorge@gmail.com" },
-      { name: "Lindsay Thibodeau", roles: ["Art & Decorating"], email: "lindsayfier@gmail.com" },
+      { name: "Rob Hermanson", roles: ["Meals", "Logistics, Scheduling & Finance"] },
+      { name: "Lisa Gorge", roles: ["Meals"] },
+      { name: "Matthew Vinezeano", roles: ["Meals", "Entertainment & Games"] },
+      { name: "Kity Theis", roles: ["Meals", "Logistics, Scheduling & Finance"] },
+      { name: "Natalie Theis de Pareja", roles: ["Meals", "Entertainment & Games"] },
+      { name: "Keith Thibodeau", roles: ["Entertainment & Games · Lead"] },
+      { name: "Rick Gorge", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling · Lead"] },
+      { name: "Markus Hofer", roles: ["Entertainment & Games"] },
+      { name: "Karen Theis", roles: ["Entertainment & Games"] },
+      { name: "Zack Kauranen", roles: ["Entertainment & Games"] },
+      { name: "Abbie Theis", roles: ["Entertainment & Games", "Art & Decorating", "Merchandise, Fundraising & Polling"] },
+      { name: "Brian Theis", roles: ["Entertainment & Games", "Merchandise, Fundraising & Polling", "Logistics, Scheduling & Finance"] },
+      { name: "Jenny Snively", roles: ["Art & Decorating · Lead"] },
+      { name: "Christy Gorge", roles: ["Art & Decorating"] },
+      { name: "Lindsay Thibodeau", roles: ["Art & Decorating"] },
       { name: "Ellie", roles: ["Art & Decorating"] },
-      { name: "Michelle Birkholz", roles: ["Art & Decorating"], email: "michellebirkholz@gmail.com" },
-      { name: "Cathy Hofer", roles: ["Logistics, Scheduling & Finance · Lead"], email: "cathanndude@gmail.com" },
-      { name: "Cassie Paparigian", roles: ["Logistics, Scheduling & Finance"], email: "cpaparigian@gmail.com" },
+      { name: "Michelle Birkholz", roles: ["Art & Decorating"] },
+      { name: "Cathy Hofer", roles: ["Logistics, Scheduling & Finance · Lead"] },
+      { name: "Cassie Paparigian", roles: ["Logistics, Scheduling & Finance"] },
     ],
   },
   {
@@ -151,15 +155,13 @@ export const FAMILY_FEST = {
   facebookGroupUrl: "https://www.facebook.com/share/g/1B7Z7eVBnb/?mibextid=wwXIfr",
   /** Cost to attend, shown on the Pay screen. Kids' price still TBD. */
   dues: { perAdult: "$100", perKid: "TBD", per: "for the week" },
-  /** Volunteer / planning contact, surfaced during the "planning" season so
-   *  people can reach out to help (tap-to-email / tap-to-call). A real point of
-   *  contact for now; this moves to the Committees feature once there's a
-   *  backend (NEXT-STEPS §5c). Phone is E.164 so tel:/sms: work everywhere. */
-  organizer: {
-    name: "Brian Theis",
-    email: "brian.theis15@gmail.com",
-    phone: "+12248005389",
-  },
+  // A volunteer/planning contact used to be hard-coded here (name + personal
+  // email + phone) but it was never actually read by any component (grep
+  // confirms no consumer) and shipped that PII into the public client bundle
+  // for nothing — removed. The real point of contact for committee stuff is
+  // the Family Fest committee roster (COMMITTEES above / `committee_roster` in
+  // Supabase); the resort-wide human escape hatch is `lib/resortConfig.ts`
+  // (`fetchResortConfig()`, used by /help).
   highlights: [
     { id: "welcome-bonfire", day: "2026-07-27", start: "19:30", title: "Welcome bonfire & s'mores", emoji: "🔥" },
     { id: "musky-tournament", day: "2026-07-29", start: "06:00", title: "Musky fishing tournament", emoji: "🎣" },
