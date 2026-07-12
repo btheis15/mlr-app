@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
+import { SkeletonList } from "@/components/Skeleton";
 import { plural } from "@/lib/format";
 import { useBusyAction, useSaveStatus } from "@/lib/hooks";
 import { inviteMember } from "@/lib/admin";
@@ -215,12 +216,12 @@ export function AdminMembers() {
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
         <h2 className="text-sm font-semibold">Members</h2>
-        <span className="ml-auto text-xs text-foreground/45">
+        <span className="ml-auto text-xs text-faint">
           {members.length} {plural(members.length, "member")} · {adminCount} {plural(adminCount, "admin")}
         </span>
       </div>
 
-      <p className="text-xs text-foreground/60">
+      <p className="text-xs text-muted">
         Everyone who&rsquo;s signed in. Tap <strong>Make admin</strong> to give someone admin access (post
         alerts, manage members), or <strong>Remove</strong> to take it away. Tap <strong>Beta</strong> to add
         someone to the Beta Tester group, so you can send them test notifications before sending to everyone.
@@ -252,7 +253,7 @@ export function AdminMembers() {
             {invite.pending ? "Sending…" : "Invite"}
           </button>
         </div>
-        {invite.status && <p className="text-xs text-foreground/60">{invite.status}</p>}
+        {invite.status && <p className="text-xs text-muted">{invite.status}</p>}
       </div>
 
       {!rpcReady && !loading && (
@@ -271,11 +272,11 @@ export function AdminMembers() {
       )}
 
       {loading ? (
-        <p className="py-3 text-center text-xs text-foreground/45">Loading members…</p>
+        <SkeletonList count={2} />
       ) : error ? (
         <p className="py-3 text-center text-xs text-accent">{error}</p>
       ) : shown.length === 0 ? (
-        <p className="py-3 text-center text-xs text-foreground/45">No members match that.</p>
+        <p className="py-3 text-center text-xs text-faint">No members match that.</p>
       ) : (
         <ul className="space-y-1.5">
           {shown.map((m) => {
@@ -290,7 +291,7 @@ export function AdminMembers() {
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
                       <span>{name}</span>
-                      {isMe && <span className="shrink-0 text-xs text-foreground/40">(you)</span>}
+                      {isMe && <span className="shrink-0 text-xs text-faint">(you)</span>}
                       {m.is_admin && (
                         <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Admin</span>
                       )}
@@ -302,7 +303,7 @@ export function AdminMembers() {
                       )}
                     </p>
                     {(m.email || m.household) && (
-                      <p className="break-words text-xs text-foreground/45">{m.email || m.household}</p>
+                      <p className="break-words text-xs text-faint">{m.email || m.household}</p>
                     )}
                   </div>
                 </div>
@@ -331,7 +332,7 @@ export function AdminMembers() {
                       className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
                         m.beta_tester
                           ? "bg-amber-500/15 text-amber-700 ring-amber-500/40"
-                          : "bg-background text-foreground/60 ring-border"
+                          : "bg-background text-muted ring-border"
                       }`}
                     >
                       {busyId === m.id ? "…" : m.beta_tester ? "Beta ✓" : "Beta"}
@@ -342,7 +343,7 @@ export function AdminMembers() {
                         disabled={busyId === m.id}
                         className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
                           m.is_admin
-                            ? "bg-background text-foreground/60 ring-border"
+                            ? "bg-background text-muted ring-border"
                             : "bg-primary text-white ring-primary"
                         }`}
                       >

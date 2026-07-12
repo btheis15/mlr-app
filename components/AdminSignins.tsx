@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { MigrationHint } from "@/components/MigrationHint";
+import { SkeletonList } from "@/components/Skeleton";
 
 /**
  * Admin-only: recent member activity — who just **joined**, plus recent
@@ -252,7 +253,7 @@ export function AdminSignins() {
   const detail = (ip: string | null) => {
     if (!ip) {
       return (
-        <p className="mt-2 rounded-lg bg-card px-2.5 py-2 text-foreground/55">
+        <p className="mt-2 rounded-lg bg-card px-2.5 py-2 text-muted">
           No sign-in IP on record — a location will show once this member signs in.
         </p>
       );
@@ -262,11 +263,11 @@ export function AdminSignins() {
     return (
       <div className="mt-2 space-y-1 rounded-lg bg-card px-2.5 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-foreground/45">IP</span>
-          <span className="font-mono text-[11px] text-foreground/70">{ip}</span>
+          <span className="text-faint">IP</span>
+          <span className="font-mono text-xs text-foreground/70">{ip}</span>
         </div>
         {!g ? (
-          <p className="text-foreground/45">Looking up location…</p>
+          <p className="text-faint">Looking up location…</p>
         ) : g.ok ? (
           <>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-foreground/65">
@@ -276,7 +277,7 @@ export function AdminSignins() {
                   {place}
                 </span>
               )}
-              {g.isp && <span className="text-foreground/40">· {g.isp}</span>}
+              {g.isp && <span className="text-faint">· {g.isp}</span>}
             </div>
             {g.lat != null && g.lon != null && (
               <a
@@ -290,7 +291,7 @@ export function AdminSignins() {
             )}
           </>
         ) : (
-          <p className="text-foreground/45">Location unavailable for this IP.</p>
+          <p className="text-faint">Location unavailable for this IP.</p>
         )}
       </div>
     );
@@ -303,7 +304,7 @@ export function AdminSignins() {
         <h2 className="text-sm font-semibold">Recent activity</h2>
       </div>
 
-      <p className="text-xs text-foreground/60">
+      <p className="text-xs text-muted">
         New members and recent sign-ins. <strong>Tap a row</strong> to see the IP and an{" "}
         <strong>approximate</strong> location (city / ISP region) — useful to spot access from far
         away, not a precise spot. Anything outside the US is flagged.
@@ -316,9 +317,9 @@ export function AdminSignins() {
       )}
 
       {loading ? (
-        <p className="py-3 text-center text-xs text-foreground/45">Loading activity…</p>
+        <SkeletonList count={2} />
       ) : activity.length === 0 ? (
-        <p className="py-3 text-center text-xs text-foreground/45">No activity yet.</p>
+        <p className="py-3 text-center text-xs text-faint">No activity yet — check back soon.</p>
       ) : (
         <ul className="space-y-1.5">
           {activity.map((a, i) => {
@@ -353,7 +354,7 @@ export function AdminSignins() {
                         Outside US
                       </span>
                     )}
-                    <span className="ml-auto flex items-center gap-1.5 text-foreground/45">
+                    <span className="ml-auto flex items-center gap-1.5 text-faint">
                       {whenFor(a.created_at)}
                       <span className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>⌄</span>
                     </span>
@@ -362,7 +363,7 @@ export function AdminSignins() {
                     <>
                       <span className="truncate text-foreground/70">{name}</span>
                       {a.email && a.email !== name && (
-                        <span className="truncate text-foreground/55">{a.email}</span>
+                        <span className="truncate text-muted">{a.email}</span>
                       )}
                     </>
                   ) : (

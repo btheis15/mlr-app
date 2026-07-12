@@ -39,7 +39,7 @@ export function HouseHub({ slug }: { slug?: string | null }) {
         <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
           <p className="text-3xl">🏠</p>
           <h1 className="mt-2 text-lg font-bold">You&rsquo;re not in a house yet</h1>
-          <p className="mt-1 text-sm text-foreground/60">
+          <p className="mt-1 text-sm text-muted">
             Houses are small groups within the resort (like the MJT House) with their own calendar, chat, and to-do
             list. Ask an admin to add you to yours.
           </p>
@@ -56,7 +56,7 @@ export function HouseHub({ slug }: { slug?: string | null }) {
         <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
           <p className="text-3xl">{house.emoji}</p>
           <h1 className="mt-2 text-lg font-bold">{house.name}</h1>
-          <p className="mt-1 text-sm text-foreground/60">
+          <p className="mt-1 text-sm text-muted">
             This is a private house. Ask an admin to add you to see its calendar, chat, and to-do list.
           </p>
         </div>
@@ -105,7 +105,7 @@ function HouseHubBody({
           <span className="mr-1">{houseEmoji}</span>
           {houseName}
         </h1>
-        {description && <p className="text-sm text-foreground/60">{description}</p>}
+        {description && <p className="text-sm text-muted">{description}</p>}
       </header>
 
       {/* Calendar — the marquee card, with a "next up" line */}
@@ -201,7 +201,7 @@ function HouseRulesCard({ houseId, initialRules }: { houseId: string; initialRul
               type="button"
               onClick={() => setEditing(false)}
               disabled={saving}
-              className="press rounded-full px-3 py-1 text-sm font-semibold text-foreground/60"
+              className="press rounded-full px-3 py-1 text-sm font-semibold text-muted"
             >
               Cancel
             </button>

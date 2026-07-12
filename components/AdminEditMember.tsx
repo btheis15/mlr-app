@@ -7,6 +7,7 @@ import { setMemberEmail } from "@/lib/admin";
 import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
 import { PhoneInput } from "@/components/PhoneInput";
+import { SkeletonCard } from "@/components/Skeleton";
 
 // Admin edit of ANOTHER member's info, the backup for when a member can't do it
 // themselves. Profile fields go through the admin_set_member_profile RPC
@@ -101,7 +102,7 @@ export function AdminEditMember({ memberId, memberEmail, memberName, onClose, on
       return "Saved ✓";
     }, 0);
 
-  if (!loaded) return <p className="px-1 py-2 text-center text-xs text-foreground/45">Loading…</p>;
+  if (!loaded) return <SkeletonCard />;
 
   const contactOpts: [string, string][] = ([["text", "Text"], ["call", "Call"], ["email", "Email"]] as [string, string][])
     .filter(([k]) => (k === "email" ? v.contact_email : v.phone));
@@ -110,7 +111,7 @@ export function AdminEditMember({ memberId, memberEmail, memberName, onClose, on
 
   return (
     <div className="space-y-3 rounded-lg bg-card p-3 ring-1 ring-primary/30">
-      <p className="text-xs text-foreground/60">
+      <p className="text-xs text-muted">
         Editing <strong>{memberName}</strong> on their behalf. Changes save to their profile (and login email) right away.
       </p>
 
@@ -181,13 +182,13 @@ export function AdminEditMember({ memberId, memberEmail, memberName, onClose, on
         </select>
       </label>
 
-      {status && <p className="text-xs text-foreground/60">{status}</p>}
+      {status && <p className="text-xs text-muted">{status}</p>}
 
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
           type="button"
           onClick={() => { show(null); onClose(); }}
-          className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-foreground/60 ring-1 ring-border"
+          className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-muted ring-1 ring-border"
         >
           Cancel
         </button>

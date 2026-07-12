@@ -101,12 +101,12 @@ export function WorkItemSheet({
       {item.notes && <p className="whitespace-pre-wrap text-sm text-foreground/70">{item.notes}</p>}
       <span className="flex flex-wrap items-center gap-1.5">
         {item.urgency && (
-          <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
+          <span className={`inline-block rounded-md px-1.5 py-0.5 text-xs font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
             {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
           </span>
         )}
         {item.peopleNeeded != null && (
-          <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground/50 ring-1 ring-border">
+          <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-xs font-medium text-muted ring-1 ring-border">
             👥 {item.peopleNeeded} needed
           </span>
         )}
@@ -115,13 +115,13 @@ export function WorkItemSheet({
 
       {/* Comments */}
       <div className="space-y-3">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted">
           Comments{comments.length ? ` · ${comments.length}` : ""}
         </p>
         {loading ? (
-          <p className="py-2 text-center text-xs text-foreground/40">Loading…</p>
+          <p className="py-2 text-center text-xs text-faint" role="status" aria-live="polite">Loading…</p>
         ) : comments.length === 0 ? (
-          <p className="py-1 text-xs text-foreground/50">No comments yet. Ask a question or leave a note.</p>
+          <p className="py-1 text-xs text-muted">No comments yet. Ask a question or leave a note.</p>
         ) : (
           <ul className="space-y-2.5">
             {comments.map((c) => (
@@ -130,7 +130,7 @@ export function WorkItemSheet({
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 text-xs font-semibold text-foreground/70">
                     {c.authorName}
-                    <span className="ml-1 font-normal text-foreground/40">{formatWhen(c.createdAt)}</span>
+                    <span className="ml-1 font-normal text-faint">{formatWhen(c.createdAt)}</span>
                   </p>
                   <p className="whitespace-pre-wrap break-words text-sm">
                     <MentionText text={c.text} mentions={c.mentions} members={members} />

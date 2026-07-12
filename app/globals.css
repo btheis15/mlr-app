@@ -94,6 +94,52 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* ── Pull-to-refresh (components/PullToRefresh.tsx) ───────────────────────────
+   Since the rule above also kills native PTR, a small custom indicator drops in
+   from under the top edge on a deliberate downward drag at scrollTop 0. Fixed +
+   portaled to <body> so page transforms (page-enter) can't reposition it. */
+.ptr {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  z-index: 55; /* above content, under sheets/scrims (z-60) */
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.ptr-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  border-radius: 9999px;
+  background: var(--color-background);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--color-border);
+  color: var(--color-primary);
+}
+.ptr-arrow {
+  transition: transform 0.15s ease;
+}
+.ptr-spin {
+  animation: ptr-spin 0.8s linear infinite;
+}
+@keyframes ptr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ptr-arrow {
+    transition: none;
+  }
+  .ptr-spin {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 
 html,
 body {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
+import { SkeletonList } from "@/components/Skeleton";
 import { SignInWall } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { plural } from "@/lib/format";
@@ -110,16 +111,16 @@ export function PeopleDirectory() {
         />
 
         {loading ? (
-          <p className="py-6 text-center text-xs text-foreground/45">Loading people…</p>
+          <SkeletonList />
         ) : error ? (
           <p className="py-6 text-center text-xs text-accent">{error}</p>
         ) : shown.length === 0 ? (
-          <p className="py-6 text-center text-xs text-foreground/45">
-            {query.trim() ? "No one matches that." : "No members yet."}
+          <p className="py-6 text-center text-xs text-faint">
+            {query.trim() ? "No one matches that." : "Nobody here yet — the resort's just getting started 🌲"}
           </p>
         ) : (
           <>
-            <p className="px-0.5 text-[11px] text-foreground/45">
+            <p className="px-0.5 text-xs text-faint">
               {people.length} {plural(people.length, "member")}
             </p>
             <ul className="space-y-1.5">
@@ -167,7 +168,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
         <span className="flex min-w-0 flex-1 items-center truncate text-sm font-semibold">
           <span className="truncate">{name}</span>
         </span>
-        <span aria-hidden className="shrink-0 text-base leading-none text-foreground/40">›</span>
+        <span aria-hidden className="shrink-0 text-base leading-none text-faint">›</span>
       </button>
 
       {/* Horizontal quick-action bar: Text, Call, and their pay preference. */}
@@ -178,7 +179,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
             <QuickLink href={`tel:${tel(person.phone)}`} emoji="📞" label="Call" />
           </>
         ) : (
-          <span className="text-[11px] text-foreground/35">No phone shared</span>
+          <span className="text-xs text-foreground/35">No phone shared</span>
         )}
         {pay && <PayLink action={pay} onOpen={onOpen} />}
       </div>

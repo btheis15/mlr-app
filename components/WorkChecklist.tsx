@@ -209,7 +209,7 @@ export function WorkChecklist() {
               </p>
             </div>
             <span
-              className={`shrink-0 text-foreground/40 transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${cardOpen ? "rotate-90" : ""}`}
+              className={`shrink-0 text-faint transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${cardOpen ? "rotate-90" : ""}`}
               aria-hidden
             >
               ›
@@ -236,7 +236,7 @@ export function WorkChecklist() {
                 style={{ width: `${Math.round((totalDone / (totalOpen + totalDone)) * 100)}%` }}
               />
             </div>
-            <span className="shrink-0 text-[11px] font-medium tabular-nums text-foreground/50">
+            <span className="shrink-0 text-xs font-medium tabular-nums text-muted">
               {totalDone}/{totalOpen + totalDone}
             </span>
           </div>
@@ -258,7 +258,7 @@ export function WorkChecklist() {
               {showHeaders && (
                 <div className="flex items-center gap-2 bg-background/50 px-4 py-2">
                   <span aria-hidden>{section.emoji}</span>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-foreground/60">{section.title}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted">{section.title}</span>
                 </div>
               )}
               {open.length > 0 && (
@@ -285,7 +285,7 @@ export function WorkChecklist() {
               )}
               {done.length > 0 && (
                 <div className="px-4 py-2.5">
-                  <p className="text-xs text-foreground/40">
+                  <p className="text-xs text-faint">
                     ✅ {done.length} item{done.length !== 1 ? "s" : ""} done
                   </p>
                 </div>
@@ -367,7 +367,7 @@ function WorkItemRow({
       >
         <span className="block text-sm font-medium leading-snug">{item.title}</span>
         {item.notes && (
-          <span className="mt-0.5 block text-xs text-foreground/50 leading-snug line-clamp-2">{item.notes}</span>
+          <span className="mt-0.5 block text-xs text-muted leading-snug line-clamp-2">{item.notes}</span>
         )}
         <span className="mt-1 flex flex-wrap items-center gap-1">
           {item.urgency && (
@@ -376,12 +376,12 @@ function WorkItemRow({
             </span>
           )}
           {item.peopleNeeded != null && (
-            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
               👥 {item.peopleNeeded} needed
             </span>
           )}
           {item.commentCount > 0 && (
-            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground/50 ring-1 ring-border">
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
               💬 {item.commentCount}
             </span>
           )}

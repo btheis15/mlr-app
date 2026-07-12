@@ -77,7 +77,7 @@ export function AdminProfileOverride() {
         <h2 className="text-sm font-semibold">Edit a member&rsquo;s information</h2>
       </div>
 
-      <p className="text-xs text-foreground/60">
+      <p className="text-xs text-muted">
         Members manage their own profile. This is the backup for when someone
         can&rsquo;t. Editing another member&rsquo;s details (name, contact, pay, email)
         needs <strong>two admins</strong> to unlock it — then any admin can edit them in{" "}
@@ -89,7 +89,7 @@ export function AdminProfileOverride() {
           To turn on the two-admin member-edit unlock,
         </MigrationHint>
       ) : loading ? (
-        <p className="py-3 text-center text-xs text-foreground/45">Loading…</p>
+        <p className="py-3 text-center text-xs text-faint" role="status" aria-live="polite">Loading…</p>
       ) : isUnlocked ? (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-xl bg-primary/10 p-3 text-xs ring-1 ring-primary/30">
@@ -103,7 +103,7 @@ export function AdminProfileOverride() {
             type="button"
             onClick={relock}
             disabled={pending}
-            className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-foreground/60 ring-1 ring-border disabled:opacity-50"
+            className="press rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-muted ring-1 ring-border disabled:opacity-50"
           >
             {pending ? "…" : "Re-lock now"}
           </button>
@@ -115,10 +115,10 @@ export function AdminProfileOverride() {
               {status?.votes ?? 0}/2 approvals
             </span>
             {status?.voters && status.voters.length > 0 && (
-              <span className="truncate text-foreground/50">{status.voters.join(", ")}</span>
+              <span className="truncate text-muted">{status.voters.join(", ")}</span>
             )}
           </div>
-          <p className="text-xs text-foreground/50">
+          <p className="text-xs text-muted">
             Tap to add your approval. Once a second admin approves (within 30 min),
             member editing unlocks for 24 hours.
           </p>
@@ -133,7 +133,7 @@ export function AdminProfileOverride() {
         </div>
       )}
 
-      {msg && <p className="text-xs text-foreground/60">{msg}</p>}
+      {msg && <p className="text-xs text-muted">{msg}</p>}
     </div>
   );
 }
