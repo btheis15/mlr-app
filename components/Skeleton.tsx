@@ -10,7 +10,7 @@ function Bar({ className }: { className: string }) {
 /** One pulsing card the size/shape of a list card (EventCard, cabin card…). */
 export function SkeletonCard() {
   return (
-    <div className="animate-pulse space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border" aria-hidden>
+    <div className="animate-pulse space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border" role="status" aria-label="Loading">
       <div className="flex items-center gap-3">
         <div className="h-11 w-11 shrink-0 rounded-xl bg-foreground/8" />
         <div className="min-w-0 flex-1 space-y-2">

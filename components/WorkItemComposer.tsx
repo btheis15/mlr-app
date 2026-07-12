@@ -253,7 +253,7 @@ export function WorkItemComposer({
                 <button
                   type="button"
                   onClick={() => setExistingMedia((prev) => prev.filter((e) => e.id !== m.id))}
-                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white"
+                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white before:absolute before:-inset-2.5 before:content-['']"
                   aria-label="Remove"
                 >
                   ×
@@ -274,7 +274,7 @@ export function WorkItemComposer({
                 <button
                   type="button"
                   onClick={() => media.removeAt(i)}
-                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white"
+                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white before:absolute before:-inset-2.5 before:content-['']"
                   aria-label="Remove"
                 >
                   ×
@@ -300,7 +300,7 @@ export function WorkItemComposer({
               aria-label="Fewer people"
               onClick={() => setPeopleNeeded((n) => Math.max(0, n - 1))}
               disabled={peopleNeeded <= 0}
-              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+              className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
             >
               −
             </button>
@@ -312,7 +312,7 @@ export function WorkItemComposer({
               aria-label="More people"
               onClick={() => setPeopleNeeded((n) => Math.min(20, n + 1))}
               disabled={peopleNeeded >= 20}
-              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+              className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
             >
               +
             </button>

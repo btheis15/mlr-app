@@ -196,13 +196,13 @@ export function WorkChecklist() {
             <span className="shrink-0 text-lg" aria-hidden>🔧</span>
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-accent">Work Checklist</h3>
-              <p className="text-xs text-foreground/50">
+              <p className="text-xs text-muted" role="status" aria-live="polite">
                 {guest
                   ? "🔒 Sign in to see the resort to-do list"
                   : loading
                     ? "Loading…"
                     : totalOpen === 0 && totalDone === 0
-                      ? "Nothing on the list yet"
+                      ? "All caught up — nothing on the list yet 🌲"
                       : totalOpen === 0
                         ? `All ${totalDone} item${totalDone !== 1 ? "s" : ""} done ✅`
                         : `${totalOpen} open${totalDone > 0 ? ` · ${totalDone} done` : ""}${asapCount > 0 ? ` · 🔴 ${asapCount} ASAP` : ""}`}
@@ -220,7 +220,7 @@ export function WorkChecklist() {
               type="button"
               onClick={handleAdd}
               aria-label="Add work item"
-              className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-base font-bold text-primary"
+              className="press flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-base font-bold text-primary"
             >
               +
             </button>

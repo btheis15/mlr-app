@@ -187,7 +187,7 @@ export function CabinRequestSheet({
                   aria-label="Fewer guests"
                   onClick={() => setGuests((g) => Math.max(1, g - 1))}
                   disabled={guests <= 1}
-                  className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+                  className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
                 >
                   −
                 </button>
@@ -197,7 +197,7 @@ export function CabinRequestSheet({
                   aria-label="More guests"
                   onClick={() => setGuests((g) => Math.min(MAX_GUESTS, g + 1))}
                   disabled={guests >= MAX_GUESTS}
-                  className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+                  className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
                 >
                   +
                 </button>

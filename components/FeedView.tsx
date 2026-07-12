@@ -7,6 +7,8 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { useRouter } from "next/navigation";
 
 /**
@@ -385,13 +387,10 @@ export function FeedView() {
     return (
       <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <button
-            type="button"
+          <BackButton
+            label={openedFromHouseRef.current ? "House" : "Feed"}
             onClick={() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); }}
-            className="press flex items-center gap-1 text-sm font-semibold text-primary"
-          >
-            ‹ {openedFromHouseRef.current ? "House" : "Feed"}
-          </button>
+          />
           <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
           </div>
@@ -408,42 +407,33 @@ export function FeedView() {
   const activeChannel = channels.find((c) => c.key === active);
   if (activeChannel) {
     return (
-      <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
-            ‹ Feed
-          </button>
-          <div className="min-w-0 flex-1 text-center">
-            <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
-            {activeChannel.subtitle && <p className="truncate text-[11px] text-foreground/45">{activeChannel.subtitle}</p>}
-          </div>
-          <button type="button" onClick={() => openMembers(activeChannel)} aria-label="Members" className="press flex h-9 w-9 items-center justify-center rounded-full text-foreground/50">
-            ⋯
-          </button>
-        </div>
-        <div className="min-h-0 flex-1">
-          <CommitteeChat key={activeChannel.key} slug={activeChannel.slug} name={activeChannel.title} emoji={activeChannel.emoji} area={activeChannel.area} embedded knownMember />
-        </div>
-        {showMembers && (
-          <div className="absolute inset-0 z-10 flex flex-col bg-black/30" onClick={() => setShowMembers(false)}>
-            <div className="mt-auto max-h-[70%] overflow-y-auto rounded-t-2xl bg-background p-4" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-bold">{activeChannel.title} · {members.length} {members.length === 1 ? "person" : "people"}</h2>
-                <button type="button" onClick={() => setShowMembers(false)} className="press text-sm font-semibold text-primary">Done</button>
-              </div>
-              <ul className="space-y-1">
-                {members.map((m) => (
-                  <li key={m.name} className="flex items-center justify-between rounded-xl bg-card px-3 py-2 ring-1 ring-border">
-                    <span className="text-sm font-medium">{m.name}</span>
-                    {m.lead && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">Lead</span>}
-                  </li>
-                ))}
-                {members.length === 0 && <li className="px-1 py-2 text-sm text-foreground/50">No one here yet.</li>}
-              </ul>
+      <>
+        <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+          <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+            <BackButton label="Feed" onClick={() => setActive("list")} />
+            <div className="min-w-0 flex-1 text-center">
+              <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
+              {activeChannel.subtitle && <p className="truncate text-[11px] text-foreground/45">{activeChannel.subtitle}</p>}
             </div>
+            <button type="button" onClick={() => openMembers(activeChannel)} aria-label="Members" className="press flex h-9 w-9 items-center justify-center rounded-full text-foreground/50">
+              ⋯
+            </button>
           </div>
+          <div className="min-h-0 flex-1">
+            <CommitteeChat key={activeChannel.key} slug={activeChannel.slug} name={activeChannel.title} emoji={activeChannel.emoji} area={activeChannel.area} embedded knownMember />
+          </div>
+        </div>
+        {/* Outside the chat container: its viewport-pinning effect sets a
+            transform on that div, which would re-anchor the Sheet's
+            `fixed inset-0` to the container instead of the viewport. */}
+        {showMembers && (
+          <ChatMembersSheet
+            title={activeChannel.title}
+            members={members}
+            onClose={() => setShowMembers(false)}
+          />
         )}
-      </div>
+      </>
     );
   }
 
@@ -451,9 +441,7 @@ export function FeedView() {
   if (active === "posts") {
     return (
       <div className="space-y-3 pt-1">
-        <button type="button" onClick={() => setActive("list")} className="press flex items-center gap-1 text-sm font-semibold text-primary">
-          ‹ Feed
-        </button>
+        <BackButton label="Feed" onClick={() => setActive("list")} />
         <PostsView seed={POSTS} showHeading={false} />
       </div>
     );
@@ -502,6 +490,67 @@ export function FeedView() {
         </ChatSection>
       )}
     </div>
+  );
+}
+
+/**
+ * Button twin of BackLink (components/BackLink.tsx) — same markup + classes,
+ * but with onClick semantics: these "back" actions swap in-page state
+ * (setActive) or conditionally route, which BackLink (href-only, a Link) can't
+ * express. If BackLink's styling changes, mirror it here.
+ */
+function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="press -ml-1 inline-flex items-center gap-0.5 py-3 text-sm font-semibold text-primary"
+    >
+      <span aria-hidden className="text-lg leading-none">
+        ‹
+      </span>
+      {label}
+    </button>
+  );
+}
+
+/**
+ * "Who's in this chat" — the roster behind the ⋯ button on an open committee
+ * chat, on the shared Sheet scaffolding (scrim + slide-up panel + ✕ + Escape
+ * via useSheetDismiss), replacing the old hand-rolled bg-black/30 overlay.
+ * Mounted per-open (useSheetDismiss is one-shot), like EventSheet.
+ */
+function ChatMembersSheet({
+  title,
+  members,
+  onClose,
+}: {
+  title: string;
+  members: { name: string; lead: boolean }[];
+  onClose: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="chat-members-title"
+      header={
+        <h2 id="chat-members-title" className="text-lg font-bold">
+          {title} · {members.length} {members.length === 1 ? "person" : "people"}
+        </h2>
+      }
+    >
+      <ul className="space-y-1">
+        {members.map((m) => (
+          <li key={m.name} className="flex items-center justify-between rounded-xl bg-card px-3 py-2 ring-1 ring-border">
+            <span className="text-sm font-medium">{m.name}</span>
+            {m.lead && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">Lead</span>}
+          </li>
+        ))}
+        {members.length === 0 && <li className="px-1 py-2 text-sm text-foreground/50">No one here yet.</li>}
+      </ul>
+    </Sheet>
   );
 }
 

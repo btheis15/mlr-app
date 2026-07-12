@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Icon, type IconName } from "@/components/Icon";
 
 /**
  * Home quick actions — the always-visible navigation grid that replaced the two
@@ -18,19 +19,22 @@ import Link from "next/link";
  * beta/sign-in state (HelpRequestsView), so nothing is gated at the tile.
  */
 
+// Each tile's icon-square keeps its color-token tint (`bg-*/12`) and the line
+// icon (components/Icon.tsx) inherits the matching full-strength text token
+// via currentColor, so the pair always reads as one hue.
 const ACTIONS: {
   href: string;
-  emoji: string;
+  icon: IconName;
   tile: string;
   label: string;
   sub: string;
 }[] = [
-  { href: "/events", emoji: "📅", tile: "bg-sun/12", label: "Events", sub: "RSVP — gatherings & work weekends." },
-  { href: "/people", emoji: "👥", tile: "bg-lake/12", label: "People", sub: "Find & contact everyone." },
-  { href: "/request-stay", emoji: "🏡", tile: "bg-dusk/12", label: "Cabin Stay", sub: "Reserve a room for any week." },
-  { href: "/help-requests", emoji: "🙌", tile: "bg-primary/12", label: "Lend a Hand", sub: "Ask for a hand — or help out." },
-  { href: "/local-places", emoji: "📍", tile: "bg-lake/12", label: "Local Places", sub: "Tee times, food & favorites." },
-  { href: "/committees", emoji: "🤝", tile: "bg-campfire/12", label: "Committees", sub: "Join a crew — there's a spot for you." },
+  { href: "/events", icon: "calendar", tile: "bg-sun/12 text-sun", label: "Events", sub: "RSVP — gatherings & work weekends." },
+  { href: "/people", icon: "people", tile: "bg-lake/12 text-lake", label: "People", sub: "Find & contact everyone." },
+  { href: "/request-stay", icon: "cabin", tile: "bg-dusk/12 text-dusk", label: "Cabin Stay", sub: "Reserve a room for any week." },
+  { href: "/help-requests", icon: "hand", tile: "bg-primary/12 text-primary", label: "Lend a Hand", sub: "Ask for a hand — or help out." },
+  { href: "/local-places", icon: "pin", tile: "bg-lake/12 text-lake", label: "Local Places", sub: "Tee times, food & favorites." },
+  { href: "/committees", icon: "users", tile: "bg-campfire/12 text-campfire", label: "Committees", sub: "Join a crew — there's a spot for you." },
 ];
 
 export function HomeQuickActions() {
@@ -44,9 +48,9 @@ export function HomeQuickActions() {
         >
           <span
             aria-hidden
-            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-[28px] leading-none ${a.tile}`}
+            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${a.tile}`}
           >
-            {a.emoji}
+            <Icon name={a.icon} size={26} />
           </span>
           <span className="mt-2 text-sm font-semibold">{a.label}</span>
           <span className="mt-0.5 text-xs text-foreground/60">{a.sub}</span>

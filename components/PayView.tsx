@@ -30,14 +30,14 @@ export function PayView({
     <div className="space-y-6 pt-2">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Pay</h1>
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-muted">
           Square up with the folks running the fest.
         </p>
       </header>
 
       <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-1 text-xs text-foreground/60">
+          <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
             Amount (optional)
             <div className="flex items-center rounded-xl bg-background px-3 ring-1 ring-border focus-within:ring-2 focus-within:ring-primary">
               <span className="text-sm text-foreground/50">$</span>
@@ -50,7 +50,7 @@ export function PayView({
               />
             </div>
           </label>
-          <label className="flex flex-[2] flex-col gap-1 text-xs text-foreground/60">
+          <label className="flex flex-[2] flex-col gap-1 text-xs text-muted">
             Note
             <input
               value={note}
@@ -59,7 +59,7 @@ export function PayView({
             />
           </label>
         </div>
-        <p className="text-xs text-foreground/40">
+        <p className="text-xs text-faint">
           The amount &amp; note pre-fill Venmo when you tap Pay.
         </p>
       </section>
@@ -122,8 +122,8 @@ function PayeeCard({
     <li className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <div>
         <p className="text-sm font-semibold">{payee.name}</p>
-        <p className="text-xs text-foreground/50">{payee.role}</p>
-        {payee.note && <p className="mt-1 text-xs text-foreground/60">{payee.note}</p>}
+        <p className="text-xs text-muted">{payee.role}</p>
+        {payee.note && <p className="mt-1 text-xs text-muted">{payee.note}</p>}
       </div>
 
       {venmoUrl && (
@@ -131,7 +131,7 @@ function PayeeCard({
           href={venmoUrl}
           target="_blank"
           rel="noreferrer"
-          className="press flex items-center justify-center gap-2 rounded-xl bg-[#3D95CE] py-2.5 text-sm font-semibold text-white"
+          className="press flex items-center justify-center gap-2 rounded-xl bg-venmo py-2.5 text-sm font-semibold text-white"
         >
           Pay @{payee.venmo} with Venmo
         </a>
@@ -142,7 +142,7 @@ function PayeeCard({
           href={paypalUrl}
           target="_blank"
           rel="noreferrer"
-          className="press flex items-center justify-center gap-2 rounded-xl bg-[#003087] py-2.5 text-sm font-semibold text-white"
+          className="press flex items-center justify-center gap-2 rounded-xl bg-paypal py-2.5 text-sm font-semibold text-white"
         >
           Pay with PayPal
         </a>

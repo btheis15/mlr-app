@@ -7,7 +7,7 @@ import { Protected } from "@/components/Guard";
  */
 export function CommitteeMemberContact({ email, phone }: { email?: string; phone?: string }) {
   if (!email && !phone) return null;
-  const cls = "press inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs";
+  const cls = "press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-primary/10 text-xs";
   return (
     <Protected label="Sign in to contact">
       <div className="flex items-center gap-1.5">

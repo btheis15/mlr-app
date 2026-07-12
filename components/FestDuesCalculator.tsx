@@ -192,7 +192,7 @@ function Stepper({
         onClick={onDec}
         disabled={count <= min}
         aria-label={decLabel}
-        className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg font-semibold leading-none ring-1 ring-border disabled:opacity-30"
+        className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg font-semibold leading-none ring-1 ring-border disabled:opacity-30"
       >
         –
       </button>
@@ -203,7 +203,7 @@ function Stepper({
         type="button"
         onClick={onInc}
         aria-label={incLabel}
-        className="press flex h-8 w-8 items-center justify-center rounded-full bg-primary text-lg font-semibold leading-none text-white"
+        className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-primary text-lg font-semibold leading-none text-white"
       >
         +
       </button>

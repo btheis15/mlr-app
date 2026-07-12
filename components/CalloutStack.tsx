@@ -222,7 +222,7 @@ export function CalloutStack({
             type="button"
             aria-label="Dismiss"
             onClick={() => fly(front.id, 1)}
-            className="press absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-card text-foreground/60 shadow-md ring-1 ring-border"
+            className="press absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-card text-foreground/60 shadow-md ring-1 ring-border before:absolute before:-inset-2.5 before:content-['']"
           >
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M5 5l10 10M15 5L5 15" />

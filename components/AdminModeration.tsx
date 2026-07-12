@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { MigrationHint } from "@/components/MigrationHint";
+import { SkeletonList } from "@/components/Skeleton";
 import { useBusyAction } from "@/lib/hooks";
 import { plural } from "@/lib/format";
 
@@ -132,7 +133,7 @@ export function AdminModeration() {
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
         <h2 className="text-sm font-semibold">Content review</h2>
         {rpcReady && (
-          <span className="ml-auto text-xs text-foreground/45">
+          <span className="ml-auto text-xs text-faint">
             {queue.length} {plural(queue.length, "item")} to review
           </span>
         )}
@@ -143,18 +144,18 @@ export function AdminModeration() {
           To hold flagged posts for review and manage the blocklist,
         </MigrationHint>
       ) : loading ? (
-        <p className="py-3 text-center text-xs text-foreground/45">Loading…</p>
+        <SkeletonList count={2} />
       ) : (
         <>
           {queue.length === 0 ? (
-            <p className="rounded-xl bg-background px-3 py-4 text-center text-xs text-foreground/55 ring-1 ring-border">
+            <p className="rounded-xl bg-background px-3 py-4 text-center text-xs text-muted ring-1 ring-border">
               Nothing needs review — the feed is clear. 🌲
             </p>
           ) : (
             <ul className="space-y-2">
               {queue.map((r) => (
                 <li key={`${r.entity_type}-${r.entity_id}`} className="space-y-2 rounded-xl bg-background p-3 ring-1 ring-border">
-                  <div className="flex items-center gap-2 text-[11px] text-foreground/45">
+                  <div className="flex items-center gap-2 text-xs text-faint">
                     <span className="rounded-full bg-foreground/5 px-1.5 py-0.5 font-medium uppercase tracking-wide">{r.entity_type}</span>
                     {r.status === "pending" && (
                       <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-700">Held</span>
@@ -166,9 +167,9 @@ export function AdminModeration() {
                     )}
                     <span className="ml-auto">{r.author_name || "Member"}</span>
                   </div>
-                  <p className="text-sm text-foreground/80">{r.body || <span className="text-foreground/40">(no text — media only)</span>}</p>
+                  <p className="text-sm text-foreground/80">{r.body || <span className="text-faint">(no text — media only)</span>}</p>
                   {r.reasons && r.reasons.length > 0 && (
-                    <p className="text-[11px] text-foreground/50">Reasons: {r.reasons.join(", ")}</p>
+                    <p className="text-xs text-muted">Reasons: {r.reasons.join(", ")}</p>
                   )}
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
@@ -198,7 +199,7 @@ export function AdminModeration() {
 
           <div className="space-y-2 border-t border-border pt-3">
             <p className="text-xs font-semibold text-foreground/70">Blocked words</p>
-            <p className="text-[11px] text-foreground/50">
+            <p className="text-xs text-muted">
               A post or comment containing one of these is automatically held for review. Matching is
               case-insensitive. Nothing is shipped here by default — add what fits your family.
             </p>
@@ -223,7 +224,7 @@ export function AdminModeration() {
                 {block.map((b) => (
                   <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-xs text-foreground/70 ring-1 ring-border">
                     {b.pattern}
-                    <button onClick={() => removeTerm(b.id)} aria-label={`Remove ${b.pattern}`} className="press text-foreground/40 hover:text-accent">
+                    <button onClick={() => removeTerm(b.id)} aria-label={`Remove ${b.pattern}`} className="press text-faint hover:text-accent">
                       ×
                     </button>
                   </span>

@@ -110,7 +110,7 @@ export function HouseCalendar({
           <button
             onClick={() => shiftMonth(-1)}
             aria-label="Previous month"
-            className="press flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/5"
+            className="press flex min-h-11 min-w-11 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/5"
           >
             ‹
           </button>
@@ -118,7 +118,7 @@ export function HouseCalendar({
           <button
             onClick={() => shiftMonth(1)}
             aria-label="Next month"
-            className="press flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/5"
+            className="press flex min-h-11 min-w-11 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/5"
           >
             ›
           </button>

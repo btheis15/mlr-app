@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MigrationHint } from "@/components/MigrationHint";
+import { SkeletonList } from "@/components/Skeleton";
 import { useSaveStatus } from "@/lib/hooks";
 import { plural } from "@/lib/format";
 import { mailtoUrl, MAILTO_WARN_COUNT, type Recipient, type RecipientResult } from "@/lib/emailBlast";
@@ -113,7 +114,7 @@ export function EmailMembersComposer({
   };
 
   if (loading) {
-    return <p className="rounded-2xl bg-card p-4 text-center text-xs text-foreground/45 ring-1 ring-border">Loading recipients…</p>;
+    return <SkeletonList count={2} />;
   }
   if (needsMigration) {
     return (

@@ -312,7 +312,7 @@ export function AskForHelpSheet({
               aria-label="Fewer people"
               onClick={() => setNeededCount((n) => Math.max(1, n - 1))}
               disabled={neededCount <= 1}
-              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+              className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
             >
               −
             </button>
@@ -322,7 +322,7 @@ export function AskForHelpSheet({
               aria-label="More people"
               onClick={() => setNeededCount((n) => Math.min(20, n + 1))}
               disabled={neededCount >= 20}
-              className="press flex h-8 w-8 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+              className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
             >
               +
             </button>

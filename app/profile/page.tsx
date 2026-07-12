@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { AdminAlertComposer } from "@/components/AdminAlertComposer";
-import { AdminMembers } from "@/components/AdminMembers";
-import { AdminProfileOverride } from "@/components/AdminProfileOverride";
-import { AdminCommittees } from "@/components/AdminCommittees";
-import { AdminHouses } from "@/components/AdminHouses";
-import { AdminCabinBookings } from "@/components/AdminCabinBookings";
-import { AdminSignins } from "@/components/AdminSignins";
-import { PreviewAs } from "@/components/PreviewAs";
+import { RowLink } from "@/components/RowLink";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
@@ -22,8 +15,6 @@ import { EditDisplayName } from "@/components/EditDisplayName";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { PushToggle } from "@/components/PushToggle";
 import { NotifPrefs } from "@/components/NotifPrefs";
-import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
-import { AdminModeration } from "@/components/AdminModeration";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
 import { WillingToHelpToggle } from "@/components/WillingToHelpToggle";
@@ -217,54 +208,23 @@ export default function ProfilePage() {
         </label>
       </div>
 
-      <CollapsibleSection
-        title="Contact & payment"
-        icon="💳"
-        subtitle="Phone & pay handles for your member card"
-      >
+      <div className="space-y-2">
+        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          Contact &amp; payment
+        </p>
         <p className="px-1 text-xs text-foreground/50">
           Optional — this is what shows when someone taps your name to contact or pay you.
         </p>
         <ContactPaySettings />
-      </CollapsibleSection>
+      </div>
 
       {isAdmin && (
-        <CollapsibleSection
-          title="Admin tools"
-          icon="🛠️"
-          subtitle="Alerts, members, content review & more"
-        >
-          <CollapsibleSection title="Post an alert" icon="📣" subtitle="Banner notice to everyone (+ email)">
-            <AdminAlertComposer />
-          </CollapsibleSection>
-          <CollapsibleSection title="Send a notification" icon="🔔" subtitle="To everyone, beta testers, or admins · their Activity tab">
-            <AdminNotificationComposer />
-          </CollapsibleSection>
-          <CollapsibleSection title="Content review" icon="🛡️" subtitle="Held & reported posts · blocked words">
-            <AdminModeration />
-          </CollapsibleSection>
-          <CollapsibleSection title="Committees" icon="👥" subtitle="Who's in each + join requests">
-            <AdminCommittees />
-          </CollapsibleSection>
-          <CollapsibleSection title="Houses" icon="🏠" subtitle="Create houses & assign members">
-            <AdminHouses />
-          </CollapsibleSection>
-          <CollapsibleSection title="Cabin Stays" icon="🏡" subtitle="Approve room requests">
-            <AdminCabinBookings />
-          </CollapsibleSection>
-          <CollapsibleSection title="Members" icon="🧑‍🤝‍🧑" subtitle="Everyone signed in · make admins">
-            <AdminMembers />
-          </CollapsibleSection>
-          <CollapsibleSection title="Edit a member's information" icon="✏️" subtitle="Two-admin unlock · backup for members">
-            <AdminProfileOverride />
-          </CollapsibleSection>
-          <CollapsibleSection title="Recent activity" icon="🔐" subtitle="Who joined & recent sign-ins">
-            <AdminSignins />
-          </CollapsibleSection>
-          <CollapsibleSection title="View as" icon="👁️" subtitle="Preview the app as a member or guest">
-            <PreviewAs />
-          </CollapsibleSection>
-        </CollapsibleSection>
+        <RowLink
+          href="/admin"
+          emoji="🛠"
+          title="Admin dashboard"
+          subtitle="Manage members, alerts, content & more"
+        />
       )}
 
       <div className="space-y-2">

@@ -6,17 +6,20 @@ import { useEffect, useState } from "react";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
+import { Icon } from "@/components/Icon";
 
+// Icons are names from the hand-rolled line-icon set (components/Icon.tsx);
+// the fest tab wears a tent (the gathering), not the old crossed swords.
 const TABS = [
-  { href: "/", label: "Home", icon: "🏠" },
-  { href: "/posts", label: "Feed", icon: "📣" },
-  { href: "/family-fest", label: "Family Fest", icon: "⚔️" },
+  { href: "/", label: "Home", icon: "home" },
+  { href: "/posts", label: "Feed", icon: "feed" },
+  { href: "/family-fest", label: "Family Fest", icon: "fest" },
   // The Activity feed — everything that happened involving you. Tab label and
   // page title are aligned on "Activity" (one name per thing).
-  { href: "/notifications", label: "Activity", icon: "🔔" },
+  { href: "/notifications", label: "Activity", icon: "bell" },
   // Profile (your account, settings, sign-out) is back in the last slot. People
   // (the member directory) moved off the tab bar to a card on Home.
-  { href: "/profile", label: "Profile", icon: "👤" },
+  { href: "/profile", label: "Profile", icon: "person" },
 ] as const;
 
 export function TabBar() {
@@ -92,11 +95,19 @@ export function TabBar() {
                 className={`press flex flex-col items-center gap-0.5 py-2 text-[11px] transition-colors ${color}`}
               >
                 <span
-                  className={`relative text-lg leading-none transition-transform ${
+                  className={`relative transition-transform ${
                     active ? "scale-110" : ""
                   }`}
                 >
-                  {tab.icon}
+                  {/* Active = bolder stroke; color comes from the Link's
+                      text class above (fest wine vs forest green) via
+                      the icon's currentColor. */}
+                  <Icon
+                    name={tab.icon}
+                    size={22}
+                    strokeWidth={active ? 2.4 : 1.8}
+                    className="block"
+                  />
                   {live && (
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fest/70" />

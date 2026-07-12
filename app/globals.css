@@ -37,6 +37,15 @@
      (e.g. the Family Fest tab in the TabBar). Inside .ff-section it's the
      re-declared --color-primary below. */
   --color-fest: #8b2e2e;
+  /* Accessibility floor for secondary/caption text — older eyes struggle to
+     read low-opacity foreground tints (text-foreground/40 etc read too
+     faint). Use these tokens instead of opacity modifiers on text-foreground. */
+  --color-muted: #4b5b52; /* readable secondary text (~60% equiv) — timestamps, subtitles */
+  --color-faint: #64716a; /* captions floor — never go lighter than this for real text */
+  /* Third-party pay-button brand colors (PayView) — tokenized so no hex is
+     hard-coded in components, per the theme rule above. */
+  --color-venmo: #3d95ce;
+  --color-paypal: #003087;
   /* Elegant script for the resort wordmark (echoes the vintage business card);
      via next/font. */
   --font-script: var(--font-wordmark), "Snell Roundhand", "Apple Chancery", cursive;
