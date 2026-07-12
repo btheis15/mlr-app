@@ -68,8 +68,10 @@ export function EventCard({
   myStatus: AttendanceStatus | null;
   today: string;
   onOpen: () => void;
-  /** Inline RSVP handler (full variants only). Omit to hide the control. */
-  onSetStatus?: (status: AttendanceStatus) => void;
+  /** Inline RSVP handler (full variants only). Omit to hide the control.
+   *  Return (or resolve to) `false` on failure so `AttendanceControl` can show
+   *  an inline retry message. */
+  onSetStatus?: (status: AttendanceStatus) => void | Promise<boolean>;
   variant?: "spotlight" | "card" | "compact";
 }) {
   const chip = KIND_CHIP[event.kind];

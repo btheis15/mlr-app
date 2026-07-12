@@ -555,7 +555,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <p className="text-sm text-foreground/60">
             {step === "email"
               ? "Browsing is open to everyone. Enter your email to post, RSVP, and get updates — we'll send you a code to confirm it's you. No password needed."
-              : `We emailed an 8-digit code to ${normEmail} — enter it below.`}
+              : `We emailed you a sign-in code to ${normEmail} — enter it below.`}
           </p>
         </div>
 
@@ -581,11 +581,12 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           <>
             <input
               value={code}
-              // Supabase emails an 8-digit OTP for this project (the email-OTP
-              // length is a project setting). Accept up to 8; verify enables at
-              // 6 so it still works if that setting is ever lowered.
+              // Digit-count-agnostic on purpose: don't hard-code a length in
+              // the copy or validation here — accept 6-8 digits (Supabase's
+              // email OTP is 6 by default) so this can't drift out of sync
+              // with whatever the project is actually configured to send.
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
-              placeholder="12345678"
+              placeholder="123456"
               inputMode="numeric"
               autoComplete="one-time-code"
               aria-label="Code from your email"

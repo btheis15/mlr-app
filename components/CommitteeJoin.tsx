@@ -45,6 +45,9 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
   const [state, setState] = useState<JoinState>(cached?.state ?? "loading");
   const [busy, setBusy] = useState(false);
+  // Inline error for join/leave/areas actions (styled text near the button —
+  // the app never surfaces raw errors via window.alert).
+  const [errMsg, setErrMsg] = useState<string | null>(null);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [myAreas, setMyAreas] = useState<string[]>(cached?.myAreas ?? []);
   const [editingMyAreas, setEditingMyAreas] = useState(false);
@@ -99,16 +102,19 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const requestToJoin = async () => {
     if (!supabase || !committeeId) return;
     setBusy(true);
+    setErrMsg(null);
     const { error } = await supabase.rpc("request_to_join", {
       cid: committeeId,
       msg: message,
       requested_areas: selectedAreas,
     });
     setBusy(false);
-    if (!error) {
-      setState("pending");
-      joinStateCache.set(key, { state: "pending", committeeId, myAreas });
+    if (error) {
+      setErrMsg(`Couldn't send the request: ${error.message}`);
+      return;
     }
+    setState("pending");
+    joinStateCache.set(key, { state: "pending", committeeId, myAreas });
   };
 
   const startEditMyAreas = () => {
@@ -120,13 +126,14 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const saveMyAreas = async () => {
     if (!supabase || !committeeId) return;
     setBusy(true);
+    setErrMsg(null);
     const { error } = await supabase.rpc("set_my_committee_areas", {
       cid: committeeId,
       areas: myAreaSelection,
     });
     setBusy(false);
     if (error) {
-      window.alert(error.message);
+      setErrMsg(`Couldn't save your areas: ${error.message}`);
       return;
     }
     setMyAreas(myAreaSelection);
@@ -138,10 +145,12 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     if (!supabase || !committeeId) return;
     if (!window.confirm(`Leave ${committee.name}?`)) return;
     setBusy(true);
+    setErrMsg(null);
     const { error } = await supabase.rpc("leave_committee", { cid: committeeId });
     setBusy(false);
-    if (error) window.alert(error.message);
-    else {
+    if (error) {
+      setErrMsg(`Couldn't leave: ${error.message}`);
+    } else {
       setState("none");
       joinStateCache.set(key, { state: "none", committeeId, myAreas: [] });
     }
@@ -245,6 +254,8 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
             </div>
           )}
 
+          {errMsg && <p className="text-center text-xs font-medium text-accent">{errMsg}</p>}
+
           <button onClick={leaveSelf} disabled={busy} className="press w-full rounded-xl bg-background py-2.5 text-xs font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50">
             {busy ? "Leaving…" : `Leave ${committee.name}`}
           </button>
@@ -291,6 +302,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           >
             {busy ? "Sending…" : `📝 Request to join ${committee.name}`}
           </button>
+          {errMsg && <p className="text-center text-xs font-medium text-accent">{errMsg}</p>}
         </div>
       )}
     </section>

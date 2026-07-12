@@ -34,8 +34,10 @@ export function EventSheet({
   /** The viewer's own RSVP row for this event, or null. */
   mine: EventAttendance | null;
   today: string;
-  /** Write the viewer's RSVP (parent handles guest sign-in / optimistic update). */
-  onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void;
+  /** Write the viewer's RSVP (parent handles guest sign-in / optimistic update).
+   *  Return (or resolve to) `false` on failure so `AttendanceControl` can show
+   *  an inline retry message. */
+  onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void | Promise<boolean>;
   onClose: () => void;
   isAdmin?: boolean;
   /** Open the admin composer to edit this event (real DB events only). */

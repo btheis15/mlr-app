@@ -46,6 +46,12 @@ interface Summary {
 
 const stripLead = (role: string) => (role.endsWith(" · Lead") ? role.slice(0, -" · Lead".length) : role);
 
+// A media-only message (no text) previews as its attachment kind rather than a
+// bare "Name: ". Only image/video/sticker/gif are possible (message_media's
+// check constraint) — gif falls back to the photo placeholder.
+const mediaPreviewLabel = (mediaType: string): string =>
+  mediaType === "sticker" ? "Sticker" : mediaType === "video" ? "🎬 Video" : "📷 Photo";
+
 /**
  * Stale-while-revalidate cache, mirroring lib/hooks.ts `eventsCache`. FeedView
  * remounts on every tab navigation; without this, channels/houseChannel reset to
@@ -81,72 +87,113 @@ export function FeedView() {
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("house") : null
   );
   const [loaded, setLoaded] = useState(false);
+  // Holds the latest computeSummaries so the "returning to list" effect below
+  // (which lives outside the load effect's closure) can trigger a refresh.
+  const computeSummariesRef = useRef<() => Promise<void>>(async () => {});
 
   // Load my channels (Main Feed is implicit) + their previews.
   useEffect(() => {
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !user) return;
+    if (!isSupabaseConfigured || !sb || !user) {
+      // No signed-in user (guest): there's nothing to load, so flip loaded so a
+      // guest deep-linking /posts?house=<slug> doesn't hang on the loading gate
+      // below forever — it falls through to the normal feed/sign-in view.
+      setLoaded(true);
+      return;
+    }
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
     let me: string | null = null;
     let mine: Channel[] = [];
     let houseCh: HouseChannel | null = null;
+    let computingSummaries = false;
 
     const computeSummaries = async () => {
-      if (!me) return;
-      const meId = me;
-      const next: Record<string, Summary> = {};
-      await Promise.all(
-        mine.map(async (ch) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const areaEq = (q: any) => (ch.area ? q.eq("area", ch.area) : q.is("area", null));
+      if (!me || computingSummaries) return;
+      computingSummaries = true;
+      try {
+        const meId = me;
+        const next: Record<string, Summary> = {};
+        await Promise.all(
+          mine.map(async (ch) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const areaEq = (q: any) => (ch.area ? q.eq("area", ch.area) : q.is("area", null));
+            const [lastRes, readRes] = await Promise.all([
+              areaEq(
+                sb
+                  .from("committee_messages")
+                  .select("text, created_at, profiles!author_id(display_name), committee_message_media(media_type)")
+                  .eq("committee_id", ch.committeeId)
+                  .is("deleted_at", null),
+              ).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+              sb.from("committee_area_reads").select("last_read_at, muted").eq("committee_id", ch.committeeId).eq("user_id", meId).eq("area", ch.area ?? "").maybeSingle(),
+            ]);
+            const lastRow = lastRes.data as {
+              text: string | null;
+              created_at: string;
+              profiles: { display_name: string | null } | null;
+              committee_message_media: { media_type: string }[] | null;
+            } | null;
+            const read = readRes.data as { last_read_at: string | null; muted: boolean | null } | null;
+            let unreadQ = areaEq(
+              sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", ch.committeeId).neq("author_id", meId).is("deleted_at", null),
+            );
+            if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
+            const { count } = await unreadQ;
+            const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
+            const body = lastRow?.text || (lastRow?.committee_message_media?.length ? mediaPreviewLabel(lastRow.committee_message_media[0].media_type) : "");
+            next[ch.key] = {
+              last: lastRow ? who + body : undefined,
+              at: lastRow?.created_at,
+              unread: count ?? 0,
+              muted: read?.muted ?? false,
+            };
+          }),
+        );
+        // House channel summary (its own tables; no per-room mute).
+        if (houseCh) {
+          const hid = houseCh.houseId;
           const [lastRes, readRes] = await Promise.all([
-            areaEq(
-              sb.from("committee_messages").select("text, created_at, profiles!author_id(display_name)").eq("committee_id", ch.committeeId),
-            ).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-            sb.from("committee_area_reads").select("last_read_at, muted").eq("committee_id", ch.committeeId).eq("user_id", meId).eq("area", ch.area ?? "").maybeSingle(),
+            sb
+              .from("house_messages")
+              .select("text, created_at, profiles!author_id(display_name), house_message_media(media_type)")
+              .eq("house_id", hid)
+              .is("deleted_at", null)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            sb.from("house_reads").select("last_read_at").eq("house_id", hid).eq("user_id", meId).maybeSingle(),
           ]);
-          const lastRow = lastRes.data as { text: string | null; created_at: string; profiles: { display_name: string | null } | null } | null;
-          const read = readRes.data as { last_read_at: string | null; muted: boolean | null } | null;
-          let unreadQ = areaEq(sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", ch.committeeId).neq("author_id", meId));
+          const lastRow = lastRes.data as {
+            text: string | null;
+            created_at: string;
+            profiles: { display_name: string | null } | null;
+            house_message_media: { media_type: string }[] | null;
+          } | null;
+          const read = readRes.data as { last_read_at: string | null } | null;
+          let unreadQ = sb.from("house_messages").select("id", { count: "exact", head: true }).eq("house_id", hid).neq("author_id", meId).is("deleted_at", null);
           if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
           const { count } = await unreadQ;
           const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
-          next[ch.key] = {
-            last: lastRow ? who + (lastRow.text ?? "") : undefined,
+          const body = lastRow?.text || (lastRow?.house_message_media?.length ? mediaPreviewLabel(lastRow.house_message_media[0].media_type) : "");
+          next[houseCh.key] = {
+            last: lastRow ? who + body : undefined,
             at: lastRow?.created_at,
             unread: count ?? 0,
-            muted: read?.muted ?? false,
+            muted: false,
           };
-        }),
-      );
-      // House channel summary (its own tables; no per-room mute).
-      if (houseCh) {
-        const hid = houseCh.houseId;
-        const [lastRes, readRes] = await Promise.all([
-          sb.from("house_messages").select("text, created_at, profiles!author_id(display_name)").eq("house_id", hid).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-          sb.from("house_reads").select("last_read_at").eq("house_id", hid).eq("user_id", meId).maybeSingle(),
-        ]);
-        const lastRow = lastRes.data as { text: string | null; created_at: string; profiles: { display_name: string | null } | null } | null;
-        const read = readRes.data as { last_read_at: string | null } | null;
-        let unreadQ = sb.from("house_messages").select("id", { count: "exact", head: true }).eq("house_id", hid).neq("author_id", meId);
-        if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
-        const { count } = await unreadQ;
-        const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
-        next[houseCh.key] = {
-          last: lastRow ? who + (lastRow.text ?? "") : undefined,
-          at: lastRow?.created_at,
-          unread: count ?? 0,
-          muted: false,
-        };
+        }
+        // Keep the cached snapshot's summaries current so a returning tab paints
+        // the latest previews (only if a structural entry already exists — the
+        // channels/houseChannel structural write below is what creates it).
+        const prevSnap = feedCache.get(cacheKey);
+        if (prevSnap) feedCache.set(cacheKey, { ...prevSnap, summaries: next });
+        if (!cancelled) setSummaries(next);
+      } finally {
+        computingSummaries = false;
       }
-      // Keep the cached snapshot's summaries current so a returning tab paints
-      // the latest previews (only if a structural entry already exists — the
-      // channels/houseChannel structural write below is what creates it).
-      const prevSnap = feedCache.get(cacheKey);
-      if (prevSnap) feedCache.set(cacheKey, { ...prevSnap, summaries: next });
-      if (!cancelled) setSummaries(next);
     };
+    computeSummariesRef.current = computeSummaries;
 
     const loadHouse = async (): Promise<HouseChannel | null> => {
       if (!me) return null;
@@ -242,6 +289,16 @@ export function FeedView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email, previewAsId]);
+
+  // Recompute summaries when returning to the list: otherwise a room's unread
+  // badge only clears on the next message INSERT, so it stays lit after you've
+  // read it and come back. computeSummaries() itself doesn't overlap (guarded
+  // by computingSummaries above); this just skips the redundant fetch on mount.
+  const prevActiveRef = useRef(active);
+  useEffect(() => {
+    if (active === "list" && prevActiveRef.current !== "list") void computeSummariesRef.current();
+    prevActiveRef.current = active;
+  }, [active]);
 
   // Pin the active chat to the visual viewport so the iOS keyboard can't shove
   // the page around (same technique as the old overlay).

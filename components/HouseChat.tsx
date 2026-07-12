@@ -63,7 +63,7 @@ interface Pending {
 }
 
 export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; houseId?: string | null; embedded?: boolean; knownMember?: boolean }) {
-  const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
+  const { user, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
   const configured = isSupabaseConfigured;
 
   const [uid, setUid] = useState<string | null>(null);
@@ -242,8 +242,12 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
       })),
     );
     setLoaded(true);
-    const me = (await sb.auth.getUser()).data.user?.id;
-    if (me) await sb.rpc("mark_house_read", { hid });
+    // Skip while "view as" preview is active — the real admin's read row must
+    // not be stamped by whatever the previewed member/guest opens.
+    if (previewMode === "off") {
+      const me = (await sb.auth.getUser()).data.user?.id;
+      if (me) await sb.rpc("mark_house_read", { hid });
+    }
   };
 
   useEffect(() => {

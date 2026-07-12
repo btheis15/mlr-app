@@ -41,16 +41,18 @@ export function TabBar() {
     // On iOS the visualViewport fires a resize with wrong dimensions during the
     // background→foreground transition, which locks the bar off-screen. Reset
     // immediately when the app becomes visible, then re-check once settled.
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         setKeyboardOpen(false);
-        setTimeout(check, 300);
+        settleTimer = setTimeout(check, 300);
       }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       vv.removeEventListener("resize", check);
       document.removeEventListener("visibilitychange", onVisible);
+      if (settleTimer) clearTimeout(settleTimer);
     };
   }, []);
 

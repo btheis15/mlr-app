@@ -98,6 +98,16 @@ const LS = { hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
+// True when a Supabase RPC failed because the function isn't in the DB yet
+// (its migration hasn't run) — PostgREST's schema-cache miss (PGRST202) or
+// Postgres 42883. Callers degrade to the pre-migration path, the same
+// convention as MigrationHint / NotificationsView's missing-relation check.
+function isMissingFunction(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  if (err.code === "PGRST202" || err.code === "42883") return true;
+  return /could not find the function|function .* does not exist/i.test(err.message ?? "");
+}
+
 // Member tag search: an empty query matches everyone; otherwise a substring, or
 // any word that starts with what's typed ("b" → all B names).
 function matchesName(name: string, query: string): boolean {
@@ -207,7 +217,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
       sb.from("post_comment_mentions").select("comment_id, mentioned_user_id"),
-      sb.from("profiles").select("id, display_name, avatar_url"),
+      sb.from("profiles").select("id, display_name, full_name, avatar_url"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
     // the column is missing — fall back to created_at so the feed still loads.
@@ -243,8 +253,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     const names = new Map<string, string>();
     const avatars = new Map<string, string | null>();
     const memberList: Member[] = [];
-    for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]) {
-      const n = p.display_name?.trim() || "Member";
+    for (const p of (profilesRes.data ?? []) as { id: string; display_name: string | null; full_name: string | null; avatar_url: string | null }[]) {
+      // Fallback chain for a blank display_name: first name off full_name
+      // (first-name-only keeps the PrivateName posture), then generic "Member".
+      const n = p.display_name?.trim() || p.full_name?.trim().split(/\s+/)[0] || "Member";
       names.set(p.id, n);
       avatars.set(p.id, p.avatar_url);
       memberList.push({ id: p.id, name: n, avatarUrl: p.avatar_url });
@@ -425,25 +437,41 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // AI text screen (fail-open): photos/videos are screened server-side at
         // /upload; this covers the caption. Flagged → create it held for review.
         const heldForText = caption ? await moderatePostText(caption, token) : false;
-        const { data: np, error: insErr } = await supabase
-          .from("posts")
-          .insert({ author_id: uid, text: caption || null, ...(heldForText ? { status: "pending" } : {}), ...(occurredAt ? { occurred_at: occurredAt } : {}) })
-          .select("id")
-          .single();
-        if (insErr) throw insErr;
-        const postId = (np as { id: string } | null)?.id;
-        if (!postId) throw new Error("Could not create the post.");
-        for (let i = 0; i < uploaded.length; i++) {
-          const { error: medErr } = await supabase
-            .from("post_media")
-            .insert({ post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i });
-          if (medErr) throw medErr;
-        }
-        if (tagIds.length) {
-          const { error: tagErr } = await supabase
-            .from("post_tags")
-            .insert(tagIds.map((t) => ({ post_id: postId, tagged_user_id: t })));
-          if (tagErr) throw tagErr;
+        // Atomic create via the create_post RPC (0080): posts + media + tags
+        // land in ONE transaction, so a mid-write failure can never leave a
+        // live half-finished post behind a "Couldn't post" error.
+        const { error: rpcErr } = await supabase.rpc("create_post", {
+          p_caption: caption || null,
+          p_occurred_at: occurredAt,
+          p_media: uploaded.map((u) => ({ path: u.path, type: u.type })),
+          p_tags: tagIds,
+          p_held: heldForText,
+        });
+        if (rpcErr && !isMissingFunction(rpcErr)) throw rpcErr;
+        if (rpcErr) {
+          // Pre-migration fallback (0080 not applied yet): the old
+          // multi-insert path — non-transactional, but the feature still works
+          // until the migration runs (the MigrationHint-style degrade).
+          const { data: np, error: insErr } = await supabase
+            .from("posts")
+            .insert({ author_id: uid, text: caption || null, ...(heldForText ? { status: "pending" } : {}), ...(occurredAt ? { occurred_at: occurredAt } : {}) })
+            .select("id")
+            .single();
+          if (insErr) throw insErr;
+          const postId = (np as { id: string } | null)?.id;
+          if (!postId) throw new Error("Could not create the post.");
+          for (let i = 0; i < uploaded.length; i++) {
+            const { error: medErr } = await supabase
+              .from("post_media")
+              .insert({ post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i });
+            if (medErr) throw medErr;
+          }
+          if (tagIds.length) {
+            const { error: tagErr } = await supabase
+              .from("post_tags")
+              .insert(tagIds.map((t) => ({ post_id: postId, tagged_user_id: t })));
+            if (tagErr) throw tagErr;
+          }
         }
         await refetch();
         setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
@@ -483,13 +511,47 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   };
   const toggleReactors = (postId: string, emoji: string) =>
     setReactorsFor((cur) => (cur && cur.postId === postId && cur.emoji === emoji ? null : { postId, emoji }));
-  const myReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
+  // My reaction, with an optimistic override while a toggle is in flight.
+  // dbReactions only updates after the refetch, so without the override a fast
+  // second tap on the same emoji would read the stale value and re-upsert
+  // instead of deleting — the reaction would stick on. The intent lives in a
+  // ref (setState is async, so a handler firing before the re-render must not
+  // read stale state) mirrored into state for rendering, and toggles are
+  // chained per post so they hit the server in tap order. The override is
+  // dropped once the LAST in-flight toggle's refetch lands (reconcile).
+  const pendingReaction = useRef(new Map<string, string | null>());
+  const reactionChain = useRef(new Map<string, Promise<void>>());
+  const [optimisticReaction, setOptimisticReaction] = useState<Record<string, string | null>>({});
+  const dbReaction = (postId: string) => dbReactions[postId]?.find((r) => r.user_id === uid)?.emoji ?? null;
+  const myReaction = (postId: string) =>
+    postId in optimisticReaction ? optimisticReaction[postId] : dbReaction(postId);
   const reactionSummary = (postId: string) => reactionCounts(dbReactions[postId] ?? []);
   const react = async (postId: string, emoji: string) => {
     setPickerFor(null);
     if (!supabase || !uid) { promptSignIn(); return; }
-    await toggleReaction({ table: "post_reactions", idColumn: "post_id", itemId: postId, userId: uid, emoji, current: myReaction(postId) });
-    await refetch();
+    // Read the in-flight intent (not state) so a second tap sees the first.
+    const current = pendingReaction.current.has(postId) ? pendingReaction.current.get(postId)! : dbReaction(postId);
+    const next = current === emoji ? null : emoji;
+    pendingReaction.current.set(postId, next);
+    setOptimisticReaction((prev) => ({ ...prev, [postId]: next }));
+    const op = (reactionChain.current.get(postId) ?? Promise.resolve())
+      .then(() => toggleReaction({ table: "post_reactions", idColumn: "post_id", itemId: postId, userId: uid, emoji, current }))
+      .then(() => refetch())
+      .catch(() => {})
+      .finally(() => {
+        // Only the tail of the chain reconciles — earlier completions must not
+        // wipe a newer tap's optimistic intent.
+        if (reactionChain.current.get(postId) === op) {
+          reactionChain.current.delete(postId);
+          pendingReaction.current.delete(postId);
+          setOptimisticReaction((prev) => {
+            const { [postId]: _done, ...rest } = prev;
+            return rest;
+          });
+        }
+      });
+    reactionChain.current.set(postId, op);
+    await op;
   };
 
   const addComment = async (postId: string, body: string, mentionIds: string[] = []) => {
@@ -1119,11 +1181,16 @@ function CommentBox({ members, uid, onAdd }: { members: Member[]; uid: string | 
   const [v, setV] = useState("");
   const [mentionIds, setMentionIds] = useState<string[]>([]);
 
-  // Keep only mentions whose "@Name" is still present in the text.
+  // Keep only mentions whose "@Name" is still present in the text — on a word
+  // boundary, matching how choose() inserts them ("@Name "): the character
+  // right after the name must be absent or a non-name character, so member
+  // "Jo" can't stay tagged off someone else's "@John".
   const liveMentions = (val: string) =>
     mentionIds.filter((id) => {
       const n = members.find((m) => m.id === id)?.name;
-      return n ? val.includes(`@${n}`) : false;
+      if (!n) return false;
+      const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`@${esc}(?![\\p{L}\\p{N}])`, "u").test(val);
     });
 
   const onChange = (val: string) => {

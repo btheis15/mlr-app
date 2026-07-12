@@ -9,6 +9,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchMyCommitteeRole } from "@/lib/roles";
 import {
+  effectiveStatus,
   fetchAttendance,
   fetchEvents,
   fetchMyAttendance,
@@ -369,9 +370,20 @@ export interface UseEvents {
   /** True when RSVPs can actually be written (a backend exists). */
   canRsvp: boolean;
   /** Set the viewer's RSVP for an event (optimistic). Prompts sign-in for guests;
-   *  no-op while an admin is previewing as someone else. */
-  setStatus: (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => Promise<void>;
+   *  no-op while an admin is previewing as someone else. Resolves `false` (and
+   *  rolls the optimistic `mine`/tally update back) if the write fails, so the
+   *  caller can surface an inline retry message. A tap that lands while one is
+   *  already in flight for the same event id rides along on that call's result
+   *  instead of firing a second write. */
+  setStatus: (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => Promise<boolean>;
   reload: () => Promise<void>;
+}
+
+/** `AttendanceSummary.counts` keys are `going` / `maybe` / `notGoing`;
+ *  `AttendanceStatus` (and `effectiveStatus()`) spells the last one `not_going`.
+ *  Bridges the two for the optimistic count nudge in `setStatus`. */
+function countKey(status: AttendanceStatus): keyof AttendanceSummary["counts"] {
+  return status === "not_going" ? "notGoing" : status;
 }
 
 /**
@@ -409,6 +421,18 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
   const [loading, setLoading] = useState(!eventsCache);
   const [schedule] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
+  // Optimistic going/maybe/can't-make tally nudge, keyed by event id: the
+  // viewer's own old→new bucket transition. Bridges the gap between the
+  // optimistic `mine` write below and the real roster rows landing after
+  // `reload()` — without it the counts visibly lag a beat behind the tap.
+  // Cleared whenever a reload lands (the fresh rows already reflect it).
+  const [countShift, setCountShift] = useState<
+    Record<string, { from: keyof AttendanceSummary["counts"]; to: keyof AttendanceSummary["counts"] }>
+  >({});
+  // Per-event in-flight lock: a double-tap on the same control must not fire a
+  // second `set_event_attendance` write that can settle out of order — a tap
+  // that lands while one is already saving just awaits that call's result.
+  const pending = useRef<Record<string, Promise<boolean>>>({});
 
   const reload = useCallback(async () => {
     try {
@@ -420,6 +444,7 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
       setEvents(ev);
       setRows(at);
       setMine(my);
+      setCountShift({});
       eventsCache = { events: ev, rows: at, mine: my };
     } finally {
       // A flaky/misconfigured backend must never leave the UI stuck "loading".
@@ -451,21 +476,48 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
     const byEvent: Record<string, EventAttendance[]> = {};
     for (const r of rows) (byEvent[r.eventId] ??= []).push(r);
     const out: Record<string, AttendanceSummary> = {};
-    for (const e of events) out[e.id] = summarize(byEvent[e.id] ?? []);
+    for (const e of events) {
+      const base = summarize(byEvent[e.id] ?? []);
+      const shift = countShift[e.id];
+      if (!shift || shift.from === shift.to) {
+        out[e.id] = base;
+        continue;
+      }
+      // Nudge just the numeric tally (not the going/maybe/not-going name lists,
+      // which need the real row to know who to show) so it moves with the tap.
+      out[e.id] = {
+        ...base,
+        counts: {
+          ...base.counts,
+          [shift.from]: Math.max(0, base.counts[shift.from] - 1),
+          [shift.to]: base.counts[shift.to] + 1,
+        },
+      };
+    }
     return out;
-  }, [rows, events]);
+  }, [rows, events, countShift]);
 
   const setStatus = useCallback(
-    async (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => {
+    (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null): Promise<boolean> => {
       // Guests get the sign-in sheet; no backend ⇒ nothing to write; while
       // previewing as a member, writes are disabled (they'd act as the real admin).
-      if (!isSupabaseConfigured) return;
+      if (!isSupabaseConfigured) return Promise.resolve(false);
       if (!user) {
         promptSignIn();
-        return;
+        return Promise.resolve(false);
       }
-      if (previewAsId) return;
-      // Optimistic: reflect the choice immediately, then reconcile with the server.
+      if (previewAsId) return Promise.resolve(false);
+      // Already saving this event — ride along on that write's result instead
+      // of firing a second RPC that could settle in either order.
+      const inFlight = pending.current[eventId];
+      if (inFlight) return inFlight;
+
+      const prevMine = mine[eventId] ?? null;
+      const prevBucket = countKey(prevMine ? effectiveStatus(prevMine.status, prevMine.days) : "not_going");
+      const nextBucket = countKey(effectiveStatus(status, days ?? null));
+
+      // Optimistic: reflect the choice — and its effect on the going/maybe
+      // tally — immediately, then reconcile with the server.
       setMine((m) => ({
         ...m,
         [eventId]: {
@@ -477,12 +529,43 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
           days: days ?? null,
         },
       }));
-      // Pass the title so the server can label the "X is going to <event>"
-      // notification for seed events (no public.events row to look it up from).
-      await setAttendance(eventId, status, days, events.find((e) => e.id === eventId)?.title);
-      await reload();
+      if (prevBucket !== nextBucket) {
+        setCountShift((c) => ({ ...c, [eventId]: { from: prevBucket, to: nextBucket } }));
+      }
+
+      const run = (async (): Promise<boolean> => {
+        try {
+          // Pass the title so the server can label the "X is going to <event>"
+          // notification for seed events (no public.events row to look it up from).
+          const { error } = await setAttendance(eventId, status, days, events.find((e) => e.id === eventId)?.title);
+          if (error) {
+            // The write didn't stick — roll the optimistic mine + tally back
+            // instead of letting the next reload() silently swallow the failure.
+            setMine((m) => {
+              if (!prevMine) {
+                const { [eventId]: _drop, ...rest } = m;
+                return rest;
+              }
+              return { ...m, [eventId]: prevMine };
+            });
+            if (prevBucket !== nextBucket) {
+              setCountShift((c) => {
+                const { [eventId]: _drop, ...rest } = c;
+                return rest;
+              });
+            }
+            return false;
+          }
+          await reload();
+          return true;
+        } finally {
+          delete pending.current[eventId];
+        }
+      })();
+      pending.current[eventId] = run;
+      return run;
     },
-    [user, previewAsId, promptSignIn, reload, events],
+    [user, previewAsId, promptSignIn, reload, events, mine],
   );
 
   return {

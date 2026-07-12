@@ -28,6 +28,10 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
   const [local, setLocal] = useState<Announcement[]>([]);
   const [db, setDb] = useState<Announcement[]>([]);
   const [ready, setReady] = useState(false);
+  // Re-render tick so an alert's expiry is re-evaluated even if nothing else
+  // triggers a render — otherwise one that expires while the app just sits
+  // open would linger until an unrelated re-render happened to come along.
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     try {
@@ -76,6 +80,14 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
       cancelled = true;
       sb.removeChannel(ch);
     };
+  }, []);
+
+  // Tick every 60s so `now` below gets re-evaluated on its own — an alert
+  // that expires mid-session disappears within a minute instead of sitting
+  // there until some unrelated state change happens to re-render this.
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
   }, []);
 
   const dismiss = (id: string) => {

@@ -74,7 +74,7 @@ interface Pending {
 }
 
 export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean }) {
-  const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
+  const { user, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
   const configured = isSupabaseConfigured;
 
   // Per-room+channel+VIEWER cache key. The viewer segment MUST include the real
@@ -308,9 +308,13 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     // the cached access (loadAccess owns it); reaching a successful member fetch
     // means access is "member", so record that too and stamp committeeId.
     committeeChatCache.set(key, { access: "member", committeeId: cid, messages: msgs, members: roster });
-    // Mark this channel read for me (per-area, migration 0063).
-    const me = (await sb.auth.getUser()).data.user?.id;
-    if (me) await sb.rpc("mark_area_read", { cid, p_area: area ?? null });
+    // Mark this channel read for me (per-area, migration 0063). Skip while
+    // "view as" preview is active — the real admin's read row must not be
+    // stamped by whatever the previewed member/guest opens.
+    if (previewMode === "off") {
+      const me = (await sb.auth.getUser()).data.user?.id;
+      if (me) await sb.rpc("mark_area_read", { cid, p_area: area ?? null });
+    }
   };
 
   // Keep pinned to the latest message.

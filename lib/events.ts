@@ -9,6 +9,7 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { RESORT_EVENTS } from "@/lib/data";
+import { toISODate } from "@/lib/festSeason";
 import type {
   AttendanceStatus,
   AttendanceSummary,
@@ -18,9 +19,12 @@ import type {
 
 /** Each ISO day (YYYY-MM-DD) an event spans, inclusive. Single-day ⇒ [start].
  *  Anchored at local midnight so it's DST/TZ-safe (same trick as cabins.addDays).
- *  This is the generalized form; lib/data.ts keeps a no-arg `eventDays()` bound to
- *  the Family Fest window — they stay separate so data.ts (which we import here)
- *  doesn't have to import back from this module (a cycle). */
+ *  Steps with local date math via festSeason's `toISODate()` — re-serializing
+ *  with `toISOString()` would flip back to UTC and drop a day in UTC-positive
+ *  timezones. This is the generalized form; lib/data.ts keeps a no-arg
+ *  `eventDays()` bound to the Family Fest window — they stay separate so
+ *  data.ts (which we import here) doesn't have to import back from this module
+ *  (a cycle). */
 export function eventDays(start: string, end?: string | null): string[] {
   const out: string[] = [];
   const last = end || start;
@@ -30,7 +34,7 @@ export function eventDays(start: string, end?: string | null): string[] {
     out.push(d);
     const nx = new Date(`${d}T00:00:00`);
     nx.setDate(nx.getDate() + 1);
-    d = nx.toISOString().slice(0, 10);
+    d = toISODate(nx);
   }
   return out;
 }

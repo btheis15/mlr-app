@@ -26,6 +26,8 @@ require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -37,8 +39,21 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replac
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ""; // ⚠️ powerful — admin endpoints only
+
+// Known-good production origins for the app, used ONLY as a fallback when
+// ALLOWED_ORIGINS isn't set. Keep this list current with lib/festSeason.ts-style
+// deploy URLs (Vercel + GitHub Pages) so a blank/misconfigured .env still fails
+// CLOSED (a fixed, real allow-list) instead of reflecting every origin.
+const DEFAULT_ALLOWED_ORIGINS = ["https://mlr-app-omega.vercel.app", "https://btheis15.github.io"];
 const ALLOWED = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-const MAX_MB = Number(process.env.MAX_MB || 1024); // per-file cap (MB); your disk is the real limit
+if (!ALLOWED.length) {
+  console.warn(
+    `⚠ ALLOWED_ORIGINS is not set — defaulting to the known production origins (${DEFAULT_ALLOWED_ORIGINS.join(", ")}). ` +
+      "Set ALLOWED_ORIGINS in .env to override (comma-separated). This server no longer reflects arbitrary origins."
+  );
+  ALLOWED.push(...DEFAULT_ALLOWED_ORIGINS);
+}
+const MAX_MB = Number(process.env.MAX_MB || 256); // per-file cap (MB); your disk is the real limit
 const MEDIA_DIR = process.env.MEDIA_DIR || path.join(__dirname, "media");
 const LEGACY_DIR = path.join(MEDIA_DIR, "posts", "legacy");
 
@@ -47,7 +62,57 @@ fs.mkdirSync(LEGACY_DIR, { recursive: true });
 
 const app = express();
 app.disable("x-powered-by");
-app.use(cors({ origin: ALLOWED.length ? ALLOWED : true, methods: ["GET", "POST", "OPTIONS"] }));
+// Trust the one reverse-proxy hop in front of us (Tailscale Funnel / a named
+// Cloudflare Tunnel, per README). Without this, express (and the rate limiter
+// below) sees every request as coming from localhost — the tunnel's local
+// forward — which would rate-limit the whole family as a single "IP".
+app.set("trust proxy", 1);
+// Baseline security headers. CSP is off — this server never serves HTML pages
+// with inline scripts to protect (just JSON + static media/assets), and a
+// default CSP would fight the static file responses. COEP is off and CORP is
+// widened to cross-origin so the Next app (a different origin) can still
+// <img>/<video> embed the media this server serves.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+app.use(cors({ origin: ALLOWED, methods: ["GET", "POST", "OPTIONS"] }));
+
+// Rate limiting — fail-safe defaults sized for a family posting fest photos in
+// bursts, not for abuse. Keyed per-IP (express-rate-limit's default). A modest
+// global floor on everything, plus tighter limits on the routes worth abusing.
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === "/health", // don't count uptime checks against anyone
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30, // uploads/hour/IP — generous for a burst of fest photos, not for scraping the disk full
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many uploads from this device recently. Try again in a bit." },
+});
+const moderateTextLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60, // 60/min — one per caption keystroke-pause is plenty
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Try again shortly." },
+});
+const geocodeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30, // 30/min — a member editing their address a few times, not a geocoding proxy
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Try again shortly." },
+});
+app.use(globalLimiter);
 
 // Lightweight request log (method, path, origin, body size, auth present) so
 // upload problems are diagnosable from logs/server.log.
@@ -63,8 +128,10 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // Address geocoding for the member-profile address editor. US Census (free, no
 // key, strong US residential coverage) for US addresses; OpenStreetMap Nominatim
 // for everywhere else. Server-side so the browser avoids CORS and we can send a
-// proper User-Agent. Returns { found, lat, lon, label }.
-app.get("/geocode", async (req, res) => {
+// proper User-Agent. Returns { found, lat, lon, label }. Signed-in only (it's a
+// free proxy to two outside geocoders — no reason to let it be hit anonymously),
+// same requireUser gate as uploads.
+app.get("/geocode", geocodeLimiter, requireUser, async (req, res) => {
   const country = String(req.query.country || "US").toUpperCase();
   const q = String(req.query.q || "").trim().slice(0, 300);
   if (!q) return res.json({ found: false });
@@ -309,7 +376,7 @@ async function recordMediaModeration(fileUrl, v) {
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
-app.post("/upload", requireUser, (req, res) => {
+app.post("/upload", uploadLimiter, requireUser, (req, res) => {
   // Transcoding a big video is synchronous, so give the request room to finish
   // (the response carries the final URL). Photos return effectively instantly.
   req.setTimeout(20 * 60 * 1000);
@@ -385,7 +452,7 @@ app.post("/upload", requireUser, (req, res) => {
 // language. The app calls this before publishing; flagged → the app creates the
 // post as `pending` (held for admin review). FAIL-OPEN: returns {flagged:false}
 // on any error/unavailability.
-app.post("/moderate/text", requireUser, express.json({ limit: "64kb" }), async (req, res) => {
+app.post("/moderate/text", moderateTextLimiter, requireUser, express.json({ limit: "64kb" }), async (req, res) => {
   try {
     if (!MOD_ENABLED) return res.json({ flagged: false });
     const v = await moderateText((req.body && req.body.text) || "");

@@ -36,20 +36,32 @@ export function Countdown({ target }: { target: string }) {
     );
   }
 
+  // Pre-mount, `now` is still null — show a stable placeholder (not a real
+  // "00 / 00 / 00") so the countdown doesn't flash a fake zero for a frame.
+  const pending = now == null;
+
   return (
     <div className="grid grid-cols-3 gap-2">
-      <Unit value={days} label="days" />
-      <Unit value={hours} label="hrs" />
-      <Unit value={mins} label="min" />
+      <Unit value={days} label="days" pending={pending} />
+      <Unit value={hours} label="hrs" pending={pending} />
+      <Unit value={mins} label="min" pending={pending} />
     </div>
   );
 }
 
-function Unit({ value, label }: { value: number; label: string }) {
+function Unit({
+  value,
+  label,
+  pending,
+}: {
+  value: number;
+  label: string;
+  pending: boolean;
+}) {
   return (
     <div className="rounded-xl bg-background py-2 text-center ring-1 ring-border">
       <div className="text-xl font-bold tabular-nums text-accent">
-        {value.toString().padStart(2, "0")}
+        {pending ? "——" : value.toString().padStart(2, "0")}
       </div>
       <div className="text-[10px] uppercase tracking-wide text-foreground/50">
         {label}

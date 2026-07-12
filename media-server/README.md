@@ -48,6 +48,38 @@ Uploads are gated to signed-in family members (the Supabase token is verified
 against the cloud project). Read access is public (so anyone with the app link
 can view the photos).
 
+## Security hardening
+
+- **CORS fails closed.** `ALLOWED_ORIGINS` unset/empty no longer means "allow
+  any origin" — the server logs a startup warning and falls back to just the
+  known production origins (`https://mlr-app-omega.vercel.app`,
+  `https://btheis15.github.io`). Set `ALLOWED_ORIGINS` explicitly in `.env` if
+  you need another origin (e.g. `http://localhost:3000` for local dev).
+- **Rate limiting** (`express-rate-limit`, per-IP): a modest global floor
+  (600 req / 15 min) plus tighter limits on the routes worth abusing —
+  `/upload` (30/hour), `/moderate/text` (60/min), `/geocode` (30/min). Sized to
+  be generous for a family posting a burst of fest photos, not for scraping or
+  abuse. Requires `app.set("trust proxy", 1)` (already set) so the tunnel in
+  front doesn't collapse every family member into one "IP" — if you ever put a
+  *second* proxy hop in front of the tunnel, revisit that setting.
+- **`/geocode` now requires sign-in** (same `requireUser` check as `/upload`) —
+  it used to be open to anyone, letting the mini be used as an anonymous free
+  proxy to the Census/Nominatim geocoders.
+- **`helmet`** adds baseline security headers. CSP is intentionally **off**
+  (this server never serves HTML pages with scripts, just JSON + static
+  media/assets, and a default CSP fights static file responses); the
+  cross-origin resource/embedder policy is relaxed so the Next app — a
+  different origin — can still `<img>`/`<video>` embed the media this server
+  serves.
+- **`MAX_MB` default lowered to 256** (was 1024). Bump it in `.env` if the
+  family is uploading larger raw videos.
+
+**Deploying this update to the mini:** `git pull`, then `npm install` (adds
+`express-rate-limit` + `helmet` to `node_modules` and updates
+`package-lock.json`), then restart (`pm2 restart mlr-media`, or re-run
+`npm start`). Nothing here needs a new env var to work — `ALLOWED_ORIGINS` and
+`MAX_MB` in an existing `.env` still take precedence over the new defaults.
+
 ## Setup on the mini
 
 **1. Get the code + Node 18+.**
@@ -158,5 +190,5 @@ Requires migrations through `0034`. Dep: `web-push`.
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
 - The server doesn't touch photos (the app may downscale very large ones before upload); **videos are transcoded** to ≤1080p H.264 MP4 (needs `ffmpeg`; see *Video transcoding*).
-- Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health`.
+- Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `POST /moderate/text` (auth), `GET /geocode?q=&country=` (auth), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health` (public).
 - Admin endpoints (need `SUPABASE_SERVICE_ROLE_KEY`; caller must be an app admin, else 503/403): `POST /admin/invite` `{ name, email }` — create a named account + email a sign-in code; `POST /admin/set-email` `{ userId, newEmail }` — set a member's email, allowed only while the two-admin override window is open (re-checked via `is_override_unlocked()`, migration 0025).

@@ -48,6 +48,10 @@ export function WelcomeIntro() {
   const [payHandle, setPayHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
+  // Set once the close animation finishes, to hide the sheet locally no
+  // matter what happens with the fire-and-forget `finish()` write below —
+  // otherwise a failed/slow network call would strand the dimmed overlay.
+  const [dismissed, setDismissed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const firstName = (user?.name ?? "").trim().split(/\s+/)[0] || "there";
@@ -117,12 +121,12 @@ export function WelcomeIntro() {
   const dismiss = () => {
     if (busy) return;
     void finish(true, false);
-    if (reduceMotion()) return;
+    if (reduceMotion()) return setDismissed(true);
     setClosing(true);
-    timer.current = setTimeout(() => {}, 440);
+    timer.current = setTimeout(() => setDismissed(true), 440);
   };
 
-  if (!user) return null;
+  if (!user || dismissed) return null;
 
   return (
     <div
