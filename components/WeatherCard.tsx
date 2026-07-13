@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 // forecast_days=6 → today (index 0, used for the current hi/lo) + the next 5
 // days for the strip below.
 const FORECAST_URL =
-  "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago&forecast_days=6";
+  "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago&forecast_days=6";
 
 const CACHE_KEY = "mlr.weather.cache";
 const CACHE_MS = 30 * 60 * 1000; // 30 minutes
@@ -16,6 +16,8 @@ interface DayForecast {
   hi: number;
   lo: number;
   code: number;
+  /** Chance of precipitation, 0-100, that day's max — omitted if Open-Meteo didn't return it. */
+  precipProb: number | null;
 }
 
 interface WeatherSnapshot {
@@ -61,19 +63,22 @@ function writeCache(snap: WeatherSnapshot) {
 }
 
 /**
- * Compact "what's it like Up North" strip — current temp + today's hi/lo,
- * plus a 5-day-forecast row underneath, for Tomahawk, WI, via Open-Meteo (no
- * key, no backend). Public — no sign-in gate. Caches the result in
- * sessionStorage for 30 minutes so tab-hopping around the app doesn't
- * re-fetch. Renders nothing while loading or on any failure (bad network,
- * blocked fetch, malformed response) — this is a nice-to-have, never worth an
- * error state or empty shell.
+ * Compact "what's it like Up North" strip — current temp + today's hi/lo for
+ * Tomahawk, WI, via Open-Meteo (no key, no backend). Collapsed to one row by
+ * default; tapping it reveals a 5-day-forecast row underneath (same
+ * "collapsed card that expands on tap" idiom as WorkChecklist — plain
+ * conditional render, no animation). Public — no sign-in gate. Caches the
+ * result in sessionStorage for 30 minutes so tab-hopping around the app
+ * doesn't re-fetch. Renders nothing while loading or on any failure (bad
+ * network, blocked fetch, malformed response) — this is a nice-to-have,
+ * never worth an error state or empty shell.
  *
  * Usage: `<WeatherCard />` — anywhere on Home, no props, public (works for
  * guests too).
  */
 export function WeatherCard() {
   const [snap, setSnap] = useState<WeatherSnapshot | null>(null);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +103,7 @@ export function WeatherCard() {
         const dailyHi: number[] = data?.daily?.temperature_2m_max ?? [];
         const dailyLo: number[] = data?.daily?.temperature_2m_min ?? [];
         const dailyCode: number[] = data?.daily?.weather_code ?? [];
+        const dailyPrecip: number[] = data?.daily?.precipitation_probability_max ?? [];
         const forecast: DayForecast[] = [];
         for (let i = 1; i < dailyTimes.length && forecast.length < 5; i++) {
           if (typeof dailyHi[i] !== "number" || typeof dailyLo[i] !== "number" || typeof dailyCode[i] !== "number") continue;
@@ -106,6 +112,7 @@ export function WeatherCard() {
             hi: dailyHi[i],
             lo: dailyLo[i],
             code: dailyCode[i],
+            precipProb: typeof dailyPrecip[i] === "number" ? dailyPrecip[i] : null,
           });
         }
         const next: WeatherSnapshot = { ts: Date.now(), temp, hi, lo, code, forecast };
@@ -122,9 +129,17 @@ export function WeatherCard() {
 
   if (!snap) return null;
 
+  const hasForecast = snap.forecast.length > 0;
+
   return (
-    <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
-      <div className="flex items-center gap-3">
+    <div className="rounded-2xl bg-card ring-1 ring-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        disabled={!hasForecast}
+        className="press flex w-full items-center gap-3 p-4 text-left"
+      >
         <span aria-hidden className="text-3xl leading-none">
           {weatherEmoji(snap.code)}
         </span>
@@ -135,10 +150,18 @@ export function WeatherCard() {
           </p>
         </div>
         <p className="shrink-0 text-xs italic text-faint">Tomahawk, WI</p>
-      </div>
+        {hasForecast && (
+          <span
+            aria-hidden
+            className={`shrink-0 text-faint transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${open ? "rotate-90" : ""}`}
+          >
+            ›
+          </span>
+        )}
+      </button>
 
-      {snap.forecast.length > 0 && (
-        <div className="mt-3 grid grid-cols-5 gap-1 border-t border-border/60 pt-2.5">
+      {open && hasForecast && (
+        <div className="grid grid-cols-5 gap-1 border-t border-border/60 px-4 pb-4 pt-3">
           {snap.forecast.map((d, i) => (
             <div key={i} className="flex flex-col items-center gap-0.5">
               <span className="text-[11px] font-medium text-foreground/60">{d.day}</span>
@@ -147,6 +170,9 @@ export function WeatherCard() {
               </span>
               <span className="text-[11px] font-semibold tabular-nums">{Math.round(d.hi)}°</span>
               <span className="text-[11px] tabular-nums text-faint">{Math.round(d.lo)}°</span>
+              {d.precipProb != null && (
+                <span className="text-[11px] tabular-nums text-lake">💧{d.precipProb}%</span>
+              )}
             </div>
           ))}
         </div>
