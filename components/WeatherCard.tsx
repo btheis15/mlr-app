@@ -3,11 +3,20 @@
 import { useEffect, useState } from "react";
 
 // Open-Meteo, no API key needed. Lat/long is Tomahawk, WI (the resort).
+// forecast_days=6 → today (index 0, used for the current hi/lo) + the next 5
+// days for the strip below.
 const FORECAST_URL =
-  "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago";
+  "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago&forecast_days=6";
 
 const CACHE_KEY = "mlr.weather.cache";
 const CACHE_MS = 30 * 60 * 1000; // 30 minutes
+
+interface DayForecast {
+  day: string; // "Mon", "Tue", …
+  hi: number;
+  lo: number;
+  code: number;
+}
 
 interface WeatherSnapshot {
   ts: number;
@@ -15,6 +24,8 @@ interface WeatherSnapshot {
   hi: number;
   lo: number;
   code: number;
+  /** Next 5 days, excluding today. */
+  forecast: DayForecast[];
 }
 
 /** WMO weather-code → one of the design's seven emoji buckets. */
@@ -50,12 +61,13 @@ function writeCache(snap: WeatherSnapshot) {
 }
 
 /**
- * Compact "what's it like Up North" strip — current temp + today's hi/lo
- * for Tomahawk, WI, via Open-Meteo (no key, no backend). Public — no sign-in
- * gate. Caches the result in sessionStorage for 30 minutes so tab-hopping
- * around the app doesn't re-fetch. Renders nothing while loading or on any
- * failure (bad network, blocked fetch, malformed response) — this is a
- * nice-to-have, never worth an error state or empty shell.
+ * Compact "what's it like Up North" strip — current temp + today's hi/lo,
+ * plus a 5-day-forecast row underneath, for Tomahawk, WI, via Open-Meteo (no
+ * key, no backend). Public — no sign-in gate. Caches the result in
+ * sessionStorage for 30 minutes so tab-hopping around the app doesn't
+ * re-fetch. Renders nothing while loading or on any failure (bad network,
+ * blocked fetch, malformed response) — this is a nice-to-have, never worth an
+ * error state or empty shell.
  *
  * Usage: `<WeatherCard />` — anywhere on Home, no props, public (works for
  * guests too).
@@ -82,7 +94,21 @@ export function WeatherCard() {
         if (typeof temp !== "number" || typeof code !== "number" || typeof hi !== "number" || typeof lo !== "number") {
           return;
         }
-        const next: WeatherSnapshot = { ts: Date.now(), temp, hi, lo, code };
+        const dailyTimes: string[] = data?.daily?.time ?? [];
+        const dailyHi: number[] = data?.daily?.temperature_2m_max ?? [];
+        const dailyLo: number[] = data?.daily?.temperature_2m_min ?? [];
+        const dailyCode: number[] = data?.daily?.weather_code ?? [];
+        const forecast: DayForecast[] = [];
+        for (let i = 1; i < dailyTimes.length && forecast.length < 5; i++) {
+          if (typeof dailyHi[i] !== "number" || typeof dailyLo[i] !== "number" || typeof dailyCode[i] !== "number") continue;
+          forecast.push({
+            day: new Date(`${dailyTimes[i]}T00:00:00`).toLocaleDateString("en-US", { weekday: "short" }),
+            hi: dailyHi[i],
+            lo: dailyLo[i],
+            code: dailyCode[i],
+          });
+        }
+        const next: WeatherSnapshot = { ts: Date.now(), temp, hi, lo, code, forecast };
         writeCache(next);
         if (!cancelled) setSnap(next);
       } catch {
@@ -97,17 +123,34 @@ export function WeatherCard() {
   if (!snap) return null;
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
-      <span aria-hidden className="text-3xl leading-none">
-        {weatherEmoji(snap.code)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{Math.round(snap.temp)}° Up North</p>
-        <p className="mt-0.5 text-xs text-foreground/60">
-          H {Math.round(snap.hi)}° / L {Math.round(snap.lo)}°
-        </p>
+    <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
+      <div className="flex items-center gap-3">
+        <span aria-hidden className="text-3xl leading-none">
+          {weatherEmoji(snap.code)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{Math.round(snap.temp)}° Up North</p>
+          <p className="mt-0.5 text-xs text-foreground/60">
+            H {Math.round(snap.hi)}° / L {Math.round(snap.lo)}°
+          </p>
+        </div>
+        <p className="shrink-0 text-xs italic text-faint">Tomahawk, WI</p>
       </div>
-      <p className="shrink-0 text-xs italic text-faint">Tomahawk, WI</p>
+
+      {snap.forecast.length > 0 && (
+        <div className="mt-3 grid grid-cols-5 gap-1 border-t border-border/60 pt-2.5">
+          {snap.forecast.map((d, i) => (
+            <div key={i} className="flex flex-col items-center gap-0.5">
+              <span className="text-[11px] font-medium text-foreground/60">{d.day}</span>
+              <span aria-hidden className="text-base leading-none">
+                {weatherEmoji(d.code)}
+              </span>
+              <span className="text-[11px] font-semibold tabular-nums">{Math.round(d.hi)}°</span>
+              <span className="text-[11px] tabular-nums text-faint">{Math.round(d.lo)}°</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

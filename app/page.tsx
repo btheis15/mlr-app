@@ -32,6 +32,11 @@ export default function HomePage() {
           (components/AppHeader.tsx), centered with the profile photo at the
           top-left — so it's no longer repeated here at the top of Home. */}
 
+      {/* Weather — kept first, right under the header, since it's the one
+          quick-glance thing everyone wants without scrolling. Self-hides on
+          load failure/loading, so it never leaves an empty gap up top. */}
+      <WeatherCard />
+
       {/* First visit only: orient newcomers. Guests only: a nudge to sign in. */}
       <WelcomeCard />
       <HomeSignInCTA />
@@ -65,8 +70,8 @@ export default function HomePage() {
 
       {/* ── Life Up North — light, self-hiding garnish cards ──────────────── */}
       {/* Every one of these renders nothing when it has nothing to say (guest,
-          no data, table not migrated yet), so Home never grows an empty box. */}
-      <WeatherCard />
+          no data, table not migrated yet), so Home never grows an empty box.
+          WeatherCard lives at the very top of the page instead — see above. */}
       <WhosUpNorthCard />
       <ActivePollCard />
       <BirthdaysCard />
