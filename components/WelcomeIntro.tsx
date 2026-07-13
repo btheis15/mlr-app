@@ -46,6 +46,9 @@ export function WelcomeIntro() {
   // forwardee straight in the original invitee's account with no warning.
   const [step, setStep] = useState<"confirm" | "push" | "basics">(invitedViaLink ? "confirm" : "push");
   const [signingOut, setSigningOut] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmAttempts, setConfirmAttempts] = useState(0);
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -131,6 +134,31 @@ export function WelcomeIntro() {
     timer.current = setTimeout(() => setDismissed(true), 440);
   };
 
+  // The invite-link confirm step never shows the target email — typing it
+  // blind is what actually verifies it's theirs, not just glancing at a
+  // displayed address and tapping through. A genuine mismatch (wrong
+  // person, or a typo) gets a plain retry; after a few misses we quietly
+  // sign out rather than ever revealing whose account this almost was.
+  const tryConfirm = () => {
+    const typed = confirmEmail.trim().toLowerCase();
+    const real = (user?.email ?? "").trim().toLowerCase();
+    if (typed && typed === real) {
+      setConfirmError(null);
+      setStep("push");
+      return;
+    }
+    const next = confirmAttempts + 1;
+    setConfirmAttempts(next);
+    if (next >= 3) {
+      void (async () => {
+        setSigningOut(true);
+        await signOut();
+      })();
+      return;
+    }
+    setConfirmError("That doesn't match — double check and try again.");
+  };
+
   if (!user || dismissed) return null;
 
   return (
@@ -168,39 +196,40 @@ export function WelcomeIntro() {
             <div className="space-y-4">
               <div className="space-y-2 text-center">
                 <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
-                  🔒
+                  🌲
                 </div>
-                <h1 className="text-xl font-bold">Is this you?</h1>
+                <h1 className="text-xl font-bold">Confirm your email</h1>
                 <p className="text-sm text-foreground/60">
-                  You followed an invite link for
-                </p>
-                <p className="break-all text-sm font-semibold text-foreground">{user?.email}</p>
-                <p className="text-sm text-foreground/60">
-                  If someone forwarded you this email and it&rsquo;s not yours, sign
-                  out here instead of continuing — the link signs in as whoever
-                  taps it first.
+                  Enter the email address this invite was sent to, to finish
+                  getting started.
                 </p>
               </div>
+
+              <label className="block">
+                <span className="text-xs font-medium text-foreground/70">Email</span>
+                <input
+                  value={confirmEmail}
+                  onChange={(e) => {
+                    setConfirmEmail(e.target.value);
+                    setConfirmError(null);
+                  }}
+                  type="email"
+                  autoComplete="email"
+                  autoCapitalize="off"
+                  placeholder="you@example.com"
+                  className={FIELD}
+                />
+              </label>
+              {confirmError && <p className="text-xs text-accent">{confirmError}</p>}
 
               <div className="space-y-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setStep("push")}
-                  disabled={signingOut}
+                  onClick={tryConfirm}
+                  disabled={signingOut || !confirmEmail.trim()}
                   className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  Yes, this is me — continue
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setSigningOut(true);
-                    await signOut();
-                  }}
-                  disabled={signingOut}
-                  className="press w-full py-1 text-center text-xs font-medium text-accent disabled:opacity-50"
-                >
-                  {signingOut ? "Signing out…" : "Not me — sign out"}
+                  Continue
                 </button>
               </div>
             </div>
