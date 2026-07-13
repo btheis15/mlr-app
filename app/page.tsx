@@ -21,8 +21,8 @@ import { OnThisDayCard } from "@/components/OnThisDayCard";
  *   1) WHAT'S HAPPENING up top, front & center — the Family Fest season spotlight
  *      and the nearest event + RSVP (plus in-season call-outs like dues).
  *   2) QUICK ACTIONS right after — an always-visible grid of the six places
- *      people go (Events · People · Cabin Stay · Lend a Hand · Local Places ·
- *      Committees), no accordion to open.
+ *      people go (Events · Committees · People · Ask for Help · Local Places ·
+ *      Cabin Stay), no accordion to open.
  *   3) QUIET UTILITIES (install, share, help) tucked at the bottom, out of the way.
  */
 export default function HomePage() {
@@ -52,7 +52,7 @@ export default function HomePage() {
 
       {/* ── Quick actions — every destination, always visible ────────────────── */}
       {/* Replaced the two default-collapsed accordions (Communication / Around
-          the resort) that buried Events, People, Cabin Stay, Lend a Hand, Local
+          the resort) that buried Events, People, Cabin Stay, Ask for Help, Local
           Places and Committees behind an extra tap. Tagged data-fit-anchor
           (inside the component) so the hero logo sizes to land it above the
           tab bar — see lib/appLogoFit.ts. */}

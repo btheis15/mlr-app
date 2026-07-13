@@ -4,17 +4,17 @@ import { Icon, type IconName } from "@/components/Icon";
 /**
  * Home quick actions — the always-visible navigation grid that replaced the two
  * default-collapsed accordions ("Communication" and "Around the resort"), which
- * buried People / Committees / Lend a Hand / Events / Cabin Stay / Local Places
+ * buried People / Committees / Ask for Help / Events / Cabin Stay / Local Places
  * behind an extra tap. Every destination those groups linked to is a big
- * tappable tile here, ordered roughly by family usage (Events · People · Cabin
- * Stay first).
+ * tappable tile here. Row order is Brian's: Events · Committees / People ·
+ * Ask for Help / Local Places · Cabin Stay.
  *
  * Tagged `data-fit-anchor` so the hero logo sizes to land this grid as the last
  * fully-visible thing above the tab bar (see lib/appLogoFit.ts — the "no
  * upcoming events" fallback anchor lives on the App & help group in
  * app/page.tsx).
  *
- * The Lend a Hand tile deliberately mirrors how the old "Ask for Help" row
+ * The Ask for Help tile deliberately mirrors how the old "Ask for Help" row
  * behaved: always visible, plain link — /help-requests itself handles the
  * beta/sign-in state (HelpRequestsView), so nothing is gated at the tile.
  */
@@ -30,11 +30,11 @@ const ACTIONS: {
   sub: string;
 }[] = [
   { href: "/events", icon: "calendar", tile: "bg-sun/12 text-sun", label: "Events", sub: "RSVP — gatherings & work weekends." },
-  { href: "/people", icon: "people", tile: "bg-lake/12 text-lake", label: "People", sub: "Find & contact everyone." },
-  { href: "/request-stay", icon: "cabin", tile: "bg-dusk/12 text-dusk", label: "Cabin Stay", sub: "Reserve a room for any week." },
-  { href: "/help-requests", icon: "hand", tile: "bg-primary/12 text-primary", label: "Lend a Hand", sub: "Ask for a hand — or help out." },
-  { href: "/local-places", icon: "pin", tile: "bg-lake/12 text-lake", label: "Local Places", sub: "Tee times, food & favorites." },
   { href: "/committees", icon: "users", tile: "bg-campfire/12 text-campfire", label: "Committees", sub: "Join a crew — there's a spot for you." },
+  { href: "/people", icon: "people", tile: "bg-lake/12 text-lake", label: "People", sub: "Find & contact everyone." },
+  { href: "/help-requests", icon: "hand", tile: "bg-primary/12 text-primary", label: "Ask for Help", sub: "Request a hand at the resort." },
+  { href: "/local-places", icon: "pin", tile: "bg-lake/12 text-lake", label: "Local Places", sub: "Tee times, food & favorites." },
+  { href: "/request-stay", icon: "cabin", tile: "bg-dusk/12 text-dusk", label: "Cabin Stay", sub: "Reserve a room for any week." },
 ];
 
 export function HomeQuickActions() {

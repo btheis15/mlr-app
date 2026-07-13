@@ -155,7 +155,7 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   gesture the app otherwise disables (the fixed TabBar needs
   `overscroll-behavior-y: none`) — dependency-free, axis-locked against
   horizontal swipe cards, skips open sheets/inner scrollers, reduce-motion aware.
-- **Ask for Help (BETA)** — at `/help-requests` (the "Lend a Hand" tile on Home), a member who's at the resort posts
+- **Ask for Help (BETA)** — at `/help-requests` (the "Ask for Help" tile on Home), a member who's at the resort posts
   a short request for a hand (moving, setup, a ride, supplies, or 🚨 urgent); willing
   members who are *also* at the resort get a push, tap **On my way**, and the request
   reads **✅ Covered** once enough are coming. A request can also carry an optional

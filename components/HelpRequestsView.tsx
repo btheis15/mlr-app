@@ -123,7 +123,7 @@ export function HelpRequestsView() {
     <div className="space-y-5 pt-2">
       <BackLink href="/" label="Home" />
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">🙌 Lend a Hand</h1>
+        <h1 className="text-2xl font-bold tracking-tight">🙌 Ask for Help</h1>
         <p className="text-sm text-foreground/60">
           Need a hand at the resort? Send a quick request — members who are here and willing to help get
           notified. Open requests show below so everyone knows what&rsquo;s going on and who&rsquo;s helping.
