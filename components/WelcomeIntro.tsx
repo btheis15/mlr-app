@@ -35,12 +35,17 @@ const FIELD =
   "mt-1 w-full rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary";
 
 export function WelcomeIntro() {
-  const { user, updateUser, completeIntro } = useIdentity();
+  const { user, updateUser, completeIntro, invitedViaLink, signOut } = useIdentity();
   const router = useRouter();
 
   // Push comes FIRST so turning on notifications is the very first thing a
   // newcomer sees right after verifying — then the optional profile basics.
-  const [step, setStep] = useState<"push" | "basics">("push");
+  // A member who arrived via an admin's invite-link email sees an extra
+  // "is this you?" confirmation step first — that link signs in whoever clicks
+  // it with no code/password, so a forwarded email would otherwise land the
+  // forwardee straight in the original invitee's account with no warning.
+  const [step, setStep] = useState<"confirm" | "push" | "basics">(invitedViaLink ? "confirm" : "push");
+  const [signingOut, setSigningOut] = useState(false);
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -135,23 +140,71 @@ export function WelcomeIntro() {
       <div
         className={`relative flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-background ring-1 ring-border ${closing ? "pop-close" : "pop-panel"}`}
       >
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Close"
-          className="press absolute right-4 top-4 z-10 rounded-full px-1 text-faint hover:text-foreground"
-        >
-          ✕
-        </button>
+        {/* No close button on the confirm step — dismissing it must not be a
+            silent way to end up "in" this account without ever confirming or
+            signing out. Yes/Sign-out are the only two ways past it. */}
+        {step !== "confirm" && (
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Close"
+            className="press absolute right-4 top-4 z-10 rounded-full px-1 text-faint hover:text-foreground"
+          >
+            ✕
+          </button>
+        )}
 
         <div className="overflow-y-auto p-6">
-          {/* Tiny step indicator */}
-          <div className="mb-4 flex items-center justify-center gap-1.5" aria-hidden>
-            <span className={`h-1.5 w-6 rounded-full ${step === "push" ? "bg-primary" : "bg-primary/25"}`} />
-            <span className={`h-1.5 w-6 rounded-full ${step === "basics" ? "bg-primary" : "bg-primary/25"}`} />
-          </div>
+          {/* Tiny step indicator — the confirm step (invite-link only) isn't
+              part of the normal push/basics flow, so it gets no dot. */}
+          {step !== "confirm" && (
+            <div className="mb-4 flex items-center justify-center gap-1.5" aria-hidden>
+              <span className={`h-1.5 w-6 rounded-full ${step === "push" ? "bg-primary" : "bg-primary/25"}`} />
+              <span className={`h-1.5 w-6 rounded-full ${step === "basics" ? "bg-primary" : "bg-primary/25"}`} />
+            </div>
+          )}
 
-          {step === "basics" ? (
+          {step === "confirm" ? (
+            <div className="space-y-4">
+              <div className="space-y-2 text-center">
+                <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
+                  🔒
+                </div>
+                <h1 className="text-xl font-bold">Is this you?</h1>
+                <p className="text-sm text-foreground/60">
+                  You followed an invite link for
+                </p>
+                <p className="break-all text-sm font-semibold text-foreground">{user?.email}</p>
+                <p className="text-sm text-foreground/60">
+                  If someone forwarded you this email and it&rsquo;s not yours, sign
+                  out here instead of continuing — the link signs in as whoever
+                  taps it first.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStep("push")}
+                  disabled={signingOut}
+                  className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  Yes, this is me — continue
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSigningOut(true);
+                    await signOut();
+                  }}
+                  disabled={signingOut}
+                  className="press w-full py-1 text-center text-xs font-medium text-accent disabled:opacity-50"
+                >
+                  {signingOut ? "Signing out…" : "Not me — sign out"}
+                </button>
+              </div>
+            </div>
+          ) : step === "basics" ? (
             <div className="space-y-4">
               <div className="space-y-2 text-center">
                 <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-3xl">
