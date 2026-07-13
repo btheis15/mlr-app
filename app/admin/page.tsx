@@ -74,6 +74,32 @@ export default function AdminPage() {
             ›
           </span>
         </Link>
+
+        {/* Opens Google's own "new form" page — works great on a phone, no
+            account-switching prompts needed since it just uses whatever
+            Google account is already signed in. The resulting share link
+            then gets pasted into a Home callout's "Button link" (see
+            HomeSpotlight/CalloutStack) or the People tab's "email a group"
+            tool — no in-app form builder needed. */}
+        <a
+          href="https://docs.google.com/forms/create"
+          target="_blank"
+          rel="noreferrer"
+          className="press flex items-center gap-3 rounded-2xl bg-accent p-4 text-white shadow-sm"
+        >
+          <span aria-hidden className="shrink-0 text-2xl">
+            📝
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Create a Google Form</p>
+            <p className="mt-0.5 text-xs text-white/80">
+              Survey, poll, or sign-up — then link it from a Home callout or an email
+            </p>
+          </div>
+          <span className="shrink-0 text-lg leading-none text-white/70" aria-hidden>
+            ↗
+          </span>
+        </a>
       </div>
     </AdminGuard>
   );
