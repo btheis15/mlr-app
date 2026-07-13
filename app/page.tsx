@@ -45,6 +45,11 @@ export default function HomePage() {
 
       <UpcomingEvents />
 
+      {/* Your house — a single tap to your house's calendar, chat & to-do list.
+          Self-hides for guests and anyone not assigned to a house. Kept right
+          under the call-out stack, above the Work Checklist. */}
+      <HouseHubCard />
+
       {/* Work Checklist — kept directly under the Family Fest summary card. Its
           own expandable card (collapsed by default so the list stays tucked away
           until you open it). */}
@@ -66,18 +71,13 @@ export default function HomePage() {
       <ActivePollCard />
       <BirthdaysCard />
 
-      {/* Your house — a single tap to your house's calendar, chat & to-do list.
-          Self-hides for guests and anyone not assigned to a house. Sits near the
-          bottom, just above the App & help utilities. */}
-      <HouseHubCard />
-
       {/* A photo memory from a prior year, same time of year. Members only. */}
       <OnThisDayCard />
 
       {/* Quiet utilities, collapsed into one group at the bottom.
           Tagged data-fit-anchor-empty: when Home has no upcoming events, the
           hero logo anchors on this group (the first thing past the quick-action
-          grid — HouseHubCard above self-hides for most people) instead of
+          grid — the garnish cards above self-hide for most people) instead of
           ballooning to fill the freed space — see lib/appLogoFit.ts. */}
       <div data-fit-anchor-empty>
       <CollapsibleSection title="App & help" icon="📲" subtitle="Take the tour · Add to phone · Share · Help">

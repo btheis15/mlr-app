@@ -10,6 +10,7 @@ import { formatDateRange } from "@/lib/format";
 import { BackLink } from "@/components/BackLink";
 import { SkeletonList } from "@/components/Skeleton";
 import { WorkChecklist } from "@/components/WorkChecklist";
+import { MjtHouseDuesCard } from "@/components/MjtHouseDuesCard";
 
 /**
  * The House Hub — one place for everything about a member's house: its calendar
@@ -107,6 +108,10 @@ function HouseHubBody({
         </h1>
         {description && <p className="text-sm text-muted">{description}</p>}
       </header>
+
+      {/* MJT House's own Family Fest dues reminder — self-hides for every other
+          house and outside its active window (see MjtHouseDuesCard). */}
+      <MjtHouseDuesCard slug={slug} />
 
       {/* Calendar — the marquee card, with a "next up" line */}
       <HubCard
