@@ -85,7 +85,7 @@ export function PushPrompt() {
           <div className="flex-1">
             <p className="text-base font-semibold">Turn on notifications?</p>
             <p className="mt-1 text-sm text-foreground/70">
-              Get a heads-up on your phone for the things that matter at the lake.
+              Get a heads-up on your phone for the things that matter Up North.
             </p>
           </div>
         </div>

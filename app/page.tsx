@@ -58,7 +58,7 @@ export default function HomePage() {
           tab bar — see lib/appLogoFit.ts. */}
       <HomeQuickActions />
 
-      {/* ── Life at the lake — light, self-hiding garnish cards ──────────────── */}
+      {/* ── Life Up North — light, self-hiding garnish cards ──────────────── */}
       {/* Every one of these renders nothing when it has nothing to say (guest,
           no data, table not migrated yet), so Home never grows an empty box. */}
       <WeatherCard />

@@ -51,7 +51,7 @@ export default function EventsPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">📅 Events</h1>
         <p className="text-sm text-foreground/60">
-          What&rsquo;s coming up at the lake — let everyone know if you&rsquo;re Going, Maybe, or can&rsquo;t make it.
+          What&rsquo;s coming up Up North — let everyone know if you&rsquo;re Going, Maybe, or can&rsquo;t make it.
         </p>
       </header>
 

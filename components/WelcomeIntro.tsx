@@ -246,7 +246,7 @@ export function WelcomeIntro() {
                 <h1 className="text-xl font-bold">Welcome to MLR, {firstName}!</h1>
                 <p className="text-sm text-foreground/60">
                   First, turn on notifications so you get a heads-up on your phone
-                  for what matters at the lake — event RSVPs, dinners, help
+                  for what matters Up North — event RSVPs, dinners, help
                   requests, and emergencies. A lot are on by default; turn off any
                   you don&rsquo;t want. You can change these anytime in Profile.
                 </p>
