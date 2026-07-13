@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 // Open-Meteo, no API key needed. Lat/long is Tomahawk, WI (the resort).
 const FORECAST_URL =
-  "https://api.open-meteo.com/v1/forecast?latitude=45.47&longitude=-89.72&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago";
+  "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago";
 
 const CACHE_KEY = "mlr.weather.cache";
 const CACHE_MS = 30 * 60 * 1000; // 30 minutes
