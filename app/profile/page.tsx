@@ -208,15 +208,13 @@ export default function ProfilePage() {
         </label>
       </div>
 
-      <div className="space-y-2">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
-          Contact &amp; payment
-        </p>
-        <p className="px-1 text-xs text-muted">
-          Optional — this is what shows when someone taps your name to contact or pay you.
-        </p>
+      <CollapsibleSection
+        title="Contact & payment"
+        icon="💳"
+        subtitle="Optional — what shows when someone taps your name to contact or pay you"
+      >
         <ContactPaySettings />
-      </div>
+      </CollapsibleSection>
 
       {isAdmin && (
         <RowLink
