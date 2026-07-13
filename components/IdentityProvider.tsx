@@ -541,7 +541,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={dismiss}
           aria-label="Close"
-          className="press absolute right-4 top-4 rounded-full px-1 text-foreground/40 hover:text-foreground"
+          className="press absolute right-4 top-4 rounded-full px-1 text-faint hover:text-foreground"
         >
           ✕
         </button>
@@ -609,12 +609,12 @@ function SignInGate({ onClose }: { onClose: () => void }) {
             </p>
 
             <div className="flex items-center justify-center gap-1 text-xs">
-              <span className="text-foreground/55">Still nothing?</span>
+              <span className="text-muted">Still nothing?</span>
               <button
                 type="button"
                 onClick={resend}
                 disabled={busy || cooldown > 0}
-                className="press font-semibold text-primary disabled:text-foreground/40"
+                className="press font-semibold text-primary disabled:text-faint"
               >
                 {cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
               </button>
@@ -652,7 +652,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
         <Link
           href="/help"
           onClick={dismiss}
-          className="press block text-center text-xs text-foreground/55 underline-offset-2 hover:underline"
+          className="press block text-center text-xs text-muted underline-offset-2 hover:underline"
         >
           Need help signing in?
         </Link>

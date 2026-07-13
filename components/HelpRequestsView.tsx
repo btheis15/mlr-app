@@ -157,13 +157,13 @@ export function HelpRequestsView() {
             🙌 Ask for help
           </button>
           {isAdmin && !atResort && (
-            <p className="px-1 text-xs text-foreground/55">
+            <p className="px-1 text-xs text-muted">
               🔧 Admin test mode — you&rsquo;re not at a live event. Tick{" "}
               <span className="font-medium">&ldquo;Notify everyone willing to help&rdquo;</span> in the form so it reaches testers.
             </p>
           )}
           {!canAsk && !isAdmin && (
-            <p className="px-1 text-xs text-foreground/55">
+            <p className="px-1 text-xs text-muted">
               Requests only reach people when you&rsquo;re RSVP&rsquo;d{" "}
               <span className="font-medium">going</span> to a current event (or have an approved cabin stay). Feel
               free to explore the form — it&rsquo;ll go live automatically once you&rsquo;re checked in.
@@ -179,7 +179,7 @@ export function HelpRequestsView() {
         <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
           <p className="text-2xl" aria-hidden>🌲</p>
           <p className="mt-1 text-sm font-medium">No open requests right now</p>
-          <p className="text-xs text-foreground/50">All quiet. Anyone who needs a hand can post above.</p>
+          <p className="text-xs text-muted">All quiet. Anyone who needs a hand can post above.</p>
         </div>
       ) : (
         <section className="space-y-2">
@@ -208,10 +208,10 @@ export function HelpRequestsView() {
           {done.map((r) => (
             <div key={r.id} className="flex items-center gap-2 rounded-2xl bg-card px-4 py-3 text-sm ring-1 ring-border">
               <span aria-hidden>{r.status === "resolved" ? "✅" : "✖️"}</span>
-              <span className="min-w-0 flex-1 truncate text-foreground/55">
+              <span className="min-w-0 flex-1 truncate text-muted">
                 <span className="font-medium text-foreground/70">{r.name.split(" ")[0]}</span> · {r.description}
               </span>
-              <span className="shrink-0 text-[11px] text-foreground/40">
+              <span className="shrink-0 text-xs text-faint">
                 {r.status === "resolved" ? "Resolved" : "Cancelled"}
               </span>
             </div>
@@ -296,18 +296,18 @@ function HelpCard({
             <span className="font-semibold">{req.name}</span>
             {type && (
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                   urgent ? "bg-accent/15 text-accent" : "bg-primary/10 text-primary"
                 }`}
               >
                 {type.emoji} {type.label}
               </span>
             )}
-            <span className="shrink-0 rounded-full bg-foreground/5 px-2 py-0.5 text-[11px] font-medium text-foreground/55">
+            <span className="shrink-0 rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted">
               needs {needed} {needed === 1 ? "person" : "people"}
             </span>
           </p>
-          <p className="text-[11px] text-foreground/45">
+          <p className="text-xs text-faint">
             {relTime(req.createdAt)}
             {scheduled && <> · ⏰ for {clockTime(req.neededAt)}</>}
             {expired && !fulfilled && <> · past time</>}
@@ -336,7 +336,7 @@ function HelpCard({
       {/* What to bring — helpers check off the items they're bringing */}
       {req.items.length > 0 && (
         <div className="space-y-1.5 rounded-xl bg-background px-3 py-2.5 ring-1 ring-border">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
+          <p className="text-xs font-semibold uppercase tracking-wide text-faint">
             What to bring · {req.items.filter((it) => it.claimedBy).length}/{req.items.length} covered
           </p>
           <ul className="space-y-1">
@@ -367,7 +367,7 @@ function HelpCard({
                       {it.label}
                     </span>
                     {it.claimedBy && (
-                      <span className="shrink-0 text-[11px] font-medium text-foreground/45">
+                      <span className="shrink-0 text-xs font-medium text-faint">
                         {mineItem ? "You're bringing" : `${(it.claimedByName ?? "Someone").split(" ")[0]}'s bringing`}
                       </span>
                     )}
@@ -389,10 +389,10 @@ function HelpCard({
         ) : committed > 0 ? (
           <p>🚶 <span className="font-medium">{committed} of {needed}</span> on the way</p>
         ) : (
-          <p className="text-foreground/45">No one on the way yet — be the first.</p>
+          <p className="text-faint">No one on the way yet — be the first.</p>
         )}
         {onWay.length > 0 && (
-          <p className={`mt-0.5 ${fulfilled ? "text-primary/80" : "text-foreground/55"}`}>{firstNames(onWay.map((x) => x.name))}</p>
+          <p className={`mt-0.5 ${fulfilled ? "text-primary/80" : "text-muted"}`}>{firstNames(onWay.map((x) => x.name))}</p>
         )}
       </div>
 
@@ -419,7 +419,7 @@ function HelpCard({
           <button onClick={onCancel} disabled={busy} className="press text-xs font-medium text-foreground/55">
             Cancel
           </button>
-          <span className="ml-auto text-[11px] text-foreground/40">Sent to {req.notifiedCount}</span>
+          <span className="ml-auto text-xs text-faint">Sent to {req.notifiedCount}</span>
         </div>
       ) : (
         <div className="flex items-center gap-2 pt-0.5">
@@ -433,12 +433,12 @@ function HelpCard({
             {iAmOnWay ? "🚶 On my way ✓" : "🚶 On my way"}
           </button>
           {iAmOnWay && (
-            <button onClick={onToggleOnWay} disabled={busy} className="press text-[11px] font-medium text-foreground/45">
+            <button onClick={onToggleOnWay} disabled={busy} className="press text-xs font-medium text-faint">
               Can&rsquo;t make it
             </button>
           )}
           {isAdmin && (
-            <button onClick={onResolve} disabled={busy} className="press ml-auto text-[11px] font-medium text-foreground/45">
+            <button onClick={onResolve} disabled={busy} className="press ml-auto text-xs font-medium text-faint">
               Resolve
             </button>
           )}

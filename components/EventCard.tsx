@@ -28,7 +28,7 @@ function whenLabel(event: ResortEvent, today: string): string {
  *  `hideMaybe` drops the maybe chip for day-by-day events (Family Fest). */
 function CountChips({ counts, hideMaybe = false }: { counts: AttendanceSummary["counts"]; hideMaybe?: boolean }) {
   if (counts.going === 0 && counts.maybe === 0 && counts.notGoing === 0) {
-    return <span className="text-xs text-foreground/40">No RSVPs yet — be the first</span>;
+    return <span className="text-xs text-faint">No RSVPs yet — be the first</span>;
   }
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/60">
@@ -95,7 +95,7 @@ export function EventCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{event.title}</span>
-          <span className="block truncate text-xs text-foreground/55">
+          <span className="block truncate text-xs text-muted">
             {formatDateRange(event.startDate, event.endDate)}
             {when && ` · ${when}`}
             {total > 0 && ` · ${summary.counts.going} going`}
@@ -122,10 +122,10 @@ export function EventCard({
         </span>
         <span className="min-w-0 flex-1">
           {spotlight && (
-            <span className="text-[11px] font-bold uppercase tracking-wide text-primary/70">Up next</span>
+            <span className="text-xs font-bold uppercase tracking-wide text-primary/70">Up next</span>
           )}
           <span className="block text-sm font-semibold">{event.title}</span>
-          <span className="mt-0.5 block text-xs text-foreground/55">
+          <span className="mt-0.5 block text-xs text-muted">
             {formatDateRange(event.startDate, event.endDate)}
             {when && <span className="font-medium text-accent"> · {when}</span>}
           </span>
@@ -140,7 +140,7 @@ export function EventCard({
           <button
             type="button"
             onClick={promptSignIn}
-            className="press inline-flex items-center gap-1 text-xs font-medium text-foreground/45"
+            className="press inline-flex items-center gap-1 text-xs font-medium text-faint"
           >
             🔒 Sign in to see who&rsquo;s coming
           </button>

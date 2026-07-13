@@ -17,7 +17,7 @@ export function ComingSoonCTA({
       <p className="text-sm font-medium text-foreground/80">
         {icon} {title}
       </p>
-      {note && <p className="mt-0.5 text-xs text-foreground/50">{note}</p>}
+      {note && <p className="mt-0.5 text-xs text-muted">{note}</p>}
     </div>
   );
 }

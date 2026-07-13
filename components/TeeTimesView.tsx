@@ -76,7 +76,7 @@ export function TeeTimesView() {
     <div className="space-y-6 pt-2">
       <BackLink href="/local-places" label="Local Places" />
       <header className="space-y-0.5">
-        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/50">
+        <div className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
           Tee Times
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Inshalla CC</h1>
@@ -84,7 +84,7 @@ export function TeeTimesView() {
       </header>
 
       <section>
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-foreground/50">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
           Quick book
         </div>
         <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border divide-y divide-border">
@@ -113,14 +113,14 @@ export function TeeTimesView() {
         >
           <PhoneIcon />
           <span>Call pro shop</span>
-          <span className="font-medium tabular-nums text-foreground/50">
+          <span className="font-medium tabular-nums text-muted">
             {INSHALLA_PHONE_DISPLAY}
           </span>
         </a>
       </section>
 
       <section>
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-foreground/50">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
           Daily Deals
         </div>
         <a
@@ -136,7 +136,7 @@ export function TeeTimesView() {
                 Save
               </span>
             </div>
-            <div className="mt-0.5 text-[11px] text-foreground/50">
+            <div className="mt-0.5 text-xs text-muted">
               Discounted Inshalla tee times via Sagacity Golf
             </div>
           </div>
@@ -145,13 +145,13 @@ export function TeeTimesView() {
       </section>
 
       <div>
-        <p className="text-[11px] leading-relaxed text-foreground/50">
+        <p className="text-xs leading-relaxed text-muted">
           Tee times, pricing, and booking are managed by Inshalla Country Club
           via foreUP. Tapping a day above opens foreUP&apos;s secure booking
           page pre-filtered to that day — your tee time, account, and payment
           all live there. Or tap the call button to book by phone.
         </p>
-        <p className="mt-3 text-[11px] text-foreground/40">
+        <p className="mt-3 text-xs text-faint">
           <a
             href={`${FOREUP_BASE}#/teetimes`}
             target="_blank"
@@ -177,7 +177,7 @@ function DayLink({ date, label }: { date: Date; label: string }) {
     >
       <div className="min-w-0 flex-1">
         <div className="text-[15px] font-semibold text-foreground">{label}</div>
-        <div className="text-[11px] text-foreground/50">{fullDate}</div>
+        <div className="text-xs text-muted">{fullDate}</div>
       </div>
       <div className="ml-3 text-[18px] leading-none text-foreground/40">↗</div>
     </a>

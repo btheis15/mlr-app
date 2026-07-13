@@ -131,7 +131,7 @@ export function NotifPrefs() {
 
   return (
     <div className="space-y-4">
-      <p className="px-1 text-xs text-foreground/45">
+      <p className="px-1 text-xs text-faint">
         Choose which activities show in your Activity tab. These are separate from
         push notifications. Admin announcements always come through.
       </p>
@@ -144,7 +144,7 @@ export function NotifPrefs() {
 
         return (
           <div key={section.title} className="space-y-2">
-            <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+            <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
               {section.title}
             </p>
             <div className="overflow-hidden rounded-2xl ring-1 ring-border">
@@ -160,9 +160,9 @@ export function NotifPrefs() {
                       <RowIcon icon={r.icon} />
                       <span className="min-w-0 flex-1">
                         <span className="text-sm font-medium">{r.label}</span>
-                        <span className="block text-xs text-foreground/50">{r.desc}</span>
+                        <span className="block text-xs text-muted">{r.desc}</span>
                       </span>
-                      <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
                         🔒 Always on
                       </span>
                     </div>
@@ -181,7 +181,7 @@ export function NotifPrefs() {
                     <RowIcon icon={r.icon} />
                     <span className="min-w-0 flex-1">
                       <span className="text-sm font-medium">{r.label}</span>
-                      <span className="block text-xs text-foreground/50">{r.desc}</span>
+                      <span className="block text-xs text-muted">{r.desc}</span>
                     </span>
                     <SwitchVisual on={on} />
                   </button>

@@ -154,7 +154,7 @@ export function EventComposer({
             <SectionLabel>When</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1">
-                <span className="px-0.5 text-xs text-foreground/55">Start</span>
+                <span className="px-0.5 text-xs text-muted">Start</span>
                 <input
                   type="date"
                   value={startDate}
@@ -163,8 +163,8 @@ export function EventComposer({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="px-0.5 text-xs text-foreground/55">
-                  End <span className="font-normal text-foreground/40">(optional)</span>
+                <span className="px-0.5 text-xs text-muted">
+                  End <span className="font-normal text-faint">(optional)</span>
                 </span>
                 <input
                   type="date"
@@ -180,7 +180,7 @@ export function EventComposer({
               <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
                 <span className="min-w-0">
                   <span className="text-sm font-medium">Let people pick specific days</span>
-                  <span className="block text-xs text-foreground/50">A per-day Going/Maybe drill-down (like Family Fest).</span>
+                  <span className="block text-xs text-muted">A per-day Going/Maybe drill-down (like Family Fest).</span>
                 </span>
                 <input
                   type="checkbox"
@@ -195,7 +195,7 @@ export function EventComposer({
           {/* Location + details */}
           <div className="space-y-2">
             <SectionLabel>
-              Details <span className="font-normal normal-case text-foreground/40">(optional)</span>
+              Details <span className="font-normal normal-case text-faint">(optional)</span>
             </SectionLabel>
             <input
               value={location}
@@ -218,9 +218,9 @@ export function EventComposer({
             <div className="space-y-2">
               <SectionLabel>
                 Work items{" "}
-                <span className="font-normal normal-case text-foreground/40">(optional)</span>
+                <span className="font-normal normal-case text-faint">(optional)</span>
               </SectionLabel>
-              <p className="px-0.5 text-xs text-foreground/50">
+              <p className="px-0.5 text-xs text-muted">
                 Check off tasks from the resort work checklist so people know what&rsquo;s planned.
               </p>
               <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
@@ -238,7 +238,7 @@ export function EventComposer({
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm">{item.title}</span>
                       {item.category && (
-                        <span className="text-[10px] text-foreground/45">{item.category}</span>
+                        <span className="text-[10px] text-faint">{item.category}</span>
                       )}
                     </span>
                   </label>

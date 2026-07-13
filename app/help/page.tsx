@@ -90,7 +90,7 @@ export default function HelpPage() {
           {phone && email && (
             <a
               href={`mailto:${email}?subject=${encodeURIComponent("MLR app — I need help")}`}
-              className="press block text-center text-xs text-foreground/55 underline-offset-2 hover:underline"
+              className="press block text-center text-xs text-muted underline-offset-2 hover:underline"
             >
               Prefer email? {email}
             </a>
@@ -166,7 +166,7 @@ export default function HelpPage() {
         </div>
       </HelpItem>
 
-      <p className="pt-2 text-center text-xs text-foreground/50">
+      <p className="pt-2 text-center text-xs text-muted">
         <Link href="/" className="underline-offset-2 hover:underline">
           ← Back to Home
         </Link>

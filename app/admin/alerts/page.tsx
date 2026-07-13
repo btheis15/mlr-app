@@ -16,20 +16,20 @@ export default function AdminAlertsPage() {
         </header>
 
         <div className="space-y-2">
-          <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Post an alert
           </p>
-          <p className="px-1 text-xs text-foreground/50">
+          <p className="px-1 text-xs text-muted">
             Banner notice to everyone (+ email).
           </p>
           <AdminAlertComposer />
         </div>
 
         <div className="space-y-2">
-          <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Send a notification
           </p>
-          <p className="px-1 text-xs text-foreground/50">
+          <p className="px-1 text-xs text-muted">
             To everyone, beta testers, or admins · lands in their Activity tab.
           </p>
           <AdminNotificationComposer />

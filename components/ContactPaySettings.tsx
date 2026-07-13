@@ -77,7 +77,7 @@ export function ContactPaySettings() {
   if (!loaded) return null;
   if (!available) {
     return (
-      <p className="rounded-2xl bg-card p-4 text-xs text-foreground/50 ring-1 ring-border">
+      <p className="rounded-2xl bg-card p-4 text-xs text-muted ring-1 ring-border">
         Contact &amp; payment setup appears here once the one-time database step (migration 0006) is run.
       </p>
     );
@@ -106,26 +106,26 @@ export function ContactPaySettings() {
               className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
           )}
-          {f.hint && <span className="mt-1 block text-[11px] text-foreground/45">{f.hint}</span>}
+          {f.hint && <span className="mt-1 block text-xs text-faint">{f.hint}</span>}
         </label>
       ))}
       <div>
         <span className="text-xs font-medium text-foreground/70">Birthday</span>
         <BirthdayPicker value={v.birthday ?? ""} onChange={(val) => set("birthday", val)} />
-        <span className="mt-1 block text-[11px] text-foreground/45">Shown on your member card with your age, so folks can wish you a happy birthday.</span>
+        <span className="mt-1 block text-xs text-faint">Shown on your member card with your age, so folks can wish you a happy birthday.</span>
       </div>
       <div>
         <span className="text-xs font-medium text-foreground/70">Address</span>
         <div className="mt-1">
           <AddressEditor value={v.address ?? ""} onChange={(val) => set("address", val)} />
         </div>
-        <span className="mt-1 block text-[11px] text-foreground/45">Tap to enter it and verify it on the map; members can tap it on your card for directions.</span>
+        <span className="mt-1 block text-xs text-faint">Tap to enter it and verify it on the map; members can tap it on your card for directions.</span>
       </div>
       {isApple() && (
         <label className="flex items-center justify-between gap-3 rounded-xl bg-background p-3 ring-1 ring-border">
           <span className="min-w-0">
             <span className="text-xs font-medium text-foreground/70">Accept Apple Cash</span>
-            <span className="mt-0.5 block text-[11px] text-foreground/45">Sends via Messages to your phone number. Shown on your card only to other Apple users.</span>
+            <span className="mt-0.5 block text-xs text-faint">Sends via Messages to your phone number. Shown on your card only to other Apple users.</span>
           </span>
           <input type="checkbox" checked={appleCash} onChange={(e) => setAppleCash(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-primary)]" />
         </label>

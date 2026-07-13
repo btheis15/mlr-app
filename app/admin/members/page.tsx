@@ -17,10 +17,10 @@ export default function AdminMembersPage() {
         <AdminMembers />
 
         <div className="space-y-2">
-          <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Edit a member&rsquo;s information
           </p>
-          <p className="px-1 text-xs text-foreground/50">
+          <p className="px-1 text-xs text-muted">
             Two-admin unlock · a backup for members who can&rsquo;t change their own.
           </p>
           <AdminProfileOverride />

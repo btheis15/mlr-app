@@ -10,6 +10,11 @@ import { InstallButton } from "@/components/InstallButton";
 import { WelcomeCard } from "@/components/WelcomeCard";
 import { UpcomingEvents } from "@/components/UpcomingEvents";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { WeatherCard } from "@/components/WeatherCard";
+import { WhosUpNorthCard } from "@/components/WhosUpNorthCard";
+import { ActivePollCard } from "@/components/ActivePollCard";
+import { BirthdaysCard } from "@/components/BirthdaysCard";
+import { OnThisDayCard } from "@/components/OnThisDayCard";
 
 /**
  * Home, organized for a 60–70-person, all-ages, mostly-non-technical crowd:
@@ -53,10 +58,21 @@ export default function HomePage() {
           tab bar — see lib/appLogoFit.ts. */}
       <HomeQuickActions />
 
+      {/* ── Life at the lake — light, self-hiding garnish cards ──────────────── */}
+      {/* Every one of these renders nothing when it has nothing to say (guest,
+          no data, table not migrated yet), so Home never grows an empty box. */}
+      <WeatherCard />
+      <WhosUpNorthCard />
+      <ActivePollCard />
+      <BirthdaysCard />
+
       {/* Your house — a single tap to your house's calendar, chat & to-do list.
           Self-hides for guests and anyone not assigned to a house. Sits near the
           bottom, just above the App & help utilities. */}
       <HouseHubCard />
+
+      {/* A photo memory from a prior year, same time of year. Members only. */}
+      <OnThisDayCard />
 
       {/* Quiet utilities, collapsed into one group at the bottom.
           Tagged data-fit-anchor-empty: when Home has no upcoming events, the

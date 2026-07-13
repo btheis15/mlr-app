@@ -125,7 +125,7 @@ export function HouseCalendar({
         </div>
         <div className="grid grid-cols-7 gap-1">
           {WEEKDAYS.map((d, i) => (
-            <div key={i} className="pb-1 text-center text-[10px] font-semibold uppercase text-foreground/40">
+            <div key={i} className="pb-1 text-center text-[10px] font-semibold uppercase text-faint">
               {d}
             </div>
           ))}
@@ -153,7 +153,7 @@ export function HouseCalendar({
             );
           })}
         </div>
-        <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-foreground/50">
+        <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-muted">
           <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> House stay</span>
           <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> Resort event</span>
         </div>
@@ -171,7 +171,7 @@ export function HouseCalendar({
       {upcomingResort.length > 0 && today && (
         <section className="space-y-2">
           <h3 className="px-0.5 text-sm font-bold">🌲 Happening across the resort</h3>
-          <p className="px-0.5 text-xs text-foreground/55">
+          <p className="px-0.5 text-xs text-muted">
             Resort-wide events show on every house calendar — tap to RSVP so you don&rsquo;t miss them.
           </p>
           {upcomingResort.slice(0, 4).map((e) => (
@@ -197,7 +197,7 @@ export function HouseCalendar({
         ) : upcomingStays.length === 0 ? (
           <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
             <p className="text-sm text-foreground/60">No stays on the calendar yet.</p>
-            <p className="mt-1 text-xs text-foreground/45">
+            <p className="mt-1 text-xs text-faint">
               Add yours so the rest of {houseName} knows when you&rsquo;ll be up.
             </p>
           </div>
@@ -326,9 +326,9 @@ function StayRow({
         </p>
         <p className="truncate text-xs text-foreground/60">
           {formatDateRange(stay.startDate, stay.endDate)}
-          {when && !active && <span className="text-foreground/45"> · {when}</span>}
+          {when && !active && <span className="text-faint"> · {when}</span>}
         </p>
-        <p className="truncate text-xs text-foreground/50">
+        <p className="truncate text-xs text-muted">
           <PrivateName name={stay.authorName} />
           {count > 1 && ` · ${count} people`}
         </p>
@@ -371,7 +371,7 @@ function DaySheet({
     <DaySheetShell heading={heading} onClose={onClose} onAdd={onAdd}>
       {events.length > 0 && (
         <div className="space-y-1.5">
-          <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">Resort events</p>
+          <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Resort events</p>
           {events.map((e) => (
             <button
               key={e.id}
@@ -386,11 +386,11 @@ function DaySheet({
         </div>
       )}
       <div className="space-y-1.5">
-        <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">
+        <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
           Staying ({stays.length})
         </p>
         {stays.length === 0 ? (
-          <p className="px-0.5 text-sm text-foreground/55">Nobody&rsquo;s marked a stay for this day yet.</p>
+          <p className="px-0.5 text-sm text-muted">Nobody&rsquo;s marked a stay for this day yet.</p>
         ) : (
           stays.map((s) => (
             <button
@@ -401,7 +401,7 @@ function DaySheet({
               <Avatar name={s.authorName} url={s.authorAvatarUrl} size={28} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{stayLabel(s)}</span>
-                <span className="block truncate text-xs text-foreground/55">
+                <span className="block truncate text-xs text-muted">
                   <PrivateName name={s.authorName} />
                   {stayHeadCount(s) > 1 && ` · ${stayHeadCount(s)} people`}
                 </span>

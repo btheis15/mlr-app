@@ -46,7 +46,7 @@ export function ReportButton({
 
   if (done) {
     return (
-      <span className={variant === "comment" ? "shrink-0 text-[11px] text-foreground/40" : "px-3 py-1.5 text-xs text-foreground/45"}>
+      <span className={variant === "comment" ? "shrink-0 text-xs text-faint" : "px-3 py-1.5 text-xs text-faint"}>
         Flagged ✓
       </span>
     );
@@ -63,7 +63,7 @@ export function ReportButton({
       className={
         variant === "comment"
           ? "press shrink-0 text-foreground/30 hover:text-accent"
-          : "press rounded-full px-3 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent"
+          : "press rounded-full px-3 py-1.5 text-xs font-medium text-faint hover:text-accent"
       }
     >
       {variant === "comment" ? "⚑" : "⚑ Flag"}
@@ -76,7 +76,7 @@ export function ReportButton({
     <div className="relative inline-block">
       {trigger}
       <div className="absolute right-0 z-10 mt-1 w-52 space-y-1 rounded-xl bg-card p-1.5 text-left shadow-lg ring-1 ring-border">
-        <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">Flag as inappropriate — why?</p>
+        <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wide text-faint">Flag as inappropriate — why?</p>
         {REPORT_REASONS.map((r) => (
           <button
             key={r}
@@ -88,11 +88,11 @@ export function ReportButton({
             {r}
           </button>
         ))}
-        {err && <p className="px-2 py-1 text-[11px] text-accent">{err}</p>}
+        {err && <p className="px-2 py-1 text-xs text-accent">{err}</p>}
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="press block w-full rounded-lg px-2 py-1.5 text-left text-xs text-foreground/45"
+          className="press block w-full rounded-lg px-2 py-1.5 text-left text-xs text-faint"
         >
           Cancel
         </button>

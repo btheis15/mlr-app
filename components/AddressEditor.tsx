@@ -78,7 +78,7 @@ export function AddressEditor({ value, onChange }: { value: string; onChange: (v
         onClick={() => setOpen(true)}
         className="press flex w-full items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-left text-sm ring-1 ring-border"
       >
-        <span className={value ? "" : "text-foreground/40"}>{value || "Add your address…"}</span>
+        <span className={value ? "" : "text-faint"}>{value || "Add your address…"}</span>
         <span className="shrink-0 text-xs text-primary">{value ? "Edit" : "Add"}</span>
       </button>
       {open && (
@@ -130,7 +130,7 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
         className="relative max-h-[88dvh] w-full max-w-sm space-y-3 overflow-y-auto rounded-3xl bg-background p-5 ring-1 ring-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" onClick={onClose} aria-label="Close" className="press absolute right-4 top-4 text-foreground/40 hover:text-foreground">✕</button>
+        <button type="button" onClick={onClose} aria-label="Close" className="press absolute right-4 top-4 text-faint hover:text-foreground">✕</button>
         <h2 className="text-lg font-bold">Your address</h2>
 
         {mx ? (
@@ -165,7 +165,7 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
             <option value="US">United States</option>
             <option value="MX">Mexico</option>
           </select>
-          <span className="mt-1 block text-[11px] text-foreground/45">Defaults to United States — changing it updates the fields above.</span>
+          <span className="mt-1 block text-xs text-faint">Defaults to United States — changing it updates the fields above.</span>
         </label>
 
         <button
@@ -186,7 +186,7 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
               className="h-44 w-full rounded-xl ring-1 ring-border"
               src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${found.lat},${found.lon}`}
             />
-            <p className="text-[11px] text-foreground/45">Does the pin look right? If so, save it.</p>
+            <p className="text-xs text-faint">Does the pin look right? If so, save it.</p>
           </div>
         )}
 

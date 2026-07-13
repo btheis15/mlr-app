@@ -159,7 +159,7 @@ export default function ProfilePage() {
               </span>
             )}
           </h1>
-          <p className="truncate text-sm text-foreground/50">{user.email}</p>
+          <p className="truncate text-sm text-muted">{user.email}</p>
         </div>
       </header>
 
@@ -171,7 +171,7 @@ export default function ProfilePage() {
       {/* Notifications — split into separate sections to mirror the iOS Profile
           (Activity notifications · Push notifications · email alerts). */}
       <div className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
           Notifications
         </p>
 
@@ -194,7 +194,7 @@ export default function ProfilePage() {
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
           <span className="min-w-0">
             <span className="text-sm font-medium">✉️ Email me alerts</span>
-            <span className="block text-xs text-foreground/50">
+            <span className="block text-xs text-muted">
               Get an email when an admin pushes an alert, in case you miss it in
               the app.
             </span>
@@ -209,10 +209,10 @@ export default function ProfilePage() {
       </div>
 
       <div className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
           Contact &amp; payment
         </p>
-        <p className="px-1 text-xs text-foreground/50">
+        <p className="px-1 text-xs text-muted">
           Optional — this is what shows when someone taps your name to contact or pay you.
         </p>
         <ContactPaySettings />
@@ -228,7 +228,7 @@ export default function ProfilePage() {
       )}
 
       <div className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
           Ask for Help
         </p>
         <WillingToHelpToggle />
@@ -245,7 +245,7 @@ export default function ProfilePage() {
 
 
       <div className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/50">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
           Text size
         </p>
         <TextSizeControl />

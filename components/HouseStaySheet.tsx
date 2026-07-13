@@ -56,7 +56,7 @@ export function HouseStaySheet({
           </h2>
           <p className="mt-0.5 text-sm text-foreground/60">
             {formatDateRange(stay.startDate, stay.endDate)}
-            {when && <span className="text-foreground/45"> · {when}</span>}
+            {when && <span className="text-faint"> · {when}</span>}
           </p>
         </div>
       }
@@ -105,7 +105,7 @@ export function HouseStaySheet({
           <span className="text-sm font-semibold">
             <PrivateName name={stay.authorName} />
           </span>
-          <span className="text-xs text-foreground/45">organizing</span>
+          <span className="text-xs text-faint">organizing</span>
         </div>
         {stay.guestNames.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pl-9">

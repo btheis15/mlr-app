@@ -136,7 +136,7 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
                 <p className={`text-sm font-semibold ${alert ? "text-primary" : ""}`}>
                   {a.title}
                 </p>
-                <span className="shrink-0 text-[10px] text-foreground/40">
+                <span className="shrink-0 text-[10px] text-faint">
                   {timeAgo(a.ts)}
                 </span>
               </div>

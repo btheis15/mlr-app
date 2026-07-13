@@ -206,7 +206,7 @@ export function InstallHint() {
             {mode === "auto" ? "Got it" : "Close"}
           </button>
           {mode === "auto" && (
-            <p className="mt-2 text-center text-xs text-foreground/55">
+            <p className="mt-2 text-center text-xs text-muted">
               This reminder stays until MLR is added to your home screen.
             </p>
           )}

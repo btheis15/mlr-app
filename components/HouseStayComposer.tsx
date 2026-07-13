@@ -91,7 +91,7 @@ export function HouseStayComposer({
           <h2 id="stay-composer-title" className="text-lg font-bold">
             {editing ? "Edit your stay" : "Add your stay"}
           </h2>
-          <p className="mt-0.5 text-xs text-foreground/55">{houseName} calendar</p>
+          <p className="mt-0.5 text-xs text-muted">{houseName} calendar</p>
         </div>
       }
       footer={
@@ -121,7 +121,7 @@ export function HouseStayComposer({
         <SectionLabel>When</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1">
-            <span className="px-0.5 text-xs text-foreground/55">Arriving</span>
+            <span className="px-0.5 text-xs text-muted">Arriving</span>
             <input
               type="date"
               value={start}
@@ -133,7 +133,7 @@ export function HouseStayComposer({
             />
           </label>
           <label className="space-y-1">
-            <span className="px-0.5 text-xs text-foreground/55">Leaving</span>
+            <span className="px-0.5 text-xs text-muted">Leaving</span>
             <input
               type="date"
               value={end}
@@ -143,7 +143,7 @@ export function HouseStayComposer({
             />
           </label>
         </div>
-        <p className="px-0.5 text-[11px] text-foreground/45">Same day arriving &amp; leaving = a day trip.</p>
+        <p className="px-0.5 text-xs text-faint">Same day arriving &amp; leaving = a day trip.</p>
       </div>
 
       {/* Who's coming — the member (fixed) + a free list of added people */}
@@ -188,7 +188,7 @@ export function HouseStayComposer({
             Add
           </button>
         </div>
-        <p className="px-0.5 text-[11px] text-foreground/45">
+        <p className="px-0.5 text-xs text-faint">
           They don&rsquo;t need an account — just type their name.
         </p>
       </div>

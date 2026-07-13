@@ -100,7 +100,7 @@ export function AdminJoinRequests({ slug, name }: { slug: string; name: string }
                   ))}
                 </div>
               ) : r.message ? (
-                <p className="truncate text-xs text-foreground/55">{r.message}</p>
+                <p className="truncate text-xs text-muted">{r.message}</p>
               ) : null}
             </div>
             <button

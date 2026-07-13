@@ -52,7 +52,7 @@ export default function LocalPlacesPage() {
         </section>
       )}
 
-      <p className="text-center text-[11px] text-foreground/40">
+      <p className="text-center text-xs text-faint">
         More local favorites coming over time. Hours and details are set by each
         business.
       </p>
@@ -62,7 +62,7 @@ export default function LocalPlacesPage() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="px-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/50">
+    <h2 className="px-0.5 text-xs font-bold uppercase tracking-[0.12em] text-muted">
       {children}
     </h2>
   );

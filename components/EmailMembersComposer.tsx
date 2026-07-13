@@ -127,7 +127,7 @@ export function EmailMembersComposer({
     return <p className="rounded-2xl bg-accent/10 p-4 text-center text-xs text-accent ring-1 ring-accent/30">{error}</p>;
   }
   if (recipients.length === 0) {
-    return <p className="rounded-2xl bg-card p-4 text-center text-xs text-foreground/45 ring-1 ring-border">No one to email here yet.</p>;
+    return <p className="rounded-2xl bg-card p-4 text-center text-xs text-faint ring-1 ring-border">No one to email here yet.</p>;
   }
 
   const tooMany = audience.length > MAILTO_WARN_COUNT;
@@ -191,7 +191,7 @@ export function EmailMembersComposer({
                 }`}
               >
                 <span className={`text-sm font-medium ${on ? "text-primary" : "text-foreground/80"}`}>{area}</span>
-                <span className={`text-xs font-semibold ${on ? "text-primary" : "text-foreground/45"}`}>
+                <span className={`text-xs font-semibold ${on ? "text-primary" : "text-faint"}`}>
                   {on ? "✓ " : ""}{count} {count === 1 ? "person" : "people"}
                 </span>
               </button>
@@ -228,13 +228,13 @@ export function EmailMembersComposer({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium">{r.name}</span>
-                      <span className="block truncate text-[11px] text-foreground/45">{r.email}</span>
+                      <span className="block truncate text-xs text-faint">{r.email}</span>
                     </span>
                   </label>
                 </li>
               );
             })}
-            {shown.length === 0 && <li className="px-2 py-1 text-xs text-foreground/40">No one matches that.</li>}
+            {shown.length === 0 && <li className="px-2 py-1 text-xs text-faint">No one matches that.</li>}
           </ul>
         </div>
       )}
@@ -246,7 +246,7 @@ export function EmailMembersComposer({
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
 
-      <p className="text-xs text-foreground/55">
+      <p className="text-xs text-muted">
         {audience.length > 0 ? (
           <>Emailing <strong>{audience.length}</strong> {plural(audience.length, "person", "people")}.</>
         ) : mode === "role" ? (

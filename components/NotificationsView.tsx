@@ -208,7 +208,7 @@ export function NotificationsView() {
         <div className="rounded-2xl bg-card p-8 text-center ring-1 ring-border">
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-3xl">🔔</div>
           <p className="text-sm font-medium">You&rsquo;re all caught up</p>
-          <p className="mt-1 text-xs text-foreground/50">
+          <p className="mt-1 text-xs text-muted">
             Comments and reactions on your posts, @mentions, new Feed posts, and announcements will show up here.
           </p>
         </div>
@@ -216,7 +216,7 @@ export function NotificationsView() {
         <div className="space-y-5">
           {groups.map((g) => (
             <section key={g.day} className="space-y-1.5">
-              <h2 className="px-1 text-[11px] font-bold uppercase tracking-wide text-foreground/40">
+              <h2 className="px-1 text-xs font-bold uppercase tracking-wide text-faint">
                 {formatDayHeading(g.items[0].createdAt)}
               </h2>
               <ul className="overflow-hidden rounded-2xl ring-1 ring-border">
@@ -252,9 +252,9 @@ export function NotificationsView() {
                             {n.title}
                           </span>
                           {n.body && (
-                            <span className="mt-0.5 block truncate text-xs text-foreground/50">{n.body}</span>
+                            <span className="mt-0.5 block truncate text-xs text-muted">{n.body}</span>
                           )}
-                          <span className="mt-0.5 block text-[11px] text-foreground/40">
+                          <span className="mt-0.5 block text-xs text-faint">
                             {timeAgo(n.createdAt)}
                             {expired ? " · expired" : ""}
                           </span>

@@ -36,7 +36,7 @@ export default function GuidePage() {
           href="/mlr-app-guide.pdf"
           target="_blank"
           rel="noopener noreferrer"
-          className="press text-xs font-medium text-foreground/55 underline-offset-2 hover:underline"
+          className="press text-xs font-medium text-muted underline-offset-2 hover:underline"
         >
           Open full screen ↗
         </a>
@@ -57,7 +57,7 @@ export default function GuidePage() {
         />
       </div>
 
-      <p className="text-center text-xs text-foreground/50">
+      <p className="text-center text-xs text-muted">
         Can&rsquo;t see it?{" "}
         <a
           href="/mlr-app-guide.pdf"

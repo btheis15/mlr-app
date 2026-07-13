@@ -165,7 +165,7 @@ export function PushToggle() {
 
   if (!supported) {
     return (
-      <p className="rounded-2xl bg-card p-4 text-xs text-foreground/50 ring-1 ring-border">
+      <p className="rounded-2xl bg-card p-4 text-xs text-muted ring-1 ring-border">
         Push notifications aren&rsquo;t available in this browser
         {isIos() ? " — add the app to your Home Screen (Share → Add to Home Screen) to enable them" : ""}.
       </p>
@@ -179,7 +179,7 @@ export function PushToggle() {
         <div className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className="text-sm font-medium">📲 Push notifications</span>
-            <span className="block text-xs text-foreground/50">
+            <span className="block text-xs text-muted">
               Buzz this phone (iPhone or Android). Pick which ones below.
             </span>
           </span>
@@ -187,7 +187,7 @@ export function PushToggle() {
         </div>
         {msg && <p className="mt-2 text-xs text-accent">{msg}</p>}
         {needsInstall && !msg && (
-          <p className="mt-2 text-xs text-foreground/45">
+          <p className="mt-2 text-xs text-faint">
             On iPhone/iPad, add the app to your Home Screen (Share → Add to Home Screen) so notifications can reach you.
           </p>
         )}
@@ -195,7 +195,7 @@ export function PushToggle() {
 
       {/* Category picker — meaningful only while push is on. */}
       <div className={anyOn ? "" : "pointer-events-none select-none opacity-50"} aria-disabled={!anyOn}>
-        <p className="px-1 pb-2 text-xs text-foreground/45">
+        <p className="px-1 pb-2 text-xs text-faint">
           Choose what buzzes your phone — each is independent.
         </p>
         <div className="overflow-hidden rounded-2xl ring-1 ring-border">
@@ -212,7 +212,7 @@ export function PushToggle() {
               >
                 <span className="min-w-0">
                   <span className="text-sm font-medium">{l.label}</span>
-                  <span className="block text-xs text-foreground/50">{l.desc}</span>
+                  <span className="block text-xs text-muted">{l.desc}</span>
                 </span>
                 <span
                   aria-hidden
@@ -244,7 +244,7 @@ export function PushToggle() {
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
           <span className="min-w-0">
             <span className="text-sm font-medium">🆕 New member joins</span>
-            <span className="block text-xs text-foreground/50">
+            <span className="block text-xs text-muted">
               Admins only: get a push when someone new joins, so you know who and when. Keep push turned on above so it can reach this device.
             </span>
           </span>
@@ -261,7 +261,7 @@ export function PushToggle() {
         <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-amber-500/40">
           <span className="min-w-0">
             <span className="text-sm font-medium">🧪 Notify me of my own actions</span>
-            <span className="block text-xs text-foreground/50">
+            <span className="block text-xs text-muted">
               Testing only (your account). Get pushes for your own actions — keep &ldquo;New committee messages&rdquo; ticked above to test your own chats — so you can verify notifications without a second person.
             </span>
           </span>

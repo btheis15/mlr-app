@@ -166,9 +166,9 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold">{name} admins</h2>
-          <p className="text-xs text-foreground/45">App access · chat · management</p>
+          <p className="text-xs text-faint">App access · chat · management</p>
         </div>
-        <span className="text-xs text-foreground/45">{members.length}</span>
+        <span className="text-xs text-faint">{members.length}</span>
       </div>
 
       <ul className="space-y-1.5">
@@ -182,7 +182,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                 <Avatar name={m.name} url={m.avatar} size={32} />
                 <p className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-medium">
                   <span className="truncate">{m.name}</span>
-                  {isMe && <span className="shrink-0 text-xs text-foreground/40">(you)</span>}
+                  {isMe && <span className="shrink-0 text-xs text-faint">(you)</span>}
                   {lead && (
                     <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                       Lead
@@ -233,7 +233,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                               key={area}
                               type="button"
                               onClick={() => toggleArea(area)}
-                              className={`press rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 transition-colors ${
+                              className={`press rounded-full px-2 py-0.5 text-xs font-medium ring-1 transition-colors ${
                                 on
                                   ? "bg-primary text-white ring-primary"
                                   : "bg-card ring-border text-foreground/60"
@@ -272,7 +272,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                           </span>
                         ))
                       ) : (
-                        <span className="text-[10px] text-foreground/40">No area yet</span>
+                        <span className="text-[10px] text-faint">No area yet</span>
                       )}
                       {canManage && (
                         <button
@@ -291,7 +291,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
           );
         })}
         {members.length === 0 && (
-          <p className="py-2 text-center text-xs text-foreground/45">
+          <p className="py-2 text-center text-xs text-faint">
             No admins yet — approve a request or add someone below.
           </p>
         )}
@@ -324,7 +324,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
               </button>
             ))}
             {q && addable.length === 0 && (
-              <p className="px-2 py-1 text-xs text-foreground/40">No one matches (or already a member).</p>
+              <p className="px-2 py-1 text-xs text-faint">No one matches (or already a member).</p>
             )}
             <button
               onClick={() => {

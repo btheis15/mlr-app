@@ -20,7 +20,7 @@ export const FIELD =
 /** The uppercase mini-label that titles each group of fields/content. */
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground/45">
+    <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
       {children}
     </p>
   );
@@ -67,7 +67,7 @@ export function Sheet({
           <button
             onClick={onDismiss}
             aria-label="Close"
-            className="press absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
+            className="press absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-faint hover:bg-foreground/5 hover:text-foreground"
           >
             ✕
           </button>

@@ -108,7 +108,7 @@ export function CabinRequestSheet({
           >
             {pending ? "Sending…" : "Submit request"}
           </button>
-          <p className="mt-2 text-center text-[11px] text-foreground/45">
+          <p className="mt-2 text-center text-xs text-faint">
             An admin will review it — you&rsquo;ll get a notification and email when they do.
           </p>
         </>
@@ -130,14 +130,14 @@ export function CabinRequestSheet({
                 🎉 All Family Fest Days
                 {isFFWeek && <span aria-hidden>✓</span>}
               </span>
-              <span className={`mt-0.5 block text-xs font-normal ${isFFWeek ? "text-primary/70" : "text-foreground/50"}`}>
+              <span className={`mt-0.5 block text-xs font-normal ${isFFWeek ? "text-primary/70" : "text-muted"}`}>
                 {formatStay(FF_CHECK_IN, FF_CHECK_OUT)}
               </span>
             </button>
 
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1">
-                <span className="px-0.5 text-xs text-foreground/55">Check-in</span>
+                <span className="px-0.5 text-xs text-muted">Check-in</span>
                 <input
                   type="date"
                   value={checkIn}
@@ -147,7 +147,7 @@ export function CabinRequestSheet({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="px-0.5 text-xs text-foreground/55">Check-out</span>
+                <span className="px-0.5 text-xs text-muted">Check-out</span>
                 <input
                   type="date"
                   value={checkOut}
@@ -158,7 +158,7 @@ export function CabinRequestSheet({
               </label>
             </div>
             {validRange ? (
-              <p className="px-0.5 text-xs text-foreground/55">
+              <p className="px-0.5 text-xs text-muted">
                 {formatStay(checkIn, checkOut)}
                 {available !== null && (
                   <>
@@ -208,7 +208,7 @@ export function CabinRequestSheet({
           {/* Notes */}
           <div className="space-y-2">
             <SectionLabel>
-              Notes <span className="font-normal normal-case text-foreground/40">(optional)</span>
+              Notes <span className="font-normal normal-case text-faint">(optional)</span>
             </SectionLabel>
             <textarea
               value={notes}

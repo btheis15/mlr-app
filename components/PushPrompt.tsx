@@ -117,7 +117,7 @@ export function PushPrompt() {
             Not now
           </button>
         </div>
-        <p className="mt-2 text-center text-xs text-foreground/40">
+        <p className="mt-2 text-center text-xs text-faint">
           You can change these anytime in Profile → Notifications.
         </p>
       </div>

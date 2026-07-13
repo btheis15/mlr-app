@@ -202,11 +202,11 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           <span className="truncate text-sm"><PrivateName name={display} /></span>
         )}
         {isLead && (
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">Lead</span>
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Lead</span>
         )}
         {pending && (
           <span
-            className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-foreground/55"
+            className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-muted"
             title="Invited — hasn't signed in to claim their account yet"
           >
             Pending verification
@@ -268,7 +268,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="text-sm font-semibold">{area}</h3>
                   {mail && (
-                    <a href={mail} className="press shrink-0 text-[11px] font-semibold text-primary">✉️ Email</a>
+                    <a href={mail} className="press shrink-0 text-xs font-semibold text-primary">✉️ Email</a>
                   )}
                 </div>
                 <ul className="space-y-1.5">
@@ -303,7 +303,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         </section>
       )}
 
-      <p className="text-center text-xs text-foreground/40">
+      <p className="text-center text-xs text-faint">
         Contact buttons + profile links appear as members link their accounts.
       </p>
 
@@ -458,7 +458,7 @@ function RosterEditor({
                 ))}
               </ul>
             )}
-            <p className="px-0.5 text-[11px] text-foreground/45">
+            <p className="px-0.5 text-xs text-faint">
               Pick someone with an account — that brings their name, photo, and chat access. Only fill in the fields below for someone not in the app yet (a one-off).
             </p>
           </div>
@@ -485,7 +485,7 @@ function RosterEditor({
 
         {roleBased && (
           <div className="space-y-1.5">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">Roles</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-faint">Roles</p>
             {FAMILY_FEST_AREAS.map((area) => {
               const on = selected.has(area);
               const lead = leads.has(area);
@@ -510,7 +510,7 @@ function RosterEditor({
                     <button
                       type="button"
                       onClick={() => setLeads((l) => { const n = new Set(l); n.has(area) ? n.delete(area) : n.add(area); return n; })}
-                      className={`press shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${lead ? "bg-primary/15 text-primary" : "bg-foreground/10 text-foreground/55"}`}
+                      className={`press shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${lead ? "bg-primary/15 text-primary" : "bg-foreground/10 text-muted"}`}
                     >
                       {lead ? "★ Lead" : "☆ Lead"}
                     </button>
@@ -518,7 +518,7 @@ function RosterEditor({
                 </div>
               );
             })}
-            <p className="text-[11px] text-foreground/45">Tap ★ Lead to make them a lead of that area (a role can have more than one lead); everyone else is a volunteer.</p>
+            <p className="text-xs text-faint">Tap ★ Lead to make them a lead of that area (a role can have more than one lead); everyone else is a volunteer.</p>
           </div>
         )}
 

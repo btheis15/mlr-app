@@ -62,7 +62,7 @@ export function AdminCommittees() {
   }, []);
 
   if (!isSupabaseConfigured) {
-    return <p className="px-1 text-xs text-foreground/50">Committee management turns on once the backend is connected.</p>;
+    return <p className="px-1 text-xs text-muted">Committee management turns on once the backend is connected.</p>;
   }
 
   return (
@@ -81,7 +81,7 @@ export function AdminCommittees() {
               <span className="shrink-0 text-lg" aria-hidden>{c.emoji}</span>
               <span className="min-w-0 flex-1 truncate text-sm font-semibold">{c.name}</span>
               {count > 0 && (
-                <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold text-accent">
+                <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-bold text-accent">
                   {count} request{count === 1 ? "" : "s"}
                 </span>
               )}

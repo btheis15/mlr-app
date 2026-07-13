@@ -41,7 +41,7 @@ export function CommitteeList() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{c.name}</p>
                 <p className="truncate text-xs text-foreground/60">{c.description}</p>
-                <p className="mt-0.5 text-[11px] text-foreground/40">
+                <p className="mt-0.5 text-xs text-faint">
                   {count} {count === 1 ? "member" : "members"}
                 </p>
               </div>

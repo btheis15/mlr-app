@@ -14,7 +14,7 @@ export default function WorkWeekendsPage() {
 
       <div className="rounded-2xl border border-dashed border-border bg-card p-5 text-center">
         <p className="text-sm font-medium text-foreground/80">📅 Dates coming soon</p>
-        <p className="mt-1 text-xs text-foreground/55">
+        <p className="mt-1 text-xs text-muted">
           We&rsquo;ll post the work-weekend dates and what needs doing here. Organized
           with the Resort Maintenance committee.
         </p>

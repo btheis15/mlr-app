@@ -32,7 +32,7 @@ export function DemoDateControl() {
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-accent">🧪 Demo — see the app as any day</h2>
-      <p className="text-xs text-foreground/50">
+      <p className="text-xs text-muted">
         Pick any calendar date to preview how the app looks that day — handy for
         planning things on dates that are still TBD. Only changes what you see on
         this device.
@@ -58,7 +58,7 @@ export function DemoDateControl() {
 
         {/* Shortcuts to the fest moments */}
         <div className="space-y-1.5">
-          <p className="text-[11px] uppercase tracking-wide text-foreground/40">Quick jumps</p>
+          <p className="text-xs uppercase tracking-wide text-faint">Quick jumps</p>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setDemoDate(runUp)} className={`press ${pill(demoDate === runUp)}`}>
               Run-up

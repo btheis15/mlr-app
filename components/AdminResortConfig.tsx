@@ -141,7 +141,7 @@ export function AdminResortConfig() {
             placeholder={f.placeholder}
             className="mt-1 w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
           />
-          {f.hint && <span className="mt-1 block text-[11px] text-foreground/45">{f.hint}</span>}
+          {f.hint && <span className="mt-1 block text-xs text-faint">{f.hint}</span>}
         </label>
       ))}
       <div className="flex items-center justify-end gap-3">

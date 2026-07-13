@@ -68,14 +68,14 @@ export function PreviewAs() {
           className={`press flex-1 rounded-xl px-3 py-2.5 text-left ring-1 ${previewMode === "off" ? "bg-primary text-white ring-primary" : "bg-background ring-border"}`}
         >
           <span className="block text-sm font-semibold">You</span>
-          <span className={`block text-[11px] ${previewMode === "off" ? "text-white/80" : "text-foreground/45"}`}>Admin (normal)</span>
+          <span className={`block text-xs ${previewMode === "off" ? "text-white/80" : "text-faint"}`}>Admin (normal)</span>
         </button>
         <button
           onClick={() => setPreviewMode("guest")}
           className={`press flex-1 rounded-xl px-3 py-2.5 text-left ring-1 ${previewMode === "guest" ? "bg-primary text-white ring-primary" : "bg-background ring-border"}`}
         >
           <span className="block text-sm font-semibold">A guest</span>
-          <span className={`block text-[11px] ${previewMode === "guest" ? "text-white/80" : "text-foreground/45"}`}>Signed-out visitor</span>
+          <span className={`block text-xs ${previewMode === "guest" ? "text-white/80" : "text-faint"}`}>Signed-out visitor</span>
         </button>
       </div>
 
@@ -104,7 +104,7 @@ export function PreviewAs() {
               </button>
             );
           })}
-          {shown.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No members{query ? " match" : " yet"}.</p>}
+          {shown.length === 0 && <p className="px-2 py-1 text-xs text-faint">No members{query ? " match" : " yet"}.</p>}
         </div>
       </div>
     </div>

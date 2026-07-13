@@ -27,7 +27,7 @@ export function PhoneInput({ value, onChange, className = "", placeholder = "(71
     <div
       className={`flex w-full items-stretch overflow-hidden rounded-xl bg-background text-sm ring-1 ring-border focus-within:ring-2 focus-within:ring-primary ${className}`}
     >
-      <span className="flex select-none items-center border-r border-border pl-3 pr-2 font-medium text-foreground/55">
+      <span className="flex select-none items-center border-r border-border pl-3 pr-2 font-medium text-muted">
         +1
       </span>
       <input

@@ -697,7 +697,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                       </button>
                     );
                   })}
-                  {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No matching members.</p>}
+                  {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-faint">No matching members.</p>}
                 </div>
               </div>
             )}
@@ -715,7 +715,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               />
               <span className="text-foreground/70">
                 <span className="font-semibold text-foreground">Set the date &amp; time</span> — posting late? Place it back to when it happened so it flows in with the rest (e.g. lake day at 2pm).
-                <span className="block text-foreground/45">Leave off to post as right now.</span>
+                <span className="block text-faint">Leave off to post as right now.</span>
               </span>
             </label>
             {customWhen && (
@@ -787,7 +787,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-xs text-foreground/55">
+          <label className="flex items-center gap-2 text-xs text-muted">
             <span>Jump to a day</span>
             <input type="date" value={jump.length === 10 ? jump : ""} onChange={(e) => setJump(e.target.value)} className="rounded-lg bg-card px-2 py-1 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
             {jump && <button onClick={() => setJump("")} className="press font-medium text-primary">Clear</button>}
@@ -804,7 +804,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       <div className="space-y-6">
         {dayGroups.map((g) => (
         <section key={g.day} className="space-y-3">
-          <h2 className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-foreground/45">
+          <h2 className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-faint">
             <span className="h-px flex-1 bg-border" />
             {formatDayHeading(g.day)}
             <span className="h-px flex-1 bg-border" />
@@ -821,7 +821,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                   <Avatar name={p.author} url={p.authorAvatar} size={32} />
                   <div className="min-w-0">
                     <p className="flex items-center truncate text-sm font-semibold"><span className="truncate">{p.author}</span></p>
-                    <p className="text-[11px] text-foreground/40">{formatClock(p.ts)}</p>
+                    <p className="text-xs text-faint">{formatClock(p.ts)}</p>
                   </div>
                 </button>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -829,11 +829,11 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                     <ReportButton entity="post" entityId={p.id} needsSignIn={requireSignIn} onReported={hidePostLocally} />
                   )}
                   {canEditPost(p) ? (
-                    <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press rounded-full px-2.5 py-1 text-xs font-medium text-foreground/40 hover:text-primary" aria-label="Edit post">
+                    <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} className="press rounded-full px-2.5 py-1 text-xs font-medium text-faint hover:text-primary" aria-label="Edit post">
                       {editingId === p.id ? "Close" : "Edit"}
                     </button>
                   ) : canDeletePost(p, isAdded) ? (
-                    <button onClick={() => deletePost(p, isAdded)} className="press rounded-full px-2 py-1 text-xs text-foreground/40 hover:text-primary" aria-label="Delete post">Delete</button>
+                    <button onClick={() => deletePost(p, isAdded)} className="press rounded-full px-2 py-1 text-xs text-faint hover:text-primary" aria-label="Delete post">Delete</button>
                   ) : null}
                 </div>
               </div>
@@ -892,7 +892,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                     })}
                   </div>
                   {reactorsFor?.postId === p.id && (
-                    <p className="mt-1.5 text-xs text-foreground/55">
+                    <p className="mt-1.5 text-xs text-muted">
                       <span className="mr-1">{reactorsFor.emoji}</span>
                       {(dbReactions[p.id] ?? [])
                         .filter((r) => r.emoji === reactorsFor.emoji)
@@ -904,10 +904,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               )}
 
               <div className="mt-2 flex items-center gap-1 border-t border-border px-2 py-1.5 text-xs">
-                <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`press rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-foreground/55"}`} aria-expanded={pickerFor === p.id}>
+                <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`press rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-muted"}`} aria-expanded={pickerFor === p.id}>
                   {mine ? `${mine} Reacted` : "🙂 React"}
                 </button>
-                <span className="rounded-full px-3 py-1.5 text-foreground/55">💬 {postComments.length > 0 ? postComments.length : "Comment"}</span>
+                <span className="rounded-full px-3 py-1.5 text-muted">💬 {postComments.length > 0 ? postComments.length : "Comment"}</span>
                 <button onClick={() => shareOut(p)} className="press ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
               </div>
 
@@ -1083,7 +1083,7 @@ function EditPostPanel({
                 </button>
               );
             })}
-            {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-foreground/40">No matching members.</p>}
+            {tagMembers.length === 0 && <p className="px-2 py-1 text-xs text-faint">No matching members.</p>}
           </div>
         </div>
       )}
@@ -1098,7 +1098,7 @@ function EditPostPanel({
       {err && <p className="text-xs font-medium text-accent">{err}</p>}
 
       <div className="flex items-center gap-2 pt-1">
-        <button type="button" onClick={onDelete} className="press rounded-full px-2 py-1.5 text-xs font-medium text-foreground/45 hover:text-accent">Delete</button>
+        <button type="button" onClick={onDelete} className="press rounded-full px-2 py-1.5 text-xs font-medium text-faint hover:text-accent">Delete</button>
         <div className="ml-auto flex gap-2">
           <button type="button" onClick={onClose} disabled={saving} className="press rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
           <button type="button" onClick={save} disabled={saving} className="press rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
@@ -1125,7 +1125,7 @@ function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (
           <span key={i} className={`h-1.5 w-1.5 rounded-full ring-1 ring-black/10 ${i === active ? "bg-white" : "bg-white/50"}`} />
         ))}
       </div>
-      <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white">{active + 1}/{media.length}</div>
+      <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-xs font-medium text-white">{active + 1}/{media.length}</div>
     </div>
   );
 }

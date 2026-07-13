@@ -638,11 +638,11 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
       >
         {loaded && messages.length === 0 && (
-          <p className="mt-10 text-center text-sm text-foreground/50">No messages yet — say hi to the {name} crew! 👋</p>
+          <p className="mt-10 text-center text-sm text-muted">No messages yet — say hi to the {name} crew! 👋</p>
         )}
         {dayGroups.map((g) => (
           <div key={g.day} className="space-y-1">
-            <div className="my-2 flex items-center gap-3 text-[11px] font-bold uppercase tracking-wide text-foreground/40">
+            <div className="my-2 flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-faint">
               <span className="h-px flex-1 bg-border" />
               {formatDayHeading(g.day)}
               <span className="h-px flex-1 bg-border" />
@@ -687,7 +687,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
             <span className="h-8 w-0.5 rounded-full bg-primary" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-primary">Editing message</p>
-              <p className="truncate text-foreground/55">{editing.text || replyPreview(editing)}</p>
+              <p className="truncate text-muted">{editing.text || replyPreview(editing)}</p>
             </div>
             <button onClick={cancelEdit} className="press shrink-0 text-foreground/40" aria-label="Cancel edit">✕</button>
           </div>
@@ -698,7 +698,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
             <span className="h-8 w-0.5 rounded-full bg-primary" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-primary">Replying to {replyTo.authorId === uid ? "yourself" : replyTo.author}</p>
-              <p className="truncate text-foreground/55">{replyPreview(replyTo)}</p>
+              <p className="truncate text-muted">{replyPreview(replyTo)}</p>
             </div>
             <button onClick={() => setReplyTo(null)} className="press shrink-0 text-foreground/40" aria-label="Cancel reply">✕</button>
           </div>
@@ -807,7 +807,7 @@ function ChatShell({ slug, name, emoji, subtitle, children }: { slug: string; na
         <span className="text-xl">{emoji}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{name}</p>
-          {subtitle && <p className="truncate text-[11px] text-foreground/45">{subtitle}</p>}
+          {subtitle && <p className="truncate text-xs text-faint">{subtitle}</p>}
         </div>
       </header>
       {children}
@@ -894,7 +894,7 @@ function MessageRow({
     return (
       <div id={`cmsg-${m.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
         {!mine && <div className="mr-1.5 w-7 shrink-0" aria-hidden />}
-        <div className="max-w-[78%] rounded-2xl bg-card px-3 py-2 text-sm italic text-foreground/40 ring-1 ring-border">
+        <div className="max-w-[78%] rounded-2xl bg-card px-3 py-2 text-sm italic text-faint ring-1 ring-border">
           🚫 message deleted
         </div>
       </div>
@@ -923,12 +923,12 @@ function MessageRow({
       >
         {dx > 12 && <span className="absolute -left-7 top-1/2 -translate-y-1/2 text-primary" aria-hidden>↩︎</span>}
 
-        {!mine && !grouped && <p className="mb-0.5 ml-1 inline-flex items-center text-[11px] font-semibold text-foreground/55">{m.author}</p>}
+        {!mine && !grouped && <p className="mb-0.5 ml-1 inline-flex items-center text-xs font-semibold text-muted">{m.author}</p>}
 
         {reply && (
-          <button onClick={() => onJumpToReply(reply.id)} className={`press mb-0.5 block w-full rounded-lg border-l-2 border-primary/60 px-2 py-1 text-left text-[11px] ${mine ? "bg-white/15" : "bg-background"}`}>
+          <button onClick={() => onJumpToReply(reply.id)} className={`press mb-0.5 block w-full rounded-lg border-l-2 border-primary/60 px-2 py-1 text-left text-xs ${mine ? "bg-white/15" : "bg-background"}`}>
             <span className="font-semibold text-primary">{reply.authorId === uid ? "You" : reply.author}</span>
-            <span className="ml-1 text-foreground/55">{replyPreview(reply).slice(0, 60)}</span>
+            <span className="ml-1 text-muted">{replyPreview(reply).slice(0, 60)}</span>
           </button>
         )}
 
@@ -977,14 +977,14 @@ function MessageRow({
                     key={e}
                     onClick={() => setShowReactors((cur) => (cur === e ? null : e))}
                     aria-label={`See who reacted ${e}`}
-                    className={`rounded-full px-1.5 py-0.5 text-[11px] ring-1 ${mineEmoji === e ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${showReactors === e ? "ring-2 ring-primary/40" : ""}`}
+                    className={`rounded-full px-1.5 py-0.5 text-xs ring-1 ${mineEmoji === e ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${showReactors === e ? "ring-2 ring-primary/40" : ""}`}
                   >
                     {e} {c}
                   </button>
                 ))}
               </div>
               {reactors.length > 0 && (
-                <p className={`mt-1 text-[11px] leading-snug text-foreground/55 ${mine ? "text-right" : ""}`}>
+                <p className={`mt-1 text-xs leading-snug text-muted ${mine ? "text-right" : ""}`}>
                   <span className="mr-1">{showReactors}</span>
                   {reactors.map((r) => reactorName(r.userId)).join(", ")}
                 </p>

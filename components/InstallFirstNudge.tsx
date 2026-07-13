@@ -1,6 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { requestInstall } from "@/lib/install";
+
+// Once someone has seen the nudge and chosen to keep browsing, don't keep
+// hijacking their sign-in taps: on repeat showings "Sign in here anyway"
+// becomes the primary action and the install pitch steps back.
+const SEEN_KEY = "mlr.installNudge.seen";
 
 /**
  * The "add it first, sign in once" reminder. Shown when a **guest taps Sign in
@@ -29,12 +35,29 @@ export function InstallFirstNudge({
   onClose: () => void;
   onSignInAnyway: () => void;
 }) {
+  // Repeat visitor? Flip the button emphasis (see SEEN_KEY). Read once on
+  // mount; stamp so the *next* showing is the softened one.
+  const [seenBefore, setSeenBefore] = useState(false);
+  useEffect(() => {
+    try {
+      setSeenBefore(localStorage.getItem(SEEN_KEY) === "1");
+      localStorage.setItem(SEEN_KEY, "1");
+    } catch {
+      /* private mode etc. — keep the first-time emphasis */
+    }
+  }, []);
+
   // Close this sheet first so the walkthrough isn't stacked underneath it, then
   // ask InstallHint to run the install flow (the iOS Safari steps).
   const addToHomeScreen = () => {
     onClose();
     requestInstall();
   };
+
+  const primaryClass =
+    "press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-base font-semibold text-white shadow-sm";
+  const secondaryClass =
+    "press mt-2 w-full rounded-2xl py-3 text-sm font-semibold text-foreground/65";
 
   return (
     <div
@@ -74,18 +97,25 @@ export function InstallFirstNudge({
 
         {/* Sticky footer so the buttons are always reachable. */}
         <div className="border-t border-border bg-card px-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
-          <button
-            onClick={addToHomeScreen}
-            className="press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-base font-semibold text-white shadow-sm"
-          >
-            <span aria-hidden>📲</span> Add to Home Screen
-          </button>
-          <button
-            onClick={onSignInAnyway}
-            className="press mt-2 w-full rounded-2xl py-3 text-sm font-semibold text-foreground/65"
-          >
-            Sign in here anyway
-          </button>
+          {seenBefore ? (
+            <>
+              <button onClick={onSignInAnyway} className={primaryClass}>
+                Sign in here
+              </button>
+              <button onClick={addToHomeScreen} className={secondaryClass}>
+                <span aria-hidden>📲</span> Add to Home Screen instead
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={addToHomeScreen} className={primaryClass}>
+                <span aria-hidden>📲</span> Add to Home Screen
+              </button>
+              <button onClick={onSignInAnyway} className={secondaryClass}>
+                Sign in here anyway
+              </button>
+            </>
+          )}
           <p className="mt-1 text-center text-xs text-foreground/45">
             We&apos;ll show you how — it takes a few seconds.
           </p>

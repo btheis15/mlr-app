@@ -152,7 +152,7 @@ export function EventSheet({
       }
     >
       {(event.endDate && event.endDate !== event.startDate) && (
-            <p className="text-xs text-foreground/55">{formatDateLong(event.startDate)} → {formatDateLong(event.endDate)}</p>
+            <p className="text-xs text-muted">{formatDateLong(event.startDate)} → {formatDateLong(event.endDate)}</p>
           )}
 
           {event.location && (
@@ -173,7 +173,7 @@ export function EventSheet({
             />
 
             {showDays && (
-              <p className="px-0.5 pt-0.5 text-xs text-foreground/55">
+              <p className="px-0.5 pt-0.5 text-xs text-muted">
                 <span className="font-medium text-primary">Going</span> signs you up for all {days.length} days.
                 Only around part of the week? Just tap the days you&rsquo;ll be there.
               </p>
@@ -229,7 +229,7 @@ export function EventSheet({
                   );
                 })}
               </div>
-              <p className="px-0.5 text-[11px] text-foreground/45">
+              <p className="px-0.5 text-xs text-faint">
                 {guest
                   ? "Tap the days you’ll be here — we’ll ask you to sign in first."
                   : "Numbers show how many are here each day · tap a day to add or drop it."}
@@ -269,13 +269,13 @@ export function EventSheet({
                       <span className="min-w-0 flex-1">
                         <span
                           className={`block text-sm font-medium leading-snug ${
-                            item.status === "done" ? "text-foreground/40 line-through" : ""
+                            item.status === "done" ? "text-faint line-through" : ""
                           }`}
                         >
                           {item.title}
                         </span>
                         {item.peopleNeeded != null && (
-                          <span className="mt-0.5 block text-[10px] text-foreground/45">
+                          <span className="mt-0.5 block text-xs text-faint">
                             👥 {item.peopleNeeded} needed
                           </span>
                         )}
@@ -284,7 +284,7 @@ export function EventSheet({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-foreground/40">No work items yet.</p>
+                <p className="text-xs text-faint">No work items yet.</p>
               )}
             </div>
           )}
@@ -303,7 +303,7 @@ export function EventSheet({
                 🔒 Sign in to see who&rsquo;s coming — and RSVP yourself.
               </button>
             ) : summary.counts.going === 0 && summary.counts.maybe === 0 && summary.counts.notGoing === 0 ? (
-              <p className="text-sm text-foreground/45">No RSVPs yet.</p>
+              <p className="text-sm text-faint">No RSVPs yet.</p>
             ) : showDays ? (
               <div className="space-y-3">
                 {/* Filter the roster to a single day's participants. */}
@@ -408,7 +408,7 @@ function RosterGroup({
         {label}{people.length > 0 && ` · ${people.length}`}
       </p>
       {people.length === 0 ? (
-        <p className="text-sm text-foreground/45">{emptyText}</p>
+        <p className="text-sm text-faint">{emptyText}</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {people.map((p) => (

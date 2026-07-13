@@ -15,7 +15,7 @@ export function WillingToHelpToggle() {
     <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <span className="min-w-0">
         <span className="text-sm font-medium">🙋 Willing to help</span>
-        <span className="block text-xs text-foreground/50">
+        <span className="block text-xs text-muted">
           When you&rsquo;re at the resort, get a heads-up if someone nearby needs a hand. You decide
           whether to jump in — and you&rsquo;re only pinged while you&rsquo;re actually up there.
         </span>

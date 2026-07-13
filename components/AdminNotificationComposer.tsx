@@ -132,7 +132,7 @@ export function AdminNotificationComposer() {
             >
               <span className="min-w-0">
                 <span className="text-sm font-medium">{a.label}</span>
-                <span className="block text-xs text-foreground/50">{a.desc}</span>
+                <span className="block text-xs text-muted">{a.desc}</span>
               </span>
               <span
                 aria-hidden

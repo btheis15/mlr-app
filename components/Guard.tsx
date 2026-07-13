@@ -50,7 +50,7 @@ export function Protected({
     <button
       type="button"
       onClick={promptSignIn}
-      className={`press inline-flex items-center gap-1 rounded-lg bg-background px-2 py-1 text-xs font-medium text-foreground/45 ring-1 ring-border ${className}`}
+      className={`press inline-flex items-center gap-1 rounded-lg bg-background px-2 py-1 text-xs font-medium text-faint ring-1 ring-border ${className}`}
     >
       🔒 {label}
     </button>

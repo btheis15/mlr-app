@@ -57,7 +57,7 @@ export function EditDisplayName() {
         autoComplete="name"
         className="w-full rounded-xl bg-background px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
-      <p className="text-xs text-foreground/45">This is how your name shows across the app.</p>
+      <p className="text-xs text-faint">This is how your name shows across the app.</p>
       {status && <p className="text-xs text-foreground/60">{status}</p>}
       <div className="flex items-center gap-2 pt-1">
         <button

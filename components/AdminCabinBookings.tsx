@@ -94,11 +94,11 @@ export function AdminCabinBookings() {
     <div className="space-y-4">
       {/* Pending queue */}
       <section className="space-y-2">
-        <h3 className="px-0.5 text-xs font-bold uppercase tracking-wide text-foreground/45">
+        <h3 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
           Pending {pending.length > 0 && `(${pending.length})`}
         </h3>
         {pending.length === 0 ? (
-          <p className="rounded-xl bg-card p-3 text-center text-xs text-foreground/50 ring-1 ring-border">
+          <p className="rounded-xl bg-card p-3 text-center text-xs text-muted ring-1 ring-border">
             No requests waiting. 🎉
           </p>
         ) : (
@@ -110,10 +110,10 @@ export function AdminCabinBookings() {
                   <Avatar name={who?.name ?? "Member"} url={who?.avatarUrl} size={36} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{who?.name ?? "Member"}</p>
-                    <p className="truncate text-xs text-foreground/55">
+                    <p className="truncate text-xs text-muted">
                       {b.cabinName} · {formatStay(b.checkIn, b.checkOut)}
                     </p>
-                    <p className="text-xs text-foreground/45">
+                    <p className="text-xs text-faint">
                       {b.guests} guest{b.guests === 1 ? "" : "s"}
                     </p>
                   </div>
@@ -155,7 +155,7 @@ export function AdminCabinBookings() {
       {/* Approved roster */}
       {approved.length > 0 && (
         <section className="space-y-2">
-          <h3 className="px-0.5 text-xs font-bold uppercase tracking-wide text-foreground/45">
+          <h3 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
             Upcoming stays ({approved.length})
           </h3>
           <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
@@ -166,7 +166,7 @@ export function AdminCabinBookings() {
                   <Avatar name={who?.name ?? "Member"} url={who?.avatarUrl} size={28} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{who?.name ?? "Member"}</p>
-                    <p className="truncate text-xs text-foreground/50">
+                    <p className="truncate text-xs text-muted">
                       {b.cabinName} · {formatStay(b.checkIn, b.checkOut)} · {b.guests}👤
                     </p>
                   </div>

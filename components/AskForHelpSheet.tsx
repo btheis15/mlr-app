@@ -176,7 +176,7 @@ export function AskForHelpSheet({
           >
             {pending ? "Sending…" : "Send request"}
           </button>
-          <p className="mt-2 text-center text-[11px] text-foreground/45">
+          <p className="mt-2 text-center text-xs text-faint">
             People nearby get a notification — they can say they&rsquo;re on the way.
           </p>
         </>
@@ -216,7 +216,7 @@ export function AskForHelpSheet({
         <div className="space-y-2">
           <SectionLabel>
             Link a Work Checklist task{" "}
-            <span className="font-normal normal-case text-foreground/40">(optional)</span>
+            <span className="font-normal normal-case text-faint">(optional)</span>
           </SectionLabel>
           <select
             value={workItemId ?? ""}
@@ -239,7 +239,7 @@ export function AskForHelpSheet({
             ))}
           </select>
           {workItemId && (
-            <p className="px-0.5 text-[11px] text-foreground/45">
+            <p className="px-0.5 text-xs text-faint">
               Later today we&rsquo;ll ask if this got done — saying yes checks it off the list.
             </p>
           )}
@@ -262,7 +262,7 @@ export function AskForHelpSheet({
       {/* What to bring (optional checklist) */}
       <div className="space-y-2">
         <SectionLabel>
-          Anything to bring? <span className="font-normal normal-case text-foreground/40">(optional)</span>
+          Anything to bring? <span className="font-normal normal-case text-faint">(optional)</span>
         </SectionLabel>
         {items.length > 0 && (
           <div className="space-y-2">
@@ -296,7 +296,7 @@ export function AskForHelpSheet({
         >
           + Add something to bring
         </button>
-        <p className="px-0.5 text-[11px] text-foreground/45">
+        <p className="px-0.5 text-xs text-faint">
           List what you need (tables, chairs, coolers…). Helpers check off the ones they&rsquo;re bringing.
         </p>
       </div>
@@ -328,7 +328,7 @@ export function AskForHelpSheet({
             </button>
           </span>
         </div>
-        <p className="px-0.5 text-[11px] text-foreground/45">
+        <p className="px-0.5 text-xs text-faint">
           Everyone willing &amp; here gets pinged. Once {neededCount === 1 ? "someone&rsquo;s" : `${neededCount} are`} on the
           way, it shows as covered and they&rsquo;re told they&rsquo;re all set.
         </p>
@@ -337,7 +337,7 @@ export function AskForHelpSheet({
       {/* Where */}
       <div className="space-y-2">
         <SectionLabel>
-          Where are you? <span className="font-normal normal-case text-foreground/40">(optional)</span>
+          Where are you? <span className="font-normal normal-case text-faint">(optional)</span>
         </SectionLabel>
         <input
           value={whereText}
@@ -380,7 +380,7 @@ export function AskForHelpSheet({
           />
           <span className="text-foreground/80">
             I need help at a specific time
-            <span className="block text-xs text-foreground/45">Off = right now.</span>
+            <span className="block text-xs text-faint">Off = right now.</span>
           </span>
         </label>
         {later && (
@@ -391,7 +391,7 @@ export function AskForHelpSheet({
               onChange={(e) => setNeededLocal(e.target.value)}
               className={`${FIELD} w-full`}
             />
-            <p className="px-0.5 text-[11px] text-foreground/45">
+            <p className="px-0.5 text-xs text-faint">
               It goes out now so people can sign up. 15 minutes before, everyone who said they&rsquo;re coming
               gets a reminder — and if you&rsquo;re still short, it asks people nearby again.
             </p>
@@ -409,7 +409,7 @@ export function AskForHelpSheet({
         />
         <span className="text-foreground/80">
           Notify everyone willing to help
-          <span className="block text-xs text-foreground/45">
+          <span className="block text-xs text-faint">
             Not just people here right now — use if it&rsquo;s quiet at the resort.
           </span>
         </span>

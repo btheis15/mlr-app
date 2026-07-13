@@ -139,7 +139,7 @@ export function WelcomeIntro() {
           type="button"
           onClick={dismiss}
           aria-label="Close"
-          className="press absolute right-4 top-4 z-10 rounded-full px-1 text-foreground/40 hover:text-foreground"
+          className="press absolute right-4 top-4 z-10 rounded-full px-1 text-faint hover:text-foreground"
         >
           ✕
         </button>
@@ -186,7 +186,7 @@ export function WelcomeIntro() {
               <div>
                 <span className="text-xs font-medium text-foreground/70">Birthday</span>
                 <BirthdayPicker value={birthday} onChange={setBirthday} />
-                <span className="mt-1 block text-[11px] text-foreground/45">
+                <span className="mt-1 block text-xs text-faint">
                   Shown on your member card so everyone can wish you a happy birthday.
                 </span>
               </div>
@@ -213,7 +213,7 @@ export function WelcomeIntro() {
                     className={FIELD}
                   />
                 )}
-                <span className="mt-1 block text-[11px] text-foreground/45">
+                <span className="mt-1 block text-xs text-faint">
                   How folks chip in for dinners and dues — shown on your member card.
                 </span>
               </div>
@@ -231,7 +231,7 @@ export function WelcomeIntro() {
                   type="button"
                   onClick={() => setStep("push")}
                   disabled={busy}
-                  className="press w-full py-1 text-center text-xs font-medium text-foreground/55"
+                  className="press w-full py-1 text-center text-xs font-medium text-muted"
                 >
                   ← Back
                 </button>

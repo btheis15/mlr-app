@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { SkeletonList } from "@/components/Skeleton";
 import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { contactActions, payActions, birthdayInfo, directionsLinks, type Action, type MemberContact } from "@/lib/contact";
@@ -197,7 +198,7 @@ export function MemberSheet({
         <button
           onClick={close}
           aria-label="Close"
-          className="press absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
+          className="press absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-faint hover:bg-foreground/5 hover:text-foreground"
         >
           ✕
         </button>
@@ -240,16 +241,16 @@ export function MemberSheet({
             </div>
           ) : (
             <>
-          {!loaded && <p className="text-center text-xs text-foreground/40">Loading…</p>}
+          {!loaded && <SkeletonList count={2} />}
           {loaded && contacts.length === 0 && pays.length === 0 && !bday && !address && (
-            <p className="rounded-xl bg-card p-3 text-center text-xs text-foreground/50 ring-1 ring-border">
+            <p className="rounded-xl bg-card p-3 text-center text-xs text-muted ring-1 ring-border">
               Nothing shared yet.
             </p>
           )}
 
           {contacts.length > 0 && (
             <section className="space-y-1.5">
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">Contact</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-faint">Contact</h3>
               {contacts.map((a) => (
                 <ActionRow key={a.key} a={a} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
               ))}
@@ -257,7 +258,7 @@ export function MemberSheet({
           )}
           {pays.length > 0 && (
             <section className="space-y-1.5">
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">Pay</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-faint">Pay</h3>
               {pays.map((a) => (
                 <ActionRow key={a.key} a={a} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
               ))}
@@ -265,13 +266,13 @@ export function MemberSheet({
           )}
           {(bday || address) && (
             <section className="space-y-1.5">
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">About</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-faint">About</h3>
               {bday && (
                 <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 ring-1 ring-border">
                   <span className="shrink-0 text-base leading-none">🎂</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{bday.isToday ? "Birthday — today! 🎉" : "Birthday"}</p>
-                    <p className="text-xs text-foreground/55">{bday.date} · {bday.age} years old</p>
+                    <p className="text-xs text-muted">{bday.date} · {bday.age} years old</p>
                   </div>
                 </div>
               )}
@@ -282,7 +283,7 @@ export function MemberSheet({
                       <span className="shrink-0 text-base leading-none">📍</span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold">Get directions</p>
-                        <p className="truncate text-xs text-foreground/55">{address}</p>
+                        <p className="truncate text-xs text-muted">{address}</p>
                       </div>
                       <span aria-hidden className="shrink-0 text-xs text-foreground/40">{showDir ? "▲" : "▼"}</span>
                     </div>
@@ -298,7 +299,7 @@ export function MemberSheet({
                           className="press flex flex-col items-center gap-1 rounded-xl bg-card px-2 py-3 text-center ring-1 ring-border active:bg-background"
                         >
                           <span className="text-lg leading-none">{d.emoji}</span>
-                          <span className="text-[11px] font-medium leading-tight">{d.label}</span>
+                          <span className="text-xs font-medium leading-tight">{d.label}</span>
                         </a>
                       ))}
                     </div>
@@ -339,7 +340,7 @@ function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: 
             </span>
           )}
         </p>
-        <p className={`truncate text-xs ${branded ? "text-white/80" : "text-foreground/55"}`}>
+        <p className={`truncate text-xs ${branded ? "text-white/80" : "text-muted"}`}>
           {a.value}
           {a.note ? ` · ${a.note}` : ""}
         </p>

@@ -190,7 +190,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           <button onClick={promptSignIn} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white">
             Sign in to request to join
           </button>
-          <p className="text-center text-xs text-foreground/55">
+          <p className="text-center text-xs text-muted">
             Just your name &amp; email — no password.
           </p>
         </div>
@@ -244,7 +244,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
                       </span>
                     ))
                   ) : (
-                    <span className="text-[10px] text-foreground/40">No area yet</span>
+                    <span className="text-[10px] text-faint">No area yet</span>
                   )}
                   <button type="button" onClick={startEditMyAreas} className="press ml-0.5 text-[10px] font-semibold text-primary">
                     {myAreas.length > 0 ? "· Edit" : "+ Add"}

@@ -114,7 +114,7 @@ export default function RequestStayPage() {
             {PREVIEW_CABINS.map((c) => (
               <div key={c.name} className="rounded-2xl bg-card p-4 ring-1 ring-border">
                 <p className="text-sm font-semibold">{c.name}</p>
-                <p className="mt-0.5 text-xs text-foreground/55">
+                <p className="mt-0.5 text-xs text-muted">
                   {c.roomCount} room{c.roomCount === 1 ? "" : "s"}
                 </p>
               </div>
@@ -137,7 +137,7 @@ export default function RequestStayPage() {
             {(cabins.length ? cabins : PREVIEW_CABINS.map((c, i) => ({ id: String(i), slug: "", name: c.name, roomCount: c.roomCount, sortOrder: i }))).map((c) => (
               <div key={c.name} className="rounded-2xl bg-card p-4 ring-1 ring-border">
                 <p className="text-sm font-semibold">{c.name}</p>
-                <p className="mt-0.5 text-xs text-foreground/55">
+                <p className="mt-0.5 text-xs text-muted">
                   {c.roomCount} room{c.roomCount === 1 ? "" : "s"}
                 </p>
               </div>
@@ -158,12 +158,12 @@ export default function RequestStayPage() {
           <section className="space-y-2">
             <div className="flex items-baseline justify-between gap-2 px-0.5">
               <h2 className="text-sm font-semibold">🎉 Family Fest week</h2>
-              <span className="text-xs text-foreground/50">{formatStay(FF_CHECK_IN, FF_CHECK_OUT)}</span>
+              <span className="text-xs text-muted">{formatStay(FF_CHECK_IN, FF_CHECK_OUT)}</span>
             </div>
             {cabins.map((c) => (
               <CabinCard key={c.id} cabin={c} available={availFor(c.id)} onRequest={() => setSheetCabin(c)} />
             ))}
-            <p className="px-1 pt-1 text-xs text-foreground/45">
+            <p className="px-1 pt-1 text-xs text-faint">
               Need different dates? Tap <span className="font-medium text-foreground/70">Request a room</span> and pick
               any week.
             </p>
@@ -247,8 +247,8 @@ function CapacityDots({ total, open }: { total: number; open: number }) {
 const STATUS: Record<CabinBooking["status"], { label: string; chip: string }> = {
   pending: { label: "Pending", chip: "bg-sun/15 text-sun" },
   approved: { label: "Approved ✓", chip: "bg-primary/15 text-primary" },
-  denied: { label: "Not approved", chip: "bg-foreground/10 text-foreground/55" },
-  cancelled: { label: "Cancelled", chip: "bg-foreground/10 text-foreground/45" },
+  denied: { label: "Not approved", chip: "bg-foreground/10 text-muted" },
+  cancelled: { label: "Cancelled", chip: "bg-foreground/10 text-faint" },
 };
 
 function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: () => void }) {
@@ -259,12 +259,12 @@ function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: ()
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold">{booking.cabinName ?? "Cabin"}</p>
-          <p className="mt-0.5 text-xs text-foreground/55">{formatStay(booking.checkIn, booking.checkOut)}</p>
-          <p className="text-xs text-foreground/45">
+          <p className="mt-0.5 text-xs text-muted">{formatStay(booking.checkIn, booking.checkOut)}</p>
+          <p className="text-xs text-faint">
             {booking.guests} guest{booking.guests === 1 ? "" : "s"}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.chip}`}>{s.label}</span>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.chip}`}>{s.label}</span>
       </div>
       {booking.reviewNote && (
         <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
