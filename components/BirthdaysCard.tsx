@@ -103,7 +103,7 @@ export function BirthdaysCard() {
 
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
-      <p className="text-sm font-semibold">🎂 Birthdays</p>
+      <p className="text-sm font-semibold">🎂 Upcoming Birthdays</p>
       <div className="mt-2 space-y-1">
         {upcoming.map((p) => (
           <a
