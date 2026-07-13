@@ -433,10 +433,13 @@ app.post("/admin/invite-link", express.json(), inviteLimiter, requireAdmin, asyn
     }
     try {
       const redirectTo = `${APP_URL}/`;
+      // Tag the account so notif_on_new_member() (migration 0085) and the
+      // mini's push senders skip the "new member joined" alert for it — the
+      // admin sending a batch of these already knows exactly who's coming.
       let { data, error } = await sb.auth.admin.generateLink({
         type: "invite",
         email,
-        options: { redirectTo, data: name ? { display_name: name } : {} },
+        options: { redirectTo, data: { ...(name ? { display_name: name } : {}), invited_via: "invite_link" } },
       });
       if (error && /already|registered|exists/i.test(error.message || "")) {
         ({ data, error } = await sb.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } }));

@@ -389,6 +389,9 @@ async function start() {
   const JOIN_FRESH_MS = 10 * 60 * 1000;
   const maybeNewMember = (row) => {
     if (!row || !row.joined_at) return;
+    // Sent via /admin/invite-link (migration 0085) — the inviting admin
+    // already knows exactly who's joining, so skip the "new member" push.
+    if (row.invited_via === "invite_link") return;
     const t = Date.parse(row.joined_at);
     if (!Number.isFinite(t) || Date.now() - t > JOIN_FRESH_MS) return;
     handleNewMember(row.id, row.display_name).catch((err) =>
