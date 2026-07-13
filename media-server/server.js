@@ -312,17 +312,41 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+// Feature highlights shown in the invite email — kept as data so the HTML and
+// plain-text versions render the exact same list from one source.
+const INVITE_FEATURES = [
+  ["📣", "Get notified the moment there's family news or an announcement"],
+  ["👥", "Join a committee — Resort Maintenance, Beautification, Family Fest, and more"],
+  ["🙋", "Ask for a hand around the resort, or offer one yourself"],
+  ["🎪", "See the full Family Fest schedule and what's planned each day"],
+  ["🧭", "See who's Up North and when for any event"],
+  ["🗳️", "Vote in family polls — merch designs, meal picks, and more"],
+  ["👕", "Order Family Fest t-shirts and other merch"],
+  ["📍", "Find local places to eat, shop, play, and book tee times"],
+  ["📇", "Look up everyone's phone number and email, all in one directory"],
+  ["✉️", "Send bulk emails to the whole family, specific committees, or any group you pick"],
+  ["💸", "Pay someone in the family back in a tap — Venmo, Zelle, and more"],
+];
+
 // The branded "you're invited" email — the one obvious button signs the
 // recipient straight in (the actionLink is a real, already-authenticated
 // Supabase auth URL; see /admin/invite-link below), no code to type.
 function inviteEmailHtml(name, actionLink) {
-  const hi = name ? `Hi ${escapeHtml(name)}, ` : "";
+  const hi = name ? `Hi ${escapeHtml(name)}, ` : "Hi there, ";
+  const featureRows = INVITE_FEATURES.map(
+    ([emoji, text]) =>
+      `<tr><td style="padding:5px 10px 5px 0;font-size:16px;vertical-align:top;white-space:nowrap">${emoji}</td><td style="padding:5px 0;font-size:14px;vertical-align:top">${escapeHtml(text)}</td></tr>`,
+  ).join("");
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
-<p style="font-size:20px;margin:0 0 2px"><strong>You're invited to MLR 🌲</strong></p>
-<p style="margin:0 0 16px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
-<p style="margin:0 0 12px;font-size:15px">${hi}MLR is the family's own app for staying in touch — the resort calendar,
-Family Fest, photos, and a way to reach everyone, all in one place.</p>
-<p style="margin:20px 0 8px"><a href="${actionLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">Open MLR &amp; get started →</a></p>
+<p style="text-align:center;margin:0 0 18px"><img src="${APP_URL}/brand-logo-green.png" alt="Muskellunge Lake Resort" width="110" style="display:block;margin:0 auto;max-width:110px;height:auto"></p>
+<p style="font-size:22px;margin:0 0 2px"><strong>The new MLR App is here! 🌲</strong></p>
+<p style="margin:0 0 18px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
+<p style="margin:0 0 12px;font-size:15px">${hi}you're invited to the family's new home base — one place for
+everything happening at the resort, so nothing gets lost in a group text or an old email chain.</p>
+<p style="margin:16px 0 10px;font-size:14px;font-weight:600;color:#15503a">Here's what you can do:</p>
+<table style="border-collapse:collapse;margin:0 0 8px">${featureRows}</table>
+<p style="margin:12px 0 0;font-size:14px;color:#555">...and more being added all the time.</p>
+<p style="margin:22px 0 8px"><a href="${actionLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-size:16px;font-weight:600">Open MLR &amp; get started →</a></p>
 <p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:13px;color:#555"><strong>Tip:</strong> once you're in, add MLR to your phone's Home Screen so it's
 a tap away next time. If you do, you'll be asked to sign in there once more —
 that's normal, just a one-time thing.</p>
@@ -331,8 +355,9 @@ that's normal, just a one-time thing.</p>
 </div>`;
 }
 function inviteEmailText(name, actionLink) {
-  const hi = name ? `Hi ${name}, ` : "";
-  return `You're invited to MLR\n\n${hi}MLR is the family's own app for staying in touch — the resort calendar, Family Fest, photos, and a way to reach everyone, all in one place.\n\nOpen MLR & get started: ${actionLink}\n\nTip: once you're in, add MLR to your phone's Home Screen so it's a tap away next time. If you do, you'll be asked to sign in there once more — that's normal, just a one-time thing.\n\n— Muskellunge Lake Resort`;
+  const hi = name ? `Hi ${name}, ` : "Hi there, ";
+  const featureLines = INVITE_FEATURES.map(([emoji, text]) => `  ${emoji} ${text}`).join("\n");
+  return `The new MLR App is here!\nMuskellunge Lake Resort\n\n${hi}you're invited to the family's new home base — one place for everything happening at the resort, so nothing gets lost in a group text or an old email chain.\n\nHere's what you can do:\n${featureLines}\n  ...and more being added all the time.\n\nOpen MLR & get started: ${actionLink}\n\nTip: once you're in, add MLR to your phone's Home Screen so it's a tap away next time. If you do, you'll be asked to sign in there once more — that's normal, just a one-time thing.\n\n— Muskellunge Lake Resort`;
 }
 
 // Like requireUser, but also confirms the caller is an admin (profiles.is_admin,
@@ -451,7 +476,7 @@ app.post("/admin/invite-link", express.json(), inviteLimiter, requireAdmin, asyn
       await transport.sendMail({
         from: ALERT_FROM,
         to: email,
-        subject: "You're invited to MLR 🌲",
+        subject: "🌲 The new MLR App is here — you're invited!",
         text: inviteEmailText(name, actionLink),
         html: inviteEmailHtml(name, actionLink),
       });
