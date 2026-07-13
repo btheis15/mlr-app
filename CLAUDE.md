@@ -36,20 +36,25 @@ the tab, resort content recedes) → **wrap** (2 weeks after: the full takeover
 lingers, nudging people to post the photos they didn't get to). See **Family
 Fest season** below.
 
-**Data model:** client-only for now. Resort content (activities, dining,
-amenities, Family Fest highlights) is static in [`lib/data.ts`](lib/data.ts);
-types in [`lib/types.ts`](lib/types.ts). Identity, chat, alert dismissals, and
-admin-posted alerts persist per-device in `localStorage`. Several features are
-deliberately scaffolded with a clean seam for a backend — see **Backend seams**.
+**Data model:** a mix by now — Supabase (Postgres + RLS + realtime) backs
+identity, posts/chat, events/RSVP, committees, houses, polls, and more (see the
+migrations below); a shrinking set of seed content (committee display roster,
+resort events seed, Family Fest schedule/dinners fallback) still lives in
+[`lib/data.ts`](lib/data.ts) as the pre-migration/offline fallback, never as the
+only source once its table exists. Types in [`lib/types.ts`](lib/types.ts).
+Some device-local bits (alert dismissals, demo-date override) still persist in
+`localStorage`. Remaining gaps are scaffolded with a clean seam — see **Backend
+seams**.
 
 ## The tabs
 
 | Route | File | Status |
 |---|---|---|
-| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: the hero MLR logo, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), **Get involved** ([`HomeGetInvolved`](components/HomeResortGroups.tsx) — Events/Work Weekends · Committees), **Ask for Help + People** side-by-side tiles ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)), **Around the resort** ([`HomeAroundResort`](components/HomeResortGroups.tsx) — Cabin Stay · Local Places), an "App & help" group, one-line heritage |
-| `/activities` | [`app/activities/page.tsx`](app/activities/page.tsx) | Resort activities grouped by category |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up) · `schedule` (+ anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (+ `dinners/[id]`) · `crew` ([`CrewView`](components/CrewView.tsx)) · `photos` ([`PhotosView`](components/PhotosView.tsx)) · `pay` ([`PayView`](components/PayView.tsx)) |
-| `/chat` | [`app/chat/page.tsx`](app/chat/page.tsx) | Resort chat ([`ChatView`](components/ChatView.tsx)), tied to identity |
+| `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: `WelcomeCard`/`HomeSignInCTA`, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), the collapsed-by-default [`WorkChecklist`](components/WorkChecklist.tsx), the always-visible **quick actions grid** ([`HomeQuickActions`](components/HomeQuickActions.tsx) — Events · People · Cabin Stay · Lend a Hand · Local Places · Committees), self-hiding **garnish cards** ([`WeatherCard`](components/WeatherCard.tsx) · [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) · [`ActivePollCard`](components/ActivePollCard.tsx) · [`BirthdaysCard`](components/BirthdaysCard.tsx) — see **Home delight cards**), [`HouseHubCard`](components/HouseHubCard.tsx), [`OnThisDayCard`](components/OnThisDayCard.tsx), an "App & help" group, one-line heritage |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion) · `schedule` (index page + anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (index page + `dinners/[id]`, crew houses + head chef live in the detail page — there's no separate Crew page/route) · `photos` ([`FestPhotos`](components/FestPhotos.tsx) — fest-window photos pulled from the shared Posts feed, members-only) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
+| `/posts` | [`app/posts/page.tsx`](app/posts/page.tsx) | **Feed** tab — the resort-wide Posts feed plus a live chat for each committee/house you're in, switchable by pills, no overlay ([`FeedView`](components/FeedView.tsx) wrapping [`PostsView`](components/PostsView.tsx)/[`CommitteeChat`](components/CommitteeChat.tsx)/[`HouseChat`](components/HouseChat.tsx)). Members-only (`SignInWall`) |
+| `/polls` | [`app/polls/page.tsx`](app/polls/page.tsx) | **Polls** — the family's voting booth ([`PollsView`](components/PollsView.tsx) + [`PollComposer`](components/PollComposer.tsx)); any signed-in member can ask a question, one changeable vote each. Members-only (`SignInWall`). Not a tab — reached from the Home [`ActivePollCard`](components/ActivePollCard.tsx) when a poll is open, or `/polls` directly. See **Family polls** |
+| `/admin` | [`app/admin/page.tsx`](app/admin/page.tsx) | **Admin dashboard** — the front door for admin tools (9 cards + a Family Fest Planner link), gated by [`AdminGuard`](app/admin/AdminGuard.tsx). Not a tab — reached from Profile. See **Admin dashboard** |
 
 **Posts feed** ([`PostsView`](components/PostsView.tsx)) supports `@mentions` in
 **comments** as well as the existing post tagging — the comment box has inline
@@ -72,17 +77,19 @@ tombstone for everyone, regardless of who removed it; edits stamp `edited_at` an
 show a subtle "edited". The 24h-author / admin-anytime rule is enforced in RLS,
 not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_edit_delete.sql)).
 | `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
-| `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx)). **Not a tab** — reached from the People tile on Home ([`HomeHelpPeople`](components/HomeHelpPeople.tsx)) |
-| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), admin alert + notification composers, sign out. **The last bottom tab** (👤) — it moved back here from the header avatar, which was removed |
-| `/dining` | [`app/dining/page.tsx`](app/dining/page.tsx) | Dining + amenities (linked from Home, not a tab) |
+| `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx)). Members-only (`SignInWall`). **Not a tab** — reached from the People tile in [`HomeQuickActions`](components/HomeQuickActions.tsx) |
+| `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, avatar, contact/pay settings, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), Ask-for-Help opt-in, text size, sign out. Now **flattened** — the old nine nested admin accordions moved to the standalone **`/admin` dashboard** (a single `RowLink` here for admins); Preview-As moved to `/admin/preview`. **The last bottom tab** — it moved back here from the header avatar, which was removed |
 | `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 | `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
 | `/help` | [`app/help/page.tsx`](app/help/page.tsx) | **Help & how-to** — non-technical onboarding: what the app is, browse-vs-sign-in, "I didn't get my code" troubleshooting, add-to-home-screen ([`InstallButton`](components/InstallButton.tsx)), a **text-size control** ([`TextSizeControl`](components/TextSizeControl.tsx)), and a **"Take a quick tour"** link to the guided-tour walkthrough ([`/guide`](app/guide/page.tsx) — an in-app viewer that embeds `public/mlr-app-guide.pdf`, the portrait presenter/onboarding deck, keeping the TabBar + a Back button so it's never a dead-end; also surfaced as its own card in Home's "App & help" group). Leads with a human escape hatch (text/email `HELP_CONTACT` in [`lib/help.ts`](lib/help.ts)). Linked from Profile + the sign-in sheet. Not a tab |
 
 Bottom nav: [`components/TabBar.tsx`](components/TabBar.tsx) (the `TABS` array
 is the single source of truth for routes + labels + icons): Home · Feed ·
-Family Fest · Activity · **Profile** (👤). (Profile moved back to a tab from the
-old header avatar; People moved off the bar to a Home tile.)
+Family Fest · Activity · **Profile**. Icons are the hand-rolled SVG set in
+[`components/Icon.tsx`](components/Icon.tsx) — the bar no longer renders emoji
+(a tent replaces the old crossed-swords Family Fest glyph; the live dot/badges/
+fest color are unchanged). (Profile moved back to a tab from the old header
+avatar; People moved off the bar to a Home tile.)
 
 Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
 **Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —
@@ -96,16 +103,17 @@ hero**: a viewport-derived `clamp()` (the `#app-logo` rule in
 [`app/globals.css`](app/globals.css)) is the no-JS baseline, and an effect in
 `AppHeader` **refines it against the live layout** — it measures the marked
 anchor card and sizes the logo so it lands ~12px above the tab bar. The anchor
-is **dynamic**: normally the Ask-for-Help / People row (`[data-fit-anchor]`,
-[`HomeHelpPeople`](components/HomeHelpPeople.tsx)), with the "Around the resort"
-group just past the fold — **but when Home has no upcoming events** (the
-`[data-home-events]` block in [`UpcomingEvents`](components/UpcomingEvents.tsx)
-renders nothing) it drops to the "Around the resort" group
-(`[data-fit-anchor-empty]`, [`HomeAroundResort`](components/HomeResortGroups.tsx))
-so the logo **shrinks to show it** instead of ballooning to fill the freed
-space. It fits at load / when the beta tile resolves / on viewport
-change, **not** on live reflow — so opening an accordion just scrolls. Shrinks to
-the old `h-16` on short screens (SE).
+is **dynamic**: normally the quick-actions grid (`[data-fit-anchor]`,
+[`HomeQuickActions`](components/HomeQuickActions.tsx)) — **but when Home has no
+upcoming events** (the `[data-home-events]` block in
+[`UpcomingEvents`](components/UpcomingEvents.tsx) renders nothing) it drops to
+the "App & help" group at the bottom of Home
+(`[data-fit-anchor-empty]`, in [`app/page.tsx`](app/page.tsx)) so the logo
+**shrinks to show it** instead of ballooning to fill the freed space (the
+garnish cards + House Hub in between self-hide for most viewers, so that group
+is usually the next landing spot). It fits at load / on viewport change, **not**
+on live reflow — so scrolling or a card self-hiding after mount doesn't
+re-trigger it. Shrinks to the old `h-16` on short screens (SE).
 
 App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
 the green logo center-screen, then **flies + zooms it into the header's
@@ -122,13 +130,22 @@ set, header logo shows normally).
 Built for a family of mixed ages, so the rough edges that stop the least
 technical members are smoothed:
 
-- **Sign-in (`SignInGate` in [`IdentityProvider`](components/IdentityProvider.tsx))** — passwordless email-OTP with a **"check your spam"** hint, a **Resend code** button (30s cooldown so taps can't trip Supabase's rate limit), plain-language error mapping (`friendlyAuthError`), and a "Need help signing in?" link to `/help`. Code input is 6 digits (matches Supabase's default). Every sign-in entry routes through `promptSignIn()`, so that's the one chokepoint for sign-in gating.
+- **Sign-in (`SignInGate` in [`IdentityProvider`](components/IdentityProvider.tsx))** — passwordless email-OTP with a **"check your spam"** hint, a **Resend code** button (30s cooldown so taps can't trip Supabase's rate limit), plain-language error mapping (`friendlyAuthError`), and a "Need help signing in?" link to `/help`. Code input is **digit-count-agnostic on purpose** — it accepts 6-8 digits rather than hard-coding a length, since Supabase's email OTP is 6 digits by default and this can't drift out of sync with however the project is actually configured (see `supabase/README.md` "Auth emails"). Every sign-in entry routes through `promptSignIn()`, so that's the one chokepoint for sign-in gating.
 - **"Add it first, sign in once" nudge** ([`InstallFirstNudge`](components/InstallFirstNudge.tsx)) — on **iOS**, Safari and the installed Home-Screen PWA keep **separate** logins, so a guest who signs in *in the browser* then adds MLR later has to sign in a **second** time in the icon app. So `promptSignIn()` intercepts when `isIos() && !isStandalone()` and shows this interstitial first (prominent "Add to Home Screen" → `requestInstall()` opens the same `InstallHint` walkthrough — there's no one-tap install API on iOS; plus a "Sign in here anyway" that falls through to `SignInGate`). Gated to iOS because Android/desktop installed PWAs reuse the browser session — no double sign-in to warn about.
 - **Install** — [`InstallHint`](components/InstallHint.tsx) is the single install authority: the iOS first-run nag **plus** on-demand install via `requestInstall()` ([`lib/install.ts`](lib/install.ts)). On Android/desktop Chrome it fires the captured native `beforeinstallprompt`; on iOS it opens the Safari walkthrough. [`InstallButton`](components/InstallButton.tsx) (Home, Profile, Help) is the re-entry point — it self-hides once installed.
 - **Welcome** — [`WelcomeCard`](components/WelcomeCard.tsx) shows once per device on Home, orienting newcomers to browse-first + no-password sign-in.
 - **First-run member onboarding** — [`WelcomeIntro`](components/WelcomeIntro.tsx) is a guided two-step sheet that pops the first time a **brand-new** member verifies their sign-in code, when their profile is still essentially empty (only the name they typed at signup). **Step 1** welcomes them and collects the basics inline — phone, birthday, preferred payment — so they never have to discover Settings; **step 2** explains push and drops them into the real [`PushToggle`](components/PushToggle.tsx) settings (master on by default → untick what they don't want), then lands them on Home. It's gated by `IdentityProvider` `needsIntro` (`profiles.intro_seen` false **and** the profile is sparse), computed in a **separate, guarded** query so a pre-migration column never breaks sign-in. It deliberately **supersedes the standalone [`PushPrompt`](components/PushPrompt.tsx)** (which now holds off while `needsIntro`, and reaching the push step stamps `push_prompted` so nobody is asked twice). Migration [`0045`](supabase/migrations/0045_member_intro.sql) adds `profiles.intro_seen` (new accounts default false; existing members backfilled true so the current family isn't re-onboarded).
 - **Text size + zoom** — [`TextSizeControl`](components/TextSizeControl.tsx) overrides the `<html>` rem root (17/19/21px); a boot script in [`layout.tsx`](app/layout.tsx) re-applies the saved choice before paint. Pinch-zoom is now allowed (viewport `userScalable: true`, was disabled). `body` uses `font-size: 1rem` so the override scales the whole app — **don't re-pin a px font-size on `body`/`html`** or you break it.
 - **Sign-in walls** ([`Guard`](components/Guard.tsx), `CommitteeJoin`, `CommitteeChat`) carry a "just your name & email, no password" reassurance.
+- **Pull-to-refresh** — [`PullToRefresh`](components/PullToRefresh.tsx), mounted
+  in [`app/template.tsx`](app/template.tsx), re-adds the native gesture the app
+  intentionally disables elsewhere (`overscroll-behavior-y: none` on html/body
+  stops the fixed TabBar from bouncing — see `app/globals.css`). Dependency-free:
+  drag down from the document scroller's top → a damped indicator follows,
+  release past a threshold → one `location.reload()`. Axis-locked against
+  CalloutStack's horizontal swipes, skips when a sheet/dialog is open or the
+  touch starts inside an inner scroller (chat lists, sheet bodies), reduce-motion
+  aware, touch-only, reloads at most once per gesture.
 
 ## Committees & account linking
 
@@ -191,10 +208,15 @@ grants committee access. Email is the only **auto**-link key — the
 [`nameMatches()`](lib/committees.ts) fallback stays **display-only** (never
 stamps the link), so a slot only auto-replaces when the signup email matches its
 roster email (a no-email slot or a mismatched signup email needs an admin to
-"pick a member"). ⚠️ The roster emails ship in the **client bundle** (needed for
-both the link key and `mailto:`); consistent with the app's existing "seed
-contact ships in the bundle" posture (see the privacy wall note) — display is
-still gated behind sign-in.
+"pick a member"). The DB-backed roster (`committee_roster`, read via
+[`lib/committeeRoster.ts`](lib/committeeRoster.ts) `fetchCommitteeRoster()`) is
+where the emails/phones used for the link key and `mailto:`/`tel:` actually
+live — **not** the static `COMMITTEES` seed in `lib/data.ts`, which carries
+names/roles only (no `email`/`phone` fields at all — see **Committees & account
+linking**'s intro). Since migration
+[`0081`](supabase/migrations/0081_rls_lockdown.sql), `committee_roster` reads
+are members-only (`auth.uid() is not null`), so those emails no longer ship to
+an anonymous fetch either — display is gated behind sign-in at both layers now.
 
 **No name badge** — there used to be a tiny committee emoji tag next to a
 person's name throughout the app (`CommitteeBadge`, keyed off the roster via a
@@ -334,12 +356,12 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
 - **Admins** — strictly `profiles.is_admin` in Supabase; the database is the
   **single source of truth** (there is no client allow-list — it could only grant
   UI the server won't honor). The first admin is bootstrapped once from the SQL
-  editor; after that admins promote each other in-app. Admins see, in
-  Profile → Admin: the alert composer
-  ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)), the **member
-  directory** ([`AdminMembers`](components/AdminMembers.tsx)) — promote/remove-admin
-  *and* permanently remove a member — and **recent sign-ins**
-  ([`AdminSignins`](components/AdminSignins.tsx)). Clients can't write `is_admin`
+  editor; after that admins promote each other in-app. Admins reach every admin
+  tool from the **`/admin` dashboard** (see **Admin dashboard** below); the
+  member directory ([`AdminMembers`](components/AdminMembers.tsx)) —
+  promote/remove-admin *and* permanently remove a member — and **recent
+  sign-ins** ([`AdminSignins`](components/AdminSignins.tsx)) live at
+  `/admin/members` and `/admin/signins`. Clients can't write `is_admin`
   (column-level grant in `0001`, insert guard in `0010`); admin-gated SECURITY
   DEFINER functions back the rest: `admin_members()` + `set_admin()`
   ([`0008`](supabase/migrations/0008_admin_members.sql)), `delete_member()` (hard
@@ -348,10 +370,11 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   `recent_signins()` (GoTrue audit log + IP, geolocated client-side —
   [`0011`](supabase/migrations/0011_admin_signin_log.sql)). Each section shows a
   "run the migration" hint until its function exists. Admins can also **view as**
-  a member or guest ([`PreviewAs`](components/PreviewAs.tsx) + floating
-  [`PreviewBanner`](components/PreviewBanner.tsx)) — a device-local, UI-only
-  `previewMode` override in `IdentityProvider` that re-renders the app as that
-  role (to check the privacy wall); it never touches the real Supabase session.
+  a member or guest ([`PreviewAs`](components/PreviewAs.tsx) at `/admin/preview`
+  + floating [`PreviewBanner`](components/PreviewBanner.tsx)) — a device-local,
+  UI-only `previewMode` override in `IdentityProvider` that re-renders the app as
+  that role (to check the privacy wall); it never touches the real Supabase
+  session.
 - **Announcement banner** — [`components/AnnouncementBanner.tsx`](components/AnnouncementBanner.tsx)
   shows notices at the top of the app (server-fed seed +
   admin-posted alerts), dismissible per-device. Admin alerts also **auto-expire**
@@ -371,10 +394,12 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   **first name only** for guests). `useGuest()` returns `guest = isSupabaseConfigured && !user`,
   so with no backend the app stays fully open (we never lock everyone out of an
   app that can't sign in); during prerender `user` is null, so the static HTML
-  ships the gated/guest view. Applied to: Posts, Pay/dues, MemberSheet
-  (contact+pay), schedule/dinner/committee detail pages (locations, chef/lead/member
-  contacts, "houses on crew"), FestStatus/FestWeek (today's locations + contacts),
-  DinnerCrew, CrewView (household names), CommitteeJoin. **The database now
+  ships the gated/guest view. Applied to: Posts (`/posts`), Photos
+  (`/family-fest/photos`), Polls (`/polls`), People (`/people`), Pay/dues,
+  MemberSheet (contact+pay), schedule/dinner/committee detail pages (locations,
+  chef/lead/member contacts), FestStatus/FestWeek (today's locations + contacts),
+  CommitteeJoin — the first four are whole-screen `SignInWall`s, the rest use
+  `Protected`/`PrivateName` inline. **The database now
   enforces this wall too** (migration
   [`0081`](supabase/migrations/0081_rls_lockdown.sql)): profiles, posts (+
   comments/media/tags/reactions/mentions/albums), committee_roster,
@@ -386,8 +411,64 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   catch a missing view (42P01) pre-migration. Guest-visible surfaces degrade to
   sign-in nudges instead of false empties (EventCard/EventSheet/FestRsvp "Sign
   in to see who's coming", WorkChecklist "Sign in to see the resort to-do
-  list"). ⚠️ Sensitive **seed** data (roster emails etc.) still ships in the
-  client bundle — keeping PII out of the bundle is the remaining step.
+  list"). PII is now also mostly out of the **client bundle**: the committee
+  roster seed in `lib/data.ts` carries names/roles only (no `email`/`phone`),
+  and `lib/help.ts`'s `HELP_CONTACT` no longer hard-codes a real name/phone/email
+  (stripped along with ~18 relatives' contact details in the same pass — see
+  **Resort config**/migration 0082). The one deliberate exception is
+  `resort_config`'s help-contact fields, which stay **public-read by design** —
+  they're the sign-in escape hatch itself, so they can't be gated behind the
+  sign-in they exist to unblock (see the 0082 migration header).
+
+## Admin dashboard
+
+`/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for
+every admin tool — a two-column grid of 9 cards plus a Family Fest Planner banner,
+replacing the ~9 stacked, nested accordions that used to live in Profile →
+Admin. Each card links to its own `/admin/*` sub-page mounting the same
+component that used to live in the accordion (unchanged data flow, just less
+nesting):
+
+| Card | Route | Component |
+|---|---|---|
+| Members | `/admin/members` | [`AdminMembers`](components/AdminMembers.tsx) + [`AdminProfileOverride`](components/AdminProfileOverride.tsx) |
+| Alerts & Notifications | `/admin/alerts` | [`AdminAlertComposer`](components/AdminAlertComposer.tsx) + [`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) |
+| Content review | `/admin/content-review` | [`AdminModeration`](components/AdminModeration.tsx) |
+| Committees & join requests | `/admin/committees` | [`AdminCommittees`](components/AdminCommittees.tsx) (also mounts the per-committee join-request queue) |
+| Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
+| Cabin requests | `/admin/cabins` | [`AdminCabinBookings`](components/AdminCabinBookings.tsx) |
+| Resort info | `/admin/resort-info` | [`AdminResortConfig`](components/AdminResortConfig.tsx) — see **Resort config** |
+| Sign-ins | `/admin/signins` | [`AdminSignins`](components/AdminSignins.tsx) |
+| View as | `/admin/preview` | [`PreviewAs`](components/PreviewAs.tsx) |
+
+Every sub-page wraps its content in [`AdminGuard`](app/admin/AdminGuard.tsx) —
+a skeleton while identity is still resolving, an "Admins only" card + a way back
+Home for non-admins, the real page otherwise — so the isAdmin check + copy live
+in one place instead of being repeated nine times. The dashboard also links to
+`/family-fest/planner` (schedule, dinners, dues, and the Home callout cards —
+see **Home call-out stack**). Profile itself is now **flattened**: it keeps
+identity/avatar/contact/notification-prefs/text-size, and just a single
+`RowLink` to `/admin` for admins.
+
+## Resort config
+
+The Help page's human escape-hatch contact (name/phone/email) and basic public
+resort info (address/phone/wifi/check-in) are no longer hard-coded strings in
+the client bundle — they're a singleton row in Supabase (`resort_config`,
+migration [`0082`](supabase/migrations/0082_resort_config.sql)), fetched by
+[`lib/resortConfig.ts`](lib/resortConfig.ts) `fetchResortConfig()` and edited
+in-app via [`AdminResortConfig`](components/AdminResortConfig.tsx)
+(`/admin/resort-info`). `RESORT_CONFIG_FALLBACK` in the same file mirrors the
+old hard-coded values and is used verbatim whenever the live value can't be
+trusted (no Supabase configured, the 0082 migration hasn't run, or an
+unexpected read error) — never throws. Read is **deliberately public**
+(anon + authenticated): `help_contact_*` is the sign-in escape hatch itself, so
+it can't be gated behind the very sign-in it exists to unblock; the
+address/phone/wifi/check-in fields are ordinary public business info, not PII.
+Writes are admin-only (RLS against `profiles.is_admin`). `app/help/page.tsx` is
+the one place that fetches + renders the live contact today — any new consumer
+should call `fetchResortConfig()` too rather than reading real values from
+`lib/help.ts`'s now-neutral `HELP_CONTACT` placeholder.
 
 ## Family Fest season (the "one app" spine)
 
@@ -438,7 +519,8 @@ Planner's dues editor ([`FestPlanner.tsx`](components/FestPlanner.tsx)
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**
 so temporary call-outs (future news/alerts) don't push the
-page down — keeping the **Ask for Help** row below always in view.
+page down — keeping the content below (nearest-event spotlight, Work
+Checklist, the quick-actions grid) always in view without extra scrolling.
 [`HomeSpotlight`](components/HomeSpotlight.tsx) assembles the stack and
 [`CalloutStack`](components/CalloutStack.tsx) renders + animates it.
 
@@ -478,6 +560,35 @@ page down — keeping the **Ask for Help** row below always in view.
   legitimately means "no call-outs". The `home_callouts` realtime subscription
   sits on its **own channel** in [`lib/useFestContent.ts`](lib/useFestContent.ts)
   so a pre-0083 database can't fail the fest tables' shared channel join.
+
+## Home delight cards
+
+Below the quick-actions grid, Home carries a run of light, **self-hiding
+garnish cards** — each renders nothing when it has nothing to say (guest, no
+data, table not migrated yet), so Home never grows an empty box:
+
+- [`WeatherCard`](components/WeatherCard.tsx) — today's temp + forecast for the
+  lake, from **Open-Meteo** (no API key), fixed lat/long for Tomahawk, WI,
+  cached in `localStorage` for 30 minutes.
+- [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) — members-only strip of
+  who's at the resort *today*, reusing Ask-for-Help's presence rule (going to
+  an event within its ±2-day window, or an approved cabin stay covering today)
+  via the shared [`lib/presence.ts`](lib/presence.ts) (extracted from
+  `lib/helpRequests.ts`'s single-viewer `amIPresent` check, widened to "who,
+  not just am I").
+- [`ActivePollCard`](components/ActivePollCard.tsx) — the newest open poll's
+  question + running vote count, linking to `/polls`. See **Family polls**.
+- [`BirthdaysCard`](components/BirthdaysCard.tsx) — members with a birthday in
+  the next 14 days.
+- [`HouseHubCard`](components/HouseHubCard.tsx) — unchanged from before (see
+  **Houses**), sits just after these.
+- [`OnThisDayCard`](components/OnThisDayCard.tsx) — a photo memory from a prior
+  year within ±3 days of today's month-day, pulled from Posts feed photos.
+  Members only.
+
+All of these are client components reading Supabase directly (no new backend
+seam); none needs its own migration beyond the tables they already read
+(events/attendance/cabins, polls 0084, profiles, posts).
 
 ## Resort events & attendance
 
@@ -586,6 +697,33 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   request (`respond_to_help` + `claim_help_item` waive the beta gate for urgent).
   Non-urgent types keep the willing + present targeting and the beta gate.
 
+## Family polls
+
+A dead-simple voting tool for the questions the family actually argues about
+(fest merch designs, meal choices, dates). Unlike events (admin-managed), **any
+signed-in member can create a poll** — a question + 2-10 options; every member
+gets exactly **one vote per poll** (the primary key on `poll_votes` enforces
+it) and can change it any time while the poll is open. A poll closes when its
+creator or an admin closes it, or when its optional `closes_on` date has passed
+(open *through* that day).
+
+- **Data model:** migration [`0084`](supabase/migrations/0084_polls.sql) —
+  `polls` / `poll_options` / `poll_votes`, all **members-only reads**
+  (`auth.uid() is not null` — the 0081 doctrine, not public: votes are member
+  activity, no reason for a guest/scraper to see them). All writes go through
+  SECURITY DEFINER RPCs: `create_poll(question, options[], closes_on)`,
+  `cast_poll_vote(poll, option)`, `close_poll(poll)`, `delete_poll(poll)` —
+  creator-or-admin gated where it matters, the same shape as events/attendance
+  (0034/0035). Realtime-enabled.
+- **Client:** [`lib/polls.ts`](lib/polls.ts) (`fetchPolls`, `createPoll`,
+  `castVote`, `closePoll`, `deletePoll`) degrades to "no polls" on a missing
+  table (42P01, pre-migration) or no Supabase config — never throws.
+- **Surfaces:** [`/polls`](app/polls/page.tsx) →
+  [`PollsView`](components/PollsView.tsx) (list + vote/results + close/delete
+  for the creator or an admin) + [`PollComposer`](components/PollComposer.tsx)
+  (question + options form). Home's [`ActivePollCard`](components/ActivePollCard.tsx)
+  spotlights the newest open poll (see **Home delight cards**).
+
 ## Content safeguards (feed moderation)
 
 Layered safeguards on the social surfaces (Posts + comments + uploaded media) so
@@ -627,8 +765,6 @@ These are built UI-first with the swap point isolated to one module each:
 |---|---|---|
 | Google-Drive-fed announcements | [`lib/announcements.ts`](lib/announcements.ts) `getAnnouncements()` | server route reading a Drive file (API or published CSV/JSON), revalidated / webhook-pushed |
 | Google-Calendar events feed | [`lib/events.ts`](lib/events.ts) `fetchGcalEvents()` (returns `[]`) | fetch + parse a **published Google Calendar ICS** (`NEXT_PUBLIC_GOOGLE_CALENDAR_ICS_URL`, no OAuth) → `ResortEvent[]` (`source: "gcal"`), merged in `fetchEvents()` |
-| Email OTP / magic link | `IdentityProvider` sign-in | verify email before `setUser` |
-| Shared chat | [`components/ChatView.tsx`](components/ChatView.tsx) (localStorage) | shared DB + realtime/poll |
 | Admin alerts → broadcast | [`lib/localAnnouncements.ts`](lib/localAnnouncements.ts) | server validates admin, broadcasts, **emails opted-in guests**, web-push for Android |
 | Email alerts opt-in | `user.emailAlerts` flag | mail provider (Resend/SendGrid) sends on alert |
 
@@ -698,6 +834,14 @@ The AI moderation path ([`moderation.js`](media-server/moderation.js)) uses
 `sharp` to downscale a **copy** of each image/sampled video frame to ≤1024px
 before base64 — the local `fm serve` classifier caps the request body at 1 MB, so
 full-res phone photos would otherwise 413. The stored/served media is untouched.
+It's also been **hardened**: CORS fails closed (an unset/empty
+`ALLOWED_ORIGINS` no longer means "allow everything"), per-endpoint rate limits
+(`/upload` 30/hour, `/moderate/text` 60/min, `/geocode` 30/min, `trust proxy`
+aware), `/geocode` now requires sign-in (same `requireUser` check as
+`/upload`), `helmet` adds baseline security headers (CSP intentionally off —
+see the README), and the `MAX_MB` upload cap default dropped to **256** (was
+1024). See [`media-server/README.md`](media-server/README.md) for the full
+list and the `npm install` + restart needed on the mini.
 
 ## AI Assistant ("Ask MLR")
 
@@ -755,6 +899,12 @@ handler breaks the Pages `output: export`); its wrapper + env vars are in
   page. The resort wordmark uses `.font-script` (Yellowtail, via next/font).
   `--color-fest` is the Family Fest heraldic wine for fest-branded accents
   *outside* `.ff-section` (e.g. the TabBar's Family Fest tab + live dot).
+  `--color-muted` / `--color-faint` are the readability floor for
+  secondary/caption text (timestamps, subtitles, helper text) — use these
+  instead of an opacity modifier on `text-foreground` (e.g. `text-foreground/40`
+  reads too faint for older eyes); swept across ~40 components. `--color-venmo`
+  / `--color-paypal` tokenize the third-party pay-button brand colors
+  (`PayView`) so no hex is hard-coded there either.
   - ⚠️ **LIGHT MODE ONLY — never add a dark theme.** And **never** use a dark
     translucent surface tint (`bg-black/NN`, `bg-zinc-*/NN`) as a card/panel bg —
     it goes muddy grey on light (a recurring issue across the author's apps).

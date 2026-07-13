@@ -260,12 +260,16 @@ export function FeedView() {
       const hc = await loadHouse();
       await loadChannels();
       if (cancelled) return;
-      // Deep-links: ?c=slug&area= (committee) or ?house=slug (house).
+      // Deep-links: ?post=<id> (a Family Feed post — Activity notifications
+      // and the On-This-Day Home card land here; PostsView scrolls to + flashes
+      // it), ?c=slug&area= (committee), or ?house=slug (house).
       const params = new URLSearchParams(window.location.search);
       const wantSlug = params.get("c");
       const wantArea = params.get("area") ?? "";
       const wantHouse = params.get("house");
-      if (wantSlug) {
+      if (params.get("post")) {
+        setActive("posts");
+      } else if (wantSlug) {
         const key = `${wantSlug}|${wantArea}`;
         if (mine.some((c) => c.key === key)) setActive(key);
       } else if (wantHouse && hc && hc.slug === wantHouse) {
@@ -385,7 +389,7 @@ export function FeedView() {
   // The house chat opened from the list.
   if (houseChannel && active === houseChannel.key) {
     return (
-      <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+      <div ref={chatBoxRef} data-ptr-block className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
           <BackButton
             label={openedFromHouseRef.current ? "House" : "Feed"}
@@ -408,7 +412,7 @@ export function FeedView() {
   if (activeChannel) {
     return (
       <>
-        <div ref={chatBoxRef} className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <div ref={chatBoxRef} data-ptr-block className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
             <BackButton label="Feed" onClick={() => setActive("list")} />
             <div className="min-w-0 flex-1 text-center">

@@ -7,12 +7,15 @@ import { CalloutCard } from "@/components/CalloutCard";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import type { HomeCallout } from "@/lib/festContent";
 
-/** Is this call-out showing today? `today` is null until mounted — treat that
- *  as "show" so a card never pops in after hydration; null bounds are
+/** Is this call-out showing today? `today` is null until mounted: an
+ *  UNBOUNDED card shows immediately (it can't be wrong), but a date-bounded
+ *  card waits for the real date — otherwise an expired card would flash on
+ *  every cold open and vanish after hydration, which reads as a glitch.
+ *  Appearing a beat late is the calmer failure mode. Null bounds are
  *  open-ended; `endsOn` is the inclusive last day shown. */
 function isLive(c: HomeCallout, today: string | null): boolean {
   if (!c.isActive) return false;
-  if (today === null) return true;
+  if (today === null) return !c.startsOn && !c.endsOn;
   if (c.startsOn && today < c.startsOn) return false;
   if (c.endsOn && today > c.endsOn) return false;
   return true;

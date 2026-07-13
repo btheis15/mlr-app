@@ -68,6 +68,9 @@ export function PullToRefresh() {
       dead.current = true;
       if (reloaded.current || e.touches.length !== 1) return;
       if (document.querySelector('[role="dialog"]')) return; // sheet/overlay open
+      // A viewport-pinned surface (FeedView's open chat) owns the whole screen
+      // while the document scroller sits at 0 — a pull there must never reload.
+      if (document.querySelector("[data-ptr-block]")) return;
       if (scrollTop() > 0) return;
       if (inInnerScroller(e.target)) return;
       const t = e.touches[0];

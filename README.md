@@ -1,8 +1,9 @@
 # Muskellunge Lake Resort (MLR)
 
-The year-round resort app — activities, dining, an embedded Family Fest hub,
-resort chat, and a signed-in **"Ask MLR" AI assistant** (answers from your resort
-info — never private chats; see [`docs/ai-assistant.md`](docs/ai-assistant.md)) —
+The year-round resort app — Home, an embedded Family Fest hub, a resort Feed
+(posts + committee/house chat), events & RSVP, polls, and a signed-in
+**"Ask MLR" AI assistant** (answers from your resort info — never private
+chats; see [`docs/ai-assistant.md`](docs/ai-assistant.md)) —
 installable to your phone's home screen. **Light mode only**, built
 around the official **forest-green** Muskellunge Lake Resort logo (cabin in the
 pines, EST 1987) with vintage heritage from the original resort (Leo & Dorothy
@@ -10,13 +11,14 @@ Theis · Fishing · Hunting · Boating · Tomahawk, WI).
 
 > **Live:** https://mlr-app-omega.vercel.app (Vercel) · https://btheis15.github.io/mlr-app/ (Pages)
 >
-> **Status: read-only launch.** The whole browse experience is live (Home,
-> Activities, Dining & amenities, the Family Fest hub, reading Chat) against seed
-> data in [`lib/data.ts`](lib/data.ts). Interactive features (sign-in, chat
-> posting, RSVP, admin alerts) are gated behind a "coming soon" via the
-> `READ_ONLY` flag in [`lib/features.ts`](lib/features.ts) until the Supabase
-> backend lands — see [CLAUDE.md](./CLAUDE.md) "Backend seams" and
-> [NEXT-STEPS.md](./NEXT-STEPS.md).
+> **Status:** Supabase is wired in for most of the app now (auth, posts/chat,
+> events/RSVP, committees, houses, polls, admin tools — see the migrations in
+> [`supabase/`](supabase/)); a handful of pieces are still seam-only until a
+> backend lands for them — see [CLAUDE.md](./CLAUDE.md) "Backend seams" and
+> [NEXT-STEPS.md](./NEXT-STEPS.md). When `NEXT_PUBLIC_SUPABASE_URL` isn't set
+> (no backend configured for a given deployment), the app falls back to a
+> read-only browse experience against seed data in [`lib/data.ts`](lib/data.ts)
+> instead of breaking (`isSupabaseConfigured` in [`lib/supabase.ts`](lib/supabase.ts)).
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbtheis15%2Fmlr-app)
 
@@ -45,6 +47,7 @@ app/            App Router routes (page.tsx per tab) + layout + globals.css
 components/     TabBar, InstallHint, shared UI
 lib/            format.ts and other pure helpers
 public/         manifest.webmanifest, icon.svg
+supabase/       migrations/ (numbered, run in order) — see supabase/README.md
 media-server/   Mac-mini side: uploads, transcode, push + APNs senders, fm-service
 ios/            Native SwiftUI app (see "iOS app" below) — shares this Supabase backend
 docs/           ios-swiftui-strategy.md, ai-assistant.md, content-moderation.md
@@ -124,7 +127,35 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
   (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
   attendance**.
-- **Ask for Help (BETA)** — at `/help-requests`, a member who's at the resort posts
+- **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
+  Alerts & Notifications, Content review, Committees & join requests, Houses,
+  Cabin requests, Resort info, Sign-ins, and View as — each its own `/admin/*`
+  sub-page behind [`AdminGuard`](app/admin/AdminGuard.tsx), replacing the ~9
+  nested accordions that used to live in Profile → Admin (Profile itself is now
+  flattened to just identity/settings + a link here for admins). Also links to
+  the Family Fest Planner. See CLAUDE.md → **Admin dashboard**.
+- **Resort config** — the Help page's human contact (name/phone/email) and
+  basic public resort info (address/phone/wifi/check-in) are admin-editable
+  in-app (`/admin/resort-info` → [`components/AdminResortConfig.tsx`](components/AdminResortConfig.tsx))
+  instead of hard-coded strings in the client bundle. Backed by the
+  `resort_config` singleton (migration
+  [`0082_resort_config.sql`](supabase/migrations/0082_resort_config.sql));
+  [`lib/resortConfig.ts`](lib/resortConfig.ts) falls back to the old hard-coded
+  values when Supabase isn't configured or the migration hasn't run. See
+  CLAUDE.md → **Resort config**.
+- **Family polls** — at `/polls`, any signed-in member can ask the family a
+  question (2-10 options); everyone gets one changeable vote per poll. The
+  newest open poll surfaces on Home via `ActivePollCard`. Migration
+  [`0084_polls.sql`](supabase/migrations/0084_polls.sql);
+  [`lib/polls.ts`](lib/polls.ts) + [`components/PollsView.tsx`](components/PollsView.tsx) /
+  [`components/PollComposer.tsx`](components/PollComposer.tsx). See CLAUDE.md →
+  **Family polls**.
+- **Pull-to-refresh** — [`components/PullToRefresh.tsx`](components/PullToRefresh.tsx),
+  mounted in [`app/template.tsx`](app/template.tsx), re-adds the pull-down-to-reload
+  gesture the app otherwise disables (the fixed TabBar needs
+  `overscroll-behavior-y: none`) — dependency-free, axis-locked against
+  horizontal swipe cards, skips open sheets/inner scrollers, reduce-motion aware.
+- **Ask for Help (BETA)** — at `/help-requests` (the "Lend a Hand" tile on Home), a member who's at the resort posts
   a short request for a hand (moving, setup, a ride, supplies, or 🚨 urgent); willing
   members who are *also* at the resort get a push, tap **On my way**, and the request
   reads **✅ Covered** once enough are coming. A request can also carry an optional
@@ -139,8 +170,9 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`lib/helpRequests.ts`](lib/helpRequests.ts) + `useHelpRequests`. See CLAUDE.md →
   **Ask for Help (BETA)**.
 - **Houses** — designate members into a house (e.g. "MJT House"); each member
-  belongs to **one** house (`profiles.house_id`), admin-assigned in Profile → Admin
-  → **Houses** ([`components/AdminHouses.tsx`](components/AdminHouses.tsx)). A house
+  belongs to **one** house (`profiles.house_id`), admin-assigned at
+  `/admin/houses` ([`components/AdminHouses.tsx`](components/AdminHouses.tsx) —
+  see **Admin dashboard**). A house
   gets a **private chat** (a channel in the Feed tab,
   [`components/HouseChat.tsx`](components/HouseChat.tsx)) and its **own work items**.
   The Work Checklist ([`components/WorkChecklist.tsx`](components/WorkChecklist.tsx))
@@ -167,10 +199,13 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →
   [`components/CalloutStack.tsx`](components/CalloutStack.tsx)), Robinhood-style:
   swipe (or ✕) to dismiss, the next slides up, and the spotlight base can't be
-  swiped — so the slot stays one card tall and Ask for Help below stays in view.
-  Dismissals are session-scoped (`sessionStorage`): a swiped card stays gone
-  while moving between tabs but comes back the next time the app is opened. See
-  CLAUDE.md → **Home call-out stack**.
+  swiped — so the slot stays one card tall and the content below stays in view.
+  Call-outs are **admin-managed rows**, not code — the `home_callouts` table
+  (migration [`0083_home_callouts.sql`](supabase/migrations/0083_home_callouts.sql))
+  is edited in the Family Fest Planner's **Callouts** section (image, title/body,
+  action button, show window). Dismissals are session-scoped (`sessionStorage`):
+  a swiped card stays gone while moving between tabs but comes back the next
+  time the app is opened. See CLAUDE.md → **Home call-out stack**.
 - **New-member onboarding** — the first time a brand-new member verifies their
   sign-in code (and their profile is still empty), a guided two-step Welcome sheet
   ([`components/WelcomeIntro.tsx`](components/WelcomeIntro.tsx)) collects the basics
@@ -184,7 +219,7 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   sensitive/inappropriate/illegal content doesn't sit in front of the family.
   The mini rejects non-image/video uploads by magic bytes; an admin-managed
   blocklist + member **Report** auto-hold flagged posts/comments for an admin
-  review queue (Profile → Admin → Content review); on-device Apple nudity/text
+  review queue (`/admin/content-review` — see **Admin dashboard**); on-device Apple nudity/text
   checks on the mini are the planned next layer. Migration
   [`0040_content_moderation.sql`](supabase/migrations/0040_content_moderation.sql);
   [`lib/moderation.ts`](lib/moderation.ts). Full writeup in

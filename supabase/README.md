@@ -178,6 +178,15 @@ on `cabin_bookings` that fan out into the in-app feed via `_notify()`. The mini'
 push-sender now checks the same `notif_types` before pushing cabin events, so the
 Profile → Notifications toggle turns feed **and** push on/off per type.
 
+⚠️ **For atomic post creation, run
+[`0080`](migrations/0080_create_post_atomic.sql)** (after 0040). Adds
+`create_post(caption, occurred_at, media, tags, held)` — lands a whole post
+(caption + media rows + tags) in **one transaction**, so a failure mid-post
+(flaky Wi-Fi, a bad tag id) rolls the whole thing back instead of leaving a
+half-finished post live in the feed. Same author/moderation/notification
+behavior as the old multi-insert path. Until it's run, the composer falls back
+to the old multi-insert path.
+
 ⚠️ **For the privacy-wall lockdown, run
 [`0081`](migrations/0081_rls_lockdown.sql).** Flips the `using (true)` SELECT
 policies to members-only (`auth.uid() is not null`) on profiles, posts (+
@@ -191,6 +200,29 @@ Events, cabins, announcements, committees, committee_areas, app_images, and the
 fest_content tables deliberately stay public (browse-first content, no PII).
 Until it's run the app behaves exactly as before — the guest clients fall back
 to the old reads when the view is missing (42P01).
+
+⚠️ **For resort-level config, run
+[`0082`](migrations/0082_resort_config.sql).** Adds the singleton
+`resort_config` table (the Help page's human contact — name/phone/email — plus
+address/phone/wifi/check-in), editable in-app via `AdminResortConfig`
+(Admin → Resort info). Read is **deliberately public** (it's the sign-in escape
+hatch itself); writes are admin-only. Until it's run, `lib/resortConfig.ts`
+falls back to the old hard-coded values.
+
+⚠️ **For admin-managed Home call-out cards, run
+[`0083`](migrations/0083_home_callouts.sql)** (after 0053). Adds the
+`home_callouts` table (title/body/image/action button/show window/position/
+active toggle) — public read (Home is browse-first), writes gated to
+`can_edit_fest()`. Edited in the Family Fest Planner's **Callouts** section.
+Until it's run, Home's call-out stack falls back to a single seeded t-shirt
+flyer (`FALLBACK_CALLOUTS`).
+
+⚠️ **For family polls, run [`0084`](migrations/0084_polls.sql).** Adds `polls` /
+`poll_options` / `poll_votes` (members-only reads) and the SECURITY DEFINER
+RPCs `create_poll()` / `cast_poll_vote()` / `close_poll()` / `delete_poll()`.
+Any signed-in member can create a poll; one changeable vote per member per
+poll. Until it's run, `/polls` and the Home `ActivePollCard` show no polls
+(missing-table 42P01 degrades to "no polls", not an error).
 
 ## Auth note
 
@@ -224,7 +256,11 @@ Sample body:
 <p>It expires shortly. If you didn't request it, ignore this email.</p>
 ```
 
-Also: **Sign In / Providers → Email → "Email OTP Length"** → **8** (the app
-accepts 6–8). Keep **"Secure email change" ON** — a self-serve email change then
-confirms via a code to the new address (with a heads-up to the old one), which
-the app verifies with `verifyOtp({ type: "email_change" })`.
+Also: no need to touch **Sign In / Providers → Email → "Email OTP Length"** —
+the app's code input is digit-count-agnostic (accepts 6–8 digits) precisely so
+it can't drift out of sync with whatever this project is configured to send;
+Supabase's default of **6** works fine as-is. (An earlier version of this doc
+called for setting it to 8 — that was never a real project requirement.) Keep
+**"Secure email change" ON** — a self-serve email change then confirms via a
+code to the new address (with a heads-up to the old one), which the app
+verifies with `verifyOtp({ type: "email_change" })`.

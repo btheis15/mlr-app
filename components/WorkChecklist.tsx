@@ -15,7 +15,7 @@ interface MemberRow extends WorkItemMember {
   isAdmin: boolean;
 }
 
-// The work checklist card shown inside the "Around the resort" section on Home.
+// The work checklist — its own collapsed-by-default expandable card on Home.
 // Any signed-in member can add items and check them off. Admins can also edit,
 // delete, and re-open items. Items are scoped: MLR (resort-wide, everyone) plus
 // any house the viewer belongs to — the list groups them into sections so a house
