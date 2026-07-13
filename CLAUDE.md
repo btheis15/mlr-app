@@ -51,7 +51,7 @@ seams**.
 | Route | File | Status |
 |---|---|---|
 | `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: `WelcomeCard`/`HomeSignInCTA`, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), the collapsed-by-default [`WorkChecklist`](components/WorkChecklist.tsx), the always-visible **quick actions grid** ([`HomeQuickActions`](components/HomeQuickActions.tsx) — Events · People · Cabin Stay · Lend a Hand · Local Places · Committees), self-hiding **garnish cards** ([`WeatherCard`](components/WeatherCard.tsx) · [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) · [`ActivePollCard`](components/ActivePollCard.tsx) · [`BirthdaysCard`](components/BirthdaysCard.tsx) — see **Home delight cards**), [`HouseHubCard`](components/HouseHubCard.tsx), [`OnThisDayCard`](components/OnThisDayCard.tsx), an "App & help" group, one-line heritage |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion) · `schedule` (index page + anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (index page + `dinners/[id]`, crew houses + head chef live in the detail page — there's no separate Crew page/route) · `photos` ([`FestPhotos`](components/FestPhotos.tsx) — fest-window photos pulled from the shared Posts feed, members-only) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion) · `schedule` (index page + anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (index page + `dinners/[id]`, crew houses + head chef live in the detail page — there's no separate Crew page/route) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
 | `/posts` | [`app/posts/page.tsx`](app/posts/page.tsx) | **Feed** tab — the resort-wide Posts feed plus a live chat for each committee/house you're in, switchable by pills, no overlay ([`FeedView`](components/FeedView.tsx) wrapping [`PostsView`](components/PostsView.tsx)/[`CommitteeChat`](components/CommitteeChat.tsx)/[`HouseChat`](components/HouseChat.tsx)). Members-only (`SignInWall`) |
 | `/polls` | [`app/polls/page.tsx`](app/polls/page.tsx) | **Polls** — the family's voting booth ([`PollsView`](components/PollsView.tsx) + [`PollComposer`](components/PollComposer.tsx)); any signed-in member can ask a question, one changeable vote each. Members-only (`SignInWall`). Not a tab — reached from the Home [`ActivePollCard`](components/ActivePollCard.tsx) when a poll is open, or `/polls` directly. See **Family polls** |
 | `/admin` | [`app/admin/page.tsx`](app/admin/page.tsx) | **Admin dashboard** — the front door for admin tools (9 cards + a Family Fest Planner link), gated by [`AdminGuard`](app/admin/AdminGuard.tsx). Not a tab — reached from Profile. See **Admin dashboard** |
@@ -394,8 +394,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   **first name only** for guests). `useGuest()` returns `guest = isSupabaseConfigured && !user`,
   so with no backend the app stays fully open (we never lock everyone out of an
   app that can't sign in); during prerender `user` is null, so the static HTML
-  ships the gated/guest view. Applied to: Posts (`/posts`), Photos
-  (`/family-fest/photos`), Polls (`/polls`), People (`/people`), Pay/dues,
+  ships the gated/guest view. Applied to: Posts (`/posts`), Polls (`/polls`), People (`/people`), Pay/dues,
   MemberSheet (contact+pay), schedule/dinner/committee detail pages (locations,
   chef/lead/member contacts), FestStatus/FestWeek (today's locations + contacts),
   CommitteeJoin — the first four are whole-screen `SignInWall`s, the rest use
@@ -911,7 +910,8 @@ handler breaks the Pages `output: export`); its wrapper + env vars are in
     Translucent layers stack LIGHT; `bg-black/NN` is OK only as a modal scrim.
 - **Cross-nav** — the **Family Fest** bottom tab → `/family-fest` overview, then
   the in-section [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav switches
-  between Schedule / Dinners / Crew / Photos / Pay. All internal routes — no
+  between Schedule / Dinners / Pay (photos live only on the Feed tab). All
+  internal routes — no
   external hop. (The §0b merge is now done; identity stays per-app localStorage
   until the Supabase phase.)
 - **Family Fest theme scoping** — the FF section's parchment/Renaissance palette

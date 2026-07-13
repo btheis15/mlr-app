@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 /**
  * The Family Fest section's in-section sub-nav: parchment pill links to each
  * fest surface, sticky at the top of the content so it's always one tap to hop
- * between Overview / Schedule / Dinners / Photos / Pay. Rendered by
+ * between Overview / Schedule / Dinners / Pay. (Photos deliberately live only
+ * on the Feed tab — no fest photos page.) Rendered by
  * app/family-fest/layout.tsx so every fest page gets it, INCLUDING the
  * schedule/dinner drill-in detail pages (their parent pill stays lit, so the
  * nav doubles as a "you are here"). Hidden on the editor surfaces
@@ -22,7 +23,6 @@ const LINKS = [
   { href: "/family-fest", label: "Overview" },
   { href: "/family-fest/schedule", label: "Schedule" },
   { href: "/family-fest/dinners", label: "Dinners" },
-  { href: "/family-fest/photos", label: "Photos" },
   { href: "/family-fest/pay", label: "Pay" },
 ] as const;
 
