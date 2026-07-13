@@ -6,7 +6,7 @@
 
 import { MEDIA_URL } from "@/lib/media";
 
-async function postAdmin(path: string, token: string, body: unknown): Promise<void> {
+async function postAdminJson<T>(path: string, token: string, body: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${MEDIA_URL}${path}`, {
@@ -27,6 +27,11 @@ async function postAdmin(path: string, token: string, body: unknown): Promise<vo
     }
     throw new Error(msg);
   }
+  return (await res.json()) as T;
+}
+
+async function postAdmin(path: string, token: string, body: unknown): Promise<void> {
+  await postAdminJson(path, token, body);
 }
 
 /** Invite a new member: pre-creates a named account and emails them a sign-in code. */
@@ -36,3 +41,14 @@ export const inviteMember = (name: string, email: string, token: string) =>
 /** Set a member's email for them. Only succeeds while the override window is open. */
 export const setMemberEmail = (userId: string, newEmail: string, token: string) =>
   postAdmin("/admin/set-email", token, { userId, newEmail });
+
+export interface InviteLinkResult {
+  email: string;
+  ok: boolean;
+  error?: string;
+}
+
+/** Invite one or more people by email — a branded email whose button signs them
+ *  straight in, no code to type. Returns per-email success/failure. */
+export const inviteByEmailLink = (entries: { email: string; name?: string }[], token: string) =>
+  postAdminJson<{ results: InviteLinkResult[] }>("/admin/invite-link", token, { entries }).then((r) => r.results);

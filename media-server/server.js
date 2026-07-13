@@ -112,6 +112,13 @@ const geocodeLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests. Try again shortly." },
 });
+const inviteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20, // 20 invite-batch requests/hour/IP — plenty for an admin, not for a mistaken mass-paste
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many invite requests. Try again in a bit." },
+});
 app.use(globalLimiter);
 
 // Lightweight request log (method, path, origin, body size, auth present) so
@@ -276,6 +283,58 @@ function adminClient() {
   return _admin;
 }
 
+// Same SMTP setup as alert-mailer.js (reuses the same env vars — no new
+// config needed on the mini). Built lazily here too since this module doesn't
+// import that one (each mailer-touching module builds its own client, same as
+// the service-role Supabase client above).
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || SMTP_PORT === 465;
+const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "";
+const USE_GMAIL = !SMTP_HOST && Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+const ALERT_FROM = process.env.ALERT_FROM || (SMTP_USER ? `Muskellunge Lake Resort <${SMTP_USER}>` : "");
+const APP_URL = (process.env.APP_URL || "https://mlr-app-omega.vercel.app").replace(/\/+$/, "");
+
+let _mailer = null;
+function mailTransport() {
+  if (!SMTP_USER || !SMTP_PASS || (!SMTP_HOST && !USE_GMAIL)) return null;
+  if (!_mailer) {
+    const nodemailer = require("nodemailer");
+    _mailer = USE_GMAIL
+      ? nodemailer.createTransport({ service: "gmail", auth: { user: SMTP_USER, pass: SMTP_PASS } })
+      : nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, auth: { user: SMTP_USER, pass: SMTP_PASS } });
+  }
+  return _mailer;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// The branded "you're invited" email — the one obvious button signs the
+// recipient straight in (the actionLink is a real, already-authenticated
+// Supabase auth URL; see /admin/invite-link below), no code to type.
+function inviteEmailHtml(name, actionLink) {
+  const hi = name ? `Hi ${escapeHtml(name)}, ` : "";
+  return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:20px;margin:0 0 2px"><strong>You're invited to MLR 🌲</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
+<p style="margin:0 0 12px;font-size:15px">${hi}MLR is the family's own app for staying in touch — the resort calendar,
+Family Fest, photos, and a way to reach everyone, all in one place.</p>
+<p style="margin:20px 0 8px"><a href="${actionLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">Open MLR &amp; get started →</a></p>
+<p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:13px;color:#555"><strong>Tip:</strong> once you're in, add MLR to your phone's Home Screen so it's
+a tap away next time. If you do, you'll be asked to sign in there once more —
+that's normal, just a one-time thing.</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">Muskellunge Lake Resort · Muskellunge Lake, 5 mi from Tomahawk on Hwy 8, Tomahawk, WI</p>
+</div>`;
+}
+function inviteEmailText(name, actionLink) {
+  const hi = name ? `Hi ${name}, ` : "";
+  return `You're invited to MLR\n\n${hi}MLR is the family's own app for staying in touch — the resort calendar, Family Fest, photos, and a way to reach everyone, all in one place.\n\nOpen MLR & get started: ${actionLink}\n\nTip: once you're in, add MLR to your phone's Home Screen so it's a tap away next time. If you do, you'll be asked to sign in there once more — that's normal, just a one-time thing.\n\n— Muskellunge Lake Resort`;
+}
+
 // Like requireUser, but also confirms the caller is an admin (profiles.is_admin,
 // the single source of truth) using the service-role client. Sets req.adminId.
 async function requireAdmin(req, res, next) {
@@ -346,6 +405,60 @@ app.post("/admin/set-email", express.json(), requireAdmin, async (req, res) => {
     console.error(`[admin/set-email] ${e && e.message}`);
     res.status(400).json({ error: (e && e.message) || "Couldn't update the email." });
   }
+});
+
+// Admin: invite one or more people by email with a fully custom-branded HTML
+// email whose button signs them straight in — no code to type, since the
+// admin already knows the email is theirs. Deliberately separate from
+// /admin/invite above (which intentionally sends a one-time CODE, not a link,
+// so it keeps working inside the installed PWA): this one is for a brand-new
+// member's first-ever invite, where there's no installed PWA session yet to
+// collide with. Uses auth.admin.generateLink (never Supabase's own "Invite
+// user" template/mailer — this project's templates all send a code, see
+// supabase/README.md) so we fully own the email's design and copy.
+app.post("/admin/invite-link", express.json(), inviteLimiter, requireAdmin, async (req, res) => {
+  const entries = Array.isArray(req.body && req.body.entries) ? req.body.entries : [];
+  if (!entries.length) return res.status(400).json({ error: "At least one email is required." });
+  const transport = mailTransport();
+  if (!transport) return res.status(503).json({ error: "Email isn't configured on the server yet." });
+  const sb = adminClient();
+
+  const results = [];
+  for (const raw of entries) {
+    const email = String((raw && raw.email) || "").trim().toLowerCase();
+    const name = String((raw && raw.name) || "").trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      results.push({ email: email || "(blank)", ok: false, error: "Not a valid email address." });
+      continue;
+    }
+    try {
+      const redirectTo = `${APP_URL}/`;
+      let { data, error } = await sb.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { redirectTo, data: name ? { display_name: name } : {} },
+      });
+      if (error && /already|registered|exists/i.test(error.message || "")) {
+        ({ data, error } = await sb.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } }));
+      }
+      if (error) throw error;
+      const actionLink = data && data.properties && data.properties.action_link;
+      if (!actionLink) throw new Error("No link was generated.");
+
+      await transport.sendMail({
+        from: ALERT_FROM,
+        to: email,
+        subject: "You're invited to MLR 🌲",
+        text: inviteEmailText(name, actionLink),
+        html: inviteEmailHtml(name, actionLink),
+      });
+      results.push({ email, ok: true });
+    } catch (e) {
+      console.error(`[admin/invite-link] ${email}: ${e && e.message}`);
+      results.push({ email, ok: false, error: (e && e.message) || "Couldn't send the invite." });
+    }
+  }
+  res.json({ results });
 });
 
 // Tier-2 AI moderation toggle (default on). Set MOD_ENABLED=0 to disable.
