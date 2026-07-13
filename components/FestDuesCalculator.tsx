@@ -21,10 +21,16 @@ import type { DuesTier, FestConfigContent } from "@/lib/types";
 export function FestDuesCalculator({
   dues,
   config,
+  title = "Family Fest dues",
+  noteLabel = "Family Fest",
   onChange,
 }: {
   dues: DuesTier[];
   config: FestConfigContent;
+  /** Heading above the tier list — override for a non-Family-Fest dues screen (e.g. a house's own dues). */
+  title?: string;
+  /** Prefix for the auto-built note handed to `onChange` (and so the Venmo note) — defaults to "Family Fest". */
+  noteLabel?: string;
   onChange: (amount: string, note: string) => void;
 }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -46,7 +52,7 @@ export function FestDuesCalculator({
       ...flatPicked.map((t) => `${nextCounts[t.id]} ${t.label}`),
       ...(dailyPicked.length ? [`${nextDays} day${nextDays === 1 ? "" : "s"}: ${dailyPicked.map((t) => `${nextCounts[t.id]} ${t.label}`).join(", ")}`] : []),
     ];
-    onChange(total > 0 ? String(total) : "", parts.length ? `Family Fest — ${parts.join("; ")}` : "Family Fest");
+    onChange(total > 0 ? String(total) : "", parts.length ? `${noteLabel} — ${parts.join("; ")}` : noteLabel);
   };
 
   const setCount = (id: string, next: number) => {
@@ -64,7 +70,7 @@ export function FestDuesCalculator({
   const reset = () => {
     setCounts({});
     setDays(1);
-    onChange("", "Family Fest");
+    onChange("", noteLabel);
   };
 
   const flatTotal = flatTiers.reduce((sum, t) => sum + (counts[t.id] ?? 0) * (t.amount ?? 0), 0);
@@ -76,7 +82,7 @@ export function FestDuesCalculator({
   return (
     <div className="rounded-2xl bg-primary/10 p-4">
       <p className="text-center text-xs font-semibold uppercase tracking-wide text-primary">
-        Family Fest dues
+        {title}
       </p>
       <p className="mt-1 text-center text-[11px] text-foreground/50">
         Use +/- for how many you&rsquo;re paying for — the total fills in below.

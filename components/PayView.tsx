@@ -19,20 +19,23 @@ export function PayView({
   note,
   onAmountChange,
   onNoteChange,
+  title = "Pay",
+  subtitle = "Square up with the folks running the fest.",
 }: {
   payees: Payee[];
   amount: string;
   note: string;
   onAmountChange: (value: string) => void;
   onNoteChange: (value: string) => void;
+  /** Override for a non-Family-Fest payee screen (e.g. a house's own dues). */
+  title?: string;
+  subtitle?: string;
 }) {
   return (
     <div className="space-y-6 pt-2">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Pay</h1>
-        <p className="text-sm text-muted">
-          Square up with the folks running the fest.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-muted">{subtitle}</p>
       </header>
 
       <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
