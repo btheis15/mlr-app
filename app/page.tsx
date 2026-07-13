@@ -89,8 +89,8 @@ export default function HomePage() {
         <RowLink
           href="/guide"
           emoji="🧭"
-          title="Take a quick tour"
-          subtitle="See the app screen by screen."
+          title="Take the tour"
+          subtitle="The complete guide to the app."
         />
         <InstallButton />
         <ShareApp />

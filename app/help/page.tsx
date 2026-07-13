@@ -104,16 +104,17 @@ export default function HelpPage() {
         announcements, all in one place. Anyone in the family can use it.
       </HelpItem>
 
-      <HelpItem emoji="🧭" title="Take a quick tour">
-        New here? This short, plain-English walkthrough goes screen by screen —
-        what each tab does, Family Fest, RSVPs, photos, and how to get the app on
-        your phone. Great to skim before you dive in.
+      <HelpItem emoji="🧭" title="Take the tour">
+        New here, or just want the full picture? This is the complete,
+        plain-English guide to the app — every tab, every feature, start to
+        finish. Read it straight through or jump to the part you need; either
+        way, you&rsquo;ll walk away knowing all the ins and outs.
         <div className="mt-3">
           <Link
             href="/guide"
             className="press inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white"
           >
-            📖 Open the guided tour
+            📖 Take the tour
           </Link>
         </div>
       </HelpItem>
