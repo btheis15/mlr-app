@@ -50,7 +50,7 @@ function writeCache(snap: WeatherSnapshot) {
 }
 
 /**
- * Compact "what's it like at the lake" strip — current temp + today's hi/lo
+ * Compact "what's it like Up North" strip — current temp + today's hi/lo
  * for Tomahawk, WI, via Open-Meteo (no key, no backend). Public — no sign-in
  * gate. Caches the result in sessionStorage for 30 minutes so tab-hopping
  * around the app doesn't re-fetch. Renders nothing while loading or on any
@@ -102,7 +102,7 @@ export function WeatherCard() {
         {weatherEmoji(snap.code)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{Math.round(snap.temp)}° at the lake</p>
+        <p className="text-sm font-semibold">{Math.round(snap.temp)}° Up North</p>
         <p className="mt-0.5 text-xs text-foreground/60">
           H {Math.round(snap.hi)}° / L {Math.round(snap.lo)}°
         </p>

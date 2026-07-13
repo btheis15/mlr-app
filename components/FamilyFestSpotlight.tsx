@@ -108,7 +108,7 @@ export function FamilyFestSpotlight({
       >
         <LiveDotLabel>{name} · happening now</LiveDotLabel>
         <p className="mt-1 text-lg font-semibold">
-          Day {season.dayNumber} of {season.totalDays} at the lake 🎆
+          Day {season.dayNumber} of {season.totalDays} Up North 🎆
         </p>
         {todays.length > 0 ? (
           <ul className="mt-2 space-y-1.5">
@@ -141,7 +141,7 @@ export function FamilyFestSpotlight({
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
           🎆 {name} · that&rsquo;s a wrap
         </p>
-        <p className="mt-1 text-lg font-semibold">Thanks for a great week at the lake</p>
+        <p className="mt-1 text-lg font-semibold">Thanks for a great week Up North</p>
         <p className="mt-1 text-sm text-foreground/70">
           Add the photos you didn&rsquo;t get to share yet
           {season.wrapDaysLeft > 0

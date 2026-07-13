@@ -31,7 +31,7 @@ export function Countdown({ target }: { target: string }) {
   if (now != null && diff === 0) {
     return (
       <div className="rounded-2xl bg-primary/10 py-3 text-center text-sm font-bold text-primary">
-        🎉 Family Fest is on — welcome to the lake!
+        🎉 Family Fest is on — welcome Up North!
       </div>
     );
   }
