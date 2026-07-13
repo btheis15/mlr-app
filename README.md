@@ -129,20 +129,22 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   attendance**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,
-  Cabin requests, Resort info, Sign-ins, and View as — each its own `/admin/*`
+  Cabin requests, Help contact, Sign-ins, and View as — each its own `/admin/*`
   sub-page behind [`AdminGuard`](app/admin/AdminGuard.tsx), replacing the ~9
   nested accordions that used to live in Profile → Admin (Profile itself is now
   flattened to just identity/settings + a link here for admins). Also links to
   the Family Fest Planner. See CLAUDE.md → **Admin dashboard**.
-- **Resort config** — the Help page's human contact (name/phone/email) and
-  basic public resort info (address/phone/wifi/check-in) are admin-editable
-  in-app (`/admin/resort-info` → [`components/AdminResortConfig.tsx`](components/AdminResortConfig.tsx))
-  instead of hard-coded strings in the client bundle. Backed by the
-  `resort_config` singleton (migration
-  [`0082_resort_config.sql`](supabase/migrations/0082_resort_config.sql));
+- **Help contact** — the Help page's human contact (name/phone/email) is
+  admin-editable in-app (`/admin/help-contact` →
+  [`components/AdminHelpContact.tsx`](components/AdminHelpContact.tsx)) instead
+  of a hard-coded string in the client bundle. Backed by the `resort_config`
+  singleton (migration
+  [`0082_resort_config.sql`](supabase/migrations/0082_resort_config.sql)) —
+  whose legacy resort-info columns (address/wifi/check-in) are unused: MLR is
+  an old family place, not an operating resort.
   [`lib/resortConfig.ts`](lib/resortConfig.ts) falls back to the old hard-coded
   values when Supabase isn't configured or the migration hasn't run. See
-  CLAUDE.md → **Resort config**.
+  CLAUDE.md → **Help contact**.
 - **Family polls** — at `/polls`, any signed-in member can ask the family a
   question (2-10 options); everyone gets one changeable vote per poll. The
   newest open poll surfaces on Home via `ActivePollCard`. Migration

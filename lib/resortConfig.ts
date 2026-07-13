@@ -1,12 +1,16 @@
-// Resort-level config: the Help page's human escape-hatch contact
-// (name/phone/email) + basic public resort info (address/phone/wifi/
-// check-in). Backed by the singleton `resort_config` table (migration 0082)
-// so an admin can edit these in-app instead of shipping a new build. Read is
-// public (see the migration's header comment for why — the help contact is
-// the sign-in escape hatch itself).
+// The Help page's human escape-hatch contact (name/phone/email), backed by
+// the singleton `resort_config` table (migration 0082) so an admin can edit
+// it in-app instead of shipping a new build. Read is public (see the
+// migration's header comment for why — the help contact is the sign-in
+// escape hatch itself).
+//
+// The table also carries legacy resort_address/resort_phone/wifi_note/
+// checkin_note columns from when this was modeled as "resort info" — MLR is
+// an old family place, not an operating resort, so nothing reads or edits
+// those anymore; they're simply ignored.
 //
 // The values below mirror what used to be hard-coded in lib/help.ts
-// (HELP_CONTACT) and lib/data.ts (RESORT) — kept here ONLY as the fallback
+// (HELP_CONTACT) — kept here ONLY as the fallback
 // for when Supabase isn't configured yet, or the 0082 migration hasn't run
 // (`isMissingTable`, same 42P01 check NotificationsView uses). Once the
 // migration has run, the DB row is the source of truth, including an
@@ -19,10 +23,6 @@ export interface ResortConfig {
   helpContactName: string;
   helpContactPhone: string;
   helpContactEmail: string;
-  resortAddress: string;
-  resortPhone: string;
-  wifiNote: string;
-  checkinNote: string;
 }
 
 /** The hard-coded values this table was seeded from (migration 0082). Used
@@ -32,10 +32,6 @@ export const RESORT_CONFIG_FALLBACK: ResortConfig = {
   helpContactName: "Brian",
   helpContactPhone: "+12248005389",
   helpContactEmail: "brian.theis15@gmail.com",
-  resortAddress: "Muskellunge Lake · 5 mi from Tomahawk on Hwy 8 · Tomahawk, WI",
-  resortPhone: "+17155550100",
-  wifiNote: 'Network "MLR-Guest" · Password "musky2026"',
-  checkinNote: "Check-in 4:00 PM · Check-out 11:00 AM",
 };
 
 type PgError = { code?: string; message?: string } | null;
@@ -54,9 +50,7 @@ export async function fetchResortConfig(): Promise<ResortConfig> {
   try {
     const { data, error } = await sb
       .from("resort_config")
-      .select(
-        "help_contact_name, help_contact_phone, help_contact_email, resort_address, resort_phone, wifi_note, checkin_note",
-      )
+      .select("help_contact_name, help_contact_phone, help_contact_email")
       .eq("id", true)
       .maybeSingle();
     if (error) {
@@ -73,10 +67,6 @@ export async function fetchResortConfig(): Promise<ResortConfig> {
       helpContactName: data.help_contact_name ?? "",
       helpContactPhone: data.help_contact_phone ?? "",
       helpContactEmail: data.help_contact_email ?? "",
-      resortAddress: data.resort_address ?? "",
-      resortPhone: data.resort_phone ?? "",
-      wifiNote: data.wifi_note ?? "",
-      checkinNote: data.checkin_note ?? "",
     };
   } catch {
     return RESORT_CONFIG_FALLBACK;

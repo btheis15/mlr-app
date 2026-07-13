@@ -9,13 +9,15 @@ import { SkeletonCard } from "@/components/Skeleton";
 import { RESORT_CONFIG_FALLBACK, type ResortConfig } from "@/lib/resortConfig";
 
 /**
- * Admin editor for the `resort_config` singleton (migration
- * [0082](supabase/migrations/0082_resort_config.sql)) — the Help page's human
- * escape-hatch contact (name/phone/email) plus basic public resort info
- * (address/phone/wifi/check-in). Read is public (see the migration's header
- * comment — the help contact is the sign-in escape hatch itself, so it can't
- * be gated behind sign-in), but writes are admin-only, enforced both by RLS
- * and this panel only rendering inside AdminGuard.
+ * Admin editor for the Help page's human escape-hatch contact
+ * (name/phone/email), stored in the `resort_config` singleton (migration
+ * [0082](supabase/migrations/0082_resort_config.sql)). MLR is an old family
+ * place, not an operating resort, so the table's legacy resort-info columns
+ * (address/phone/wifi/check-in) are deliberately NOT edited or shown — just
+ * the contact. Read is public (see the migration's header comment — the help
+ * contact is the sign-in escape hatch itself, so it can't be gated behind
+ * sign-in), but writes are admin-only, enforced both by RLS and this panel
+ * only rendering inside AdminGuard.
  *
  * `fetchResortConfig()` (lib/resortConfig.ts) is the read-side seam this
  * mirrors; this component just adds the write path + a "run the migration"
@@ -35,20 +37,12 @@ const FIELDS: {
     hint: 'E.164 format (a leading "+" and country code, no spaces). Leave empty to hide text/call on the Help page.',
   },
   { key: "helpContactEmail", label: "Help contact email", placeholder: "you@email.com" },
-  { key: "resortAddress", label: "Resort address", placeholder: "123 Lake Rd · Tomahawk, WI" },
-  { key: "resortPhone", label: "Resort phone", placeholder: "+17155550100", hint: "E.164 format, same as above." },
-  { key: "wifiNote", label: "Wifi note", placeholder: 'Network "MLR-Guest" · Password "..."' },
-  { key: "checkinNote", label: "Check-in / check-out note", placeholder: "Check-in 4:00 PM · Check-out 11:00 AM" },
 ];
 
 type ColRow = {
   help_contact_name: string | null;
   help_contact_phone: string | null;
   help_contact_email: string | null;
-  resort_address: string | null;
-  resort_phone: string | null;
-  wifi_note: string | null;
-  checkin_note: string | null;
 };
 
 function fromRow(row: ColRow): ResortConfig {
@@ -56,14 +50,10 @@ function fromRow(row: ColRow): ResortConfig {
     helpContactName: row.help_contact_name ?? "",
     helpContactPhone: row.help_contact_phone ?? "",
     helpContactEmail: row.help_contact_email ?? "",
-    resortAddress: row.resort_address ?? "",
-    resortPhone: row.resort_phone ?? "",
-    wifiNote: row.wifi_note ?? "",
-    checkinNote: row.checkin_note ?? "",
   };
 }
 
-export function AdminResortConfig() {
+export function AdminHelpContact() {
   const [v, setV] = useState<ResortConfig>(RESORT_CONFIG_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false); // false until migration 0082 answers
@@ -78,9 +68,7 @@ export function AdminResortConfig() {
       }
       const { data, error } = await sb
         .from("resort_config")
-        .select(
-          "help_contact_name, help_contact_phone, help_contact_email, resort_address, resort_phone, wifi_note, checkin_note",
-        )
+        .select("help_contact_name, help_contact_phone, help_contact_email")
         .eq("id", true)
         .maybeSingle();
       if (error) {
@@ -108,10 +96,6 @@ export function AdminResortConfig() {
           help_contact_name: v.helpContactName.trim(),
           help_contact_phone: v.helpContactPhone.trim(),
           help_contact_email: v.helpContactEmail.trim(),
-          resort_address: v.resortAddress.trim(),
-          resort_phone: v.resortPhone.trim(),
-          wifi_note: v.wifiNote.trim(),
-          checkin_note: v.checkinNote.trim(),
           updated_at: new Date().toISOString(),
           updated_by: uid,
         },
@@ -125,7 +109,7 @@ export function AdminResortConfig() {
   if (!ready) {
     return (
       <MigrationHint file="0082_resort_config.sql">
-        To edit the resort&rsquo;s help contact & info in-app,
+        To edit the Help page&rsquo;s contact person in-app,
       </MigrationHint>
     );
   }

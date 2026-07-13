@@ -201,13 +201,15 @@ fest_content tables deliberately stay public (browse-first content, no PII).
 Until it's run the app behaves exactly as before — the guest clients fall back
 to the old reads when the view is missing (42P01).
 
-⚠️ **For resort-level config, run
+⚠️ **For the editable Help contact, run
 [`0082`](migrations/0082_resort_config.sql).** Adds the singleton
-`resort_config` table (the Help page's human contact — name/phone/email — plus
-address/phone/wifi/check-in), editable in-app via `AdminResortConfig`
-(Admin → Resort info). Read is **deliberately public** (it's the sign-in escape
-hatch itself); writes are admin-only. Until it's run, `lib/resortConfig.ts`
-falls back to the old hard-coded values.
+`resort_config` table holding the Help page's human contact (name/phone/email),
+editable in-app via `AdminHelpContact` (Admin → Help contact). The table also
+carries legacy resort-info columns (address/phone/wifi/check-in) from when this
+was modeled as "resort info" — MLR is an old family place, not an operating
+resort, so nothing reads or edits those. Read is **deliberately public** (it's
+the sign-in escape hatch itself); writes are admin-only. Until it's run,
+`lib/resortConfig.ts` falls back to the old hard-coded values.
 
 ⚠️ **For admin-managed Home call-out cards, run
 [`0083`](migrations/0083_home_callouts.sql)** (after 0053). Adds the

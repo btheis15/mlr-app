@@ -414,7 +414,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   roster seed in `lib/data.ts` carries names/roles only (no `email`/`phone`),
   and `lib/help.ts`'s `HELP_CONTACT` no longer hard-codes a real name/phone/email
   (stripped along with ~18 relatives' contact details in the same pass — see
-  **Resort config**/migration 0082). The one deliberate exception is
+  **Help contact**/migration 0082). The one deliberate exception is
   `resort_config`'s help-contact fields, which stay **public-read by design** —
   they're the sign-in escape hatch itself, so they can't be gated behind the
   sign-in they exist to unblock (see the 0082 migration header).
@@ -436,7 +436,7 @@ nesting):
 | Committees & join requests | `/admin/committees` | [`AdminCommittees`](components/AdminCommittees.tsx) (also mounts the per-committee join-request queue) |
 | Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
 | Cabin requests | `/admin/cabins` | [`AdminCabinBookings`](components/AdminCabinBookings.tsx) |
-| Resort info | `/admin/resort-info` | [`AdminResortConfig`](components/AdminResortConfig.tsx) — see **Resort config** |
+| Help contact | `/admin/help-contact` | [`AdminHelpContact`](components/AdminHelpContact.tsx) — see **Help contact** |
 | Sign-ins | `/admin/signins` | [`AdminSignins`](components/AdminSignins.tsx) |
 | View as | `/admin/preview` | [`PreviewAs`](components/PreviewAs.tsx) |
 
@@ -449,21 +449,23 @@ see **Home call-out stack**). Profile itself is now **flattened**: it keeps
 identity/avatar/contact/notification-prefs/text-size, and just a single
 `RowLink` to `/admin` for admins.
 
-## Resort config
+## Help contact
 
-The Help page's human escape-hatch contact (name/phone/email) and basic public
-resort info (address/phone/wifi/check-in) are no longer hard-coded strings in
-the client bundle — they're a singleton row in Supabase (`resort_config`,
-migration [`0082`](supabase/migrations/0082_resort_config.sql)), fetched by
+The Help page's human escape-hatch contact (name/phone/email) is no longer a
+hard-coded string in the client bundle — it's a singleton row in Supabase
+(`resort_config`, migration
+[`0082`](supabase/migrations/0082_resort_config.sql)), fetched by
 [`lib/resortConfig.ts`](lib/resortConfig.ts) `fetchResortConfig()` and edited
-in-app via [`AdminResortConfig`](components/AdminResortConfig.tsx)
-(`/admin/resort-info`). `RESORT_CONFIG_FALLBACK` in the same file mirrors the
-old hard-coded values and is used verbatim whenever the live value can't be
+in-app via [`AdminHelpContact`](components/AdminHelpContact.tsx)
+(`/admin/help-contact`). ⚠️ There is deliberately **no "resort info"** concept
+anywhere in the app — MLR is an old family place, not an operating resort, so
+the table's legacy address/phone/wifi/check-in columns are ignored (never read,
+never edited; don't resurrect them). `RESORT_CONFIG_FALLBACK` mirrors the old
+hard-coded contact and is used verbatim whenever the live value can't be
 trusted (no Supabase configured, the 0082 migration hasn't run, or an
 unexpected read error) — never throws. Read is **deliberately public**
-(anon + authenticated): `help_contact_*` is the sign-in escape hatch itself, so
-it can't be gated behind the very sign-in it exists to unblock; the
-address/phone/wifi/check-in fields are ordinary public business info, not PII.
+(anon + authenticated): the help contact is the sign-in escape hatch itself, so
+it can't be gated behind the very sign-in it exists to unblock.
 Writes are admin-only (RLS against `profiles.is_admin`). `app/help/page.tsx` is
 the one place that fetches + renders the live contact today — any new consumer
 should call `fetchResortConfig()` too rather than reading real values from

@@ -22,7 +22,7 @@ const CARDS: {
   { href: "/admin/committees", emoji: "👥", tile: "bg-sun/12", title: "Committees & join requests", sub: "Who's in each + pending requests" },
   { href: "/admin/houses", emoji: "🏠", tile: "bg-primary/12", title: "Houses", sub: "Create houses & assign members" },
   { href: "/admin/cabins", emoji: "🏡", tile: "bg-lake/12", title: "Cabin requests", sub: "Approve room stay requests" },
-  { href: "/admin/resort-info", emoji: "ℹ️", tile: "bg-campfire/12", title: "Resort info", sub: "Help contact, address, wifi, check-in" },
+  { href: "/admin/help-contact", emoji: "☎️", tile: "bg-campfire/12", title: "Help contact", sub: "Who the Help page says to text or call" },
   { href: "/admin/signins", emoji: "🔐", tile: "bg-dusk/12", title: "Sign-ins", sub: "Who joined & recent sign-ins" },
   { href: "/admin/preview", emoji: "👁️", tile: "bg-sun/12", title: "View as", sub: "Preview the app as a member or guest" },
 ];
