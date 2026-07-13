@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { Protected } from "@/components/Guard";
 
-const BETH_VENMO = "Beth-Birkholz-1";
 const BETH_PHONE = "8472872608";
 const BETH_EMAIL = "bethbirkholz@hotmail.com";
 /** How long the reminder lingers after Family Fest ends, in days. */
@@ -21,8 +21,6 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   if (slug !== "mjt-house") return null;
   if (!season || season.daysSinceEnd > TAIL_DAYS) return null;
-
-  const venmoUrl = `https://venmo.com/${encodeURIComponent(BETH_VENMO)}?${new URLSearchParams({ txn: "pay" })}`;
 
   return (
     <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
@@ -49,15 +47,13 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
         <li>Who, if anyone, will be tenting</li>
       </ol>
 
-      <a
-        href={venmoUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="press flex items-center justify-center gap-2 rounded-xl bg-venmo py-2.5 text-sm font-semibold text-white"
+      <Link
+        href="/house/dues?house=mjt-house"
+        className="press flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
       >
-        Pay @{BETH_VENMO} with Venmo
-      </a>
-      <p className="text-center text-xs text-foreground/50">Or in cash the day you arrive.</p>
+        🧮 Calculate &amp; pay
+      </Link>
+      <p className="text-center text-xs text-foreground/50">Or pay in cash the day you arrive.</p>
 
       <div className="space-y-2">
         <CallTextButtons phone={BETH_PHONE} />
