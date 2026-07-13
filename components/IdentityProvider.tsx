@@ -71,6 +71,14 @@ interface IdentityValue {
    *  (`profiles.intro_seen` false). Drives the one-time onboarding sheet; forced
    *  false while previewing. */
   needsIntro: boolean;
+  /** True when the current session was created by an admin's /admin/invite-link
+   *  email (`profiles.invited_via = 'invite_link'`) and the intro hasn't run yet.
+   *  Since that link signs whoever clicks it straight in — no code, no password —
+   *  a forwarded invite would otherwise land the forwardee in the original
+   *  invitee's account with no warning. WelcomeIntro shows an extra "is this you?"
+   *  confirmation step first when this is true. Always false once `needsIntro`
+   *  clears (one-time, same as the intro itself). */
+  invitedViaLink: boolean;
   /** Mark the Welcome intro as seen (`profiles.intro_seen = true`) so it never
    *  shows again, and clear `needsIntro` for this session. */
   completeIntro: () => void;
@@ -92,6 +100,7 @@ const IdentityContext = createContext<IdentityValue>({
   confirmEmailChange: async () => ({ error: "Sign-in isn't available." }),
   promptSignIn: () => {},
   needsIntro: false,
+  invitedViaLink: false,
   completeIntro: () => {},
   signOut: () => {},
 });
@@ -137,6 +146,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [prompting, setPrompting] = useState(false);
   // True for a brand-new member who should see the first-run Welcome intro.
   const [needsIntro, setNeedsIntro] = useState(false);
+  // True when this session came from an admin's invite-link email — see
+  // IdentityValue.invitedViaLink for why this needs its own confirmation step.
+  const [invitedViaLink, setInvitedViaLink] = useState(false);
   // The iOS "add it first, sign in once" reminder (see promptSignIn): an
   // interstitial shown instead of the sign-in sheet when a guest taps Sign in
   // while browsing in Safari (not the installed Home-Screen app).
@@ -173,6 +185,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           setAdminFlag(false);
           setBetaFlag(false);
           setNeedsIntro(false);
+          setInvitedViaLink(false);
         }
         return;
       }
@@ -199,24 +212,31 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: extra, error } = await sb
           .from("profiles")
-          .select("intro_seen, phone, birthday, pay_preferred")
+          .select("intro_seen, phone, birthday, pay_preferred, invited_via")
           .eq("id", session.user.id)
           .maybeSingle();
         if (!active) return;
         if (error || !extra) {
           setNeedsIntro(false);
+          setInvitedViaLink(false);
         } else {
           const e = extra as {
             intro_seen: boolean | null;
             phone: string | null;
             birthday: string | null;
             pay_preferred: string | null;
+            invited_via: string | null;
           };
           const sparse = !e.phone?.trim() && !e.birthday && !e.pay_preferred;
-          setNeedsIntro(!e.intro_seen && sparse);
+          const needsIt = !e.intro_seen && sparse;
+          setNeedsIntro(needsIt);
+          setInvitedViaLink(needsIt && e.invited_via === "invite_link");
         }
       } catch {
-        if (active) setNeedsIntro(false);
+        if (active) {
+          setNeedsIntro(false);
+          setInvitedViaLink(false);
+        }
       }
     };
 
@@ -303,6 +323,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   // 0045 column isn't there yet).
   const completeIntro = async () => {
     setNeedsIntro(false);
+    setInvitedViaLink(false);
     const sb = supabase;
     if (!sb) return;
     const { data: sess } = await sb.auth.getSession();
@@ -349,6 +370,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setAdminFlag(false);
     setBetaFlag(false);
     setNeedsIntro(false);
+    setInvitedViaLink(false);
     setPreviewState("off");
     setPreviewMemberState(null);
     try {
@@ -385,6 +407,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         confirmEmailChange,
         promptSignIn,
         needsIntro: previewMode === "off" ? needsIntro : false,
+        invitedViaLink: previewMode === "off" ? invitedViaLink : false,
         completeIntro,
         signOut,
       }}
