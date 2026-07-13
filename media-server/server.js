@@ -348,7 +348,8 @@ everything happening at the resort, so nothing gets lost in a group text or an o
 <p style="margin:12px 0 0;font-size:14px;color:#555">...and more being added all the time.</p>
 <p style="margin:14px 0 0;font-size:14px;color:#555">📱 <strong>Bonus:</strong> an official iOS app is coming soon for iPhone users!</p>
 <p style="margin:22px 0 8px"><a href="${actionLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-size:16px;font-weight:600">Open MLR &amp; get started →</a></p>
-<p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:13px;color:#555"><strong>Tip:</strong> once you're in, add MLR to your phone's Home Screen so it's
+<p style="margin:0;text-align:center;font-size:12px;color:#888">🔒 This is your own private invite link — forwarding it to someone else, or another email address, won't work for them.</p>
+<p style="margin:14px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:13px;color:#555"><strong>Tip:</strong> once you're in, add MLR to your phone's Home Screen so it's
 a tap away next time. If you do, you'll be asked to sign in there once more —
 that's normal, just a one-time thing.</p>
 <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
@@ -358,7 +359,7 @@ that's normal, just a one-time thing.</p>
 function inviteEmailText(name, actionLink) {
   const hi = name ? `Hi ${name}, ` : "Hi there, ";
   const featureLines = INVITE_FEATURES.map(([emoji, text]) => `  ${emoji} ${text}`).join("\n");
-  return `The new MLR App is here!\nMuskellunge Lake Resort\n\n${hi}you're invited to the family's new home base — one place for everything happening at the resort, so nothing gets lost in a group text or an old email chain.\n\nHere's what you can do:\n${featureLines}\n  ...and more being added all the time.\n\n📱 Bonus: an official iOS app is coming soon for iPhone users!\n\nOpen MLR & get started: ${actionLink}\n\nTip: once you're in, add MLR to your phone's Home Screen so it's a tap away next time. If you do, you'll be asked to sign in there once more — that's normal, just a one-time thing.\n\n— Muskellunge Lake Resort`;
+  return `The new MLR App is here!\nMuskellunge Lake Resort\n\n${hi}you're invited to the family's new home base — one place for everything happening at the resort, so nothing gets lost in a group text or an old email chain.\n\nHere's what you can do:\n${featureLines}\n  ...and more being added all the time.\n\n📱 Bonus: an official iOS app is coming soon for iPhone users!\n\nOpen MLR & get started: ${actionLink}\n\nThis is your own private invite link — forwarding it to someone else, or another email address, won't work for them.\n\nTip: once you're in, add MLR to your phone's Home Screen so it's a tap away next time. If you do, you'll be asked to sign in there once more — that's normal, just a one-time thing.\n\n— Muskellunge Lake Resort`;
 }
 
 // Like requireUser, but also confirms the caller is an admin (profiles.is_admin,
