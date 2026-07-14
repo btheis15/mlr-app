@@ -44,7 +44,7 @@ export default function FestSchedulePage() {
         things={activities}
         startDate={config.startDate}
         endDate={config.endDate}
-        onDinnerSaved={reload}
+        onContentSaved={reload}
       />
     </div>
   );

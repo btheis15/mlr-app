@@ -5,8 +5,16 @@ import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { DinnerSheet } from "@/components/FestPlanner";
 import { useFestContent } from "@/lib/useFestContent";
-import { canEditFest } from "@/lib/festContent";
+import { eventDays } from "@/lib/events";
+import {
+  canEditFest,
+  fetchMemberOptions,
+  fetchDinnerDrafts,
+  type FestMemberOption,
+  type DinnerDraft,
+} from "@/lib/festContent";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import { formatDateLong, formatTime } from "@/lib/format";
@@ -23,12 +31,18 @@ import type { Dinner } from "@/lib/types";
  * the whole Planner.
  */
 export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinner | null }) {
-  const { dinners, reload } = useFestContent({ realtime: true });
+  const { config, dinners, reload } = useFestContent({ realtime: true });
   const dinner = dinners.find((d) => d.id === id) ?? fallback;
   const { user } = useIdentity();
   const [uid, setUid] = useState<string | null>(null);
   const [canEditAll, setCanEditAll] = useState(false);
   const [editing, setEditing] = useState(false);
+  // Only fetched once canEditAll is known true — a chef/crew self-editor (or
+  // a regular member) never pays for this. Needed for the full DinnerSheet
+  // (day/title/chef/crew/houses/menu/served/prep), reused as-is from the
+  // Planner rather than duplicated — see migration 0099.
+  const [members, setMembers] = useState<FestMemberOption[]>([]);
+  const [draft, setDraft] = useState<DinnerDraft | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -38,14 +52,23 @@ export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinne
     }
     let active = true;
     getCurrentUserId().then((id) => active && setUid(id));
-    canEditFest().then((ok) => active && setCanEditAll(ok));
+    canEditFest().then((ok) => {
+      if (!active) return;
+      setCanEditAll(ok);
+      if (ok) {
+        fetchMemberOptions().then((m) => active && setMembers(m));
+        fetchDinnerDrafts().then((ds) => active && setDraft(ds.find((d) => d.id === id) ?? null));
+      }
+    });
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, id]);
 
   const canEditThis =
     canEditAll || Boolean(uid && (dinner?.chefUserId === uid || dinner?.crewUserIds.includes(uid)));
+  const fullEdit = canEditAll && Boolean(draft);
+  const days = eventDays(config.startDate, config.endDate);
 
   if (!dinner) {
     return (
@@ -128,7 +151,20 @@ export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinne
         </div>
       </section>
 
-      {editing && (
+      {editing && fullEdit && draft && (
+        <DinnerSheet
+          draft={draft}
+          days={days}
+          members={members}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            reload();
+          }}
+        />
+      )}
+      {editing && !fullEdit && (
         <DinnerDetailsEditSheet dinner={dinner} onClose={() => setEditing(false)} onSaved={reload} />
       )}
     </div>

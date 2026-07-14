@@ -434,7 +434,10 @@ function ScheduleEditor({
   );
 }
 
-function ScheduleSheet({
+/** Exported so FestWeek's admin/committee edit affordance can reuse the exact
+ *  same full editor in place, instead of duplicating it — see migration 0099 /
+ *  the chef-crew self-edit feature this sits alongside. */
+export function ScheduleSheet({
   draft,
   days,
   members,
@@ -613,7 +616,11 @@ function DinnerEditor({
   );
 }
 
-function DinnerSheet({
+/** Exported so FestWeek's admin/committee edit affordance can reuse the exact
+ *  same full editor (day/title/chef/crew/houses/menu/served/prep) in place —
+ *  see migration 0099. Chef/crew self-editors (not full fest access) instead
+ *  get the narrower DinnerDetailsEditSheet there. */
+export function DinnerSheet({
   draft,
   days,
   members,
