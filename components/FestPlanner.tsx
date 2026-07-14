@@ -636,6 +636,8 @@ function DinnerSheet({
   const [chefUserId, setChefUserId] = useState<string | null>(draft?.chefUserId ?? null);
   const [chefName, setChefName] = useState(draft?.chefName ?? "");
   const [chefPhone, setChefPhone] = useState(draft?.chefPhone ?? "");
+  const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
+  const [pickingCrew, setPickingCrew] = useState(false);
   const [houses, setHouses] = useState((draft?.houses ?? []).join(", "));
   const [menu, setMenu] = useState(draft?.menu ?? "");
   const [servedTime, setServedTime] = useState(toTimeInputValue(draft?.servedTime));
@@ -664,6 +666,7 @@ function DinnerSheet({
         chefUserId,
         chefName: orNull(chefName),
         chefPhone: orNull(chefPhone),
+        crewUserIds,
         houses: houses.split(",").map((h) => h.trim()).filter(Boolean),
         menu: orNull(menu),
         servedTime: orNull(servedTime),
@@ -709,6 +712,36 @@ function DinnerSheet({
         onPhone={setChefPhone}
       />
 
+      <Field label="Crew members (also get editing rights for this dinner)">
+        {crewUserIds.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {crewUserIds.map((id) => {
+              const m = members.find((x) => x.id === id);
+              return (
+                <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                  {m?.name ?? "Member"}
+                  <button
+                    type="button"
+                    onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
+                    aria-label={`Remove ${m?.name ?? "member"} from crew`}
+                    className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setPickingCrew(true)}
+          disabled={members.length === 0}
+          className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
+        >
+          + Add a crew member…
+        </button>
+      </Field>
       <Field label="Houses on crew (comma-separated)">
         <input value={houses} onChange={(e) => setHouses(e.target.value)} placeholder="e.g. Theis, Birkholz" className={`${FIELD} w-full`} />
       </Field>
@@ -733,6 +766,14 @@ function DinnerSheet({
           members={members}
           onPick={(m) => { setChefUserId(m.id); setChefName(m.name); setPicking(false); }}
           onClose={() => setPicking(false)}
+        />
+      )}
+      {pickingCrew && (
+        <CrewPickerSheet
+          members={members}
+          selected={new Set(crewUserIds)}
+          onToggle={(id) => setCrewUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
+          onClose={() => setPickingCrew(false)}
         />
       )}
     </Sheet>
@@ -1285,6 +1326,60 @@ function MemberPickerSheet({
             </button>
           </li>
         ))}
+        {filtered.length === 0 && <li className="py-6 text-center text-xs text-foreground/50">No members found.</li>}
+      </ul>
+    </Sheet>
+  );
+}
+
+/** Multi-select variant of MemberPickerSheet — toggles rather than picking
+ *  once-and-close, for the "Crew members" list (migration 0099): each one
+ *  added also gets editing rights on this dinner, alongside the head chef. */
+function CrewPickerSheet({
+  members,
+  selected,
+  onToggle,
+  onClose,
+}: {
+  members: FestMemberOption[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const [q, setQ] = useState("");
+  const filtered = q.trim()
+    ? members.filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase()))
+    : members;
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="crew-picker"
+      header={<h2 id="crew-picker" className="text-lg font-bold">Add crew members</h2>}
+      footer={
+        <button onClick={close} className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white">
+          Done
+        </button>
+      }
+    >
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search members…" className={`${FIELD} w-full`} />
+      <ul className="space-y-1">
+        {filtered.map((m) => {
+          const on = selected.has(m.id);
+          return (
+            <li key={m.id}>
+              <button
+                onClick={() => onToggle(m.id)}
+                aria-pressed={on}
+                className={`press flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left ring-1 ${on ? "bg-primary/10 ring-primary/30" : "bg-card ring-border"}`}
+              >
+                <span className="text-sm font-medium">{m.name}</span>
+                {on && <span aria-hidden>✓</span>}
+              </button>
+            </li>
+          );
+        })}
         {filtered.length === 0 && <li className="py-6 text-center text-xs text-foreground/50">No members found.</li>}
       </ul>
     </Sheet>

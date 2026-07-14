@@ -1,9 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
+import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { useFestContent } from "@/lib/useFestContent";
+import { canEditFest } from "@/lib/festContent";
+import { useIdentity } from "@/components/IdentityProvider";
+import { getCurrentUserId } from "@/lib/roles";
 import { formatDateLong, formatTime } from "@/lib/format";
 import type { Dinner } from "@/lib/types";
 
@@ -11,10 +16,36 @@ import type { Dinner } from "@/lib/types";
  * One dinner, drilled in — live from the shared content (Planner edits show
  * here), falling back to the seed dinner the static page passed in (which keeps
  * pre-rendered routes working offline / on the Pages mirror).
+ *
+ * The head chef and any crew members assigned to this dinner (migration 0099)
+ * can edit its operational details (menu/served/prep) right from here — same
+ * as a fest admin/committee editor, just scoped to this one dinner instead of
+ * the whole Planner.
  */
 export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinner | null }) {
-  const { dinners } = useFestContent({ realtime: true });
+  const { dinners, reload } = useFestContent({ realtime: true });
   const dinner = dinners.find((d) => d.id === id) ?? fallback;
+  const { user } = useIdentity();
+  const [uid, setUid] = useState<string | null>(null);
+  const [canEditAll, setCanEditAll] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setUid(null);
+      setCanEditAll(false);
+      return;
+    }
+    let active = true;
+    getCurrentUserId().then((id) => active && setUid(id));
+    canEditFest().then((ok) => active && setCanEditAll(ok));
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  const canEditThis =
+    canEditAll || Boolean(uid && (dinner?.chefUserId === uid || dinner?.crewUserIds.includes(uid)));
 
   if (!dinner) {
     return (
@@ -31,12 +62,23 @@ export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinne
     <div className="space-y-5 pt-1">
       <BackLink href="/family-fest" label="Family Fest" />
 
-      <header className="space-y-1">
-        <p className="text-xs text-foreground/50">{formatDateLong(dinner.day)}</p>
-        <h1 className="text-2xl font-bold tracking-tight">
-          <span className="mr-1">{dinner.emoji}</span>
-          {dinner.title}
-        </h1>
+      <header className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <p className="text-xs text-foreground/50">{formatDateLong(dinner.day)}</p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            <span className="mr-1">{dinner.emoji}</span>
+            {dinner.title}
+          </h1>
+        </div>
+        {canEditThis && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="press shrink-0 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+          >
+            ✏️ Edit
+          </button>
+        )}
       </header>
 
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
@@ -85,6 +127,10 @@ export function FestDinnerDetail({ id, fallback }: { id: string; fallback: Dinne
           <CallTextButtons phone={dinner.chef.phone} />
         </div>
       </section>
+
+      {editing && (
+        <DinnerDetailsEditSheet dinner={dinner} onClose={() => setEditing(false)} onSaved={reload} />
+      )}
     </div>
   );
 }

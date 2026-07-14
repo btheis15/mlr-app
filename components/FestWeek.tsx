@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateLong, formatTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
+import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { useIdentity } from "@/components/IdentityProvider";
+import { getCurrentUserId } from "@/lib/roles";
+import { canEditFest } from "@/lib/festContent";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
 /**
@@ -22,15 +26,37 @@ export function FestWeek({
   things,
   startDate,
   endDate,
+  onDinnerSaved,
 }: {
   events: ScheduleEvent[];
   dinners: Dinner[];
   things: FestActivity[];
   startDate: string;
   endDate: string;
+  /** Called after a chef/crew/admin edit saves from a DinnerRow, so the
+   *  caller's own useFestContent() instance re-fetches (see migration 0099 —
+   *  FestWeek is handed `dinners` as a prop, so it can't refresh itself). */
+  onDinnerSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
+  const { user } = useIdentity();
+  const [uid, setUid] = useState<string | null>(null);
+  const [canEditAll, setCanEditAll] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setUid(null);
+      setCanEditAll(false);
+      return;
+    }
+    let active = true;
+    getCurrentUserId().then((id) => active && setUid(id));
+    canEditFest().then((ok) => active && setCanEditAll(ok));
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   const allDays = Array.from(
     new Set([...events.map((e) => e.day), ...dinners.map((d) => d.day)]),
@@ -89,7 +115,14 @@ export function FestWeek({
                 {dayEvents.map((e) => (
                   <EventRow key={e.id} event={e} />
                 ))}
-                {dinner && <DinnerRow dinner={dinner} />}
+                {dinner && (
+                  <DinnerRow
+                    dinner={dinner}
+                    uid={uid}
+                    canEditAll={canEditAll}
+                    onSaved={() => onDinnerSaved?.()}
+                  />
+                )}
                 {dayEvents.length === 0 && !dinner && (
                   <li className="px-4 py-3 text-xs text-foreground/45">Nothing scheduled yet.</li>
                 )}
@@ -190,8 +223,20 @@ function EventRow({ event }: { event: ScheduleEvent }) {
   );
 }
 
-function DinnerRow({ dinner }: { dinner: Dinner }) {
+function DinnerRow({
+  dinner,
+  uid,
+  canEditAll,
+  onSaved,
+}: {
+  dinner: Dinner;
+  uid: string | null;
+  canEditAll: boolean;
+  onSaved: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const canEditThis = canEditAll || Boolean(uid && (dinner.chefUserId === uid || dinner.crewUserIds.includes(uid)));
   return (
     <li className="border-b border-border/50 bg-primary/5 last:border-0">
       <button
@@ -209,6 +254,15 @@ function DinnerRow({ dinner }: { dinner: Dinner }) {
       </button>
       <Expander open={open}>
         <div className="space-y-3 px-4 pb-4">
+          {canEditThis && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="press rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+            >
+              ✏️ Edit this dinner
+            </button>
+          )}
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">
               On the menu
@@ -270,6 +324,13 @@ function DinnerRow({ dinner }: { dinner: Dinner }) {
           </div>
         </div>
       </Expander>
+      {editing && (
+        <DinnerDetailsEditSheet
+          dinner={dinner}
+          onClose={() => setEditing(false)}
+          onSaved={onSaved}
+        />
+      )}
     </li>
   );
 }

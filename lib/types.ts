@@ -348,6 +348,15 @@ export interface Dinner {
   emoji: string;
   /** The "head chef of the day" — point of contact, tap-to-call/text. */
   chef: Chef;
+  /** Set when the chef is linked to a real account (migration 0053) — lets
+   *  the client tell "is the signed-in viewer this dinner's chef?" without a
+   *  name-match. Null for a free-text chef (not in the app). */
+  chefUserId: string | null;
+  /** Other members assigned to help with this dinner (migration 0099) —
+   *  distinct from `houses` below (which houses are teaming up, not who
+   *  specifically). Both the chef and anyone in this list can edit the
+   *  dinner's operational details (menu/served/prep) directly. */
+  crewUserIds: string[];
   /** The 2–3 houses (families) teaming up to cook this night. */
   houses: string[];
   /** What's on the menu. */

@@ -516,6 +516,43 @@ migration [`0078`](supabase/migrations/0078_fest_dues_per_day.sql) adds
 Planner's dues editor ([`FestPlanner.tsx`](components/FestPlanner.tsx)
 `DuesSheet`) has a matching "Billed per day" checkbox.
 
+## Dinner chef/crew self-edit (migration 0099)
+
+Writing to `fest_dinners` normally requires `can_edit_fest()` (admin or Family
+Fest committee membership) — but a dinner's **head chef and any assigned crew
+members** don't need to be on that committee to be the ones actually running
+that night, so they can edit that one dinner's **operational details** (menu,
+served time/location, prep time/location — deliberately *not* day/title/chef/
+crew/houses, which stay admin/committee-managed) directly, from wherever the
+dinner shows up:
+
+- [`FestWeek`](components/FestWeek.tsx)'s `DinnerRow` (the Overview/Schedule
+  accordion) and [`FestDinnerDetail`](components/FestDinnerDetail.tsx) (the
+  standalone `dinners/[id]` page) both show a quiet "✏️ Edit" affordance when
+  the signed-in viewer is the chef, a crew member, or already has full
+  `can_edit_fest()` access — opening the shared
+  [`DinnerDetailsEditSheet`](components/DinnerDetailsEditSheet.tsx), which
+  writes via a new, narrower `updateDinnerDetails()` (a plain partial update —
+  not `writeRow`/`saveDinner`, which always write every `DinnerInput` field
+  and would clobber day/title/chef/houses this surface never touches).
+- **Data model:** `fest_dinners.chef_user_id` was already a real FK to
+  `profiles` (day one, migration 0053) — no new column needed for the chef
+  side. `crew_user_ids uuid[]` is new (mirrors the existing `houses text[]`
+  column shape rather than a join table, since it's just a small assignment
+  list). A second, narrower `for update` RLS policy (`chef_user_id = auth.uid()
+  or auth.uid() = any(crew_user_ids)`) layers on top of the existing blanket
+  `can_edit_fest()` write policy — Postgres ORs multiple permissive policies
+  for the same command, so this composes without touching that one. It's
+  **update-only**, not `for all`: a chef/crew member can edit an existing
+  dinner, not insert a new one or delete this one.
+- **Assigning crew** is admin/committee-only, in the Planner's `DinnerSheet` —
+  a "Crew members" multi-picker (`CrewPickerSheet`, a toggle-multiple sibling
+  of the existing single-pick `MemberPickerSheet` used for the head chef)
+  alongside the existing "Houses on crew" free-text field (still house names,
+  not individual members — the two are independent: houses says which
+  families are teaming up, crew members says who specifically gets edit
+  rights).
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**
