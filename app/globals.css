@@ -210,8 +210,14 @@ body {
   --dur-tap: 140ms;
 }
 
+/* Route transition: a subtle iMessage-style push — content slides in from the
+   right a short distance while the last bit of fade smooths the edges. The old
+   full fade-up read as a whole-screen "flash" once the persisted caches made
+   every page paint instantly (there's no loading gap left to disguise); a
+   lateral slide reads as *navigation* instead. Starts at 0.55 opacity (never
+   0) precisely so the screen can't blink. */
 @keyframes mlr-page-in {
-  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  from { opacity: 0.55; transform: translate3d(26px, 0, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes mlr-fade-in {
@@ -254,6 +260,24 @@ body {
 @utility page-enter {
   animation: mlr-page-in var(--dur-page) var(--ease-ios) backwards;
 }
+
+/* Chat push/pop (FeedView's full-screen room containers): the room slides in
+   from the right like a native Messages push, and slides back out on Back.
+   `backwards` fill on the push (NOT both/forwards) — the container's inline
+   transform is owned post-animation by the keyboard-pinning effect in
+   FeedView, and a retained animation fill would override it. The pop runs to
+   completion before FeedView actually unmounts the room (a short state-timed
+   close, mirroring useSheetDismiss). */
+@keyframes mlr-chat-push {
+  from { transform: translate3d(100%, 0, 0); }
+  to   { transform: translate3d(0, 0, 0); }
+}
+@keyframes mlr-chat-pop {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(100%, 0, 0); }
+}
+@utility chat-push { animation: mlr-chat-push 300ms var(--ease-ios) backwards; }
+@utility chat-pop  { animation: mlr-chat-pop 240ms var(--ease-ios-in) forwards; }
 
 /* Scrim fade. The -out variant plays while a dialog is dismissing. */
 @utility scrim-in  { animation: mlr-scrim-in 200ms ease-out both; }
@@ -344,7 +368,8 @@ html[data-splash] #app-logo { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .page-enter, .sheet-panel, .sheet-close, .pop-panel, .pop-close,
   .sm\:pop-panel, .sm\:pop-close,
-  .scrim-in, .scrim-out, .rise {
+  .scrim-in, .scrim-out, .rise,
+  .chat-push, .chat-pop {
     animation: mlr-fade-in 1ms linear both;
   }
   .press { transition: none; }
