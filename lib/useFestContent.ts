@@ -3,14 +3,16 @@
 // Client hook for the shared Family Fest content (schedule, dinners, payees,
 // dues, activities, config). Seeds from the in-code constants so the very first
 // paint matches the server render (no hydration shift, identical to the old
-// hardcoded behavior), then fetches the live DB content and — optionally — keeps
-// it fresh with a Realtime subscription so a Planner edit (web OR iOS) shows up
-// without a reload. Mirrors the spirit of useEvents (SWR-style module cache so a
-// tab revisit paints instantly instead of blanking out).
+// hardcoded behavior), then the shared SWR cache (lib/swrCache) takes over:
+// last-known live content is held in memory across remounts AND persisted
+// on-device, so a tab revisit — or a cold app open — paints the real data
+// instantly instead of flashing the seed, while a background fetch (and,
+// optionally, a Realtime subscription) keeps it current.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useDebouncedCallback } from "@/lib/hooks";
+import { useCachedResource } from "@/lib/swrCache";
 import { fetchFestContent, SEED_CONTENT, type FestContent } from "@/lib/festContent";
 
 const FEST_TABLES = [
@@ -30,33 +32,26 @@ const FEST_TABLES = [
 // falls back to the in-code seed).
 const CALLOUT_TABLE = "home_callouts";
 
-// Last-known content, held across remounts so navigating back to a fest page
-// paints the live data immediately rather than flashing the seed again.
-let cache: FestContent | null = null;
-
 export interface UseFestContent extends FestContent {
   loading: boolean;
   reload: () => Promise<void>;
 }
 
 export function useFestContent(opts?: { realtime?: boolean }): UseFestContent {
-  const [content, setContent] = useState<FestContent>(cache ?? SEED_CONTENT);
-  const [loading, setLoading] = useState(!cache);
+  // Public content, unscoped key. `empty` is the in-code seed, so the first
+  // paint (and the prerendered HTML) is the old hardcoded render; the
+  // persisted snapshot then swaps in the last-known live content one tick
+  // after mount, and the always-on revalidate brings it fully current.
+  const { data: content, loading, reload } = useCachedResource<FestContent>(
+    "festContent",
+    SEED_CONTENT,
+    fetchFestContent,
+    { persist: "local" },
+  );
   const [scheduleRefetch] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
 
-  const reload = useCallback(async () => {
-    try {
-      const c = await fetchFestContent();
-      setContent(c);
-      cache = c;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void reload();
     const sb = supabase;
     if (!realtime || !isSupabaseConfigured || !sb) return;
     const channel = sb.channel("fest-content-live");

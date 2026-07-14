@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Avatar } from "@/components/Avatar";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchEvents, fetchAttendance } from "@/lib/events";
 import { useDemoDate } from "@/lib/DemoDateProvider";
+import { useCachedResource } from "@/lib/swrCache";
 import { presentFromAttendance, presentFromCabins, mergePresence, type PresentMember } from "@/lib/presence";
 
 const MAX_SHOWN = 8;
@@ -33,30 +33,20 @@ function firstName(name: string): string {
  * for guests and on a day with nobody up north).
  */
 export function WhosUpNorthCard() {
-  const { user } = useIdentity();
+  const { user, userId } = useIdentity();
   const { today } = useDemoDate();
-  const [members, setMembers] = useState<PresentMember[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user || !today) {
-      setMembers([]);
-      return;
-    }
-    (async () => {
-      try {
-        const [events, rows, cabin] = await Promise.all([fetchEvents(), fetchAttendance(), presentFromCabins(today)]);
-        if (cancelled) return;
-        const eventPresence = presentFromAttendance(events, rows, today);
-        setMembers(mergePresence(eventPresence, cabin));
-      } catch {
-        if (!cancelled) setMembers([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, today]);
+  // Shared SWR cache, date-scoped (`whosUpNorth.<uid>.<today>`, 30-minute TTL)
+  // so a cold open paints the strip instantly instead of popping in — and a
+  // stale DAY can never paint, since yesterday's key simply isn't today's.
+  const { data: members } = useCachedResource<PresentMember[]>(
+    user && userId && today ? `whosUpNorth.${userId}.${today}` : null,
+    [],
+    async () => {
+      const [events, rows, cabin] = await Promise.all([fetchEvents(), fetchAttendance(), presentFromCabins(today!)]);
+      return mergePresence(presentFromAttendance(events, rows, today!), cabin);
+    },
+    { persist: "local", ttlMs: 30 * 60 * 1000 },
+  );
 
   if (!user || !members.length) return null;
 

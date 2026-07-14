@@ -36,7 +36,9 @@ export async function fetchMyHouse(userId?: string | null): Promise<House | null
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return null;
   try {
-    const me = userId ?? (await sb.auth.getUser()).data.user?.id ?? null;
+    // getSession() = local read, no network — the uid only filters our own
+    // query and RLS is the real gate (same rationale as getCurrentUserId).
+    const me = userId ?? (await sb.auth.getSession()).data.session?.user.id ?? null;
     if (!me) return null;
     const { data } = await sb
       .from("profiles")

@@ -123,7 +123,14 @@ hidden for the whole splash (`html[data-splash] #app-logo { opacity: 0 }` in
 revealed the instant the fly lands — so the logo reads as *placed* into the
 header, not cross-faded against a second copy. `splash-wash` is the CSS-only
 self-clear fallback; reduce-motion skips straight to the app (attribute never
-set, header logo shows normally).
+set, header logo shows normally). The splash is also the app's **first-paint
+mask**: it holds until `authReady` (the sign-in check settled) **plus, on a
+cold open, up to +700ms more** while any cold data loads land — fed by the
+readiness registry in [`lib/appReady.ts`](lib/appReady.ts), which
+`useCachedResource` (see **Loading stability & the SWR cache**) marks pending
+whenever a fetch starts with nothing seeded from cache. On a warm open every
+card seeds instantly, nothing registers, and the hold adds ~0ms; the 4.5s
+`MAX_WAIT_MS` safety cap is unchanged and always wins.
 
 ## Non-technical / accessibility UX
 
@@ -349,10 +356,19 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   [`components/IdentityProvider.tsx`](components/IdentityProvider.tsx) only asks
   for name + email when you try to *do* something (post in chat, RSVP, …): those
   actions call `promptSignIn()`, which opens a dismissible sign-in sheet.
-  `useIdentity()` exposes `{ user, isAdmin, updateUser, promptSignIn, signOut }`
-  (`user` is `null` while browsing as a guest). Identity is stored in
-  `localStorage`, no verification yet; at sign-in the guest opts in/out of email
-  alerts.
+  `useIdentity()` exposes `{ user, userId, isAdmin, authReady, updateUser,
+  promptSignIn, signOut }` (`user` is `null` while browsing as a guest;
+  `userId` is the REAL session uid — never the preview identity — available on
+  the first client tick). Identity is a verified Supabase email-OTP session
+  (persisted on-device by supabase-js); at sign-in the guest opts in/out of
+  email alerts. An **on-device identity snapshot** (`mlr.cache.v1.identity.<uid>`,
+  written after each profile load) restores `user`/`isAdmin`/`isBetaTester` on
+  the first client tick of a cold open — so a returning member never flashes
+  the guest view (or the SignInWall) while the profile refetches. It's cleared
+  by `signOut()` (via `clearAllCaches()`), never written during preview, and
+  deliberately excludes the one-time intro flags. Trade-off: a since-demoted
+  admin can paint admin UI for ~1s until the fresh profile lands — fine, since
+  `is_admin` is UI-only and RLS is the real gate.
 - **Admins** — strictly `profiles.is_admin` in Supabase; the database is the
   **single source of truth** (there is no client allow-list — it could only grant
   UI the server won't honor). The first admin is bootstrapped once from the SQL
@@ -700,7 +716,8 @@ data, table not migrated yet), so Home never grows an empty box:
 
 - [`WeatherCard`](components/WeatherCard.tsx) — today's temp + forecast for the
   lake, from **Open-Meteo** (no API key), fixed lat/long for Tomahawk, WI,
-  cached in `localStorage` for 30 minutes.
+  cached via the shared SWR cache (`mlr.cache.v1.weather`, localStorage,
+  30-minute TTL).
 - [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) — members-only strip of
   who's at the resort *today*, reusing Ask-for-Help's presence rule (going to
   an event within its ±2-day window, or an approved cabin stay covering today)
@@ -1093,6 +1110,73 @@ Also note: `swift build` on the current CLT beta needs a `DYLD_FALLBACK_FRAMEWOR
 workaround (README). The `/api/assistant` route ships **Vercel-only** (a POST
 handler breaks the Pages `output: export`); its wrapper + env vars are in
 [`docs/ai-assistant.md`](docs/ai-assistant.md).
+
+## Loading stability & the SWR cache
+
+The app's anti-flash layer — why cards don't pop in on cold open and why the
+first paint is the correct member view. Two small modules:
+
+- [`lib/swrCache.ts`](lib/swrCache.ts) — **`useCachedResource(key, empty,
+  fetcher, { persist?, ttlMs? })`**, the shared stale-while-revalidate
+  primitive that replaced the ~20 hand-rolled per-component cache Maps. Two
+  layers: a module **memory Map** (survives the per-tab-switch remounts caused
+  by `app/template.tsx`) and an optional **persisted copy**
+  (`localStorage`/`sessionStorage`, key prefix `mlr.cache.v1.`, `{ts, data}`
+  envelope, default 24h TTL, 200KB per-entry cap) so the *next app open*
+  paints the last known data instantly and revalidates in the background.
+  In-flight fetches are deduped per key; `mutate()` writes state + memory +
+  storage in one call (optimistic updates); `reload()` forces a fresh fetch
+  (realtime callbacks use it). Also exports `readPersisted`/`writePersisted`
+  (used directly where a hook doesn't fit — IdentityProvider, FeedView,
+  useEvents) and `clearAllCaches()`.
+- [`lib/appReady.ts`](lib/appReady.ts) — the first-paint readiness registry
+  behind the splash hold (see the splash paragraph up top): `markPending(key)`
+  on a cold load, `onQuietOnce(capMs, cb)` in `SplashIntro`.
+
+**The four rules** (break any of them and you get hydration mismatches or
+cross-account bleed):
+
+1. **Memory seeds sync, storage seeds post-mount.** The prerendered HTML is
+   always the guest/empty view, so the first client render must match it.
+   Module memory is empty at cold boot (safe to read in a `useState`
+   initializer); persisted snapshots are read **only inside effects** — never
+   move one into an initializer "because it's faster".
+2. **User-scoped keys embed the auth uid** (`myHouse.<uid>`, `feed.<uid>`,
+   `events.<uid|guest>`, `calloutsDone.<uid>`, `unread.<uid>`,
+   `workChecklist.<uid>`, `activePoll.<uid>`, `polls.<uid>`, `people.<uid>`,
+   `notifFeed.<uid>`, `helpRequests.<uid>`, `festMember.<uid>`,
+   `postsFeed.<uid>` (a TRIMMED top-of-feed snapshot — see PostsView),
+   `resolvedHouse.<uid>.…`, `chatEntry.<uid>.<slug>`,
+   `managedCommittee.<uid>.<slug>.<admin>`,
+   `houseCalendar.<houseId>`; day-fresh data also embeds the local date —
+   `whosUpNorth.<uid>.<date>`, `birthdays.<uid>.<date>`,
+   `onThisDay.<uid>.<date>`). Pass `key = null` while the uid is unresolved —
+   the hook stays inert. Public data uses unscoped keys (`festContent`,
+   `appImages`, `weather`).
+3. **Preview mode never persists.** While an admin is viewing-as, pass
+   `persist: undefined` and put the preview id in the (memory-only) key.
+4. **`signOut()` calls `clearAllCaches()`** — every `mlr.cache.*` key in both
+   storages plus the memory map, so nothing outlives an account switch on a
+   shared device. Uid-scoped keys are the backstop for the token-expiry path
+   where signOut never runs (leftover entries are inert without a session).
+
+Everything is stale-while-revalidate: a seed **always** gets a background
+refetch, so revoked access / deleted rows self-correct, and realtime
+subscriptions keep writing through `reload`/`mutate`. Migrated so far:
+useFestContent, useAppImages, useEvents, useUnreadNotifications,
+useHelpRequests, useResolvedHouse, useHouseCalendar, FeedView, HouseHubCard,
+HomeSpotlight (callout completions), WeatherCard, ActivePollCard,
+WorkChecklist, WhosUpNorth/Birthdays/OnThisDay, PollsView, PeopleDirectory,
+NotificationsView, FestStatus + FamilyFestSpotlight (one shared
+`festMember.<uid>` key — a deduped fetch across both), ChatEntryButton,
+useManagedCommittee, PostsView (the Main Feed: a trimmed `postsFeed.<uid>`
+snapshot of the top ~15 posts + their comments/reactions/members — never the
+full history, which would blow the 200KB cap), plus the identity snapshot.
+Still on bespoke memory-only caches (fine — behind navigations, adopt
+opportunistically): the chat message caches (CommitteeChat/HouseChat —
+message bodies are deliberately NOT persisted on-device: most sensitive
+content, and the rooms keep their in-session caches), CommitteeRoster,
+CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
 
 ## Conventions
 

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 import { useIdentity } from "@/components/IdentityProvider";
 
 /**
@@ -20,26 +20,25 @@ import { useIdentity } from "@/components/IdentityProvider";
  * Feed → Chats list. RLS gates the count, so a non-member simply sees 0.
  */
 
-// Stale-while-revalidate cache so the badge doesn't pop in on every revisit.
-// Empty at module-eval + null user during prerender ⇒ cold render is 0 (the
-// prior default), matching the static/SSR HTML; only ever written in the effect.
-const unreadEntryCache = new Map<string, number>();
-
 export function ChatEntryButton({ slug, name }: { slug: string; name: string }) {
-  const { user, previewAsId } = useIdentity();
-  const cacheKey = `${slug}|${user?.email ?? "guest"}|${previewAsId ?? "self"}`;
-  const [unread, setUnread] = useState(unreadEntryCache.get(cacheKey) ?? 0);
-
-  useEffect(() => {
-    const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !user) return;
-    let cancelled = false;
-    (async () => {
+  const { user, userId, previewAsId } = useIdentity();
+  const me = previewAsId ?? userId;
+  // Shared SWR cache (persisted per uid+slug) so the badge paints its
+  // last-known count instantly instead of popping in; the revalidate brings it
+  // current. Previews stay memory-only.
+  const { data: unread } = useCachedResource<number>(
+    user && me
+      ? previewAsId
+        ? `chatEntry.preview.${previewAsId}.${slug}`
+        : `chatEntry.${me}.${slug}`
+      : null,
+    0,
+    async () => {
+      const sb = supabase;
+      if (!isSupabaseConfigured || !sb || !me) return 0;
       const { data: c } = await sb.from("committees").select("id").eq("slug", slug).maybeSingle();
       const cid = (c as { id: string } | null)?.id;
-      if (!cid) return;
-      const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id;
-      if (!me) return;
+      if (!cid) return 0;
       // General-channel unread: messages from others newer than my last read of
       // the General channel (committee_area_reads keys General as area '').
       const { data: rd } = await sb
@@ -58,15 +57,10 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
         .neq("author_id", me);
       if (since) q = q.gt("created_at", since);
       const { count } = await q;
-      if (!cancelled) {
-        setUnread(count ?? 0);
-        unreadEntryCache.set(cacheKey, count ?? 0);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, user, previewAsId, cacheKey]);
+      return count ?? 0;
+    },
+    { persist: previewAsId ? undefined : "local" },
+  );
 
   return (
     <Link

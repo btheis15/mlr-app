@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 
 // Same bucket PostsView resolves post photos from (components/PostsView.tsx).
 const BUCKET = "post-photos";
@@ -83,66 +83,66 @@ function circularDayDistance(a: number, b: number): number {
  * Usage: `<OnThisDayCard />` — anywhere on Home, members-only (self-hides for
  * guests).
  */
+async function fetchTodaysMemory(): Promise<Memory | null> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return null;
+  const [posts, mediaRes] = await Promise.all([
+    fetchPostsTolerant(sb),
+    sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
+  ]);
+
+  const firstImageByPost = new Map<string, string>();
+  for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
+    if (m.media_type === "video" || firstImageByPost.has(m.post_id)) continue;
+    firstImageByPost.set(m.post_id, m.storage_path);
+  }
+
+  const resolveUrl = (path: string) =>
+    path.startsWith("http") ? path : sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const todayDoy = dayOfYear(now);
+
+  const candidates: Memory[] = [];
+  for (const p of posts) {
+    if (p.status && p.status !== "visible") continue;
+    const occurred = p.occurred_at || p.created_at;
+    const d = new Date(occurred);
+    if (Number.isNaN(d.getTime()) || d.getFullYear() >= currentYear) continue;
+    if (circularDayDistance(dayOfYear(d), todayDoy) > WINDOW_DAYS) continue;
+    const path = firstImageByPost.get(p.id) || (p.image_path ?? null);
+    if (!path) continue; // "a photo memory" — skip posts with no image
+    candidates.push({
+      id: p.id,
+      year: d.getFullYear(),
+      caption: p.text?.trim() || "A memory from back then.",
+      thumbUrl: resolveUrl(path),
+    });
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.id.localeCompare(b.id)); // stable order for the deterministic pick
+  return candidates[todayDoy % candidates.length];
+}
+
+/** Local-calendar YYYY-MM-DD for the date-scoped cache key. */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function OnThisDayCard() {
-  const { user } = useIdentity();
-  const [memory, setMemory] = useState<Memory | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setMemory(null);
-    const sb = supabase;
-    if (!user || !isSupabaseConfigured || !sb) return;
-    (async () => {
-      try {
-        const [posts, mediaRes] = await Promise.all([
-          fetchPostsTolerant(sb),
-          sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
-        ]);
-
-        const firstImageByPost = new Map<string, string>();
-        for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
-          if (m.media_type === "video" || firstImageByPost.has(m.post_id)) continue;
-          firstImageByPost.set(m.post_id, m.storage_path);
-        }
-
-        const resolveUrl = (path: string) =>
-          path.startsWith("http") ? path : sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const todayDoy = dayOfYear(now);
-
-        const candidates: Memory[] = [];
-        for (const p of posts) {
-          if (p.status && p.status !== "visible") continue;
-          const occurred = p.occurred_at || p.created_at;
-          const d = new Date(occurred);
-          if (Number.isNaN(d.getTime()) || d.getFullYear() >= currentYear) continue;
-          if (circularDayDistance(dayOfYear(d), todayDoy) > WINDOW_DAYS) continue;
-          const path = firstImageByPost.get(p.id) || (p.image_path ?? null);
-          if (!path) continue; // "a photo memory" — skip posts with no image
-          candidates.push({
-            id: p.id,
-            year: d.getFullYear(),
-            caption: p.text?.trim() || "A memory from back then.",
-            thumbUrl: resolveUrl(path),
-          });
-        }
-        if (!candidates.length) {
-          if (!cancelled) setMemory(null);
-          return;
-        }
-        candidates.sort((a, b) => a.id.localeCompare(b.id)); // stable order for the deterministic pick
-        const pick = candidates[todayDoy % candidates.length];
-        if (!cancelled) setMemory(pick);
-      } catch {
-        if (!cancelled) setMemory(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+  const { user, userId } = useIdentity();
+  // Shared SWR cache, date-scoped (`onThisDay.<uid>.<today>`, 24h TTL): the
+  // pick is deterministic per day anyway, so caching the day's memory just
+  // makes it paint instantly on a cold open — and yesterday's pick can never
+  // flash, since its key isn't today's. uid-scoped because posts are
+  // members-only under the 0081 RLS lockdown.
+  const { data: memory } = useCachedResource<Memory | null>(
+    user && userId ? `onThisDay.${userId}.${localDayKey(new Date())}` : null,
+    null,
+    fetchTodaysMemory,
+    { persist: "local", ttlMs: 24 * 60 * 60 * 1000 },
+  );
 
   if (!user || !memory) return null;
 

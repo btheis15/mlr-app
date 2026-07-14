@@ -9,6 +9,7 @@ import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
+import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { useRouter } from "next/navigation";
 
 /**
@@ -55,24 +56,29 @@ const mediaPreviewLabel = (mediaType: string): string =>
   mediaType === "sticker" ? "Sticker" : mediaType === "video" ? "🎬 Video" : "📷 Photo";
 
 /**
- * Stale-while-revalidate cache, mirroring lib/hooks.ts `eventsCache`. FeedView
- * remounts on every tab navigation; without this, channels/houseChannel reset to
- * empty/null and the "no house & no committee → Main Feed" guard (~line 281)
- * fires for a beat before the load effect resolves — so anyone in a house or
- * committee sees the Main Feed flash, then pops to the Chats list. Holding the
- * last result per viewer lets a returning tab paint the list immediately while
- * the effect refetches in the background. Keyed on `${email}|${previewAs}` so a
- * different viewer (or an admin previewing as someone) never reads another's
- * channels. Memory-only (per session) and written ONLY inside effects, never
- * during render/SSR — the map is empty at module-eval, so a cold first render
- * still hits the []/null defaults that match the static/prerendered HTML (where
- * `user` is null), avoiding any hydration mismatch.
+ * Stale-while-revalidate snapshot of the channel list. FeedView remounts on
+ * every tab navigation; without a seed, channels/houseChannel reset to
+ * empty/null and the "no house & no committee → Main Feed" guard fires for a
+ * beat before the load effect resolves — so anyone in a house or committee
+ * sees the Main Feed flash, then pops to the Chats list. Two layers now:
+ * this memory Map (tab switches, same session) plus a persisted copy under
+ * `mlr.cache.v1.feed.<uid>` (lib/swrCache) restored in a post-mount effect,
+ * so a COLD app open paints the last known list instantly too. Keyed by uid
+ * (or the preview id — previews are never persisted) so a different viewer
+ * never reads another's channels. Memory writes happen ONLY inside effects,
+ * never during render/SSR — the map is empty at module-eval, so a cold first
+ * render still hits the []/null defaults that match the prerendered HTML.
  */
-const feedCache = new Map<string, { channels: Channel[]; houseChannel: HouseChannel | null; summaries: Record<string, Summary> }>();
+interface FeedSnapshot {
+  channels: Channel[];
+  houseChannel: HouseChannel | null;
+  summaries: Record<string, Summary>;
+}
+const feedCache = new Map<string, FeedSnapshot>();
 
 export function FeedView() {
-  const { user, previewAsId } = useIdentity();
-  const cacheKey = `${user?.email ?? ""}|${previewAsId ?? "self"}`;
+  const { user, userId, previewAsId, authReady } = useIdentity();
+  const cacheKey = previewAsId ? `preview.${previewAsId}` : (userId ?? "");
   const cached = feedCache.get(cacheKey);
   const [channels, setChannels] = useState<Channel[]>(cached?.channels ?? []);
   const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(cached?.houseChannel ?? null);
@@ -93,14 +99,47 @@ export function FeedView() {
   // (which lives outside the load effect's closure) can trigger a refresh.
   const computeSummariesRef = useRef<() => Promise<void>>(async () => {});
 
+  // Persisted-snapshot seed + house deep-link fast path (post-mount, so it's
+  // hydration-safe). On a cold app open the module cache is empty; restore the
+  // last known channel list from storage so the Chats list paints instantly —
+  // and if we were opened from the House hub (?house=slug) and the snapshot
+  // already has that house, drop straight into the house chat one tick after
+  // mount instead of waiting for the full channels fetch. The load effect
+  // below still revalidates everything behind it.
+  useEffect(() => {
+    if (!user || !userId) return;
+    let snap = feedCache.get(cacheKey) ?? null;
+    if (!snap && !previewAsId) {
+      snap = readPersisted<FeedSnapshot>(`feed.${userId}`);
+      if (snap) {
+        feedCache.set(cacheKey, snap);
+        setChannels(snap.channels);
+        setHouseChannel(snap.houseChannel);
+        setSummaries(snap.summaries);
+      }
+    }
+    if (
+      bootHouseSlug &&
+      !openedFromHouseRef.current &&
+      snap?.houseChannel &&
+      snap.houseChannel.slug === bootHouseSlug
+    ) {
+      openedFromHouseRef.current = true;
+      setActive(snap.houseChannel.key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, previewAsId]);
+
   // Load my channels (Main Feed is implicit) + their previews.
   useEffect(() => {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb || !user) {
-      // No signed-in user (guest): there's nothing to load, so flip loaded so a
-      // guest deep-linking /posts?house=<slug> doesn't hang on the loading gate
-      // below forever — it falls through to the normal feed/sign-in view.
-      setLoaded(true);
+      // No signed-in user: flip loaded so a guest deep-linking
+      // /posts?house=<slug> doesn't hang on the loading gate below forever —
+      // but ONLY once auth has actually settled. Before authReady, `user` may
+      // just not have resolved yet; flipping early would defeat the gate and
+      // flash the wrong view at a signed-in member.
+      if (!isSupabaseConfigured || !sb || authReady) setLoaded(true);
       return;
     }
     let cancelled = false;
@@ -109,6 +148,13 @@ export function FeedView() {
     let mine: Channel[] = [];
     let houseCh: HouseChannel | null = null;
     let computingSummaries = false;
+
+    // Write-through: memory for tab switches, storage for the next cold open.
+    // Previews are memory-only (an admin's view-as must never persist).
+    const saveSnap = (snap: FeedSnapshot) => {
+      feedCache.set(cacheKey, snap);
+      if (!previewAsId && userId) writePersisted(`feed.${userId}`, snap);
+    };
 
     const computeSummaries = async () => {
       if (!me || computingSummaries) return;
@@ -189,7 +235,7 @@ export function FeedView() {
         // the latest previews (only if a structural entry already exists — the
         // channels/houseChannel structural write below is what creates it).
         const prevSnap = feedCache.get(cacheKey);
-        if (prevSnap) feedCache.set(cacheKey, { ...prevSnap, summaries: next });
+        if (prevSnap) saveSnap({ ...prevSnap, summaries: next });
         if (!cancelled) setSummaries(next);
       } finally {
         computingSummaries = false;
@@ -242,7 +288,7 @@ export function FeedView() {
       // runs on realtime roster/profile changes (this fn re-runs), so a removed
       // committee/house is reflected in the cache and can't stick on revisit.
       const prevSnap = feedCache.get(cacheKey);
-      feedCache.set(cacheKey, { channels: built, houseChannel: houseCh, summaries: prevSnap?.summaries ?? {} });
+      saveSnap({ channels: built, houseChannel: houseCh, summaries: prevSnap?.summaries ?? {} });
       const hasAny = built.length > 0 || houseCh !== null;
       setActive((prev) =>
         !hasAny
@@ -255,7 +301,7 @@ export function FeedView() {
     };
 
     (async () => {
-      me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
+      me = previewAsId ?? userId; // context uid — no auth round-trip
       if (cancelled || !me) return;
       const hc = await loadHouse();
       await loadChannels();
@@ -278,7 +324,7 @@ export function FeedView() {
       }
       // Snapshot the resolved structure so the next remount paints the list
       // instantly instead of flashing the Main Feed guard.
-      feedCache.set(cacheKey, { channels: mine, houseChannel: houseCh, summaries: feedCache.get(cacheKey)?.summaries ?? {} });
+      saveSnap({ channels: mine, houseChannel: houseCh, summaries: feedCache.get(cacheKey)?.summaries ?? {} });
       if (!cancelled) setLoaded(true);
       channel = sb
         .channel("feed-conversations")
@@ -294,7 +340,7 @@ export function FeedView() {
       if (channel) sb.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email, previewAsId]);
+  }, [userId, previewAsId, authReady]);
 
   // Recompute summaries when returning to the list: otherwise a room's unread
   // badge only clears on the next message INSERT, so it stays lit after you've
@@ -371,7 +417,10 @@ export function FeedView() {
 
   // Opened via a house deep-link (from the House hub): wait for load so we drop
   // straight into the house chat instead of flashing the feed/list on the way in.
-  if (bootHouseSlug && !loaded) {
+  // Exception: the snapshot fast path above may have already opened the house
+  // chat — then there's nothing to hide, so skip the gate and render it now.
+  const fastPathOpen = houseChannel !== null && active === houseChannel.key;
+  if (bootHouseSlug && !loaded && !fastPathOpen) {
     return (
       <div className="flex h-[50dvh] items-center justify-center text-sm text-foreground/40">Loading…</div>
     );

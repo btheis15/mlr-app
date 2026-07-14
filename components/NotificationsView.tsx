@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
@@ -58,15 +59,11 @@ function isExpired(n: AppNotification): boolean {
  * Stale-while-revalidate cache for the notifications feed, keyed by viewer email.
  * `NotificationsView` remounts on every visit to the Activity tab; without this it
  * resets to `[]` + `loading`, so the feed shows a full SkeletonList before the list
- * paints. Holding the last result in memory (per viewer) lets a returning tab paint
- * instantly from cache while `load()` refetches in the background to reconcile.
- * Memory-only (per session) and only ever written *after* a client fetch — never
- * during SSR/render — so it can't change the server/first-paint render and can't
- * cause a hydration mismatch (a cold load starts with an empty map, i.e. the
- * original behavior; this view is also behind <SignInWall>, so `user` is null and
- * the key is "self" during prerender).
+ * paints. It now rides the shared SWR cache (`notifFeed.<uid>`, lib/swrCache):
+ * memory covers the tab-switch remounts, and the persisted copy paints the
+ * last-known feed instantly on a cold open too, while the fetch reconciles in
+ * the background.
  */
-const notifFeedCache = new Map<string, AppNotification[]>();
 
 /**
  * The Notifications tab feed (migration 0030). A durable, Facebook-style list of
@@ -80,106 +77,84 @@ const notifFeedCache = new Map<string, AppNotification[]>();
  */
 export function NotificationsView() {
   const router = useRouter();
-  const { user } = useIdentity();
-  // Key on the viewer's email so a warm revisit paints their own feed instantly.
-  // Null during prerender / guest → "self", matching the empty server render.
-  const key = user?.email ?? "self";
-  const [items, setItems] = useState<AppNotification[]>(notifFeedCache.get(key) ?? []);
-  // Warm cache ⇒ paint immediately (no skeleton); still refetch below to reconcile.
-  const [loading, setLoading] = useState(!notifFeedCache.has(key));
+  const { userId } = useIdentity();
   const [needsMigration, setNeedsMigration] = useState(false);
   const [schedule] = useDebouncedCallback(300);
-  const uidRef = useRef<string | null>(null);
 
-  const load = useCallback(async (uid: string) => {
-    const sb = supabase;
-    if (!sb) return;
-    const { data, error } = await sb
-      .from("notifications")
-      .select(
-        // Disambiguate the actor join — notifications has two FKs to profiles
-        // (recipient_id + actor_id), so hint the column.
-        "id, type, actor_id, title, body, url, created_at, seen_at, read_at, expires_at, actor:profiles!actor_id(display_name, avatar_url)",
-      )
-      .eq("recipient_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) {
-      // Table not there yet → the migration hasn't been run.
-      if (error.code === "42P01" || /relation .* does not exist/i.test(error.message)) {
-        setNeedsMigration(true);
+  const { data: items, loading, reload, mutate } = useCachedResource<AppNotification[]>(
+    isSupabaseConfigured && userId ? `notifFeed.${userId}` : null,
+    [],
+    async () => {
+      const sb = supabase;
+      if (!sb || !userId) return [];
+      const { data, error } = await sb
+        .from("notifications")
+        .select(
+          // Disambiguate the actor join — notifications has two FKs to profiles
+          // (recipient_id + actor_id), so hint the column.
+          "id, type, actor_id, title, body, url, created_at, seen_at, read_at, expires_at, actor:profiles!actor_id(display_name, avatar_url)",
+        )
+        .eq("recipient_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) {
+        // Table not there yet → the migration hasn't been run. Throw either
+        // way so a transient error keeps the stale list instead of caching [].
+        if (error.code === "42P01" || /relation .* does not exist/i.test(error.message)) {
+          setNeedsMigration(true);
+        }
+        throw new Error(error.message);
       }
-      setLoading(false);
-      return;
-    }
-    const rows = (data ?? []) as unknown as RawRow[];
-    const mapped: AppNotification[] = rows.map((r) => ({
-      id: r.id,
-      type: r.type,
-      actorId: r.actor_id,
-      actorName: r.actor?.display_name ?? null,
-      actorAvatarUrl: r.actor?.avatar_url ?? null,
-      title: r.title,
-      body: r.body,
-      url: r.url,
-      createdAt: r.created_at,
-      seenAt: r.seen_at,
-      readAt: r.read_at,
-      expiresAt: r.expires_at,
-    }));
-    setItems(mapped);
-    // Warm the cache so the next visit to this tab paints instantly (client-only,
-    // after a successful fetch — never during render/SSR).
-    notifFeedCache.set(key, mapped);
-    setNeedsMigration(false);
-    setLoading(false);
-    // Clear the badge: everything currently here counts as "seen" now. Keeps the
-    // count at zero while the tab is open (new arrivals get re-marked on reload).
-    sb.rpc("mark_notifications_seen").then(() => {});
-  }, [key]);
+      const rows = (data ?? []) as unknown as RawRow[];
+      const mapped: AppNotification[] = rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        actorId: r.actor_id,
+        actorName: r.actor?.display_name ?? null,
+        actorAvatarUrl: r.actor?.avatar_url ?? null,
+        title: r.title,
+        body: r.body,
+        url: r.url,
+        createdAt: r.created_at,
+        seenAt: r.seen_at,
+        readAt: r.read_at,
+        expiresAt: r.expires_at,
+      }));
+      setNeedsMigration(false);
+      // Clear the badge: everything currently here counts as "seen" now. Keeps the
+      // count at zero while the tab is open (new arrivals get re-marked on reload).
+      sb.rpc("mark_notifications_seen").then(() => {});
+      return mapped;
+    },
+    { persist: "local" },
+  );
 
   useEffect(() => {
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    let channel: ReturnType<typeof sb.channel> | null = null;
-    (async () => {
-      const { data } = await sb.auth.getUser();
-      const uid = data.user?.id;
-      uidRef.current = uid ?? null;
-      if (!uid || cancelled) {
-        setLoading(false);
-        return;
-      }
-      await load(uid);
-      channel = sb
-        .channel(`notif-feed-${uid}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${uid}` },
-          () => schedule(() => load(uid)),
-        )
-        .subscribe();
-    })();
+    if (!isSupabaseConfigured || !sb || !userId) return;
+    const channel = sb
+      .channel(`notif-feed-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${userId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
     return () => {
-      cancelled = true;
-      if (channel) sb.removeChannel(channel);
+      sb.removeChannel(channel);
     };
-  }, [load, schedule]);
+  }, [userId, reload, schedule]);
 
   const open = async (n: AppNotification) => {
     if (!n.readAt) {
-      setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
+      mutate((prev) => prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
       supabase?.rpc("mark_notification_read", { p_id: n.id }).then(() => {});
     }
     if (n.url) router.push(n.url);
   };
 
   const markAllRead = async () => {
-    setItems((prev) => prev.map((x) => (x.readAt ? x : { ...x, readAt: new Date().toISOString() })));
+    mutate((prev) => prev.map((x) => (x.readAt ? x : { ...x, readAt: new Date().toISOString() })));
     await supabase?.rpc("mark_all_notifications_read");
   };
 

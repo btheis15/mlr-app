@@ -4,11 +4,15 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
-/** The signed-in user's id, or null (no backend / signed out). */
+/** The signed-in user's id, or null (no backend / signed out). Resolved from
+ *  the locally stored session (`getSession()`, no network round-trip) — every
+ *  caller only uses the uid to filter its own queries, and RLS enforces
+ *  identity server-side regardless, so the server-validated `getUser()` isn't
+ *  needed here. */
 export async function getCurrentUserId(): Promise<string | null> {
   const sb = supabase;
   if (!sb) return null;
-  return (await sb.auth.getUser()).data.user?.id ?? null;
+  return (await sb.auth.getSession()).data.session?.user.id ?? null;
 }
 
 /** A public profile, name-trimmed and defaulted — the shape feeds avatars,

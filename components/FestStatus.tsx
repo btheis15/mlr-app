@@ -6,6 +6,7 @@ import { Countdown } from "@/components/Countdown";
 import { Protected, useGuest } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
+import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, plural } from "@/lib/format";
@@ -20,14 +21,11 @@ import type { ScheduleEvent, Dinner } from "@/lib/types";
  * Family Fest committee" CTA flashes for members who actually belong, until the
  * async join-state fetch resolves. Holding the last-known value in memory lets a
  * returning member paint the correct (no-CTA) view immediately while a background
- * refetch reconciles it. Keyed by viewer identity (login email, "self" for a
- * guest) so one member's membership can't leak to another. Memory-only (per
- * session) and written *only after* a client fetch — never during SSR/render — so
- * a cold load starts empty (matching the original `false` default) and can't cause
- * a hydration mismatch. The refetch can still flip it back to `false`, so a
- * revoked membership never sticks. Mirrors `eventsCache`/`useEvents` in lib/hooks.ts.
+ * refetch reconciles it. Rides the shared SWR cache under `festMember.<uid>` —
+ * the SAME key FamilyFestSpotlight uses, so the two surfaces share one deduped
+ * fetch and one persisted snapshot. The revalidate can still flip it back to
+ * `false`, so a revoked membership never sticks.
  */
-const festStatusMemberCache = new Map<string, boolean>();
 
 /**
  * The focal block at the top of the Family Fest section. During the event week
@@ -50,35 +48,21 @@ export function FestStatus({
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today: t } = useDemoDate();
-  const { user } = useIdentity();
+  const { user, userId } = useIdentity();
 
   // Members of the Family Fest committee don't need the "join" prompt.
-  // Warm cache ⇒ paint the resolved value immediately (no CTA flash for members);
-  // the effect below still refetches to keep it current (and can revoke).
-  const key = user?.email ?? "self";
-  const [isFestMember, setIsFestMember] = useState(festStatusMemberCache.get(key) ?? false);
-  useEffect(() => {
-    let active = true;
-    if (!user) {
-      setIsFestMember(false);
-      return;
-    }
-    (async () => {
+  // Seeded from the shared cache (no CTA flash for members, even on a cold
+  // open); the revalidate keeps it current and can revoke.
+  const { data: isFestMember } = useCachedResource<boolean>(
+    user && userId ? `festMember.${userId}` : null,
+    false,
+    async () => {
       const cid = await fetchCommitteeId("family-fest");
-      if (!cid || !active) return;
-      const state = await fetchJoinState(cid);
-      if (active) {
-        const member = state === "member";
-        setIsFestMember(member);
-        // Client-only write (post-fetch) — never during SSR/render. Stores the
-        // latest truth, so a revoked membership overwrites a cached `true`.
-        festStatusMemberCache.set(user.email ?? "self", member);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [user]);
+      if (!cid) return false;
+      return (await fetchJoinState(cid, userId)) === "member";
+    },
+    { persist: "local" },
+  );
 
   if (season?.isLive) {
     const today = eventsForDay(events, t);

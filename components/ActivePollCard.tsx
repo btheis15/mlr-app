@@ -1,17 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
+import { useCachedResource } from "@/lib/swrCache";
 import { fetchPolls, type Poll } from "@/lib/polls";
-
-/**
- * Stale-while-revalidate cache so returning to Home paints the card instantly
- * instead of a self-hide flash while it refetches (mirrors myHouseCardCache in
- * HouseHubCard.tsx). Keyed by viewer identity + previewAs; memory-only and only
- * ever written after a client fetch, so a cold/SSR render still starts null.
- */
-const activePollCardCache = new Map<string, Poll | null>();
 
 /**
  * Compact Home card for the family polls feature (migration 0084): the newest
@@ -20,34 +12,28 @@ const activePollCardCache = new Map<string, Poll | null>();
  * with no backend — `fetchPolls()` already degrades to `[]` for guests (RLS),
  * an unconfigured Supabase client, and a missing 0084 table (42P01), so "no
  * open poll" covers all of those without any extra checks here.
+ *
+ * Rides the shared SWR cache (`activePoll.<uid>`, localStorage, 6h TTL) so a
+ * cold open paints the card instantly instead of a self-hide flash; the fetch
+ * still revalidates, so a closed poll drops off. Admin previews use a
+ * preview-scoped, memory-only key.
  */
 export function ActivePollCard() {
-  const { user, previewAsId } = useIdentity();
-  const key = `${user?.email ?? ""}|${previewAsId ?? "self"}`;
-  const [poll, setPoll] = useState<Poll | null>(
-    activePollCardCache.has(key) ? activePollCardCache.get(key)! : null,
+  const { user, userId, previewAsId } = useIdentity();
+  const key =
+    user && userId
+      ? previewAsId
+        ? `activePoll.preview.${previewAsId}`
+        : `activePoll.${userId}`
+      : null;
+  const { data: poll } = useCachedResource<Poll | null>(
+    key,
+    null,
+    // Newest first already (fetchPolls orders by created_at desc) — the first
+    // open one is the newest open poll.
+    () => fetchPolls().then((rows) => rows.find((p) => !p.isClosed) ?? null),
+    { persist: previewAsId ? undefined : "local", ttlMs: 6 * 60 * 60 * 1000 },
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user) {
-      setPoll(null);
-      return;
-    }
-    fetchPolls()
-      .then((rows) => {
-        if (cancelled) return;
-        // Newest first already (fetchPolls orders by created_at desc) — the
-        // first open one is the newest open poll.
-        const open = rows.find((p) => !p.isClosed) ?? null;
-        setPoll(open);
-        activePollCardCache.set(key, open);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [user, key]);
 
   if (!poll) return null;
 

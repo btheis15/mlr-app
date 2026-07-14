@@ -1,30 +1,22 @@
 "use client";
 
-// Client hook for the admin-managed site images (see lib/appImages.ts). Fetches
-// the URL map once (module-cached so a re-mount paints instantly) and returns it;
-// callers resolve a key with siteImageSrc(), which falls back to the bundled
-// /public asset when the key is unset.
+// Client hook for the admin-managed site images (see lib/appImages.ts). Rides
+// the shared SWR cache (memory across remounts + a persisted on-device copy,
+// so images resolve instantly on a cold open too) and revalidates in the
+// background; callers resolve a key with siteImageSrc(), which falls back to
+// the bundled /public asset when the key is unset.
 
-import { useEffect, useState } from "react";
+import { useCachedResource } from "@/lib/swrCache";
 import { fetchAppImages } from "@/lib/appImages";
 
-let cache: Record<string, string> | null = null;
+const EMPTY_MAP: Record<string, string> = {};
 
 export function useAppImages(): Record<string, string> {
-  const [map, setMap] = useState<Record<string, string>>(cache ?? {});
-
-  useEffect(() => {
-    let active = true;
-    fetchAppImages().then((m) => {
-      if (active) {
-        setMap(m);
-        cache = m;
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return map;
+  const { data } = useCachedResource<Record<string, string>>(
+    "appImages",
+    EMPTY_MAP,
+    fetchAppImages,
+    { persist: "local" },
+  );
+  return data;
 }

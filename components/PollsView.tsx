@@ -9,6 +9,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { useBusyAction, useDebouncedCallback, useSaveStatus } from "@/lib/hooks";
 import { applyMyVote, castVote, closePoll, deletePoll, fetchPolls, type Poll } from "@/lib/polls";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 
 // The /polls screen: the family's voting booth (migration 0084). Open polls
 // first (tap an option to vote / change your vote — one vote per member per
@@ -17,12 +18,6 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 // Results move live via a Realtime subscription on polls + poll_votes; the
 // whole screen is members-only (SignInWall — the tables are members-only reads
 // under RLS anyway, this just makes the gate friendly).
-
-// Stale-while-revalidate cache so returning to /polls paints instantly instead
-// of blanking to a skeleton (mirrors eventsCache / helpRequestsCache in
-// lib/hooks.ts). Memory-only, written only after a client fetch — never during
-// SSR — so a cold render still starts empty + loading (matches the server HTML).
-let pollsCache: Poll[] | null = null;
 
 export function PollsView() {
   return (
@@ -36,26 +31,23 @@ export function PollsView() {
 }
 
 function PollsList() {
-  const { isAdmin, previewAsId } = useIdentity();
-  const [polls, setPolls] = useState<Poll[]>(pollsCache ?? []);
-  const [loading, setLoading] = useState(!pollsCache);
+  const { userId, isAdmin, previewAsId } = useIdentity();
+  // Shared SWR cache (`polls.<uid>`, persisted): returning to /polls — or a
+  // cold app open landing here — paints the last-known list instantly instead
+  // of blanking to a skeleton, then revalidates. uid-scoped because each row
+  // carries the viewer's own vote (myOptionId).
+  const { data: polls, loading, reload, mutate } = useCachedResource<Poll[]>(
+    userId ? `polls.${userId}` : null,
+    [],
+    fetchPolls,
+    { persist: "local" },
+  );
   const [composing, setComposing] = useState(false);
   const [schedule] = useDebouncedCallback(250);
   const { busy, run } = useBusyAction();
   const { status, show } = useSaveStatus();
 
-  const reload = useCallback(async () => {
-    try {
-      const rows = await fetchPolls();
-      setPolls(rows);
-      pollsCache = rows;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void reload();
     const sb = supabase;
     if (!isSupabaseConfigured || !sb) return;
     // Live results: refetch (debounced) whenever a poll or a vote changes.
@@ -84,19 +76,16 @@ function PollsList() {
       if (!isSupabaseConfigured || previewAsId) return;
       if (poll.isClosed || poll.myOptionId === optionId) return;
       const prev = polls;
-      const next = polls.map((p) => (p.id === poll.id ? applyMyVote(p, optionId) : p));
-      setPolls(next);
-      pollsCache = next;
+      mutate(polls.map((p) => (p.id === poll.id ? applyMyVote(p, optionId) : p)));
       const { error } = await castVote(poll.id, optionId);
       if (error) {
-        setPolls(prev);
-        pollsCache = prev;
+        mutate(prev);
         show(error);
       } else {
         await reload();
       }
     },
-    [polls, previewAsId, reload, show],
+    [polls, previewAsId, mutate, reload, show],
   );
 
   const onClosePoll = (poll: Poll) => {

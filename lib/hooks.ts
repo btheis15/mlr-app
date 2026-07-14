@@ -17,6 +17,8 @@ import {
   summarize,
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
+import { markPending } from "@/lib/appReady";
+import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import {
   createHouseStay,
   deleteHouseStay,
@@ -219,67 +221,48 @@ export function useMediaPicker() {
  * rows (debounced), and re-runs when sign-in state flips. Always reads the REAL
  * session id (not an admin "view as" preview) — the badge is your own account's.
  */
-// Stale-while-revalidate cache for the unread badge, keyed by account. Without
-// it the count resets to 0 on every tab switch (the hook remounts in TabBar) and
-// then repopulates — a visible flicker. Memory-only, written only after a client
-// fetch (never during SSR), so a cold render still starts at 0 (matches the
-// server-rendered HTML) and there's no hydration mismatch.
-const unreadCountCache = new Map<string, number>();
-
 export function useUnreadNotifications(): number {
-  const { user } = useIdentity();
-  const signedIn = !!user;
-  const key = user?.email ?? "self";
-  const [count, setCount] = useState(unreadCountCache.get(key) ?? 0);
+  // Rides the shared SWR cache (lib/swrCache), persisted per account: the
+  // badge paints the last-known count on the first tick of a cold open (no
+  // 0 → N flicker) and revalidates in the background. Keyed on the REAL
+  // session uid — the badge is always your own account's, never a preview's.
+  const { user, userId } = useIdentity();
+  const signedIn = !!user && !!userId;
   const [schedule] = useDebouncedCallback(250);
 
-  useEffect(() => {
-    const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !signedIn) {
-      setCount(0);
-      unreadCountCache.set(key, 0);
-      return;
-    }
-    let cancelled = false;
-    let channel: ReturnType<typeof sb.channel> | null = null;
-
-    const refresh = async (uid: string) => {
+  const { data: count, reload } = useCachedResource<number>(
+    isSupabaseConfigured && signedIn ? `unread.${userId}` : null,
+    0,
+    async () => {
+      const sb = supabase;
+      if (!sb || !userId) return 0;
       const nowIso = new Date().toISOString();
       const { count: c } = await sb
         .from("notifications")
         .select("id", { count: "exact", head: true })
-        .eq("recipient_id", uid)
+        .eq("recipient_id", userId)
         .is("seen_at", null)
         .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
-      if (!cancelled) {
-        setCount(c ?? 0);
-        unreadCountCache.set(key, c ?? 0);
-      }
-    };
+      return c ?? 0;
+    },
+    { persist: "local" },
+  );
 
-    (async () => {
-      const { data } = await sb.auth.getUser();
-      const uid = data.user?.id;
-      if (!uid || cancelled) {
-        if (!cancelled) setCount(0);
-        return;
-      }
-      await refresh(uid);
-      channel = sb
-        .channel(`notif-badge-${uid}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${uid}` },
-          () => schedule(() => refresh(uid)),
-        )
-        .subscribe();
-    })();
-
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !signedIn || !userId) return;
+    const channel = sb
+      .channel(`notif-badge-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${userId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
     return () => {
-      cancelled = true;
-      if (channel) sb.removeChannel(channel);
+      sb.removeChannel(channel);
     };
-  }, [signedIn, schedule, key]);
+  }, [signedIn, userId, schedule, reload]);
 
   return count;
 }
@@ -288,21 +271,23 @@ export function useUnreadNotifications(): number {
 // slug + viewer identity (admin flag + previewed member, mirroring useEvents'
 // previewAsId key). Without it the Lead/admin-only panels start hidden
 // (canManage=false) on every visit and pop in a moment later — reads like an RLS
-// glitch. Memory-only, written only inside the effect / exposed setter (never
-// during SSR), so a cold render still yields canManage=false to match the
-// server-rendered HTML — no hydration mismatch. The effect always re-fetches and
-// calls setCanManage with the fresh value, so a revoked Lead flips back to false.
+// glitch. Memory for tab switches, plus a persisted copy (never for previews)
+// so a cold app open paints the gate right too. Written only inside the effect /
+// exposed setter (never during SSR), so a cold first render still yields
+// canManage=false to match the server-rendered HTML — no hydration mismatch. The
+// effect always re-fetches and overwrites, so a revoked Lead flips back to false.
 const managedCommitteeCache = new Map<string, { committeeId: string | null; canManage: boolean }>();
 
 export function useManagedCommittee(
   slug: string,
   opts: { watch: string; load: (committeeId: string) => Promise<void> | void },
 ) {
-  const { user, isAdmin, previewAsId } = useIdentity();
+  const { user, userId, isAdmin, previewAsId } = useIdentity();
   // Include the real viewer identity: without it two different non-admin members
   // collide on `slug|false|self`, so a non-Lead briefly paints the Lead/admin
   // management panel from another viewer's cached canManage:true.
   const key = `${slug}|${user?.email ?? "guest"}|${isAdmin}|${previewAsId ?? "self"}`;
+  const storeKey = userId && !previewAsId ? `managedCommittee.${userId}.${slug}.${isAdmin}` : null;
   const cached = managedCommitteeCache.get(key);
   const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
   const [canManage, setCanManage] = useState(cached?.canManage ?? false);
@@ -316,6 +301,17 @@ export function useManagedCommittee(
     if (!isSupabaseConfigured || !sb) return;
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
+    // Cold open: restore the persisted gate (post-mount, hydration-safe) so a
+    // Lead/admin's management panels don't pop in a beat late; the fetch below
+    // still re-derives and overwrites.
+    if (!managedCommitteeCache.has(key) && storeKey) {
+      const snap = readPersisted<{ committeeId: string | null; canManage: boolean }>(storeKey);
+      if (snap) {
+        managedCommitteeCache.set(key, snap);
+        setCommitteeId(snap.committeeId);
+        setCanManage(snap.canManage);
+      }
+    }
     (async () => {
       const cid = await fetchCommitteeId(slug);
       if (!cid || cancelled) return;
@@ -328,6 +324,7 @@ export function useManagedCommittee(
       // Source of truth for the cache — the effect always runs and overwrites
       // with the freshly fetched gate, so a revoked Lead corrects to false.
       managedCommitteeCache.set(key, { committeeId: cid, canManage: manage });
+      if (storeKey) writePersisted(storeKey, { committeeId: cid, canManage: manage });
       if (!manage) return;
       await loadRef.current(cid);
       if (cancelled) return;
@@ -352,9 +349,10 @@ export function useManagedCommittee(
   const setCanManageCached = useCallback(
     (v: boolean) => {
       managedCommitteeCache.set(key, { committeeId, canManage: v });
+      if (storeKey) writePersisted(storeKey, { committeeId, canManage: v });
       setCanManage(v);
     },
-    [key, committeeId],
+    [key, storeKey, committeeId],
   );
 
   return { committeeId, canManage, setCanManage: setCanManageCached, isAdmin };
@@ -399,10 +397,13 @@ function countKey(status: AttendanceStatus): keyof AttendanceSummary["counts"] {
  * Up North" and the /events calendar blank out and then pop back in — shoving the
  * page around. Holding the last result in memory lets a returning tab paint
  * instantly from cache while a background refetch keeps it current, so the layout
- * stays put. Memory-only (per session) and only ever written *after* a client
- * fetch — never during SSR — so it can't change the server/first-paint render and
- * can't cause a hydration mismatch (a cold load starts with an empty cache, i.e.
- * the original behavior).
+ * stays put. Two layers now: this module memory (tab switches) plus a persisted
+ * copy under `mlr.cache.v1.events.<uid|guest>` (lib/swrCache) restored in a
+ * post-mount effect, so a COLD app open paints the calendar instantly too.
+ * Memory is only ever written *after* a client fetch — never during SSR — so it
+ * can't change the server/first-paint render and can't cause a hydration
+ * mismatch (a cold first render starts with an empty cache, i.e. the original
+ * behavior; the storage seed lands one effect tick later).
  */
 interface EventsSnapshot {
   events: ResortEvent[];
@@ -412,13 +413,52 @@ interface EventsSnapshot {
 let eventsCache: EventsSnapshot | null = null;
 
 export function useEvents(opts?: { realtime?: boolean }): UseEvents {
-  const { user, previewAsId, promptSignIn } = useIdentity();
+  const { user, userId, authReady, previewAsId, promptSignIn } = useIdentity();
   const [events, setEvents] = useState<ResortEvent[]>(eventsCache?.events ?? []);
   const [rows, setRows] = useState<EventAttendance[]>(eventsCache?.rows ?? []);
   const [mine, setMine] = useState<Record<string, EventAttendance>>(eventsCache?.mine ?? {});
   // Warm cache ⇒ paint immediately (no skeleton/blank); still refetch in the
   // background below so the cached view is brought up to date.
   const [loading, setLoading] = useState(!eventsCache);
+  // Splash readiness (lib/appReady): registered on a cold open when nothing
+  // could seed, resolved when the first load lands (or on unmount).
+  const pendingDoneRef = useRef<(() => void) | null>(null);
+
+  // Persisted snapshot seed (post-mount, cold open only): the module cache
+  // dies with the JS context, so restore the last known snapshot from storage
+  // (`events.<uid>` — per account since `mine` is the viewer's own RSVPs;
+  // `events.guest` for signed-out browsing). Never while previewing, and a
+  // member key is only known once `userId` resolves (waiting for authReady
+  // before falling back to "guest" so a member never seeds the guest copy).
+  useEffect(() => {
+    if (previewAsId || eventsCache) return;
+    if (!userId && !authReady) return;
+    const storeKey = `events.${userId ?? "guest"}`;
+    const snap = readPersisted<EventsSnapshot>(storeKey);
+    if (snap) {
+      eventsCache = snap;
+      setEvents(snap.events);
+      setRows(snap.rows);
+      setMine(snap.mine);
+      setLoading(false);
+      return;
+    }
+    // Nothing to seed: tell the splash a first paint is still cooking.
+    if (!pendingDoneRef.current) pendingDoneRef.current = markPending(storeKey);
+  }, [userId, authReady, previewAsId]);
+  useEffect(() => {
+    if (!loading && pendingDoneRef.current) {
+      pendingDoneRef.current();
+      pendingDoneRef.current = null;
+    }
+  }, [loading]);
+  useEffect(
+    () => () => {
+      pendingDoneRef.current?.();
+      pendingDoneRef.current = null;
+    },
+    [],
+  );
   const [schedule] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
   // Optimistic going/maybe/can't-make tally nudge, keyed by event id: the
@@ -446,11 +486,15 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
       setMine(my);
       setCountShift({});
       eventsCache = { events: ev, rows: at, mine: my };
+      // Persist for the next cold open (never a preview's view). Oversized
+      // snapshots are quietly skipped by the 200KB cap in writePersisted —
+      // they just stay memory-only.
+      if (!previewAsId) writePersisted(`events.${userId ?? "guest"}`, eventsCache);
     } finally {
       // A flaky/misconfigured backend must never leave the UI stuck "loading".
       setLoading(false);
     }
-  }, [previewAsId]);
+  }, [previewAsId, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -587,41 +631,27 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
  * for an immediate refresh; Realtime keeps everyone else's view in sync. Safe
  * no-op (empty list) with no backend.
  */
-// Stale-while-revalidate cache for the Ask-for-Help log (mirrors eventsCache).
-// The log is a shared member-wide feed, so a singleton is fine. Without it the
-// log blanks to empty + skeleton on every open of /help-requests. Written only
-// after a client fetch (never during SSR), so a cold render still starts empty +
-// loading — matches the server HTML, no hydration mismatch.
-let helpRequestsCache: HelpRequest[] | null = null;
-
 export function useHelpRequests(): {
   requests: HelpRequest[];
   loading: boolean;
   reload: () => Promise<void>;
 } {
-  const [requests, setRequests] = useState<HelpRequest[]>(helpRequestsCache ?? []);
-  const [loading, setLoading] = useState(!helpRequestsCache);
+  // Shared SWR cache (`helpRequests.<uid>`, persisted): the log paints the
+  // last-known list instantly on a cold open instead of blanking to a
+  // skeleton, then revalidates. uid-scoped because rows carry the viewer's
+  // own response state and reads are members-only.
+  const { userId } = useIdentity();
   const [schedule] = useDebouncedCallback(250);
-
-  const reload = useCallback(async () => {
-    try {
-      const rows = await fetchHelpRequests();
-      setRequests(rows);
-      helpRequestsCache = rows;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: requests, loading, reload } = useCachedResource<HelpRequest[]>(
+    isSupabaseConfigured && userId ? `helpRequests.${userId}` : null,
+    [],
+    fetchHelpRequests,
+    { persist: "local" },
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    void reload();
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    if (!isSupabaseConfigured || !sb) return;
     const channel = sb
       .channel("help-requests-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "help_requests" }, () => schedule(reload))
@@ -629,7 +659,6 @@ export function useHelpRequests(): {
       .on("postgres_changes", { event: "*", schema: "public", table: "help_request_items" }, () => schedule(reload))
       .subscribe();
     return () => {
-      cancelled = true;
       sb.removeChannel(channel);
     };
   }, [reload, schedule]);
@@ -645,60 +674,42 @@ export function useHelpRequests(): {
  * `house = null` when the viewer is in no house and none was named. Re-runs when
  * the identity (and thus the viewer's house) changes.
  */
-// Stale-while-revalidate cache for the resolved house + membership, keyed by
-// slug + viewer identity (email + admin + previewed member — anything that
-// changes the resolved value). Without it HouseHub / HouseCalendarScreen rebuild
-// from a full SkeletonList on every visit (loading starts true, house/isMember
-// reset). Written only inside the effect (never during SSR), so a cold render
-// with an empty map + null prerender user still starts loading=true with the
-// default house/isMember — matches the server HTML, no hydration mismatch. The
-// effect always re-resolves membership and overwrites, so lost access corrects.
-const resolvedHouseCache = new Map<string, { house: House | null; isMember: boolean }>();
-
 export function useResolvedHouse(slug?: string | null): {
   house: House | null;
   isMember: boolean;
   loading: boolean;
 } {
-  const { user, isAdmin, previewAsId } = useIdentity();
-  const key = `${slug ?? "mine"}|${user?.email ?? ""}|${isAdmin}|${previewAsId ?? "self"}`;
-  const cached = resolvedHouseCache.get(key);
-  const [house, setHouse] = useState<House | null>(cached?.house ?? null);
-  const [isMember, setIsMember] = useState(cached?.isMember ?? false);
-  // Warm cache ⇒ skip the skeleton; a revisit never flips back to loading.
-  const [loading, setLoading] = useState(!cached);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Only show the skeleton on a cold key; a warm revisit paints from cache and
-    // refetches silently in the background.
-    if (!resolvedHouseCache.has(key)) setLoading(true);
-    (async () => {
-      const mine = await fetchMyHouse(previewAsId ?? undefined);
+  // Shared SWR cache: keyed by slug + everything that changes the resolved
+  // value (uid, admin flag, preview), persisted so HouseHub / the calendar
+  // paint instantly on a cold open instead of rebuilding from a SkeletonList.
+  // The fetch always re-resolves membership and overwrites, so lost access
+  // corrects on the revalidate. Previews stay memory-only.
+  const { user, userId, authReady, isAdmin, previewAsId } = useIdentity();
+  const key =
+    user && userId
+      ? previewAsId
+        ? `resolvedHouse.preview.${previewAsId}.${slug ?? "mine"}.${isAdmin}`
+        : `resolvedHouse.${userId}.${slug ?? "mine"}.${isAdmin}`
+      : null;
+  const { data, loading } = useCachedResource<{ house: House | null; isMember: boolean }>(
+    key,
+    { house: null, isMember: false },
+    async () => {
+      const mine = await fetchMyHouse(previewAsId ?? userId);
       if (slug) {
         const h = await fetchHouseBySlug(slug);
-        if (cancelled) return;
-        const member = !!h && (isAdmin || mine?.id === h.id);
-        setHouse(h);
-        setIsMember(member);
-        resolvedHouseCache.set(key, { house: h, isMember: member });
-      } else {
-        if (cancelled) return;
-        setHouse(mine);
-        setIsMember(!!mine);
-        resolvedHouseCache.set(key, { house: mine, isMember: !!mine });
+        return { house: h, isMember: !!h && (isAdmin || mine?.id === h.id) };
       }
-      if (!cancelled) setLoading(false);
-    })().catch(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // user id drives a re-resolve after sign-in / account switch.
-  }, [slug, user?.email, isAdmin, previewAsId]);
+      return { house: mine, isMember: !!mine };
+    },
+    { persist: previewAsId ? undefined : "local" },
+  );
 
-  return { house, isMember, loading };
+  // While the identity itself is still resolving (key null, auth pending),
+  // report loading — otherwise the House screens would flash their "ask an
+  // admin to add you" lock at a member whose sign-in just hasn't settled yet.
+  const identityPending = isSupabaseConfigured && !authReady && !user;
+  return { house: data.house, isMember: data.isMember, loading: loading || identityPending };
 }
 
 /**
@@ -711,12 +722,6 @@ export function useResolvedHouse(slug?: string | null): {
  * write; no backend ⇒ safe empty. Pass `houseId = null` (not in a house) for a
  * no-op that never fetches.
  */
-// Stale-while-revalidate cache for a house's stays, keyed by house id. Without it
-// the calendar/agenda blanks to empty + loading on every open. Written only after
-// a client fetch (never during SSR), so a cold render (empty map) still starts
-// loading with no stays — matches the server HTML, no hydration mismatch.
-const houseCalendarCache = new Map<string, HouseStay[]>();
-
 export function useHouseCalendar(houseId: string | null): {
   stays: HouseStay[];
   loading: boolean;
@@ -727,39 +732,22 @@ export function useHouseCalendar(houseId: string | null): {
   removeStay: (id: string) => Promise<{ error?: string }>;
 } {
   const { user, previewAsId, promptSignIn } = useIdentity();
-  const [stays, setStays] = useState<HouseStay[]>(
-    houseId ? (houseCalendarCache.get(houseId) ?? []) : [],
-  );
-  // Warm cache for this house ⇒ no skeleton; a revisit paints from cache.
-  const [loading, setLoading] = useState(houseId ? !houseCalendarCache.has(houseId) : false);
   const [schedule] = useDebouncedCallback(250);
-
-  const reload = useCallback(async () => {
-    if (!houseId) {
-      setStays([]);
-      setLoading(false);
-      return;
-    }
-    try {
-      const rows = await fetchHouseStays(houseId);
-      setStays(rows);
-      houseCalendarCache.set(houseId, rows);
-    } finally {
-      setLoading(false);
-    }
-  }, [houseId]);
+  // Shared SWR cache (`houseCalendar.<houseId>`, persisted): the calendar/
+  // agenda paints the last-known stays instantly on a cold open instead of
+  // blanking to empty + loading, then revalidates. House-scoped key — reads
+  // are RLS-gated on membership, and every persisted entry is wiped on
+  // signOut like the rest of the cache.
+  const { data: stays, loading, reload } = useCachedResource<HouseStay[]>(
+    houseId ? `houseCalendar.${houseId}` : null,
+    [],
+    () => fetchHouseStays(houseId!),
+    { persist: "local" },
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    // Only skeleton on a cold house id; a warm revisit refetches silently.
-    if (houseId && !houseCalendarCache.has(houseId)) setLoading(true);
-    void reload();
     const sb = supabase;
-    if (!houseId || !isSupabaseConfigured || !sb) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    if (!houseId || !isSupabaseConfigured || !sb) return;
     const channel = sb
       .channel(`house-stays-${houseId}`)
       .on(
@@ -769,7 +757,6 @@ export function useHouseCalendar(houseId: string | null): {
       )
       .subscribe();
     return () => {
-      cancelled = true;
       sb.removeChannel(channel);
     };
   }, [houseId, reload, schedule]);
