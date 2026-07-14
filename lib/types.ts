@@ -454,6 +454,9 @@ export interface CabinBooking {
   cabinId: string;
   cabinName?: string;
   userId?: string;
+  // Set when an admin booked this on behalf of userId (migration 0087) —
+  // null/undefined for a normal self-service request.
+  bookedBy?: string | null;
   checkIn: string; // ISO date YYYY-MM-DD
   checkOut: string; // ISO date YYYY-MM-DD (departure, exclusive)
   guests: number;

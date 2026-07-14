@@ -9,6 +9,7 @@ import {
   fetchAvailability,
   formatStay,
   requestStay,
+  reviewStay,
   todayISO,
 } from "@/lib/cabins";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
@@ -17,14 +18,22 @@ import { useSheetDismiss } from "@/lib/hooks";
 // Bottom sheet for requesting a room in one cabin (scaffolding + dismiss motion
 // from Sheet / useSheetDismiss). Pick "All Family Fest Days" or any dates, set
 // guests + a note, and submit — it lands as a pending request the admins review.
+//
+// `forUser` (admin-only, set by the /request-stay "Booking for" picker) books
+// on behalf of another member instead of the signed-in admin. Since the admin
+// is already vouching for the request, it's auto-approved right after
+// creation (reviewStay — the same capacity-checked path the admin queue uses)
+// instead of sitting in the pending queue for them to approve a second time.
 const MAX_GUESTS = 16;
 
 export function CabinRequestSheet({
   cabin,
+  forUser,
   onClose,
   onSubmitted,
 }: {
   cabin: Cabin;
+  forUser?: { id: string; name: string } | null;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -73,12 +82,30 @@ export function CabinRequestSheet({
     if (!validRange || pending) return;
     setPending(true);
     setError(null);
-    const { error: err } = await requestStay({ cabinId: cabin.id, checkIn, checkOut, guests, notes });
-    setPending(false);
+    const { id, error: err } = await requestStay({
+      cabinId: cabin.id,
+      checkIn,
+      checkOut,
+      guests,
+      notes,
+      forUserId: forUser?.id,
+    });
     if (err) {
+      setPending(false);
       setError(err);
       return;
     }
+    if (forUser && id) {
+      const { error: approveErr } = await reviewStay(id, true);
+      if (approveErr) {
+        setPending(false);
+        window.alert(`Booked for ${forUser.name}, but couldn't auto-approve: ${approveErr}\n\nIt's saved as pending — approve it from Admin → Cabin Stays.`);
+        onSubmitted();
+        close();
+        return;
+      }
+    }
+    setPending(false);
     onSubmitted();
     close();
   };
@@ -93,7 +120,7 @@ export function CabinRequestSheet({
       header={
         <>
           <h2 id="cabin-sheet-title" className="text-lg font-bold">
-            🏡 Request a room
+            {forUser ? `🏡 Book for ${forUser.name}` : "🏡 Request a room"}
           </h2>
           <p className="text-sm text-foreground/60">{cabin.name}</p>
         </>
@@ -106,10 +133,12 @@ export function CabinRequestSheet({
             disabled={!validRange || pending}
             className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {pending ? "Sending…" : "Submit request"}
+            {pending ? "Sending…" : forUser ? `Book & approve for ${forUser.name}` : "Submit request"}
           </button>
           <p className="mt-2 text-center text-xs text-faint">
-            An admin will review it — you&rsquo;ll get a notification and email when they do.
+            {forUser
+              ? "This books the room and approves it right away — no separate review step."
+              : "An admin will review it — you’ll get a notification and email when they do."}
           </p>
         </>
       }

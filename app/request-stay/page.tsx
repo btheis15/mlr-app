@@ -5,8 +5,12 @@ import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { CabinRequestSheet } from "@/components/CabinRequestSheet";
 import { SkeletonList } from "@/components/Skeleton";
+import { Avatar } from "@/components/Avatar";
+import { Sheet, FIELD } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { fetchProfiles, type ProfileLite } from "@/lib/roles";
 import {
   FF_CHECK_IN,
   FF_CHECK_OUT,
@@ -22,6 +26,20 @@ import type { Cabin, CabinAvailability, CabinBooking } from "@/lib/types";
 // Family Fest week, request a room (any dates) via a sheet, and track their own
 // requests. Admins approve/deny from Profile → Cabin Stays. Reads degrade to a
 // "coming soon" when there's no backend yet (same idiom as Committees/Profile).
+//
+// Admins can also book a stay ON BEHALF of another member (migration 0087) —
+// for family who don't use the app themselves. The "Booking for" row (admin
+// only) opens a member picker; once set, the cabin cards' "Request a room"
+// flow books + auto-approves under that member's name instead of the admin's.
+
+// Member tag search: an empty query matches everyone; otherwise a substring, or
+// any word that starts with what's typed ("b" → all B names).
+function matchesName(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const n = name.toLowerCase();
+  return n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+}
 
 // The two houses, for the no-backend / signed-out preview (kept in sync with the
 // migration 0032 seed).
@@ -31,12 +49,15 @@ const PREVIEW_CABINS = [
 ];
 
 export default function RequestStayPage() {
-  const { user, previewAsId, promptSignIn } = useIdentity();
+  const { user, isAdmin, previewAsId, promptSignIn } = useIdentity();
   const [cabins, setCabins] = useState<Cabin[]>([]);
   const [avail, setAvail] = useState<CabinAvailability[]>([]);
   const [myBookings, setMyBookings] = useState<CabinBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [sheetCabin, setSheetCabin] = useState<Cabin | null>(null);
+  // Admin-only: booking on behalf of another member instead of themselves.
+  const [forUser, setForUser] = useState<ProfileLite | null>(null);
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [c, a, b] = await Promise.all([
@@ -154,6 +175,26 @@ export default function RequestStayPage() {
         />
       ) : (
         <>
+          {/* ── Admin: book on behalf of another member ───────────────────── */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setMemberPickerOpen(true)}
+              className="press flex w-full items-center gap-2 rounded-2xl bg-card p-3 text-left ring-1 ring-border"
+            >
+              {forUser ? (
+                <Avatar name={forUser.name} url={forUser.avatarUrl} size={32} />
+              ) : (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base">🧑‍🤝‍🧑</span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-faint">Booking for</span>
+                <span className="block truncate text-sm font-semibold">{forUser ? forUser.name : "Yourself"}</span>
+              </span>
+              <span className="shrink-0 text-xs font-medium text-primary">{forUser ? "Change" : "Book for someone"}</span>
+            </button>
+          )}
+
           {/* ── Family Fest availability ──────────────────────────────────── */}
           <section className="space-y-2">
             <div className="flex items-baseline justify-between gap-2 px-0.5">
@@ -184,11 +225,90 @@ export default function RequestStayPage() {
       {sheetCabin && (
         <CabinRequestSheet
           cabin={sheetCabin}
+          forUser={forUser}
           onClose={() => setSheetCabin(null)}
-          onSubmitted={load}
+          onSubmitted={async () => {
+            await load();
+            setForUser(null);
+          }}
+        />
+      )}
+
+      {memberPickerOpen && (
+        <MemberPickerSheet
+          selectedId={forUser?.id ?? null}
+          onClose={() => setMemberPickerOpen(false)}
+          onPick={(m) => {
+            setForUser(m);
+            setMemberPickerOpen(false);
+          }}
         />
       )}
     </div>
+  );
+}
+
+function MemberPickerSheet({
+  selectedId,
+  onClose,
+  onPick,
+}: {
+  selectedId: string | null;
+  onClose: () => void;
+  onPick: (member: ProfileLite | null) => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const [members, setMembers] = useState<ProfileLite[]>([]);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    fetchProfiles().then((ppl) => setMembers([...ppl].sort((a, b) => a.name.localeCompare(b.name))));
+  }, []);
+
+  const shown = members.filter((m) => matchesName(m.name, query));
+
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="member-picker-title"
+      header={<h2 id="member-picker-title" className="text-lg font-bold">Book for who?</h2>}
+    >
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search family…"
+        autoFocus
+        className={`${FIELD} w-full`}
+      />
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={() => {
+            onPick(null);
+            close();
+          }}
+          className="press flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground/70 hover:bg-background"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base">🙋</span>
+          <span className="font-medium">Yourself</span>
+          {!selectedId && <span className="ml-auto text-primary">✓</span>}
+        </button>
+        {shown.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onPick(m)}
+            className="press flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-background"
+          >
+            <Avatar name={m.name} url={m.avatarUrl} size={32} />
+            <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+            {selectedId === m.id && <span className="text-primary">✓</span>}
+          </button>
+        ))}
+        {shown.length === 0 && <p className="px-2 py-1 text-xs text-faint">No matching members.</p>}
+      </div>
+    </Sheet>
   );
 }
 
