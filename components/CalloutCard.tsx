@@ -13,8 +13,21 @@ import { formatDate, formatPhoneNational } from "@/lib/format";
  * so two links read as distinctly separate actions, not run together. Any
  * tel:/mailto:/https href works; a tel: link also shows the number, mirroring
  * the old hard-coded "Call Tricia" t-shirt card this replaced.
+ *
+ * `onMarkDone` (omitted in the admin editor's live preview) renders a small
+ * "I did this" action that hides the card **permanently** for the viewer —
+ * migration 0098, distinct from CalloutStack's swipe/✕, which only dismisses
+ * it for the current session.
  */
-export function CalloutCard({ callout }: { callout: HomeCallout }) {
+export function CalloutCard({
+  callout,
+  onMarkDone,
+  marking,
+}: {
+  callout: HomeCallout;
+  onMarkDone?: () => void;
+  marking?: boolean;
+}) {
   const { title, body, imageUrl, links, endsOn } = callout;
   const hasText = Boolean(title?.trim() || body?.trim() || links.length > 0 || endsOn);
 
@@ -61,6 +74,18 @@ export function CalloutCard({ callout }: { callout: HomeCallout }) {
               Due {formatDate(`${endsOn}T00:00:00`)}
             </p>
           )}
+        </div>
+      )}
+      {onMarkDone && (
+        <div className={`px-3.5 pb-3.5 ${hasText ? "pt-0" : imageUrl ? "pt-3" : "pt-3.5"}`}>
+          <button
+            type="button"
+            onClick={onMarkDone}
+            disabled={marking}
+            className="press w-full rounded-xl bg-background py-2 text-xs font-semibold text-primary ring-1 ring-primary/25 disabled:opacity-60"
+          >
+            {marking ? "Marking done…" : "✓ I did this — don't show again"}
+          </button>
         </div>
       )}
     </div>

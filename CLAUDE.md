@@ -566,6 +566,18 @@ Checklist, the quick-actions grid) always in view without extra scrolling.
   legitimately means "no call-outs". The `home_callouts` realtime subscription
   sits on its **own channel** in [`lib/useFestContent.ts`](lib/useFestContent.ts)
   so a pre-0083 database can't fail the fest tables' shared channel join.
+- **"I did this — don't show again"** (migration
+  [`0098`](supabase/migrations/0098_callout_completions.sql)) is a second,
+  **permanent** dismissal, distinct from the swipe/✕ (which is
+  session-scoped and comes back next time the app opens): a small button
+  rendered by `CalloutCard` when `HomeSpotlight` passes an `onMarkDone`
+  handler (omitted in the admin editor's live preview, so it never shows
+  there). Tapping it writes an own-row in `home_callout_completions`
+  (client seam [`lib/calloutCompletions.ts`](lib/calloutCompletions.ts), plain
+  RLS-gated table — no RPC needed) and the card is optimistically filtered out
+  of `HomeSpotlight`'s `items` immediately, keyed on the callout's stable `id`,
+  not the mutable `dismiss_id`. Guests get the sign-in sheet instead (nothing
+  to attach a completion to).
 
 ### Event-targeted broadcasts (migration 0096)
 
