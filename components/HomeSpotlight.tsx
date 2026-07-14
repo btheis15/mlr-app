@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useFestContent } from "@/lib/useFestContent";
 import { useEvents } from "@/lib/hooks";
+import { useIdentity } from "@/components/IdentityProvider";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { CalloutStack, type StackItem } from "@/components/CalloutStack";
 import { CalloutCard } from "@/components/CalloutCard";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isHiddenForEventTarget } from "@/lib/eventTargeting";
+import { fetchMyCalloutCompletions, markCalloutDone } from "@/lib/calloutCompletions";
+import { getCurrentUserId } from "@/lib/roles";
 import type { HomeCallout } from "@/lib/festContent";
 
 /** Is this call-out showing today? `today` is null until mounted: an
@@ -48,13 +52,53 @@ export function HomeSpotlight() {
   // as everything else that calls useEvents(), so this doesn't add a
   // separate round-trip.
   const { mine } = useEvents();
+  const { user, promptSignIn } = useIdentity();
+
+  // Callouts this viewer has marked "done" (migration 0098) — permanently
+  // hidden, unlike the swipe/✕ dismiss which only lasts the session. `User`
+  // (IdentityProvider) doesn't carry the Supabase auth uid, so it's resolved
+  // via getCurrentUserId() — `user` (name/email) is just the signed-in-or-not
+  // trigger.
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [marking, setMarking] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) {
+      setCompleted(new Set());
+      return;
+    }
+    let cancelled = false;
+    getCurrentUserId().then((uid) => {
+      if (cancelled || !uid) return;
+      fetchMyCalloutCompletions(uid).then((ids) => {
+        if (!cancelled) setCompleted(ids);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const onMarkDone = (calloutId: string) => {
+    if (!user) {
+      promptSignIn();
+      return;
+    }
+    setMarking(calloutId);
+    // Optimistic: it should disappear the instant you tap it, not after the
+    // round-trip lands.
+    setCompleted((prev) => new Set(prev).add(calloutId));
+    getCurrentUserId().then((uid) => {
+      if (!uid) return;
+      return markCalloutDone(calloutId, uid);
+    }).finally(() => setMarking(null));
+  };
 
   const items: StackItem[] = callouts
-    .filter((c) => isLive(c, today) && !isHiddenForEventTarget(mine, c.eventId, c.excludeNotAttending))
+    .filter((c) => isLive(c, today) && !isHiddenForEventTarget(mine, c.eventId, c.excludeNotAttending) && !completed.has(c.id))
     .map((c) => ({
       id: c.dismissId,
       swipeable: true,
-      node: <CalloutCard callout={c} />,
+      node: <CalloutCard callout={c} onMarkDone={() => onMarkDone(c.id)} marking={marking === c.id} />,
     }));
 
   // The permanent base — never swipeable, so something always sits here.
