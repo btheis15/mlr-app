@@ -431,7 +431,7 @@ nesting):
 | Card | Route | Component |
 |---|---|---|
 | Members | `/admin/members` | [`AdminMembers`](components/AdminMembers.tsx) + [`AdminProfileOverride`](components/AdminProfileOverride.tsx) |
-| Alerts & Notifications | `/admin/alerts` | [`AdminAlertComposer`](components/AdminAlertComposer.tsx) + [`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) |
+| Alerts & Notifications | `/admin/alerts` | [`AdminAlertComposer`](components/AdminAlertComposer.tsx) + [`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) + [`AdminCallouts`](components/AdminCallouts.tsx) (Home call-out cards — see **Home call-out stack**) |
 | Content review | `/admin/content-review` | [`AdminModeration`](components/AdminModeration.tsx) |
 | Committees & join requests | `/admin/committees` | [`AdminCommittees`](components/AdminCommittees.tsx) (also mounts the per-committee join-request queue) |
 | Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
@@ -547,12 +547,17 @@ Checklist, the quick-actions grid) always in view without extra scrolling.
   within a session where an old, same-purpose card was swiped.
 - **Call-outs are admin-managed rows**, not code: the `home_callouts` table
   (migration [`0083`](supabase/migrations/0083_home_callouts.sql) — public-read,
-  writes gated to `can_edit_fest()`, realtime) is edited in the Family Fest
-  Planner's **Callouts** section ([`FestPlanner`](components/FestPlanner.tsx) —
-  title/body, optional site-assets image, a `tel:`/`mailto:`/`https` action
-  button, a show window, position, active toggle, and the versioned
-  `dismiss_id`, with a live [`CalloutCard`](components/CalloutCard.tsx)
-  preview). `HomeSpotlight` maps the active, in-window rows (via
+  writes gated to `can_edit_fest()`, realtime) is edited from **Admin → Alerts
+  & Notifications** ([`AdminCallouts`](components/AdminCallouts.tsx) — moved
+  out of the Family Fest Planner since a call-out isn't necessarily
+  fest-specific, e.g. a work-weekend flyer): title/body, optional site-assets
+  image, **one or more** `tel:`/`mailto:`/`https` action links (migration
+  [`0093`](supabase/migrations/0093_callout_multi_link.sql) — `links` jsonb
+  array, replacing the old single `link_href`/`link_label` pair; each renders
+  on its own line in [`CalloutCard`](components/CalloutCard.tsx) so two links
+  read as distinctly separate actions), a show window, position, active
+  toggle, and the versioned `dismiss_id`, with a live `CalloutCard` preview.
+  `HomeSpotlight` maps the active, in-window rows (via
   `useFestContent`; `useDemoDate().today` drives the window) into swipeable
   `StackItem`s keyed by each row's `dismiss_id`. Pre-migration/offline,
   `fetchFestContent()` degrades to `FALLBACK_CALLOUTS` in
