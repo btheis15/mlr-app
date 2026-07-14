@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { StickerArt } from "@/components/Stickers";
@@ -62,17 +63,66 @@ interface Pending {
   name: string;
 }
 
+// Stale-while-revalidate room snapshot, mirroring CommitteeChat's
+// committeeChatCache: memory for in-session re-entries, plus a persisted
+// tail-of-conversation copy (`houseChatRoom.<uid>.<slug>`, lib/swrCache) so a
+// cold app open into the house chat paints the last-known messages instead of
+// a spinner. Keyed per room+viewer (real identity — see CommitteeChat's key
+// comment); memory writes happen only inside effects, never during SSR.
+interface RoomSnapshot {
+  access: Access;
+  houseId: string | null;
+  messages: Msg[];
+  members: Member[];
+}
+const houseChatCache = new Map<string, RoomSnapshot>();
+const CHAT_SNAPSHOT_MSGS = 30;
+
 export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; houseId?: string | null; embedded?: boolean; knownMember?: boolean }) {
-  const { user, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
+  const { user, userId, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
   const configured = isSupabaseConfigured;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+
+  const key = `${slug}|${user?.email ?? "guest"}|${previewAsId ?? "self"}`;
+  const cached = houseChatCache.get(key);
 
   const [uid, setUid] = useState<string | null>(null);
-  const [houseId, setHouseId] = useState<string | null>(houseIdProp);
-  const [access, setAccess] = useState<Access>(configured ? (knownMember ? "member" : "loading") : "coming-soon");
+  const [houseId, setHouseId] = useState<string | null>(cached?.houseId ?? houseIdProp);
+  const [access, setAccess] = useState<Access>(!configured ? "coming-soon" : cached?.access ?? (knownMember ? "member" : "loading"));
 
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [messages, setMessages] = useState<Msg[]>(cached?.messages ?? []);
+  const [members, setMembers] = useState<Member[]>(cached?.members ?? []);
+  const [loaded, setLoaded] = useState(!!cached);
+
+  // Write-through for the persisted snapshot — uid-scoped, trimmed to the
+  // conversation tail, never while an admin previews, wiped on signOut.
+  const persistRoom = (snap: RoomSnapshot) => {
+    const u = userIdRef.current;
+    if (previewAsId || !u) return;
+    writePersisted(`houseChatRoom.${u}.${slug}`, {
+      ...snap,
+      messages: snap.messages.slice(-CHAT_SNAPSHOT_MSGS),
+    });
+  };
+
+  // Cold-open seed (post-mount, hydration-safe): restore the persisted room
+  // when memory is cold. loadAccess still re-derives (and can downgrade)
+  // access; refetchMessages reconciles the list right behind this.
+  const roomSeededRef = useRef(false);
+  useEffect(() => {
+    if (roomSeededRef.current || previewAsId || !userId || houseChatCache.has(key)) return;
+    const snap = readPersisted<RoomSnapshot>(`houseChatRoom.${userId}.${slug}`);
+    if (!snap) return;
+    roomSeededRef.current = true;
+    houseChatCache.set(key, snap);
+    setHouseId(snap.houseId);
+    setAccess(snap.access);
+    setMessages(snap.messages);
+    setMembers(snap.members);
+    setLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, userId, previewAsId]);
 
   // Composer
   const [text, setText] = useState("");
@@ -104,13 +154,23 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     if (!sb) return;
     const hid = id ?? houseId;
     if (!hid) return;
-    const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
+    // Set access AND write the cache/persisted copy, so re-entry paints right
+    // away — including DOWNGRADING a stale "member", so revoked access never
+    // sticks.
+    const setAndCache = (a: Access) => {
+      setAccess(a);
+      const snap = { ...(houseChatCache.get(key) ?? { messages: [], members: [] }), access: a, houseId: hid };
+      houseChatCache.set(key, snap);
+      persistRoom(snap);
+    };
+    // Context uid (first tick, no network); local getSession as the fallback.
+    const me = previewAsId ?? userIdRef.current ?? (await sb.auth.getSession()).data.session?.user.id ?? null;
     setUid(me);
-    if (!me) { setAccess("guest"); return; }
-    if (isAdminRef.current) { setAccess("member"); return; }
+    if (!me) { setAndCache("guest"); return; }
+    if (isAdminRef.current) { setAndCache("member"); return; }
     const { data } = await sb.from("profiles").select("house_id").eq("id", me).maybeSingle();
     const myHouse = (data as { house_id: string | null } | null)?.house_id ?? null;
-    setAccess(myHouse === hid ? "member" : "none");
+    setAndCache(myHouse === hid ? "member" : "none");
   };
 
   // Resolve the house id from its slug (unless the caller passed it), then load
@@ -225,27 +285,31 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
       (mentionByMsg[m.message_id] ||= []).push(m.mentioned_user_id);
     }
 
-    setMessages(
-      rows.map((r) => ({
-        id: r.id,
-        authorId: r.author_id,
-        author: names.get(r.author_id) || "Member",
-        authorAvatar: avatars.get(r.author_id) ?? null,
-        text: r.text || undefined,
-        ts: r.created_at,
-        editedAt: r.edited_at,
-        deletedAt: r.deleted_at,
-        replyToId: r.reply_to_id,
-        media: mediaByMsg[r.id] ?? [],
-        reactions: reactByMsg[r.id] ?? [],
-        mentions: mentionByMsg[r.id] ?? [],
-      })),
-    );
+    const msgs: Msg[] = rows.map((r) => ({
+      id: r.id,
+      authorId: r.author_id,
+      author: names.get(r.author_id) || "Member",
+      authorAvatar: avatars.get(r.author_id) ?? null,
+      text: r.text || undefined,
+      ts: r.created_at,
+      editedAt: r.edited_at,
+      deletedAt: r.deleted_at,
+      replyToId: r.reply_to_id,
+      media: mediaByMsg[r.id] ?? [],
+      reactions: reactByMsg[r.id] ?? [],
+      mentions: mentionByMsg[r.id] ?? [],
+    }));
+    setMessages(msgs);
     setLoaded(true);
+    // Snapshot the fresh room so a re-entry (or cold open) paints instantly. A
+    // successful member fetch means access is "member".
+    const snap: RoomSnapshot = { access: "member", houseId: hid, messages: msgs, members: roster };
+    houseChatCache.set(key, snap);
+    persistRoom(snap);
     // Skip while "view as" preview is active — the real admin's read row must
     // not be stamped by whatever the previewed member/guest opens.
     if (previewMode === "off") {
-      const me = (await sb.auth.getUser()).data.user?.id;
+      const me = userIdRef.current ?? (await sb.auth.getSession()).data.session?.user.id;
       if (me) await sb.rpc("mark_house_read", { hid });
     }
   };
