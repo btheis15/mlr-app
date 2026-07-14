@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateRange, formatTime, plural } from "@/lib/format";
-import { eventsForDay } from "@/lib/schedule";
+import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
-import type { ScheduleEvent } from "@/lib/types";
+import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
  * Stale-while-revalidate cache for Family Fest committee membership, keyed by the
@@ -45,12 +46,14 @@ export function FamilyFestSpotlight({
   startDate,
   endDate,
   schedule,
+  dinners,
 }: {
   name: string;
   tagline: string;
   startDate: string;
   endDate: string;
   schedule: ScheduleEvent[];
+  dinners: Dinner[];
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
@@ -99,8 +102,11 @@ export function FamilyFestSpotlight({
   let card: React.ReactNode;
 
   if (season?.isLive) {
-    // Live week — today's events (time + where) right here.
+    // Live week — the WHOLE day right here (every event + tonight's dinner),
+    // not just a teaser: nobody should have to click through just to see
+    // what's later today.
     const todays = eventsForDay(schedule, today);
+    const dinner = dinnerForDay(dinners, today);
     card = (
       <Link
         href="/family-fest"
@@ -110,24 +116,46 @@ export function FamilyFestSpotlight({
         <p className="mt-1 text-lg font-semibold">
           Day {season.dayNumber} of {season.totalDays} Up North 🎆
         </p>
-        {todays.length > 0 ? (
-          <ul className="mt-2 space-y-1.5">
+        {todays.length > 0 || dinner ? (
+          <ul className="mt-2 space-y-2">
             {todays.map((e) => (
-              <li key={e.id} className="flex items-center gap-2 text-sm">
-                <span>{e.emoji}</span>
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium">{e.title}</span>
-                  <span className="text-foreground/55"> · 📍 {e.location}</span>
-                </span>
-                <span className="shrink-0 text-foreground/55">{formatTime(e.start)}</span>
+              <li key={e.id} className="rounded-xl bg-background/50 p-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate text-sm font-medium">
+                    {e.emoji} {e.title}
+                  </span>
+                  <span className="shrink-0 text-xs font-medium text-foreground/60">
+                    {formatTime(e.start)}
+                    {e.end ? `–${formatTime(e.end)}` : ""}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-foreground/55">
+                  📍 <Protected label="Sign in for location">{e.location}</Protected>
+                </p>
               </li>
             ))}
+            {dinner && (
+              <li className="rounded-xl bg-background/50 p-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate text-sm font-medium">
+                    {dinner.emoji} Dinner · {dinner.title}
+                  </span>
+                  <span className="shrink-0 text-xs font-medium text-foreground/60">
+                    {formatTime(dinner.time)}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-foreground/55">
+                  📍 <Protected label="Sign in for location">{dinner.location}</Protected>
+                </p>
+                <p className="mt-0.5 truncate text-xs text-foreground/55">{dinner.menu}</p>
+              </li>
+            )}
           </ul>
         ) : (
           <p className="mt-1 text-sm text-foreground/70">{tagline}</p>
         )}
         <p className="mt-2 text-xs font-medium text-campfire">
-          Open Family Fest for today&rsquo;s details →
+          Open Family Fest for more →
         </p>
       </Link>
     );
