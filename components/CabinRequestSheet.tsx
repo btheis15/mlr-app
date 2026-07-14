@@ -143,6 +143,19 @@ export function CabinRequestSheet({
         </>
       }
     >
+          {(cabin.bedCount != null || cabin.notes) && (
+            <div className="space-y-1.5">
+              {cabin.bedCount != null && (
+                <p className="text-xs text-muted">🛏️ {cabin.bedCount} bed{cabin.bedCount === 1 ? "" : "s"} total across {cabin.roomCount} room{cabin.roomCount === 1 ? "" : "s"}</p>
+              )}
+              {cabin.notes && (
+                <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
+                  ℹ️ {cabin.notes}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Dates */}
           <div className="space-y-2">
             <SectionLabel>When</SectionLabel>

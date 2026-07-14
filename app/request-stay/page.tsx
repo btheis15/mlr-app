@@ -338,6 +338,9 @@ function CabinCard({
                   : `${left} of ${cabin.roomCount} room${cabin.roomCount === 1 ? "" : "s"} left`}
             </span>
           </div>
+          {cabin.bedCount != null && (
+            <p className="mt-0.5 text-xs text-muted">🛏️ {cabin.bedCount} bed{cabin.bedCount === 1 ? "" : "s"} total</p>
+          )}
         </div>
         <button
           onClick={onRequest}
@@ -346,6 +349,11 @@ function CabinCard({
           Request a room
         </button>
       </div>
+      {cabin.notes && (
+        <p className="mt-3 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
+          ℹ️ {cabin.notes}
+        </p>
+      )}
     </div>
   );
 }

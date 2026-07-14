@@ -54,18 +54,78 @@ export function ffNights(): string[] {
   return out;
 }
 
-/** The two houses, ordered. Empty when there's no backend. */
+interface CabinRow {
+  id: string;
+  slug: string;
+  name: string;
+  room_count: number;
+  bed_count: number | null;
+  notes: string | null;
+  active: boolean;
+  sort_order: number;
+}
+
+function mapCabinRow(c: CabinRow): Cabin {
+  return {
+    id: c.id,
+    slug: c.slug,
+    name: c.name,
+    roomCount: c.room_count,
+    bedCount: c.bed_count ?? null,
+    notes: c.notes ?? null,
+    active: c.active,
+    sortOrder: c.sort_order,
+  };
+}
+
+/** The two houses, ordered. Empty when there's no backend. Only the active ones
+ *  — for the admin editor (which also needs to see/reopen a closed cabin), use
+ *  fetchCabinsAdmin(). */
 export async function fetchCabins(): Promise<Cabin[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabins")
-    .select("id, slug, name, room_count, sort_order")
+    .select("id, slug, name, room_count, bed_count, notes, active, sort_order")
     .eq("active", true)
     .order("sort_order", { ascending: true });
-  return ((data ?? []) as { id: string; slug: string; name: string; room_count: number; sort_order: number }[]).map(
-    (c) => ({ id: c.id, slug: c.slug, name: c.name, roomCount: c.room_count, sortOrder: c.sort_order }),
-  );
+  return ((data ?? []) as CabinRow[]).map(mapCabinRow);
+}
+
+/** Every cabin regardless of active state (admin editor only — RLS still lets
+ *  anyone read cabins, but there's no reason a member needs the inactive ones). */
+export async function fetchCabinsAdmin(): Promise<Cabin[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("cabins")
+    .select("id, slug, name, room_count, bed_count, notes, active, sort_order")
+    .order("sort_order", { ascending: true });
+  return ((data ?? []) as CabinRow[]).map(mapCabinRow);
+}
+
+/** Edit a cabin's editable fields (admin-gated by RLS, migration 0089). */
+export async function saveCabin(input: {
+  id: string;
+  name: string;
+  roomCount: number;
+  bedCount: number | null;
+  notes: string | null;
+  active: boolean;
+}): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("cabins")
+    .update({
+      name: input.name,
+      room_count: input.roomCount,
+      bed_count: input.bedCount,
+      notes: input.notes,
+      active: input.active,
+    })
+    .eq("id", input.id);
+  return error ? { error: error.message } : {};
 }
 
 /** Rooms still bookable for the whole [checkIn, checkOut) range, per cabin. */
