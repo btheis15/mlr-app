@@ -555,7 +555,7 @@ function SignInGate({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center ${closing ? "scrim-out" : "scrim-in"}`}>
+    <div className={`fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`}>
       <form
         onSubmit={step === "email" ? sendCode : verify}
         className={`relative w-full max-w-sm space-y-4 rounded-3xl bg-background p-6 ring-1 ring-border ${closing ? "pop-close sm:pop-close" : "pop-panel sm:pop-panel"}`}

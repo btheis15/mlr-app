@@ -19,7 +19,7 @@ export function Lightbox({ url, onClose, z = "z-50" }: { url: string; onClose: (
 
   return (
     <div
-      className={`fixed inset-0 ${z} flex items-center justify-center bg-black/90 p-4 ${closing ? "scrim-out" : "scrim-in"}`}
+      className={`fixed inset-0 ${z} flex items-center justify-center bg-black/90 p-4 ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`}
       onClick={close}
       role="dialog"
       aria-modal="true"
