@@ -47,7 +47,9 @@ export function AdminCabinBookings() {
     const [p, a] = await Promise.all([fetchBookings(["pending"]), fetchBookings(["approved"])]);
     setPending(p);
     setApproved(a);
-    const ids = Array.from(new Set([...p, ...a].map((b) => b.userId).filter(Boolean) as string[]));
+    const ids = Array.from(
+      new Set([...p, ...a].flatMap((b) => [b.userId, b.bookedBy]).filter(Boolean) as string[]),
+    );
     const ppl = profileMap(await fetchProfiles(ids));
     setPeople(ppl);
     // Warm the cache after the successful fetch so revisiting paints instantly;
@@ -115,6 +117,7 @@ export function AdminCabinBookings() {
                     </p>
                     <p className="text-xs text-faint">
                       {b.guests} guest{b.guests === 1 ? "" : "s"}
+                      {b.bookedBy && ` · booked by ${people.get(b.bookedBy)?.name ?? "an admin"}`}
                     </p>
                   </div>
                 </div>
@@ -168,6 +171,7 @@ export function AdminCabinBookings() {
                     <p className="truncate text-sm font-medium">{who?.name ?? "Member"}</p>
                     <p className="truncate text-xs text-muted">
                       {b.cabinName} · {formatStay(b.checkIn, b.checkOut)} · {b.guests}👤
+                      {b.bookedBy && ` · booked by ${people.get(b.bookedBy)?.name ?? "an admin"}`}
                     </p>
                   </div>
                 </li>

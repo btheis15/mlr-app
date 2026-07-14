@@ -79,13 +79,18 @@ export async function fetchAvailability(checkIn: string, checkOut: string): Prom
   );
 }
 
-/** Submit a request (always pending). Returns the new id, or an error message. */
+/** Submit a request (pending, unless auto-approved by the caller afterward).
+ *  Pass `forUserId` to book on behalf of another member — admin-only, enforced
+ *  server-side; the booking lands under that member's id, with `booked_by`
+ *  stamped to the admin who placed it (migration 0087). Returns the new id, or
+ *  an error message. */
 export async function requestStay(input: {
   cabinId: string;
   checkIn: string;
   checkOut: string;
   guests: number;
   notes?: string | null;
+  forUserId?: string | null;
 }): Promise<{ id?: string; error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Sign-in isn't available yet." };
@@ -95,6 +100,7 @@ export async function requestStay(input: {
     p_check_out: input.checkOut,
     p_guests: input.guests,
     p_notes: input.notes ?? null,
+    p_for_user: input.forUserId ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -111,7 +117,7 @@ export async function fetchMyBookings(asUserId?: string): Promise<CabinBooking[]
   if (!uid) return [];
   const { data } = await sb
     .from("cabin_bookings")
-    .select("id, cabin_id, check_in, check_out, guests, notes, status, review_note, created_at, cabins(name)")
+    .select("id, cabin_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name)")
     .eq("user_id", uid)
     .order("created_at", { ascending: false });
   return (data ?? []).map(mapBookingRow);
@@ -124,7 +130,7 @@ export async function fetchBookings(statuses: string[]): Promise<CabinBooking[]>
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabin_bookings")
-    .select("id, cabin_id, user_id, check_in, check_out, guests, notes, status, review_note, created_at, cabins(name)")
+    .select("id, cabin_id, user_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name)")
     .in("status", statuses)
     .order("check_in", { ascending: true });
   return (data ?? []).map(mapBookingRow);
@@ -158,6 +164,7 @@ interface BookingRow {
   status: string;
   review_note: string | null;
   created_at: string;
+  booked_by?: string | null;
   // Supabase returns an embedded relation as an object (or array, depending on
   // the FK shape) — handle both defensively.
   cabins?: { name: string } | { name: string }[] | null;
@@ -170,6 +177,7 @@ function mapBookingRow(r: BookingRow): CabinBooking {
     cabinId: r.cabin_id,
     cabinName: cab?.name,
     userId: r.user_id,
+    bookedBy: r.booked_by ?? null,
     checkIn: r.check_in,
     checkOut: r.check_out,
     guests: r.guests,
