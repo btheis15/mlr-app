@@ -8,6 +8,7 @@ import { BirthdayPicker } from "@/components/BirthdayPicker";
 import { AddressEditor } from "@/components/AddressEditor";
 import { PhoneInput } from "@/components/PhoneInput";
 import { isApple } from "@/lib/push";
+import { Switch } from "@/components/Switch";
 
 // Profile section to set your phone + pay handles and pick your preferred
 // contact/pay methods — what the member card defaults to. Each is optional.
@@ -122,13 +123,13 @@ export function ContactPaySettings() {
         <span className="mt-1 block text-xs text-faint">Tap to enter it and verify it on the map; members can tap it on your card for directions.</span>
       </div>
       {isApple() && (
-        <label className="flex items-center justify-between gap-3 rounded-xl bg-background p-3 ring-1 ring-border">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-background p-3 ring-1 ring-border">
           <span className="min-w-0">
             <span className="text-xs font-medium text-foreground/70">Accept Apple Cash</span>
             <span className="mt-0.5 block text-xs text-faint">Sends via Messages to your phone number. Shown on your card only to other Apple users.</span>
           </span>
-          <input type="checkbox" checked={appleCash} onChange={(e) => setAppleCash(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-primary)]" />
-        </label>
+          <Switch on={appleCash} onClick={() => setAppleCash((v) => !v)} label="Accept Apple Cash" />
+        </div>
       )}
       <label className="block">
         <span className="text-xs font-medium text-foreground/70">Preferred way to be contacted</span>

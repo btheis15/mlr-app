@@ -5,6 +5,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { enablePush, disablePush, ensureServiceWorker, isPushSupported, isStandalone, isIos } from "@/lib/push";
 import { DEFAULT_PUSH_TYPES } from "@/lib/types";
 import type { PushType } from "@/lib/types";
+import { Switch } from "@/components/Switch";
 
 // The unified push list (migration 0034) — one row per category, in the order
 // shown to members. Each is independent; they only buzz the phone while the
@@ -28,26 +29,6 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
 // account, and is only actually honored by the mini when the same account id is
 // in PUSH_SELF_NOTIFY_USER_IDS. Remove both when testing is done.
 const SELF_NOTIFY_EMAILS = new Set(["brian.theis15@gmail.com"]);
-
-/** Small iOS-style on/off switch. */
-function Switch({ on, busy, onClick, label }: { on: boolean; busy?: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      onClick={onClick}
-      disabled={busy}
-      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${on ? "bg-primary" : "bg-foreground/20"}`}
-    >
-      <span
-        aria-hidden
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : "translate-x-1"}`}
-      />
-    </button>
-  );
-}
 
 /**
  * Push notifications (Profile → Notifications) — the iOS/Android *phone* pushes,
@@ -241,37 +222,35 @@ export function PushToggle() {
       </div>
 
       {isAdmin && (
-        <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
           <span className="min-w-0">
             <span className="text-sm font-medium">🆕 New member joins</span>
             <span className="block text-xs text-muted">
               Admins only: get a push when someone new joins, so you know who and when. Keep push turned on above so it can reach this device.
             </span>
           </span>
-          <input
-            type="checkbox"
-            checked={user.notifyNewMembers}
-            onChange={(e) => updateUser({ notifyNewMembers: e.target.checked })}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          <Switch
+            on={user.notifyNewMembers}
+            onClick={() => updateUser({ notifyNewMembers: !user.notifyNewMembers })}
+            label="New member joins"
           />
-        </label>
+        </div>
       )}
 
       {selfNotifyEligible && (
-        <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-amber-500/40">
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-amber-500/40">
           <span className="min-w-0">
             <span className="text-sm font-medium">🧪 Notify me of my own actions</span>
             <span className="block text-xs text-muted">
               Testing only (your account). Get pushes for your own actions — keep &ldquo;New committee messages&rdquo; ticked above to test your own chats — so you can verify notifications without a second person.
             </span>
           </span>
-          <input
-            type="checkbox"
-            checked={Boolean(user.pushSelfNotify)}
-            onChange={(e) => updateUser({ pushSelfNotify: e.target.checked })}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          <Switch
+            on={Boolean(user.pushSelfNotify)}
+            onClick={() => updateUser({ pushSelfNotify: !user.pushSelfNotify })}
+            label="Notify me of my own actions"
           />
-        </label>
+        </div>
       )}
     </div>
   );
