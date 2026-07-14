@@ -429,12 +429,18 @@ export interface FestConfigContent {
    (room_count) — one room per request. Backed by Supabase (migration 0032). */
 
 /** A bookable house. Capacity is just a room count for now; individual rooms
- *  can be named later without reworking this shape. */
+ *  can be named later without reworking this shape. `bedCount` and `notes` are
+ *  admin-editable (migration 0089) so members can see sleeping capacity and any
+ *  heads-up about current conditions (e.g. "water not hooked up yet"). `active`
+ *  false takes the cabin out of the bookable list without deleting its history. */
 export interface Cabin {
   id: string;
   slug: string;
   name: string;
   roomCount: number;
+  bedCount: number | null;
+  notes: string | null;
+  active: boolean;
   sortOrder: number;
 }
 
