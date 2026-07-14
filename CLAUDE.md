@@ -516,42 +516,59 @@ migration [`0078`](supabase/migrations/0078_fest_dues_per_day.sql) adds
 Planner's dues editor ([`FestPlanner.tsx`](components/FestPlanner.tsx)
 `DuesSheet`) has a matching "Billed per day" checkbox.
 
-## Dinner chef/crew self-edit (migration 0099)
+## Dinner chef/crew self-edit + inline admin editing (migration 0099)
 
-Writing to `fest_dinners` normally requires `can_edit_fest()` (admin or Family
-Fest committee membership) — but a dinner's **head chef and any assigned crew
-members** don't need to be on that committee to be the ones actually running
-that night, so they can edit that one dinner's **operational details** (menu,
-served time/location, prep time/location — deliberately *not* day/title/chef/
-crew/houses, which stay admin/committee-managed) directly, from wherever the
-dinner shows up:
+Writing to `fest_dinners`/`fest_schedule_items` normally requires
+`can_edit_fest()` (admin or Family Fest committee membership), exercised only
+through the full [`FestPlanner`](components/FestPlanner.tsx) at
+`/family-fest/master`. Two things layer on top of that, both surfaced right
+where the schedule/dinner already show up — [`FestWeek`](components/FestWeek.tsx)'s
+`EventRow`/`DinnerRow` (the Overview/Schedule accordion) and
+[`FestDinnerDetail`](components/FestDinnerDetail.tsx) (the standalone
+`dinners/[id]` page) — instead of only inside the Planner:
 
-- [`FestWeek`](components/FestWeek.tsx)'s `DinnerRow` (the Overview/Schedule
-  accordion) and [`FestDinnerDetail`](components/FestDinnerDetail.tsx) (the
-  standalone `dinners/[id]` page) both show a quiet "✏️ Edit" affordance when
-  the signed-in viewer is the chef, a crew member, or already has full
-  `can_edit_fest()` access — opening the shared
+- **Chef/crew self-edit.** A dinner's **head chef and any assigned crew
+  members** don't need to be on the Family Fest committee to be the ones
+  actually running that night, so they can edit that one dinner's
+  **operational details** (menu, served time/location, prep time/location —
+  deliberately *not* day/title/chef/crew/houses, which stay admin/
+  committee-managed) via the shared
   [`DinnerDetailsEditSheet`](components/DinnerDetailsEditSheet.tsx), which
-  writes via a new, narrower `updateDinnerDetails()` (a plain partial update —
+  writes through a narrower `updateDinnerDetails()` (a plain partial update —
   not `writeRow`/`saveDinner`, which always write every `DinnerInput` field
-  and would clobber day/title/chef/houses this surface never touches).
-- **Data model:** `fest_dinners.chef_user_id` was already a real FK to
-  `profiles` (day one, migration 0053) — no new column needed for the chef
-  side. `crew_user_ids uuid[]` is new (mirrors the existing `houses text[]`
-  column shape rather than a join table, since it's just a small assignment
-  list). A second, narrower `for update` RLS policy (`chef_user_id = auth.uid()
-  or auth.uid() = any(crew_user_ids)`) layers on top of the existing blanket
-  `can_edit_fest()` write policy — Postgres ORs multiple permissive policies
-  for the same command, so this composes without touching that one. It's
-  **update-only**, not `for all`: a chef/crew member can edit an existing
-  dinner, not insert a new one or delete this one.
-- **Assigning crew** is admin/committee-only, in the Planner's `DinnerSheet` —
-  a "Crew members" multi-picker (`CrewPickerSheet`, a toggle-multiple sibling
-  of the existing single-pick `MemberPickerSheet` used for the head chef)
-  alongside the existing "Houses on crew" free-text field (still house names,
-  not individual members — the two are independent: houses says which
-  families are teaming up, crew members says who specifically gets edit
-  rights).
+  and would clobber fields this surface never touches).
+  - **Data model:** `fest_dinners.chef_user_id` was already a real FK to
+    `profiles` (day one, migration 0053) — no new column needed for the chef
+    side. `crew_user_ids uuid[]` is new (mirrors the existing `houses text[]`
+    column shape rather than a join table, since it's just a small assignment
+    list). A second, narrower `for update` RLS policy (`chef_user_id =
+    auth.uid() or auth.uid() = any(crew_user_ids)`) layers on top of the
+    existing blanket `can_edit_fest()` write policy — Postgres ORs multiple
+    permissive policies for the same command, so this composes without
+    touching that one. It's **update-only**, not `for all`: a chef/crew
+    member can edit an existing dinner, not insert or delete one.
+  - **Assigning crew** is admin/committee-only, in the Planner's
+    `DinnerSheet` — a "Crew members" multi-picker (`CrewPickerSheet`, a
+    toggle-multiple sibling of the existing single-pick `MemberPickerSheet`
+    used for the head chef) alongside the existing "Houses on crew" free-text
+    field (still house names, not individual members — houses says which
+    families are teaming up, crew members says who specifically gets edit
+    rights).
+- **Full admin/committee editing, in place.** A viewer with full
+  `can_edit_fest()` access gets an Edit affordance on **every** row here, not
+  just dinners — `EventRow` and `DinnerRow`/`FestDinnerDetail` all reuse the
+  Planner's own `ScheduleSheet`/`DinnerSheet` (both now `export`ed from
+  `FestPlanner.tsx` for exactly this) rather than a duplicate, narrower form —
+  so an admin can change a dinner's chef, crew, houses, day, and title (or an
+  event's time, location, lead, everything) right from the accordion/detail
+  view, with no trip to `/family-fest/master` needed. This needs the full
+  `DinnerDraft`/`ScheduleDraft` (carrying `position`, which the display
+  `Dinner`/`ScheduleEvent` types don't) plus the member directory, so
+  `FestWeek`/`FestDinnerDetail` fetch `fetchDinnerDrafts()`/
+  `fetchScheduleDrafts()`/`fetchMemberOptions()` themselves, but **only once
+  `canEditFest()` resolves true** — a chef/crew self-editor or a regular
+  member never pays for that extra round-trip. A chef/crew (non-admin)
+  self-editor still gets only the narrower `DinnerDetailsEditSheet`.
 
 ## Home call-out stack
 

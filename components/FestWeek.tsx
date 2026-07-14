@@ -1,16 +1,26 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateLong, formatTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { eventDays } from "@/lib/events";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
-import { canEditFest } from "@/lib/festContent";
+import {
+  canEditFest,
+  fetchMemberOptions,
+  fetchDinnerDrafts,
+  fetchScheduleDrafts,
+  type FestMemberOption,
+  type DinnerDraft,
+  type ScheduleDraft,
+} from "@/lib/festContent";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
 /**
@@ -26,23 +36,42 @@ export function FestWeek({
   things,
   startDate,
   endDate,
-  onDinnerSaved,
+  onContentSaved,
 }: {
   events: ScheduleEvent[];
   dinners: Dinner[];
   things: FestActivity[];
   startDate: string;
   endDate: string;
-  /** Called after a chef/crew/admin edit saves from a DinnerRow, so the
-   *  caller's own useFestContent() instance re-fetches (see migration 0099 —
-   *  FestWeek is handed `dinners` as a prop, so it can't refresh itself). */
-  onDinnerSaved?: () => void;
+  /** Called after any edit saves from an EventRow/DinnerRow, so the caller's
+   *  own useFestContent() instance re-fetches (see migration 0099 — FestWeek
+   *  is handed `dinners`/`events` as props, so it can't refresh itself). */
+  onContentSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
   const { user } = useIdentity();
   const [uid, setUid] = useState<string | null>(null);
   const [canEditAll, setCanEditAll] = useState(false);
+  // Full-access editors (admins/committee) can edit ANYTHING on this view —
+  // not just the chef/crew-scoped dinner details — by reusing the Planner's
+  // own DinnerSheet/ScheduleSheet in place. Those need the member directory +
+  // the full drafts (with `position`, which the display Dinner/ScheduleEvent
+  // types don't carry), so they're only fetched once canEditAll is known true
+  // — a plain chef/crew self-editor or a regular member never pays for this.
+  const [members, setMembers] = useState<FestMemberOption[]>([]);
+  const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
+  const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
+  // The full fest date range, for the day picker inside DinnerSheet/
+  // ScheduleSheet — distinct from `days` below (only the days that actually
+  // have content, used to render the accordion sections).
+  const festDayOptions = eventDays(startDate, endDate);
+
+  const reloadAdminData = useCallback(() => {
+    fetchMemberOptions().then(setMembers);
+    fetchDinnerDrafts().then(setDinnerDrafts);
+    fetchScheduleDrafts().then(setScheduleDrafts);
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -52,11 +81,20 @@ export function FestWeek({
     }
     let active = true;
     getCurrentUserId().then((id) => active && setUid(id));
-    canEditFest().then((ok) => active && setCanEditAll(ok));
+    canEditFest().then((ok) => {
+      if (!active) return;
+      setCanEditAll(ok);
+      if (ok) reloadAdminData();
+    });
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, reloadAdminData]);
+
+  const onSaved = () => {
+    onContentSaved?.();
+    if (canEditAll) reloadAdminData();
+  };
 
   const allDays = Array.from(
     new Set([...events.map((e) => e.day), ...dinners.map((d) => d.day)]),
@@ -113,14 +151,25 @@ export function FestWeek({
               </div>
               <ul>
                 {dayEvents.map((e) => (
-                  <EventRow key={e.id} event={e} />
+                  <EventRow
+                    key={e.id}
+                    event={e}
+                    canEditAll={canEditAll}
+                    draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
+                    days={festDayOptions}
+                    members={members}
+                    onSaved={onSaved}
+                  />
                 ))}
                 {dinner && (
                   <DinnerRow
                     dinner={dinner}
                     uid={uid}
                     canEditAll={canEditAll}
-                    onSaved={() => onDinnerSaved?.()}
+                    draft={dinnerDrafts.find((d) => d.id === dinner.id) ?? null}
+                    days={festDayOptions}
+                    members={members}
+                    onSaved={onSaved}
                   />
                 )}
                 {dayEvents.length === 0 && !dinner && (
@@ -173,8 +222,23 @@ function RowChevron({ open }: { open: boolean }) {
   );
 }
 
-function EventRow({ event }: { event: ScheduleEvent }) {
+function EventRow({
+  event,
+  canEditAll,
+  draft,
+  days,
+  members,
+  onSaved,
+}: {
+  event: ScheduleEvent;
+  canEditAll: boolean;
+  draft: ScheduleDraft | null;
+  days: string[];
+  members: FestMemberOption[];
+  onSaved: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   return (
     <li className="border-b border-border/50 last:border-0">
       <button
@@ -192,6 +256,15 @@ function EventRow({ event }: { event: ScheduleEvent }) {
       </button>
       <Expander open={open}>
         <div className="space-y-3 px-4 pb-4">
+          {canEditAll && draft && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="press rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+            >
+              ✏️ Edit this event
+            </button>
+          )}
           <p className="text-xs text-foreground/60">
             📍 <Protected label="Sign in for location">{event.location}</Protected>
           </p>
@@ -219,6 +292,19 @@ function EventRow({ event }: { event: ScheduleEvent }) {
           )}
         </div>
       </Expander>
+      {editing && draft && (
+        <ScheduleSheet
+          draft={draft}
+          days={days}
+          members={members}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
     </li>
   );
 }
@@ -227,16 +313,26 @@ function DinnerRow({
   dinner,
   uid,
   canEditAll,
+  draft,
+  days,
+  members,
   onSaved,
 }: {
   dinner: Dinner;
   uid: string | null;
   canEditAll: boolean;
+  draft: DinnerDraft | null;
+  days: string[];
+  members: FestMemberOption[];
   onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canEditThis = canEditAll || Boolean(uid && (dinner.chefUserId === uid || dinner.crewUserIds.includes(uid)));
+  // Full-access editors get the Planner's own full DinnerSheet in place (day/
+  // title/chef/crew/houses/menu/served/prep); a chef/crew self-editor gets
+  // the narrower DinnerDetailsEditSheet (menu/served/prep only) instead.
+  const fullEdit = canEditAll && Boolean(draft);
   return (
     <li className="border-b border-border/50 bg-primary/5 last:border-0">
       <button
@@ -324,7 +420,20 @@ function DinnerRow({
           </div>
         </div>
       </Expander>
-      {editing && (
+      {editing && fullEdit && draft && (
+        <DinnerSheet
+          draft={draft}
+          days={days}
+          members={members}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
+      {editing && !fullEdit && (
         <DinnerDetailsEditSheet
           dinner={dinner}
           onClose={() => setEditing(false)}

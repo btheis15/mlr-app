@@ -84,7 +84,7 @@ export default function FamilyFestPage() {
         things={activities}
         startDate={config.startDate}
         endDate={config.endDate}
-        onDinnerSaved={reload}
+        onContentSaved={reload}
       />
 
       <Link
