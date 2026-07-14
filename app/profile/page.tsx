@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { RowLink } from "@/components/RowLink";
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
@@ -18,6 +17,8 @@ import { NotifPrefs } from "@/components/NotifPrefs";
 import { InstallButton } from "@/components/InstallButton";
 import { TextSizeControl } from "@/components/TextSizeControl";
 import { WillingToHelpToggle } from "@/components/WillingToHelpToggle";
+import { SettingsGroup } from "@/components/SettingsGroup";
+import { SettingsRow, SettingsToggleRow } from "@/components/SettingsRow";
 
 export default function ProfilePage() {
   const { user, isAdmin, updateUser, promptSignIn, signOut } = useIdentity();
@@ -163,19 +164,14 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <SettingsGroup title="Account">
         <EditDisplayName />
         <ChangeEmail />
-      </div>
+      </SettingsGroup>
 
-      {/* Notifications — split into separate sections to mirror the iOS Profile
-          (Activity notifications · Push notifications · email alerts). */}
-      <div className="space-y-2">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
-          Notifications
-        </p>
-
+      <SettingsGroup title="Notifications">
         <CollapsibleSection
+          bare
           title="Activity notifications"
           icon="🔔"
           subtitle="What lands in your Activity tab"
@@ -184,6 +180,7 @@ export default function ProfilePage() {
         </CollapsibleSection>
 
         <CollapsibleSection
+          bare
           title="Push notifications"
           icon="📲"
           subtitle={user.pushTypes && user.pushTypes.length > 0 ? "On — buzzes this phone" : "Off"}
@@ -191,75 +188,51 @@ export default function ProfilePage() {
           <PushToggle />
         </CollapsibleSection>
 
-        <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
-          <span className="min-w-0">
-            <span className="text-sm font-medium">✉️ Email me alerts</span>
-            <span className="block text-xs text-muted">
-              Get an email when an admin pushes an alert, in case you miss it in
-              the app.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            checked={user.emailAlerts}
-            onChange={(e) => updateUser({ emailAlerts: e.target.checked })}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-          />
-        </label>
-      </div>
-
-      <CollapsibleSection
-        title="Contact & payment"
-        icon="💳"
-        subtitle="Optional — what shows when someone taps your name to contact or pay you"
-      >
-        <ContactPaySettings />
-      </CollapsibleSection>
-
-      {isAdmin && (
-        <RowLink
-          href="/admin"
-          emoji="🛠"
-          title="Admin dashboard"
-          subtitle="Manage members, alerts, content & more"
+        <SettingsToggleRow
+          icon="✉️"
+          title="Email me alerts"
+          subtitle="Get an email when an admin pushes an alert, in case you miss it in the app."
+          on={user.emailAlerts}
+          onToggle={() => updateUser({ emailAlerts: !user.emailAlerts })}
         />
-      )}
+      </SettingsGroup>
 
-      <div className="space-y-2">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
-          Ask for Help
-        </p>
-        <WillingToHelpToggle />
-        <Link
-          href="/help-requests"
-          className="press flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border"
+      <SettingsGroup title="Payments">
+        <CollapsibleSection
+          bare
+          title="Contact & payment"
+          icon="💳"
+          subtitle="Optional — what shows when someone taps your name to contact or pay you"
         >
-          <span className="flex items-center gap-3 text-sm font-medium">
-            <span className="text-lg" aria-hidden>🙌</span> Ask for Help log
-          </span>
-          <span className="text-foreground/40" aria-hidden>›</span>
-        </Link>
-      </div>
+          <ContactPaySettings />
+        </CollapsibleSection>
+      </SettingsGroup>
 
+      <SettingsGroup title="Ask for Help">
+        <WillingToHelpToggle />
+        <SettingsRow icon="🙌" title="Ask for Help log" href="/help-requests" />
+      </SettingsGroup>
 
-      <div className="space-y-2">
+      <section className="space-y-2">
         <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
           Text size
         </p>
         <TextSizeControl />
-      </div>
+      </section>
 
       <InstallButton />
 
-      <Link
-        href="/help"
-        className="press flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border"
-      >
-        <span className="flex items-center gap-3 text-sm font-medium">
-          <span className="text-lg" aria-hidden>❓</span> Help &amp; how-to
-        </span>
-        <span className="text-foreground/40" aria-hidden>›</span>
-      </Link>
+      <SettingsGroup title="More">
+        {isAdmin && (
+          <SettingsRow
+            icon="🛠"
+            title="Admin dashboard"
+            subtitle="Manage members, alerts, content & more"
+            href="/admin"
+          />
+        )}
+        <SettingsRow icon="❓" title="Help & how-to" href="/help" />
+      </SettingsGroup>
 
       <DemoDateControl />
 

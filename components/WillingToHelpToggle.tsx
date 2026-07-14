@@ -1,9 +1,10 @@
 "use client";
 
 import { useIdentity } from "@/components/IdentityProvider";
+import { SettingsToggleRow } from "@/components/SettingsRow";
 
 // The "Willing to Help" opt-in (profiles.willing_to_help, migration 0037), shown
-// in Profile → Beta features. It's the real switch for RECEIVING "Ask for Help"
+// in Profile → Ask for Help. It's the real switch for RECEIVING "Ask for Help"
 // pings — separate from the notif/push toggles, which only mute or route it. You
 // still only get pinged while you're actually at the resort (see lib/helpRequests
 // presence), and you always choose whether to respond.
@@ -12,20 +13,12 @@ export function WillingToHelpToggle() {
   if (!user) return null;
 
   return (
-    <label className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
-      <span className="min-w-0">
-        <span className="text-sm font-medium">🙋 Willing to help</span>
-        <span className="block text-xs text-muted">
-          When you&rsquo;re at the resort, get a heads-up if someone nearby needs a hand. You decide
-          whether to jump in — and you&rsquo;re only pinged while you&rsquo;re actually up there.
-        </span>
-      </span>
-      <input
-        type="checkbox"
-        checked={user.willingToHelp}
-        onChange={(e) => updateUser({ willingToHelp: e.target.checked })}
-        className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-      />
-    </label>
+    <SettingsToggleRow
+      icon="🙋"
+      title="Willing to help"
+      subtitle="When you're at the resort, get a heads-up if someone nearby needs a hand. You decide whether to jump in — and you're only pinged while you're actually up there."
+      on={user.willingToHelp}
+      onToggle={() => updateUser({ willingToHelp: !user.willingToHelp })}
+    />
   );
 }
