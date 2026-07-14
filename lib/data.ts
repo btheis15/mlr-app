@@ -190,7 +190,6 @@ export const RESORT_EVENTS: ResortEvent[] = [
     kind: "family_fest",
     title: FAMILY_FEST.name,
     emoji: "🎪",
-    description: FAMILY_FEST.tagline,
     location: FAMILY_FEST.location,
     startDate: FAMILY_FEST.startDate,
     endDate: FAMILY_FEST.endDate,
