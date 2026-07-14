@@ -6,7 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useBusyAction } from "@/lib/hooks";
 import { fetchProfiles, profileMap, type ProfileLite } from "@/lib/roles";
-import { fetchBookings, formatStay, reviewStay } from "@/lib/cabins";
+import { fetchBookings, formatStay, reviewStay, cancelStay } from "@/lib/cabins";
 import { BookingRoomsSheet } from "@/components/BookingRoomsSheet";
 import type { CabinBooking } from "@/lib/types";
 
@@ -110,6 +110,19 @@ export function AdminCabinBookings() {
       await load();
     });
 
+  const cancel = (b: CabinBooking) => {
+    const who = (b.userId ? people.get(b.userId) : undefined)?.name ?? "this member";
+    if (!window.confirm(`Cancel ${who}'s ${b.cabinName ?? "cabin"} stay for ${formatStay(b.checkIn, b.checkOut)}?`)) return;
+    run(b.id, async () => {
+      const { error } = await cancelStay(b.id);
+      if (error) {
+        window.alert(error);
+        return;
+      }
+      await load();
+    });
+  };
+
   if (!isAdmin || !isSupabaseConfigured) return null;
 
   return (
@@ -179,6 +192,13 @@ export function AdminCabinBookings() {
                   >
                     Deny
                   </button>
+                  <button
+                    disabled={busy === b.id}
+                    onClick={() => cancel(b)}
+                    className="press rounded-full px-3 py-2 text-xs font-medium text-accent disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             );
@@ -212,6 +232,13 @@ export function AdminCabinBookings() {
                       </button>
                     </p>
                   </div>
+                  <button
+                    disabled={busy === b.id}
+                    onClick={() => cancel(b)}
+                    className="press shrink-0 rounded-full px-2.5 py-1.5 text-xs font-medium text-accent disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
                 </li>
               );
             })}
