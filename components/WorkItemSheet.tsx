@@ -111,6 +111,12 @@ export function WorkItemSheet({
           </span>
         )}
       </span>
+      {item.status === "done" && (
+        <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+          ✅ Done{item.completedBy ? ` by ${members.find((m) => m.id === item.completedBy)?.name ?? "a member"}` : ""}
+          {item.completedAt ? ` · ${formatWhen(item.completedAt)}` : ""}
+        </p>
+      )}
       {item.media.length > 0 && <MediaGrid media={item.media} />}
 
       {/* Comments */}

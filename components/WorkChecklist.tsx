@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
 import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
+import { timeAgo } from "@/lib/format";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useGuest } from "@/components/Guard";
@@ -69,6 +70,7 @@ export function WorkChecklist() {
   const [loading, setLoading] = useState(!cached);
   const [cardOpen, setCardOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [doneExpanded, setDoneExpanded] = useState<Set<string>>(new Set());
   const [composing, setComposing] = useState(false);
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [viewing, setViewing] = useState<WorkItem | null>(null);
@@ -180,6 +182,15 @@ export function WorkChecklist() {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  const toggleDoneExpand = (key: string) =>
+    setDoneExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+
+  // Name lookup for "done by" — members is the full profile list (non-guests).
+  const memberById = new Map(members.map((m) => [m.id, m]));
 
   return (
     <>
@@ -249,8 +260,11 @@ export function WorkChecklist() {
           const open = section.items
             .filter((i) => i.status === "open")
             .sort((a, b) => urgencyRank(a.urgency) - urgencyRank(b.urgency));
-          const done = section.items.filter((i) => i.status === "done");
+          const done = section.items
+            .filter((i) => i.status === "done")
+            .sort((a, b) => new Date(b.completedAt ?? b.updatedAt).getTime() - new Date(a.completedAt ?? a.updatedAt).getTime());
           const isExpanded = expanded.has(section.key);
+          const isDoneExpanded = doneExpanded.has(section.key);
           const visible = isExpanded ? open : open.slice(0, PREVIEW);
           const hidden = open.length - PREVIEW;
           return (
@@ -284,10 +298,25 @@ export function WorkChecklist() {
                 </div>
               )}
               {done.length > 0 && (
-                <div className="px-4 py-2.5">
-                  <p className="text-xs text-faint">
-                    ✅ {done.length} item{done.length !== 1 ? "s" : ""} done
-                  </p>
+                <div className="divide-y divide-border">
+                  <button
+                    type="button"
+                    onClick={() => toggleDoneExpand(section.key)}
+                    aria-expanded={isDoneExpanded}
+                    className="press flex w-full items-center justify-between px-4 py-2.5 text-left text-xs font-medium text-faint"
+                  >
+                    <span>✅ {done.length} item{done.length !== 1 ? "s" : ""} done</span>
+                    <span className={`transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${isDoneExpanded ? "rotate-90" : ""}`} aria-hidden>›</span>
+                  </button>
+                  {isDoneExpanded && done.map((item) => (
+                    <WorkItemRow
+                      key={item.id}
+                      item={item}
+                      done
+                      completedByName={item.completedBy ? memberById.get(item.completedBy)?.name ?? "a member" : null}
+                      onOpen={() => setViewing(item)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -332,13 +361,18 @@ export function WorkChecklist() {
 
 function WorkItemRow({
   item,
+  done = false,
+  completedByName,
   checkingOff,
   onCheck,
   onOpen,
 }: {
   item: WorkItem;
-  checkingOff: boolean;
-  onCheck: () => void;
+  /** Render as a completed row: filled check, no tap-to-check, "done by" line. */
+  done?: boolean;
+  completedByName?: string | null;
+  checkingOff?: boolean;
+  onCheck?: () => void;
   onOpen: () => void;
 }) {
   const thumb = item.media[0];
@@ -348,13 +382,13 @@ function WorkItemRow({
       <button
         type="button"
         onClick={onCheck}
-        disabled={checkingOff}
-        aria-label={`Mark "${item.title}" done`}
-        className="press mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border transition-colors hover:border-primary disabled:opacity-40"
+        disabled={done || checkingOff}
+        aria-label={done ? `"${item.title}" is done` : `Mark "${item.title}" done`}
+        className={`press mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[10px] leading-none transition-colors disabled:opacity-100 ${
+          done ? "border-primary bg-primary text-white" : "border-border hover:border-primary"
+        }`}
       >
-        {checkingOff && (
-          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-        )}
+        {done ? "✓" : checkingOff ? <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" /> : null}
       </button>
 
       {/* Title + details — tap to open the item (details + comments). */}
@@ -365,7 +399,9 @@ function WorkItemRow({
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onOpen()}
       >
-        <span className="block text-sm font-medium leading-snug">{item.title}</span>
+        <span className={`block text-sm font-medium leading-snug ${done ? "text-foreground/60 line-through decoration-foreground/30" : ""}`}>
+          {item.title}
+        </span>
         {item.notes && (
           <span className="mt-0.5 block text-xs text-muted leading-snug line-clamp-2">{item.notes}</span>
         )}
@@ -386,6 +422,11 @@ function WorkItemRow({
             </span>
           )}
         </span>
+        {done && (
+          <span className="mt-1 block text-[11px] text-faint">
+            ✅ Done{completedByName ? ` by ${completedByName}` : ""}{item.completedAt ? ` · ${timeAgo(item.completedAt)}` : ""}
+          </span>
+        )}
       </div>
 
       {/* Compact inline thumbnail (iOS-style) instead of a full-width grid. */}
