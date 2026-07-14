@@ -123,13 +123,14 @@ export function CalloutStack({
   }, [front?.id, front?.swipeable]);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    // A press starting on the ✕ button is a tap, never a swipe — don't track
-    // it as a drag at all. Without this, the tiniest mouse/trackpad drift
-    // between mousedown and mouseup (near-universal, unlike a true touch tap)
-    // locks the horizontal axis and marks the gesture "dragged", which then
-    // makes onClickCapture below swallow the button's own click — the button
-    // silently does nothing on a desktop click that so much as twitched.
-    if ((e.target as HTMLElement).closest("[data-callout-dismiss]")) return;
+    // A press starting on the ✕ button — or any other in-card control, e.g.
+    // CalloutCard's "I did this" button — is a tap, never a swipe — don't
+    // track it as a drag at all. Without this, the tiniest mouse/trackpad
+    // drift between mousedown and mouseup (near-universal, unlike a true
+    // touch tap) locks the horizontal axis and marks the gesture "dragged",
+    // which then makes onClickCapture below swallow the control's own click —
+    // it silently does nothing on a desktop click that so much as twitched.
+    if ((e.target as HTMLElement).closest("[data-callout-no-drag]")) return;
     dragged.current = false;
     setWiggle(false);
     start.current = { x: e.clientX, y: e.clientY, axis: null };
@@ -228,7 +229,7 @@ export function CalloutStack({
           <button
             type="button"
             aria-label="Dismiss"
-            data-callout-dismiss
+            data-callout-no-drag
             onClick={() => fly(front.id, 1)}
             className="press absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-card text-foreground/60 shadow-md ring-1 ring-border before:absolute before:-inset-2.5 before:content-['']"
           >

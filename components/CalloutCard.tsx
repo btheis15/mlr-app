@@ -59,6 +59,7 @@ export function CalloutCard({
                   <a
                     key={i}
                     href={href}
+                    data-callout-no-drag
                     {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
                     className="press flex items-center justify-between rounded-xl bg-primary/10 px-3.5 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
                   >
@@ -80,6 +81,7 @@ export function CalloutCard({
         <div className={`px-3.5 pb-3.5 ${hasText ? "pt-0" : imageUrl ? "pt-3" : "pt-3.5"}`}>
           <button
             type="button"
+            data-callout-no-drag
             onClick={onMarkDone}
             disabled={marking}
             className="press w-full rounded-xl bg-background py-2 text-xs font-semibold text-primary ring-1 ring-primary/25 disabled:opacity-60"
