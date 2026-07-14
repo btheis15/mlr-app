@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
+import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
 
 type Audience = "everyone" | "beta" | "admins";
 
@@ -40,6 +41,7 @@ export function AdminNotificationComposer() {
   const [audience, setAudience] = useState<Audience>("beta");
   const [expiryHours, setExpiryHours] = useState<number | null>(null);
   const [alsoBanner, setAlsoBanner] = useState(false);
+  const [eventTarget, setEventTarget] = useState<EventTarget>({ eventId: null, excludeNotAttending: true });
   const { pending: sending, status, show, run } = useSaveStatus();
 
   // App admins only (send_broadcast_notification re-checks this server-side too).
@@ -57,13 +59,26 @@ export function AdminNotificationComposer() {
     const link = url.trim() || null;
 
     run(async () => {
-      const { data, error } = await sb.rpc("send_broadcast_notification", {
+      let { data, error } = await sb.rpc("send_broadcast_notification", {
         p_title: title.trim(),
         p_body: body.trim() || null,
         p_url: link,
         p_audience: audience,
         p_expires_at: expiresAt,
+        p_event_id: eventTarget.eventId,
+        p_exclude_not_attending: eventTarget.excludeNotAttending,
       });
+      if (error && /p_event_id|p_exclude_not_attending/i.test(error.message || "")) {
+        // Pre-0096 the RPC doesn't take these params yet — send without event
+        // targeting rather than fail outright.
+        ({ data, error } = await sb.rpc("send_broadcast_notification", {
+          p_title: title.trim(),
+          p_body: body.trim() || null,
+          p_url: link,
+          p_audience: audience,
+          p_expires_at: expiresAt,
+        }));
+      }
       if (error) {
         show(`Couldn't send: ${error.message}`, 0);
         return;
@@ -75,18 +90,27 @@ export function AdminNotificationComposer() {
       if (alsoBanner && audience === "everyone") {
         const uid = await getCurrentUserId();
         const bannerExpiry = expiresAt ?? new Date(Date.now() + 6 * 3600 * 1000).toISOString();
-        await sb.from("announcements").insert({
+        const bannerBase = {
           author_id: uid,
           title: title.trim(),
           body: body.trim() || null,
           severity: "alert",
           notify_email: false,
           expires_at: bannerExpiry,
+        };
+        const { error: bannerErr } = await sb.from("announcements").insert({
+          ...bannerBase,
+          event_id: eventTarget.eventId,
+          exclude_not_attending: eventTarget.excludeNotAttending,
         });
+        if (bannerErr && /event_id|exclude_not_attending/i.test(bannerErr.message || "")) {
+          await sb.from("announcements").insert(bannerBase); // pre-0096 fallback
+        }
       }
 
       const who = audience === "everyone" ? "everyone" : audience === "beta" ? "beta testers" : "admins";
       setTitle(""); setBody(""); setUrl(""); setExpiryHours(null); setAlsoBanner(false);
+      setEventTarget({ eventId: null, excludeNotAttending: true });
       return `Sent to ${count} ${who === "everyone" ? "members" : who} ✓`;
     }, 6000);
   };
@@ -144,6 +168,8 @@ export function AdminNotificationComposer() {
           ))}
         </div>
       </div>
+
+      <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
 
       <label className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
         <span>Stop counting toward the badge after</span>

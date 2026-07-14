@@ -1,10 +1,12 @@
 "use client";
 
 import { useFestContent } from "@/lib/useFestContent";
+import { useEvents } from "@/lib/hooks";
 import { FamilyFestSpotlight } from "@/components/FamilyFestSpotlight";
 import { CalloutStack, type StackItem } from "@/components/CalloutStack";
 import { CalloutCard } from "@/components/CalloutCard";
 import { useDemoDate } from "@/lib/DemoDateProvider";
+import { isHiddenForEventTarget } from "@/lib/eventTargeting";
 import type { HomeCallout } from "@/lib/festContent";
 
 /** Is this call-out showing today? `today` is null until mounted: an
@@ -40,9 +42,15 @@ export function HomeSpotlight() {
   // Live fest content (schedule + meta + call-outs) so Home matches the Planner.
   const { config, schedule, callouts } = useFestContent({ realtime: true });
   const { today } = useDemoDate();
+  // The viewer's own RSVPs, for callouts targeted at an event (see
+  // lib/eventTargeting.ts) — hides a card from anyone who explicitly RSVP'd
+  // "Can't make it" to the linked event. Shares the same events cache/fetch
+  // as everything else that calls useEvents(), so this doesn't add a
+  // separate round-trip.
+  const { mine } = useEvents();
 
   const items: StackItem[] = callouts
-    .filter((c) => isLive(c, today))
+    .filter((c) => isLive(c, today) && !isHiddenForEventTarget(mine, c.eventId, c.excludeNotAttending))
     .map((c) => ({
       id: c.dismissId,
       swipeable: true,

@@ -15,6 +15,7 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { formatDate } from "@/lib/format";
 import { uploadSiteImage } from "@/lib/appImages";
+import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
 import {
   fetchCallouts,
   saveCallout,
@@ -215,6 +216,10 @@ function CalloutSheet({
   const [dismissTouched, setDismissTouched] = useState(Boolean(draft));
   const [active, setActive] = useState(draft?.isActive ?? true);
   const [position, setPosition] = useState(String(draft?.position ?? nextPosition));
+  const [eventTarget, setEventTarget] = useState<EventTarget>({
+    eventId: draft?.eventId ?? null,
+    excludeNotAttending: draft?.excludeNotAttending ?? true,
+  });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -268,6 +273,8 @@ function CalloutSheet({
     dismissId: effectiveDismissId,
     position: parsedPosition,
     isActive: active,
+    eventId: eventTarget.eventId,
+    excludeNotAttending: eventTarget.excludeNotAttending,
   };
 
   const hasContent = Boolean(title.trim() || body.trim() || imageUrl);
@@ -286,6 +293,8 @@ function CalloutSheet({
         dismissId: effectiveDismissId.trim(),
         position: parsedPosition,
         isActive: active,
+        eventId: eventTarget.eventId,
+        excludeNotAttending: eventTarget.excludeNotAttending,
       });
       if (error) return error;
       onSaved();
@@ -388,6 +397,7 @@ function CalloutSheet({
         </Field>
       </div>
       {!validRange && <p className="text-xs text-accent">&ldquo;Show through&rdquo; must be on or after &ldquo;show from&rdquo;.</p>}
+      <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
       <Field label="Dismiss id">
         <input
           value={effectiveDismissId}

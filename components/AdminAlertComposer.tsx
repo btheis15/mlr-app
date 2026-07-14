@@ -6,6 +6,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
+import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
 
 /**
  * How long an alert sits in everyone's banner before it auto-hides (people can
@@ -37,6 +38,7 @@ export function AdminAlertComposer() {
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [emailAudience, setEmailAudience] = useState<"all" | "admins">("all");
   const [expiryHours, setExpiryHours] = useState(DEFAULT_EXPIRY_HOURS);
+  const [eventTarget, setEventTarget] = useState<EventTarget>({ eventId: null, excludeNotAttending: true });
   const { pending: sending, status, show, run } = useSaveStatus();
 
   const submit = (e: React.FormEvent) => {
@@ -50,9 +52,16 @@ export function AdminAlertComposer() {
       run(async () => {
         const uid = await getCurrentUserId();
         const base = { author_id: uid, title: title.trim(), body: body.trim() || null, severity: "alert", notify_email: notifyEmail, expires_at: expiresAt };
-        let { error } = await sb.from("announcements").insert({ ...base, email_audience: emailAudience });
-        if (error && /email_audience/i.test(error.message || "")) {
-          // Pre-0017 the column doesn't exist yet — post without it (emails everyone).
+        const targeted = {
+          ...base,
+          email_audience: emailAudience,
+          event_id: eventTarget.eventId,
+          exclude_not_attending: eventTarget.excludeNotAttending,
+        };
+        let { error } = await sb.from("announcements").insert(targeted);
+        if (error && /email_audience|event_id|exclude_not_attending/i.test(error.message || "")) {
+          // Pre-0017/0096 those columns don't exist yet — post without them
+          // (emails everyone, no event targeting) rather than fail outright.
           ({ error } = await sb.from("announcements").insert(base));
         }
         if (error) {
@@ -60,6 +69,7 @@ export function AdminAlertComposer() {
           return;
         }
         setTitle(""); setBody(""); setEmailAudience("all"); setExpiryHours(DEFAULT_EXPIRY_HOURS);
+        setEventTarget({ eventId: null, excludeNotAttending: true });
         return notifyEmail
           ? `Posted to everyone's banner ✓ (emailed ${emailAudience === "admins" ? "App Admins" : "opted-in members"})`
           : "Posted to everyone's banner ✓";
@@ -97,6 +107,8 @@ export function AdminAlertComposer() {
         rows={2}
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
+      {isSupabaseConfigured && <EventTargetPicker value={eventTarget} onChange={setEventTarget} />}
+
       <label className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
         <span>Hide from the banner after</span>
         <select

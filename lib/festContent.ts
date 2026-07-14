@@ -63,6 +63,12 @@ export interface HomeCallout {
   dismissId: string;
   position: number;
   isActive: boolean;
+  // Event targeting (migration 0096) — see lib/eventTargeting.ts. `eventId` is
+  // a stable event id/slug (matches event_attendance.event_id); when set and
+  // `excludeNotAttending` is true, HomeSpotlight hides this card from anyone
+  // who explicitly RSVP'd "Can't make it" to that event.
+  eventId: string | null;
+  excludeNotAttending: boolean;
 }
 
 /** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
@@ -81,6 +87,8 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     dismissId: "tshirt-order-jul15-2026",
     position: 0,
     isActive: true,
+    eventId: null,
+    excludeNotAttending: false,
   },
 ];
 
@@ -180,10 +188,12 @@ interface CalloutRow {
   dismiss_id: string;
   position: number;
   is_active: boolean;
+  event_id: string | null;
+  exclude_not_attending: boolean;
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -258,6 +268,8 @@ function mapCallout(r: CalloutRow): HomeCallout {
     dismissId: r.dismiss_id,
     position: r.position,
     isActive: r.is_active,
+    eventId: r.event_id,
+    excludeNotAttending: r.exclude_not_attending,
   };
 }
 
@@ -518,6 +530,8 @@ export interface CalloutInput {
   dismissId: string;
   position: number;
   isActive: boolean;
+  eventId: string | null;
+  excludeNotAttending: boolean;
 }
 export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -532,6 +546,8 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     dismiss_id: i.dismissId,
     position: i.position,
     is_active: i.isActive,
+    event_id: i.eventId,
+    exclude_not_attending: i.excludeNotAttending,
   };
   const q = i.id
     ? sb.from("home_callouts").update(row).eq("id", i.id)
