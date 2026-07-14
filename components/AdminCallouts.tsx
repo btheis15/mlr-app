@@ -388,14 +388,12 @@ function CalloutSheet({
           Each link shows on its own line — add a second one for e.g. two separate order forms.
         </p>
       </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Show from (optional)">
-          <input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} className={`${FIELD} w-full`} />
-        </Field>
-        <Field label="Show through (optional)">
-          <input type="date" value={endsOn} min={startsOn || undefined} onChange={(e) => setEndsOn(e.target.value)} className={`${FIELD} w-full`} />
-        </Field>
-      </div>
+      <Field label="Show from (optional)">
+        <input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} className={`${FIELD} w-full`} />
+      </Field>
+      <Field label="Show through (optional)">
+        <input type="date" value={endsOn} min={startsOn || undefined} onChange={(e) => setEndsOn(e.target.value)} className={`${FIELD} w-full`} />
+      </Field>
       {!validRange && <p className="text-xs text-accent">&ldquo;Show through&rdquo; must be on or after &ldquo;show from&rdquo;.</p>}
       <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
       <Field label="Dismiss id">
