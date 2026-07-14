@@ -46,6 +46,8 @@ function mapRow(r: Record<string, unknown>): WorkItem {
       return Array.isArray(c) && c[0]?.count != null ? (c[0].count as number) : 0;
     })(),
     createdBy: (r.created_by as string | null) ?? null,
+    completedBy: (r.completed_by as string | null) ?? null,
+    completedAt: (r.completed_at as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };

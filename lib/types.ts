@@ -253,6 +253,9 @@ export interface WorkItem {
   media: WorkItemMedia[];
   commentCount: number;
   createdBy: string | null;
+  // Who marked it done + when (migration 0088) — null while status is 'open'.
+  completedBy: string | null;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
