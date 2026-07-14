@@ -5,14 +5,15 @@ import type { Post } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { dayKey, formatDayHeading, formatClock, toDatetimeLocal, groupByDay } from "@/lib/format";
+import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
 import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
-import { useMediaPicker, useDebouncedCallback } from "@/lib/hooks";
+import { useMediaPicker, useDebouncedCallback, useSheetDismiss } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { Lightbox } from "@/components/Lightbox";
 import { ReportButton } from "@/components/ReportButton";
+import { Sheet, FIELD } from "@/components/Sheet";
 import { POST_TEXT_MAX, fileRejectionReason } from "@/lib/moderation";
 
 type MediaType = "image" | "video";
@@ -180,6 +181,8 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   const [whenValue, setWhenValue] = useState("");
   // Which post is open in the consolidated editor (author/admin).
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Which post's comment composer is open full-screen (Sheet).
+  const [commentSheetFor, setCommentSheetFor] = useState<string | null>(null);
   // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
   const [jump, setJump] = useState("");
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
@@ -907,7 +910,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                 <button onClick={() => setPickerFor(pickerFor === p.id ? null : p.id)} className={`press rounded-full px-3 py-1.5 font-medium ${mine ? "text-primary" : "text-muted"}`} aria-expanded={pickerFor === p.id}>
                   {mine ? `${mine} Reacted` : "🙂 React"}
                 </button>
-                <span className="rounded-full px-3 py-1.5 text-muted">💬 {postComments.length > 0 ? postComments.length : "Comment"}</span>
+                <button onClick={() => setCommentSheetFor(p.id)} className="press rounded-full px-3 py-1.5 font-medium text-muted">
+                  💬 {postComments.length > 0 ? postComments.length : "Comment"}
+                </button>
                 <button onClick={() => shareOut(p)} className="press ml-auto rounded-full px-3 py-1.5 font-medium text-primary">Share ↗</button>
               </div>
 
@@ -922,22 +927,37 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               )}
 
               {(postComments.length > 0 || user) && (
-                <div className="space-y-2 border-t border-border px-4 py-3">
+                <div className="space-y-3 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2 text-xs">
-                      <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press flex shrink-0 items-center gap-1.5">
-                        <Avatar name={c.author} url={c.authorAvatar} size={22} />
-                        <span className="inline-flex items-center font-semibold">{c.author}</span>
+                    <div key={c.id} className="flex items-start gap-2">
+                      <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press mt-0.5 shrink-0">
+                        <Avatar name={c.author} url={c.authorAvatar} size={28} />
                       </button>
-                      <span className="min-w-0 flex-1 text-foreground/75"><MentionText text={c.text} mentions={c.mentions} members={members} /></span>
-                      {isAdmin || (!!uid && c.authorId === uid) ? (
-                        <button onClick={() => removeComment(c.id)} className="press shrink-0 text-foreground/30 hover:text-primary" aria-label="Delete comment">✕</button>
-                      ) : configured ? (
-                        <ReportButton entity="comment" entityId={c.id} needsSignIn={requireSignIn} variant="comment" />
-                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="inline-block max-w-full rounded-2xl bg-background px-3 py-1.5 ring-1 ring-border">
+                          <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press block text-left text-xs font-semibold">
+                            {c.author}
+                          </button>
+                          <p className="whitespace-pre-wrap break-words text-xs text-foreground/80"><MentionText text={c.text} mentions={c.mentions} members={members} /></p>
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 px-3 text-[11px] text-faint">
+                          <span>{timeAgo(c.ts)}</span>
+                          {isAdmin || (!!uid && c.authorId === uid) ? (
+                            <button onClick={() => removeComment(c.id)} className="press font-medium hover:text-primary">Delete</button>
+                          ) : configured ? (
+                            <ReportButton entity="comment" entityId={c.id} needsSignIn={requireSignIn} variant="comment" />
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   ))}
-                  <CommentBox members={members} uid={uid} onAdd={(t, ids) => addComment(p.id, t, ids)} />
+                  <button
+                    type="button"
+                    onClick={() => setCommentSheetFor(p.id)}
+                    className="press w-full rounded-full bg-background px-3 py-1.5 text-left text-xs text-faint ring-1 ring-border"
+                  >
+                    Add a comment… (@ to tag)
+                  </button>
                 </div>
               )}
             </li>
@@ -952,6 +972,15 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
 
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
+      )}
+
+      {commentSheetFor && (
+        <CommentComposerSheet
+          members={members}
+          uid={uid}
+          onAdd={(t, ids) => addComment(commentSheetFor, t, ids)}
+          onClose={() => setCommentSheetFor(null)}
+        />
       )}
     </div>
   );
@@ -989,6 +1018,7 @@ function EditPostPanel({
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const { closing, close } = useSheetDismiss(onClose);
   const keptMedia = post.media.filter((m) => !(m.path && removed.includes(m.path)));
   const toggleTag = (id: string) => setTagIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const tagMembers = members.filter((m) => matchesName(m.name, tagQuery));
@@ -1022,7 +1052,7 @@ function EditPostPanel({
       if (toAdd.length) await supabase.from("post_tags").insert(toAdd.map((id) => ({ post_id: post.id, tagged_user_id: id })));
       for (const id of toRemove) await supabase.from("post_tags").delete().eq("post_id", post.id).eq("tagged_user_id", id);
       await onSaved();
-      onClose();
+      close();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't save the changes.");
       setSaving(false);
@@ -1030,9 +1060,29 @@ function EditPostPanel({
   };
 
   return (
-    <div className="rise mx-4 mt-2 space-y-3 rounded-xl bg-background p-3 ring-1 ring-border">
-      <p className="text-xs font-semibold text-foreground/70">Edit post</p>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Say something…" className="w-full resize-none rounded-lg bg-card px-2 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="edit-post-title"
+      header={<h2 id="edit-post-title" className="text-lg font-bold">Edit post</h2>}
+      footer={
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onDelete} className="press rounded-full px-2 py-2 text-xs font-medium text-faint hover:text-accent">Delete</button>
+          <div className="ml-auto flex gap-2">
+            <button type="button" onClick={close} disabled={saving} className="press rounded-full px-4 py-2 text-sm font-medium text-foreground/55">Cancel</button>
+            <button type="button" onClick={save} disabled={saving} className="press rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </div>
+      }
+    >
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={6}
+        autoFocus
+        placeholder="Say something…"
+        className={`${FIELD} w-full resize-none`}
+      />
 
       {(keptMedia.length > 0 || previews.length > 0) && (
         <div className="grid grid-cols-3 gap-2">
@@ -1096,15 +1146,7 @@ function EditPostPanel({
       )}
 
       {err && <p className="text-xs font-medium text-accent">{err}</p>}
-
-      <div className="flex items-center gap-2 pt-1">
-        <button type="button" onClick={onDelete} className="press rounded-full px-2 py-1.5 text-xs font-medium text-faint hover:text-accent">Delete</button>
-        <div className="ml-auto flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="press rounded-full px-3 py-1.5 text-xs font-medium text-foreground/55">Cancel</button>
-          <button type="button" onClick={save} disabled={saving} className="press rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-        </div>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -1174,10 +1216,22 @@ function MentionText({ text, mentions, members }: { text: string; mentions: stri
   return <>{out}</>;
 }
 
-// Comment composer with inline @mention autocomplete — type "@" then a name to
-// tag anyone in the family (same member list as post tagging). The chosen ids
-// flow back through onAdd so addComment can write them to post_comment_mentions.
-function CommentBox({ members, uid, onAdd }: { members: Member[]; uid: string | null; onAdd: (text: string, mentionIds: string[]) => void }) {
+// Full-screen comment composer (Sheet) with inline @mention autocomplete —
+// type "@" then a name to tag anyone in the family (same member list as post
+// tagging). The chosen ids flow back through onAdd so addComment can write
+// them to post_comment_mentions.
+function CommentComposerSheet({
+  members,
+  uid,
+  onAdd,
+  onClose,
+}: {
+  members: Member[];
+  uid: string | null;
+  onAdd: (text: string, mentionIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
   const [v, setV] = useState("");
   const [mentionIds, setMentionIds] = useState<string[]>([]);
 
@@ -1212,28 +1266,48 @@ function CommentBox({ members, uid, onAdd }: { members: Member[]; uid: string | 
     setMentionIds((ids) => (ids.includes(m.id) ? ids : [...ids, m.id]));
   };
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = () => {
     const text = v.trim();
     if (!text) return;
     onAdd(text, liveMentions(v));
-    setV(""); setMentionIds([]);
+    close();
   };
 
   return (
-    <form onSubmit={submit} className="relative flex gap-2">
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="comment-composer-title"
+      header={<h2 id="comment-composer-title" className="text-lg font-bold">Add a comment</h2>}
+      footer={
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!v.trim()}
+          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          Send
+        </button>
+      }
+    >
+      <textarea
+        value={v}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Add a comment… (@ to tag)"
+        rows={8}
+        autoFocus
+        className={`${FIELD} w-full resize-none`}
+      />
       {candidates.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 max-h-40 overflow-y-auto rounded-xl bg-card p-1 shadow-lg ring-1 ring-border">
+        <div className="space-y-1 rounded-xl bg-card p-1 ring-1 ring-border">
           {candidates.map((m) => (
-            <button key={m.id} type="button" onClick={() => choose(m)} className="press flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-background">
-              <Avatar name={m.name} url={m.avatarUrl} size={22} />
+            <button key={m.id} type="button" onClick={() => choose(m)} className="press flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-background">
+              <Avatar name={m.name} url={m.avatarUrl} size={24} />
               <span className="font-medium">{m.name}</span>
             </button>
           ))}
         </div>
       )}
-      <input value={v} onChange={(e) => onChange(e.target.value)} placeholder="Add a comment… (@ to tag)" className="flex-1 rounded-full bg-background px-3 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
-      <button type="submit" className="press rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">Send</button>
-    </form>
+    </Sheet>
   );
 }
