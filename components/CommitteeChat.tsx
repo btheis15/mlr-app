@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { StickerArt } from "@/components/Stickers";
@@ -30,7 +31,18 @@ type Access = "loading" | "coming-soon" | "guest" | "member" | "pending" | "none
 // — so a cold first render sees an empty map (the original default output) and
 // can't cause a hydration mismatch. loadAccess still always runs and can DOWNGRADE
 // a cached "member" to guest/pending/none, so a revoked permission never sticks.
-const committeeChatCache = new Map<string, { access: Access; committeeId: string | null; messages: Msg[]; members: Member[] }>();
+interface RoomSnapshot {
+  access: Access;
+  committeeId: string | null;
+  messages: Msg[];
+  members: Member[];
+}
+const committeeChatCache = new Map<string, RoomSnapshot>();
+
+// The persisted (cold-open) copy keeps only the tail of the conversation —
+// what's on screen when a room opens — so a busy room can't blow the storage
+// cap. The full history still loads from the server right behind it.
+const CHAT_SNAPSHOT_MSGS = 30;
 
 interface Member {
   id: string;
@@ -74,8 +86,10 @@ interface Pending {
 }
 
 export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean }) {
-  const { user, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
+  const { user, userId, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
   const configured = isSupabaseConfigured;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
 
   // Per-room+channel+VIEWER cache key. The viewer segment MUST include the real
   // signed-in identity (user?.email), not just previewAsId: this cache holds
@@ -103,6 +117,38 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   const [members, setMembers] = useState<Member[]>(cached?.members ?? []);
   // Warm cache ⇒ already loaded, so the empty-state line + initial scroll behave.
   const [loaded, setLoaded] = useState(!!cached);
+
+  // Write-through for the persisted room snapshot (`chatRoom.<uid>.<room>`,
+  // lib/swrCache): last CHAT_SNAPSHOT_MSGS messages + access/roster, uid-scoped,
+  // never while an admin previews. Wiped on signOut with the rest of the cache.
+  const persistRoom = (snap: RoomSnapshot) => {
+    const u = userIdRef.current;
+    if (previewAsId || !u) return;
+    writePersisted(`chatRoom.${u}.${slug}|${area ?? ""}`, {
+      ...snap,
+      messages: snap.messages.slice(-CHAT_SNAPSHOT_MSGS),
+    });
+  };
+
+  // Cold-open seed (post-mount, hydration-safe): when the memory cache is cold,
+  // restore the persisted snapshot so opening the app straight into a chat
+  // paints the last-known conversation instead of a spinner. loadAccess still
+  // re-derives access (and can DOWNGRADE it), and refetchMessages reconciles
+  // the list right behind this.
+  const roomSeededRef = useRef(false);
+  useEffect(() => {
+    if (roomSeededRef.current || previewAsId || !userId || committeeChatCache.has(key)) return;
+    const snap = readPersisted<RoomSnapshot>(`chatRoom.${userId}.${slug}|${area ?? ""}`);
+    if (!snap) return;
+    roomSeededRef.current = true;
+    committeeChatCache.set(key, snap);
+    setCommitteeId(snap.committeeId);
+    setAccess(snap.access);
+    setMessages(snap.messages);
+    setMembers(snap.members);
+    setLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, userId, previewAsId]);
 
   // Composer
   const [text, setText] = useState("");
@@ -145,10 +191,14 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     // stale "member" to guest/pending/none — so a revoked permission can't stick.
     const setAndCache = (a: Access) => {
       setAccess(a);
-      committeeChatCache.set(key, { ...(committeeChatCache.get(key) ?? { messages: [], members: [] }), access: a, committeeId: cid });
+      const snap = { ...(committeeChatCache.get(key) ?? { messages: [], members: [] }), access: a, committeeId: cid };
+      committeeChatCache.set(key, snap);
+      persistRoom(snap);
     };
-    // While previewing as a member, gate access as THEY would see it.
-    const me = previewAsId ?? (await sb.auth.getUser()).data.user?.id ?? null;
+    // While previewing as a member, gate access as THEY would see it. The uid
+    // comes from context (first-tick, no network); getSession is the local
+    // fallback for the narrow window before the provider has stamped it.
+    const me = previewAsId ?? userIdRef.current ?? (await sb.auth.getSession()).data.session?.user.id ?? null;
     setUid(me);
     if (!me) {
       setAndCache("guest");
@@ -307,12 +357,14 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     // Persist this fresh snapshot so a re-entry paints the list instantly. Keep
     // the cached access (loadAccess owns it); reaching a successful member fetch
     // means access is "member", so record that too and stamp committeeId.
-    committeeChatCache.set(key, { access: "member", committeeId: cid, messages: msgs, members: roster });
+    const snap: RoomSnapshot = { access: "member", committeeId: cid, messages: msgs, members: roster };
+    committeeChatCache.set(key, snap);
+    persistRoom(snap);
     // Mark this channel read for me (per-area, migration 0063). Skip while
     // "view as" preview is active — the real admin's read row must not be
     // stamped by whatever the previewed member/guest opens.
     if (previewMode === "off") {
-      const me = (await sb.auth.getUser()).data.user?.id;
+      const me = userIdRef.current ?? (await sb.auth.getSession()).data.session?.user.id;
       if (me) await sb.rpc("mark_area_read", { cid, p_area: area ?? null });
     }
   };

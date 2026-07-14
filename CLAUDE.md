@@ -1171,11 +1171,13 @@ NotificationsView, FestStatus + FamilyFestSpotlight (one shared
 `festMember.<uid>` key — a deduped fetch across both), ChatEntryButton,
 useManagedCommittee, PostsView (the Main Feed: a trimmed `postsFeed.<uid>`
 snapshot of the top ~15 posts + their comments/reactions/members — never the
-full history, which would blow the 200KB cap), plus the identity snapshot.
-Still on bespoke memory-only caches (fine — behind navigations, adopt
-opportunistically): the chat message caches (CommitteeChat/HouseChat —
-message bodies are deliberately NOT persisted on-device: most sensitive
-content, and the rooms keep their in-session caches), CommitteeRoster,
+full history, which would blow the 200KB cap), the chat rooms
+(CommitteeChat `chatRoom.<uid>.<slug>|<area>` / HouseChat
+`houseChatRoom.<uid>.<slug>` — the last ~30 messages + access/roster per
+room, trimmed like the Main Feed; an owner-approved trade-off since members
+can see those rooms anyway, uid-scoped and wiped on signOut like everything
+else), plus the identity snapshot. Still on bespoke memory-only caches
+(fine — behind navigations, adopt opportunistically): CommitteeRoster,
 CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
 
 ## Conventions
