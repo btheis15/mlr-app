@@ -255,7 +255,13 @@ function EventRow({
         <RowChevron open={open} />
       </button>
       <Expander open={open}>
-        <div className="space-y-3 px-4 pb-4">
+        {/* pt-1: the edit pill's `ring-1` bleeds ~1px outside its own box
+            (Tailwind's ring isn't inset by default) — with zero top padding
+            here it got clipped by Expander's `overflow-hidden` (needed for
+            the collapse animation), reading as the pill's top edge being cut
+            off. Every other row here starts with plain text/no ring, so this
+            never showed up until an edit button became the first child. */}
+        <div className="space-y-3 px-4 pb-4 pt-1">
           {canEditAll && draft && (
             <button
               type="button"
@@ -349,7 +355,10 @@ function DinnerRow({
         <RowChevron open={open} />
       </button>
       <Expander open={open}>
-        <div className="space-y-3 px-4 pb-4">
+        {/* pt-1: see the matching note in EventRow — the ring-bordered edit
+            pill's box-shadow was getting clipped at the top by Expander's
+            overflow-hidden with zero top padding here. */}
+        <div className="space-y-3 px-4 pb-4 pt-1">
           {canEditThis && (
             <button
               type="button"
