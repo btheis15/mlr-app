@@ -31,6 +31,22 @@ export function AdminCommittees() {
   const [open, setOpen] = useState<string | null>(null);
   const [pending, setPending] = useState<Record<string, number>>(adminCommitteesCache ?? {}); // slug -> pending count
 
+  // Deep-link from a "X asked to join <committee>" notification
+  // (/admin/committees?committee=<slug>) — auto-expand that committee so its
+  // join-request queue is right there instead of the admin having to find and
+  // open it themselves. Reads window.location.search client-side (like
+  // PostsView's ?post= deep link) rather than useSearchParams, which would
+  // force a Suspense boundary under this app's static export.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const slug = new URLSearchParams(window.location.search).get("committee");
+    if (!slug || !COMMITTEES.some((c) => c.slug === slug)) return;
+    setOpen(slug);
+    // Scroll it into view once expanded — a query-param arrival shouldn't
+    // require the admin to also notice/scroll to which card opened.
+    window.setTimeout(() => document.getElementById(`committee-${slug}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  }, []);
+
   useEffect(() => {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb) return;
@@ -71,7 +87,7 @@ export function AdminCommittees() {
         const isOpen = open === c.slug;
         const count = pending[c.slug] ?? 0;
         return (
-          <div key={c.slug} className="rounded-2xl bg-background ring-1 ring-border">
+          <div key={c.slug} id={`committee-${c.slug}`} className="rounded-2xl bg-background ring-1 ring-border">
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : c.slug)}
