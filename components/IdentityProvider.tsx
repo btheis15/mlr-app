@@ -6,6 +6,7 @@ import { type Session } from "@supabase/supabase-js";
 import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { clearAllCaches, readPersisted, writePersisted } from "@/lib/swrCache";
 import { WelcomeIntro } from "@/components/WelcomeIntro";
 import { isIos, isStandalone } from "@/lib/push";
 import { InstallFirstNudge } from "@/components/InstallFirstNudge";
@@ -42,6 +43,12 @@ interface IdentityValue {
    *  the right (member vs guest) view — no post-splash shift. Always true when
    *  Supabase isn't configured (nothing to wait on). */
   authReady: boolean;
+  /** The REAL signed-in auth uid (`session.user.id`) — resolved locally from
+   *  the stored session on the first client tick, so it's available a full
+   *  network round-trip before `user` used to be. Never the preview identity:
+   *  pair with `previewAsId` where a preview should win (`previewAsId ?? userId`).
+   *  Null while signed out or before the session is read. */
+  userId: string | null;
   /** Current admin "view as" preview (off unless an admin turned it on). */
   previewMode: PreviewMode;
   /** When previewing as a specific member, who it is (UI-only); null otherwise. */
@@ -90,6 +97,7 @@ const IdentityContext = createContext<IdentityValue>({
   isAdmin: false,
   isBetaTester: false,
   authReady: true,
+  userId: null,
   previewMode: "off",
   previewMember: null,
   previewAsId: null,
@@ -136,10 +144,25 @@ interface ProfileRow {
  * Build-safe: if Supabase isn't configured, this degrades to "no sign-in
  * available" (user stays null) rather than throwing.
  */
+/** What we snapshot on-device so a returning member paints signed-in on the
+ *  first client tick instead of after the profile round-trip. Deliberately
+ *  excludes needsIntro/invitedViaLink — those gate a one-time sheet, and
+ *  restoring them could re-show it; the network resolves them as before. */
+interface IdentitySnapshot {
+  user: User;
+  isAdmin: boolean;
+  isBetaTester: boolean;
+}
+
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [adminFlag, setAdminFlag] = useState(false);
   const [betaFlag, setBetaFlag] = useState(false);
+  // One-shot guard: the persisted snapshot may only seed BEFORE the first
+  // network profile load — a later onAuthStateChange re-entry must never
+  // clobber fresher state with the stale snapshot.
+  const snapshotSeededRef = useRef(false);
   // Has the initial auth check finished? Starts false; flips true once the
   // stored session (+ profile) is loaded, or immediately if there's no backend.
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
@@ -182,12 +205,34 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       if (!session?.user) {
         if (active) {
           setUser(null);
+          setUserId(null);
           setAdminFlag(false);
           setBetaFlag(false);
           setNeedsIntro(false);
           setInvitedViaLink(false);
         }
         return;
+      }
+      if (active) setUserId(session.user.id);
+      // Restore the on-device snapshot BEFORE the network profile fetch, so a
+      // returning member's first client tick already renders signed-in (no
+      // guest-view flash, and every user-gated fetch starts a round-trip
+      // earlier). getSession() resolves from local storage, so this whole path
+      // is network-free. No TTL — a live session implies the snapshot's owner.
+      // The fetch below overwrites with fresh values and re-persists. Note a
+      // since-demoted admin can paint admin UI for ~1s until that lands —
+      // acceptable: is_admin is UI-only, RLS is the real gate.
+      if (active && !snapshotSeededRef.current) {
+        snapshotSeededRef.current = true;
+        const snap = readPersisted<IdentitySnapshot>(
+          `identity.${session.user.id}`,
+          Number.POSITIVE_INFINITY,
+        );
+        if (snap?.user) {
+          setUser(snap.user);
+          setAdminFlag(Boolean(snap.isAdmin));
+          setBetaFlag(Boolean(snap.isBetaTester));
+        }
       }
       const email = session.user.email ?? "";
       const { data } = await sb
@@ -199,9 +244,16 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const profile = data as ProfileRow | null;
       const name =
         profile?.display_name?.trim() || email.split("@")[0] || "Member";
-      setUser({ name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, willingToHelp: profile?.willing_to_help ?? false, avatarUrl: profile?.avatar_url ?? null });
+      const nextUser: User = { name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, willingToHelp: profile?.willing_to_help ?? false, avatarUrl: profile?.avatar_url ?? null };
+      setUser(nextUser);
       setAdminFlag(Boolean(profile?.is_admin));
       setBetaFlag(Boolean(profile?.beta_tester));
+      // Refresh the on-device snapshot with the server truth (see restore above).
+      writePersisted<IdentitySnapshot>(`identity.${session.user.id}`, {
+        user: nextUser,
+        isAdmin: Boolean(profile?.is_admin),
+        isBetaTester: Boolean(profile?.beta_tester),
+      });
 
       // Assess whether to show the first-run Welcome intro: a separate, GUARDED
       // read so a missing `intro_seen` column (migration 0045 not run yet) can
@@ -262,10 +314,18 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const updateUser = async (patch: Partial<User>) => {
     const sb = supabase;
     if (!sb || !user) return;
-    setUser({ ...user, ...patch }); // optimistic
+    const patched = { ...user, ...patch };
+    setUser(patched); // optimistic
     const { data: sess } = await sb.auth.getSession();
     const id = sess.session?.user.id;
     if (!id) return;
+    // Keep the on-device snapshot current so a rename/avatar change doesn't
+    // flash the old value on the next cold open.
+    writePersisted<IdentitySnapshot>(`identity.${id}`, {
+      user: patched,
+      isAdmin: adminFlag,
+      isBetaTester: betaFlag,
+    });
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.display_name = patch.name;
     if (patch.emailAlerts !== undefined) row.email_alerts = patch.emailAlerts;
@@ -366,7 +426,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (supabase) await supabase.auth.signOut();
+    // Wipe every cached snapshot (identity + all mlr.cache.* data) so nothing
+    // from this account can paint for the next person on a shared device.
+    clearAllCaches();
+    snapshotSeededRef.current = false;
     setUser(null);
+    setUserId(null);
     setAdminFlag(false);
     setBetaFlag(false);
     setNeedsIntro(false);
@@ -397,6 +462,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         isAdmin: effectiveAdmin,
         isBetaTester: effectiveBeta,
         authReady,
+        userId,
         previewMode,
         previewMember,
         previewAsId: previewMode === "member" && previewMember ? previewMember.id : null,

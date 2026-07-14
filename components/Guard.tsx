@@ -3,6 +3,7 @@
 import { useIdentity } from "@/components/IdentityProvider";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { firstName } from "@/lib/privacy";
+import { SkeletonList } from "@/components/Skeleton";
 
 /**
  * The privacy wall. Sensitive info — Posts, payments, contact details, last
@@ -19,9 +20,15 @@ import { firstName } from "@/lib/privacy";
  * never lock everyone out of an app that has no way to sign in.
  */
 export function useGuest() {
-  const { user, promptSignIn } = useIdentity();
+  const { user, authReady, promptSignIn } = useIdentity();
   const guest = isSupabaseConfigured && !user;
-  return { guest, signedIn: !guest, promptSignIn };
+  // Auth is still settling and we don't know yet. A returning member's
+  // identity snapshot restores `user` on the first client tick, so in practice
+  // this only covers the very first open on a device (and genuinely slow
+  // auth) — but without it, SignInWall would flash the sign-in card at a
+  // signed-in member on every cold open of a members-only route.
+  const resolving = isSupabaseConfigured && !authReady && !user;
+  return { guest, signedIn: !guest, resolving, promptSignIn };
 }
 
 /** A person's name: full when signed in, first-name-only for guests. */
@@ -71,7 +78,17 @@ export function SignInWall({
   note?: string;
   children: React.ReactNode;
 }) {
-  const { guest, promptSignIn } = useGuest();
+  const { guest, resolving, promptSignIn } = useGuest();
+  // While auth settles, hold a neutral skeleton instead of flashing the wall
+  // (the AdminGuard precedent) — prerendered HTML ships this too, and it swaps
+  // to the wall (guest) or the content (member) as soon as authReady flips.
+  if (resolving) {
+    return (
+      <div className="space-y-4 pt-6">
+        <SkeletonList count={3} />
+      </div>
+    );
+  }
   if (!guest) return <>{children}</>;
   return (
     <div className="space-y-4 pt-6">

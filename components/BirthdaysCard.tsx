@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 
 const WINDOW_DAYS = 14;
 
@@ -60,46 +60,45 @@ function daysUntilBirthday(birthday: string, today: Date): number | null {
  * Usage: `<BirthdaysCard />` — anywhere on Home, members-only (self-hides for
  * guests).
  */
+/** Local-calendar YYYY-MM-DD, matching the card's local-midnight day math. */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function fetchUpcomingBirthdays(): Promise<Upcoming[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data, error } = await sb
+    .from("profiles")
+    .select("id, display_name, full_name, birthday")
+    .not("birthday", "is", null);
+  if (error || !data) return [];
+  const today = new Date();
+  const rows: Upcoming[] = [];
+  for (const p of data as ProfileRow[]) {
+    if (!p.birthday) continue;
+    const daysUntil = daysUntilBirthday(p.birthday, today);
+    if (daysUntil === null || daysUntil > WINDOW_DAYS) continue;
+    const name = p.display_name?.trim() || p.full_name?.trim() || "Member";
+    rows.push({ id: p.id, name, daysUntil });
+  }
+  rows.sort((a, b) => a.daysUntil - b.daysUntil);
+  return rows;
+}
+
 export function BirthdaysCard() {
-  const { user } = useIdentity();
-  const [upcoming, setUpcoming] = useState<Upcoming[] | null>(null);
+  const { user, userId } = useIdentity();
+  // Shared SWR cache, date-scoped (`birthdays.<uid>.<today>`, 6h TTL): a cold
+  // open paints the strip instantly; the date in the key means "in 3 days"
+  // can never show a day late, and the revalidate picks up profile edits.
+  const { data: upcoming } = useCachedResource<Upcoming[]>(
+    user && userId ? `birthdays.${userId}.${localDayKey(new Date())}` : null,
+    [],
+    fetchUpcomingBirthdays,
+    { persist: "local", ttlMs: 6 * 60 * 60 * 1000 },
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    setUpcoming(null);
-    const sb = supabase;
-    if (!user || !isSupabaseConfigured || !sb) return;
-    (async () => {
-      try {
-        const { data, error } = await sb
-          .from("profiles")
-          .select("id, display_name, full_name, birthday")
-          .not("birthday", "is", null);
-        if (error || !data) {
-          if (!cancelled) setUpcoming([]);
-          return;
-        }
-        const today = new Date();
-        const rows: Upcoming[] = [];
-        for (const p of data as ProfileRow[]) {
-          if (!p.birthday) continue;
-          const daysUntil = daysUntilBirthday(p.birthday, today);
-          if (daysUntil === null || daysUntil > WINDOW_DAYS) continue;
-          const name = p.display_name?.trim() || p.full_name?.trim() || "Member";
-          rows.push({ id: p.id, name, daysUntil });
-        }
-        rows.sort((a, b) => a.daysUntil - b.daysUntil);
-        if (!cancelled) setUpcoming(rows);
-      } catch {
-        if (!cancelled) setUpcoming([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  if (!user || !upcoming || !upcoming.length) return null;
+  if (!user || !upcoming.length) return null;
 
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">

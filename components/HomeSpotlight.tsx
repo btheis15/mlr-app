@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useFestContent } from "@/lib/useFestContent";
 import { useEvents } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -10,7 +10,7 @@ import { CalloutCard } from "@/components/CalloutCard";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isHiddenForEventTarget } from "@/lib/eventTargeting";
 import { fetchMyCalloutCompletions, markCalloutDone } from "@/lib/calloutCompletions";
-import { getCurrentUserId } from "@/lib/roles";
+import { useCachedResource } from "@/lib/swrCache";
 import type { HomeCallout } from "@/lib/festContent";
 
 /** Is this call-out showing today? `today` is null until mounted: an
@@ -52,45 +52,42 @@ export function HomeSpotlight() {
   // as everything else that calls useEvents(), so this doesn't add a
   // separate round-trip.
   const { mine } = useEvents();
-  const { user, promptSignIn } = useIdentity();
+  const { user, userId, promptSignIn } = useIdentity();
 
   // Callouts this viewer has marked "done" (migration 0098) — permanently
-  // hidden, unlike the swipe/✕ dismiss which only lasts the session. `User`
-  // (IdentityProvider) doesn't carry the Supabase auth uid, so it's resolved
-  // via getCurrentUserId() — `user` (name/email) is just the signed-in-or-not
-  // trigger.
-  const [completed, setCompleted] = useState<Set<string>>(new Set());
+  // hidden, unlike the swipe/✕ dismiss which only lasts the session. The ids
+  // ride the shared SWR cache with local persistence (`calloutsDone.<uid>`),
+  // so on the next app open the completed card is filtered out from the very
+  // first paint — no more "shows for half a second then vanishes". The fetch
+  // still revalidates against home_callout_completions (a completion made on
+  // another device appears; a deleted row eventually clears). Keyed on the
+  // REAL uid even while an admin previews — completions always belong to the
+  // real account (markCalloutDone writes the real user's row).
   const [marking, setMarking] = useState<string | null>(null);
-  useEffect(() => {
-    if (!user) {
-      setCompleted(new Set());
-      return;
-    }
-    let cancelled = false;
-    getCurrentUserId().then((uid) => {
-      if (cancelled || !uid) return;
-      fetchMyCalloutCompletions(uid).then((ids) => {
-        if (!cancelled) setCompleted(ids);
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+  const { data: completedIds, mutate: mutateCompleted } = useCachedResource<string[]>(
+    user && userId ? `calloutsDone.${userId}` : null,
+    [],
+    () => fetchMyCalloutCompletions(userId).then((ids) => [...ids]),
+    { persist: "local" },
+  );
+  const completed = useMemo(() => new Set(completedIds), [completedIds]);
 
   const onMarkDone = (calloutId: string) => {
-    if (!user) {
+    if (!user || !userId) {
       promptSignIn();
       return;
     }
     setMarking(calloutId);
-    // Optimistic: it should disappear the instant you tap it, not after the
-    // round-trip lands.
-    setCompleted((prev) => new Set(prev).add(calloutId));
-    getCurrentUserId().then((uid) => {
-      if (!uid) return;
-      return markCalloutDone(calloutId, uid);
-    }).finally(() => setMarking(null));
+    // Optimistic + persisted in one call: it disappears the instant you tap it
+    // and stays gone on the next cold open, even before the round-trip lands.
+    const addId = (prev: string[]) => (prev.includes(calloutId) ? prev : [...prev, calloutId]);
+    mutateCompleted(addId);
+    markCalloutDone(calloutId, userId)
+      // Re-apply after the write lands, in case the initial fetch was in
+      // flight during the tap and its (pre-write) result overwrote the
+      // optimistic id.
+      .then(() => mutateCompleted(addId))
+      .finally(() => setMarking(null));
   };
 
   const items: StackItem[] = callouts

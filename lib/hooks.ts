@@ -17,6 +17,8 @@ import {
   summarize,
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
+import { markPending } from "@/lib/appReady";
+import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import {
   createHouseStay,
   deleteHouseStay,
@@ -219,67 +221,48 @@ export function useMediaPicker() {
  * rows (debounced), and re-runs when sign-in state flips. Always reads the REAL
  * session id (not an admin "view as" preview) — the badge is your own account's.
  */
-// Stale-while-revalidate cache for the unread badge, keyed by account. Without
-// it the count resets to 0 on every tab switch (the hook remounts in TabBar) and
-// then repopulates — a visible flicker. Memory-only, written only after a client
-// fetch (never during SSR), so a cold render still starts at 0 (matches the
-// server-rendered HTML) and there's no hydration mismatch.
-const unreadCountCache = new Map<string, number>();
-
 export function useUnreadNotifications(): number {
-  const { user } = useIdentity();
-  const signedIn = !!user;
-  const key = user?.email ?? "self";
-  const [count, setCount] = useState(unreadCountCache.get(key) ?? 0);
+  // Rides the shared SWR cache (lib/swrCache), persisted per account: the
+  // badge paints the last-known count on the first tick of a cold open (no
+  // 0 → N flicker) and revalidates in the background. Keyed on the REAL
+  // session uid — the badge is always your own account's, never a preview's.
+  const { user, userId } = useIdentity();
+  const signedIn = !!user && !!userId;
   const [schedule] = useDebouncedCallback(250);
 
-  useEffect(() => {
-    const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !signedIn) {
-      setCount(0);
-      unreadCountCache.set(key, 0);
-      return;
-    }
-    let cancelled = false;
-    let channel: ReturnType<typeof sb.channel> | null = null;
-
-    const refresh = async (uid: string) => {
+  const { data: count, reload } = useCachedResource<number>(
+    isSupabaseConfigured && signedIn ? `unread.${userId}` : null,
+    0,
+    async () => {
+      const sb = supabase;
+      if (!sb || !userId) return 0;
       const nowIso = new Date().toISOString();
       const { count: c } = await sb
         .from("notifications")
         .select("id", { count: "exact", head: true })
-        .eq("recipient_id", uid)
+        .eq("recipient_id", userId)
         .is("seen_at", null)
         .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
-      if (!cancelled) {
-        setCount(c ?? 0);
-        unreadCountCache.set(key, c ?? 0);
-      }
-    };
+      return c ?? 0;
+    },
+    { persist: "local" },
+  );
 
-    (async () => {
-      const { data } = await sb.auth.getUser();
-      const uid = data.user?.id;
-      if (!uid || cancelled) {
-        if (!cancelled) setCount(0);
-        return;
-      }
-      await refresh(uid);
-      channel = sb
-        .channel(`notif-badge-${uid}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${uid}` },
-          () => schedule(() => refresh(uid)),
-        )
-        .subscribe();
-    })();
-
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !signedIn || !userId) return;
+    const channel = sb
+      .channel(`notif-badge-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `recipient_id=eq.${userId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
     return () => {
-      cancelled = true;
-      if (channel) sb.removeChannel(channel);
+      sb.removeChannel(channel);
     };
-  }, [signedIn, schedule, key]);
+  }, [signedIn, userId, schedule, reload]);
 
   return count;
 }
@@ -399,10 +382,13 @@ function countKey(status: AttendanceStatus): keyof AttendanceSummary["counts"] {
  * Up North" and the /events calendar blank out and then pop back in — shoving the
  * page around. Holding the last result in memory lets a returning tab paint
  * instantly from cache while a background refetch keeps it current, so the layout
- * stays put. Memory-only (per session) and only ever written *after* a client
- * fetch — never during SSR — so it can't change the server/first-paint render and
- * can't cause a hydration mismatch (a cold load starts with an empty cache, i.e.
- * the original behavior).
+ * stays put. Two layers now: this module memory (tab switches) plus a persisted
+ * copy under `mlr.cache.v1.events.<uid|guest>` (lib/swrCache) restored in a
+ * post-mount effect, so a COLD app open paints the calendar instantly too.
+ * Memory is only ever written *after* a client fetch — never during SSR — so it
+ * can't change the server/first-paint render and can't cause a hydration
+ * mismatch (a cold first render starts with an empty cache, i.e. the original
+ * behavior; the storage seed lands one effect tick later).
  */
 interface EventsSnapshot {
   events: ResortEvent[];
@@ -412,13 +398,52 @@ interface EventsSnapshot {
 let eventsCache: EventsSnapshot | null = null;
 
 export function useEvents(opts?: { realtime?: boolean }): UseEvents {
-  const { user, previewAsId, promptSignIn } = useIdentity();
+  const { user, userId, authReady, previewAsId, promptSignIn } = useIdentity();
   const [events, setEvents] = useState<ResortEvent[]>(eventsCache?.events ?? []);
   const [rows, setRows] = useState<EventAttendance[]>(eventsCache?.rows ?? []);
   const [mine, setMine] = useState<Record<string, EventAttendance>>(eventsCache?.mine ?? {});
   // Warm cache ⇒ paint immediately (no skeleton/blank); still refetch in the
   // background below so the cached view is brought up to date.
   const [loading, setLoading] = useState(!eventsCache);
+  // Splash readiness (lib/appReady): registered on a cold open when nothing
+  // could seed, resolved when the first load lands (or on unmount).
+  const pendingDoneRef = useRef<(() => void) | null>(null);
+
+  // Persisted snapshot seed (post-mount, cold open only): the module cache
+  // dies with the JS context, so restore the last known snapshot from storage
+  // (`events.<uid>` — per account since `mine` is the viewer's own RSVPs;
+  // `events.guest` for signed-out browsing). Never while previewing, and a
+  // member key is only known once `userId` resolves (waiting for authReady
+  // before falling back to "guest" so a member never seeds the guest copy).
+  useEffect(() => {
+    if (previewAsId || eventsCache) return;
+    if (!userId && !authReady) return;
+    const storeKey = `events.${userId ?? "guest"}`;
+    const snap = readPersisted<EventsSnapshot>(storeKey);
+    if (snap) {
+      eventsCache = snap;
+      setEvents(snap.events);
+      setRows(snap.rows);
+      setMine(snap.mine);
+      setLoading(false);
+      return;
+    }
+    // Nothing to seed: tell the splash a first paint is still cooking.
+    if (!pendingDoneRef.current) pendingDoneRef.current = markPending(storeKey);
+  }, [userId, authReady, previewAsId]);
+  useEffect(() => {
+    if (!loading && pendingDoneRef.current) {
+      pendingDoneRef.current();
+      pendingDoneRef.current = null;
+    }
+  }, [loading]);
+  useEffect(
+    () => () => {
+      pendingDoneRef.current?.();
+      pendingDoneRef.current = null;
+    },
+    [],
+  );
   const [schedule] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
   // Optimistic going/maybe/can't-make tally nudge, keyed by event id: the
@@ -446,11 +471,15 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
       setMine(my);
       setCountShift({});
       eventsCache = { events: ev, rows: at, mine: my };
+      // Persist for the next cold open (never a preview's view). Oversized
+      // snapshots are quietly skipped by the 200KB cap in writePersisted —
+      // they just stay memory-only.
+      if (!previewAsId) writePersisted(`events.${userId ?? "guest"}`, eventsCache);
     } finally {
       // A flaky/misconfigured backend must never leave the UI stuck "loading".
       setLoading(false);
     }
-  }, [previewAsId]);
+  }, [previewAsId, userId]);
 
   useEffect(() => {
     let cancelled = false;

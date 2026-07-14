@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useCachedResource } from "@/lib/swrCache";
 
 // Open-Meteo, no API key needed. Lat/long is Tomahawk, WI (the resort).
 // forecast_days=6 → today (index 0, used for the current hi/lo) + the next 5
@@ -8,7 +9,6 @@ import { useEffect, useState } from "react";
 const FORECAST_URL =
   "https://api.open-meteo.com/v1/forecast?latitude=45.53492&longitude=-89.69830&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago&forecast_days=6";
 
-const CACHE_KEY = "mlr.weather.cache";
 const CACHE_MS = 30 * 60 * 1000; // 30 minutes
 
 interface DayForecast {
@@ -42,24 +42,37 @@ function weatherEmoji(code: number): string {
   return "☁️";
 }
 
-function readCache(): WeatherSnapshot | null {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as WeatherSnapshot;
-    if (!parsed || typeof parsed.ts !== "number" || Date.now() - parsed.ts > CACHE_MS) return null;
-    return parsed;
-  } catch {
-    return null;
+/** Fetch + validate the Open-Meteo forecast. THROWS on any failure (bad
+ *  network, blocked fetch, malformed response) so the SWR cache keeps the last
+ *  good snapshot instead of overwriting it with nothing. */
+async function fetchWeather(): Promise<WeatherSnapshot> {
+  const res = await fetch(FORECAST_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error("weather fetch failed");
+  const data = await res.json();
+  const temp = data?.current?.temperature_2m;
+  const code = data?.current?.weather_code;
+  const hi = data?.daily?.temperature_2m_max?.[0];
+  const lo = data?.daily?.temperature_2m_min?.[0];
+  if (typeof temp !== "number" || typeof code !== "number" || typeof hi !== "number" || typeof lo !== "number") {
+    throw new Error("weather response malformed");
   }
-}
-
-function writeCache(snap: WeatherSnapshot) {
-  try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(snap));
-  } catch {
-    /* private-browsing / quota — the card just re-fetches next time */
+  const dailyTimes: string[] = data?.daily?.time ?? [];
+  const dailyHi: number[] = data?.daily?.temperature_2m_max ?? [];
+  const dailyLo: number[] = data?.daily?.temperature_2m_min ?? [];
+  const dailyCode: number[] = data?.daily?.weather_code ?? [];
+  const dailyPrecip: number[] = data?.daily?.precipitation_probability_max ?? [];
+  const forecast: DayForecast[] = [];
+  for (let i = 1; i < dailyTimes.length && forecast.length < 5; i++) {
+    if (typeof dailyHi[i] !== "number" || typeof dailyLo[i] !== "number" || typeof dailyCode[i] !== "number") continue;
+    forecast.push({
+      day: new Date(`${dailyTimes[i]}T00:00:00`).toLocaleDateString("en-US", { weekday: "short" }),
+      hi: dailyHi[i],
+      lo: dailyLo[i],
+      code: dailyCode[i],
+      precipProb: typeof dailyPrecip[i] === "number" ? dailyPrecip[i] : null,
+    });
   }
+  return { ts: Date.now(), temp, hi, lo, code, forecast };
 }
 
 /**
@@ -68,64 +81,23 @@ function writeCache(snap: WeatherSnapshot) {
  * default; tapping it reveals a 5-day-forecast row underneath (same
  * "collapsed card that expands on tap" idiom as WorkChecklist — plain
  * conditional render, no animation). Public — no sign-in gate. Caches the
- * result in sessionStorage for 30 minutes so tab-hopping around the app
- * doesn't re-fetch. Renders nothing while loading or on any failure (bad
- * network, blocked fetch, malformed response) — this is a nice-to-have,
- * never worth an error state or empty shell.
+ * result via the shared SWR cache (localStorage, 30-minute TTL) so the strip
+ * paints instantly on a cold open and tab-hopping doesn't blank it; a
+ * background revalidate keeps it current. Renders nothing before the first
+ * successful fetch — this is a nice-to-have, never worth an error state or
+ * empty shell.
  *
  * Usage: `<WeatherCard />` — anywhere on Home, no props, public (works for
  * guests too).
  */
 export function WeatherCard() {
-  const [snap, setSnap] = useState<WeatherSnapshot | null>(null);
+  const { data: snap } = useCachedResource<WeatherSnapshot | null>(
+    "weather",
+    null,
+    fetchWeather,
+    { persist: "local", ttlMs: CACHE_MS },
+  );
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const cached = readCache();
-    if (cached) {
-      setSnap(cached);
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(FORECAST_URL, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        const temp = data?.current?.temperature_2m;
-        const code = data?.current?.weather_code;
-        const hi = data?.daily?.temperature_2m_max?.[0];
-        const lo = data?.daily?.temperature_2m_min?.[0];
-        if (typeof temp !== "number" || typeof code !== "number" || typeof hi !== "number" || typeof lo !== "number") {
-          return;
-        }
-        const dailyTimes: string[] = data?.daily?.time ?? [];
-        const dailyHi: number[] = data?.daily?.temperature_2m_max ?? [];
-        const dailyLo: number[] = data?.daily?.temperature_2m_min ?? [];
-        const dailyCode: number[] = data?.daily?.weather_code ?? [];
-        const dailyPrecip: number[] = data?.daily?.precipitation_probability_max ?? [];
-        const forecast: DayForecast[] = [];
-        for (let i = 1; i < dailyTimes.length && forecast.length < 5; i++) {
-          if (typeof dailyHi[i] !== "number" || typeof dailyLo[i] !== "number" || typeof dailyCode[i] !== "number") continue;
-          forecast.push({
-            day: new Date(`${dailyTimes[i]}T00:00:00`).toLocaleDateString("en-US", { weekday: "short" }),
-            hi: dailyHi[i],
-            lo: dailyLo[i],
-            code: dailyCode[i],
-            precipProb: typeof dailyPrecip[i] === "number" ? dailyPrecip[i] : null,
-          });
-        }
-        const next: WeatherSnapshot = { ts: Date.now(), temp, hi, lo, code, forecast };
-        writeCache(next);
-        if (!cancelled) setSnap(next);
-      } catch {
-        /* offline / blocked / malformed — stay hidden, never show an error */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (!snap) return null;
 

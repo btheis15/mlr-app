@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { whenAppLogoStable } from "@/lib/appLogoFit";
+import { onQuietOnce } from "@/lib/appReady";
 import { useIsBareRoute } from "@/lib/bareRoutes";
 
 // App-open splash. A near-white wash (the app's own background) so it blends
@@ -32,6 +33,13 @@ const FLY_MS = 720; // fly + zoom into the header
 // network), fly anyway rather than sit on the splash forever. Kept under the
 // CSS `splash-wash` self-clear window so JS always finishes the hand-off first.
 const MAX_WAIT_MS = 4500;
+// After auth settles, the splash also waits (briefly, bounded) for the
+// first-paint readiness registry (lib/appReady) to go quiet — i.e. for any
+// COLD data loads (nothing seeded from cache) to land — so the first revealed
+// frame is complete instead of popping cards in right after. On a warm open
+// every card seeds from its persisted cache, nothing registers, and this adds
+// ~0ms. MAX_WAIT_MS above remains the absolute ceiling either way.
+const EXTRA_QUIET_MS = 700;
 const SPLASH_ATTR = "data-splash"; // on <html> while the splash owns the logo
 
 export function SplashIntro() {
@@ -78,15 +86,40 @@ export function SplashIntro() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Start the exit once we've held a beat AND auth has settled (or the cap hit).
+  // Start the exit once we've held a beat AND auth has settled (or the cap
+  // hit). The normal path defers up to EXTRA_QUIET_MS more for cold data loads
+  // (see above); the MAX_WAIT_MS `forced` path fires immediately regardless —
+  // it exists to guarantee the splash can never hang. `started` now means "the
+  // fly actually began" (not "a wait is scheduled"), so a forced fire while
+  // the quiet-wait is still pending cancels the wait and flies right away
+  // instead of getting swallowed by the re-entry guard.
+  const quietCancel = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (started.current) return;
-    if (forced || (held && authReady)) {
+    const fly = () => {
+      if (started.current) return;
       started.current = true;
       startFly();
+    };
+    if (forced) {
+      quietCancel.current?.();
+      quietCancel.current = null;
+      fly();
+      return;
+    }
+    if (held && authReady && !quietCancel.current) {
+      quietCancel.current = onQuietOnce(EXTRA_QUIET_MS, fly);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [held, authReady, forced]);
+  // Unmount: drop any pending quiet-wait so it can't fire into a dead tree.
+  useEffect(
+    () => () => {
+      quietCancel.current?.();
+      quietCancel.current = null;
+    },
+    [],
+  );
 
   const startFly = () => {
     const target = document.getElementById("app-logo");

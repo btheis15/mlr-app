@@ -6,6 +6,7 @@ import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/l
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
 import { timeAgo } from "@/lib/format";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useGuest } from "@/components/Guard";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
@@ -32,42 +33,37 @@ interface Section {
   items: WorkItem[];
 }
 
-// Stale-while-revalidate cache for the work checklist (mirrors `eventsCache` in
-// lib/hooks.ts). This component remounts on every Home visit; without this it
-// resets to empty + `loading`, so the header flips to "Loading…" and the
-// open/ASAP summary + collapsed list blank out and pop back in. Holding the last
-// result lets a returning Home paint instantly from cache while a background
-// refetch keeps it current. Keyed by the viewer's email because item visibility
-// is RLS-gated on house membership (an MLR item is public, a house item only
-// shows to that house's members), so two viewers can resolve different lists.
-// Memory-only (per session) and written ONLY after a successful client fetch —
-// never during SSR/render — so a cold load starts empty (the original default
-// behavior) and the first paint matches the server-rendered HTML: no hydration
-// mismatch. `user` is null during prerender, so the key is "" there.
-const workChecklistCache = new Map<string, { items: WorkItem[]; houses: House[]; myHouseId: string | null }>();
+// Snapshot shape for the shared SWR cache: item visibility is RLS-gated on
+// house membership (an MLR item is public, a house item only shows to that
+// house's members), so the key embeds the viewer's uid — two viewers resolve
+// different lists. Memory covers the per-Home-visit remounts (no "Loading…"
+// flip); the persisted copy makes a COLD open paint instantly too.
+interface ChecklistSnapshot {
+  items: WorkItem[];
+  houses: House[];
+  myHouseId: string | null;
+}
+const EMPTY_CHECKLIST: ChecklistSnapshot = { items: [], houses: [], myHouseId: null };
 
 export function WorkChecklist() {
-  const { user, isAdmin, promptSignIn, previewAsId } = useIdentity();
+  const { user, userId, isAdmin, promptSignIn, previewAsId } = useIdentity();
   // The checklist is members-only under the RLS lockdown (0081) — even the MLR
   // section. Guests keep the card but get a quiet sign-in line instead of an
   // empty "Nothing on the list yet".
   const { guest } = useGuest();
-  const key = user?.email ?? "";
   // The signed-in account's own id, so a member can edit the item THEY created
-  // (author-or-admin edit). `user` (localStorage identity) doesn't carry the
-  // auth uid, so read it from Supabase; honor an admin's "view as" preview.
-  const [uid, setUid] = useState<string | null>(previewAsId ?? null);
-  useEffect(() => {
-    if (previewAsId) { setUid(previewAsId); return; }
-    supabase?.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
-  }, [previewAsId]);
-  const cached = workChecklistCache.get(key);
-  const [items, setItems] = useState<WorkItem[]>(cached?.items ?? []);
-  const [houses, setHouses] = useState<House[]>(cached?.houses ?? []);
-  const [myHouseId, setMyHouseId] = useState<string | null>(cached?.myHouseId ?? null);
-  // Warm cache ⇒ paint immediately (no "Loading…"); the effect below still
-  // refetches in the background so the cached view is brought up to date.
-  const [loading, setLoading] = useState(!cached);
+  // (author-or-admin edit); honor an admin's "view as" preview.
+  const uid = previewAsId ?? userId;
+  const { data: snap, loading, reload: load, mutate } = useCachedResource<ChecklistSnapshot>(
+    `workChecklist.${userId ?? "guest"}`,
+    EMPTY_CHECKLIST,
+    async () => {
+      const [data, hs, mine] = await Promise.all([fetchWorkItems(), fetchHouses(), fetchMyHouse()]);
+      return { items: data, houses: hs, myHouseId: mine?.id ?? null };
+    },
+    { persist: "local" },
+  );
+  const { items, houses, myHouseId } = snap;
   const [cardOpen, setCardOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [doneExpanded, setDoneExpanded] = useState<Set<string>>(new Set());
@@ -76,17 +72,6 @@ export function WorkChecklist() {
   const [viewing, setViewing] = useState<WorkItem | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [checkingOff, setCheckingOff] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const [data, hs, mine] = await Promise.all([fetchWorkItems(), fetchHouses(), fetchMyHouse()]);
-    setItems(data);
-    setHouses(hs);
-    setMyHouseId(mine?.id ?? null);
-    workChecklistCache.set(key, { items: data, houses: hs, myHouseId: mine?.id ?? null });
-    setLoading(false);
-  }, [key]);
-
-  useEffect(() => { load(); }, [load]);
 
   // Mention candidates for the comment threads (all members; scoped per-item
   // below). Guests can't comment (and can't read profiles) — skip the fetch.
@@ -159,10 +144,12 @@ export function WorkChecklist() {
   const handleCheck = async (item: WorkItem) => {
     if (!signedIn) { promptSignIn(); return; }
     setCheckingOff(item.id);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: "done" as const } : i)));
+    const setStatus = (id: string, status: WorkItem["status"]) =>
+      mutate((prev) => ({ ...prev, items: prev.items.map((i) => (i.id === id ? { ...i, status } : i)) }));
+    setStatus(item.id, "done");
     const { error } = await markWorkItemDone(item.id);
     if (error) {
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: "open" as const } : i)));
+      setStatus(item.id, "open");
     }
     setCheckingOff(null);
   };
