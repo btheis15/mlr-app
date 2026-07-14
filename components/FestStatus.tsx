@@ -177,7 +177,7 @@ function TodayEvent({ e }: { e: ScheduleEvent }) {
 /** Tonight's dinner, expanded — menu + head chef contact. */
 function TodayDinner({ d }: { d: Dinner }) {
   return (
-    <div className="rounded-2xl bg-primary/5 p-4 ring-1 ring-primary/20">
+    <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex gap-3">
         <span className="text-2xl">{d.emoji}</span>
         <div className="min-w-0 flex-1">

@@ -340,7 +340,7 @@ function DinnerRow({
   // the narrower DinnerDetailsEditSheet (menu/served/prep only) instead.
   const fullEdit = canEditAll && Boolean(draft);
   return (
-    <li className="border-b border-border/50 bg-primary/5 last:border-0">
+    <li className="border-b border-border/50 last:border-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
