@@ -771,7 +771,7 @@ through SECURITY DEFINER RPCs. Data model: migration
   untouched** — this is additive, not a replacement. Once a cabin has rooms:
   - Booking requires picking specific room(s) — one room per bed needed — via
     the shared [`CabinRoomPicker`](components/CabinRoomPicker.tsx) (used in
-    both `CabinRequestSheet` and the admin's room-reassignment sheet), backed
+    both `CabinRequestSheet` and the admin's edit sheet), backed
     by `cabin_room_availability(cabin, check_in, check_out)` and
     `cabin_booking_rooms` (which room(s) a booking reserves — a booking can
     reserve more than one).
@@ -790,11 +790,19 @@ through SECURITY DEFINER RPCs. Data model: migration
   - **`set_booking_rooms(booking, room_ids)`** is a standalone admin-only RPC
     to (re)assign rooms on **any** existing booking, any time — not just at
     creation. This is how reservations made before rooms existed get their
-    room assignments filled in by hand, via "Assign/Change" on each row in
+    room assignments filled in by hand, via "Edit" on each row in
     [`AdminCabinBookings`](components/AdminCabinBookings.tsx) →
-    [`BookingRoomsSheet`](components/BookingRoomsSheet.tsx). Room CRUD itself
+    [`EditBookingSheet`](components/EditBookingSheet.tsx). Room CRUD itself
     (add/rename/set beds/description/open-close/delete) is inline in
     [`AdminCabinDetails`](components/AdminCabinDetails.tsx)'s edit sheet.
+  - **`admin_update_cabin_booking(booking, check_in, check_out, guests, notes)`**
+    (migration [`0095`](supabase/migrations/0095_admin_edit_booking.sql)) is the
+    matching admin-only RPC for the request's other fields — dates, guest
+    count, and notes — for corrections after the fact (e.g. "2 beds" → "1
+    bed"). Works on a pending or already-approved booking; the capacity guard
+    still runs at `review_cabin_stay()` time, not here. `EditBookingSheet`
+    calls this alongside `set_booking_rooms` so the whole request — dates,
+    headcount, notes, and room picks — is editable in one sheet.
 
 ## Content safeguards (feed moderation)
 

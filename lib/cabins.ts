@@ -330,6 +330,27 @@ export async function fetchBookingRooms(bookingId: string): Promise<{ id: string
   return mapBookingRoomLinks((data ?? []) as BookingRoomLink[]);
 }
 
+/** Admin-only: edit a request's dates/guest count/notes (migration 0095) —
+ *  for corrections after the fact, e.g. a member asked for 2 beds and only
+ *  needs 1. Works on a pending OR approved booking; capacity is still
+ *  enforced at review_cabin_stay() time, not here. Pair with setBookingRooms
+ *  for reassigning which specific room(s) it reserves. */
+export async function updateBookingDetails(
+  bookingId: string,
+  input: { checkIn: string; checkOut: string; guests: number; notes?: string | null },
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.rpc("admin_update_cabin_booking", {
+    p_booking: bookingId,
+    p_check_in: input.checkIn,
+    p_check_out: input.checkOut,
+    p_guests: input.guests,
+    p_notes: input.notes ?? null,
+  });
+  return error ? { error: error.message } : {};
+}
+
 /** Admin-only: (re)assign which room(s) an existing booking reserves — the
  *  ongoing way to fill in/correct rooms on any reservation, including ones
  *  made before rooms existed (migration 0092). Pass an empty array to clear
