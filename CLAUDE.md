@@ -1145,7 +1145,9 @@ cross-account bleed):
    `events.<uid|guest>`, `calloutsDone.<uid>`, `unread.<uid>`,
    `workChecklist.<uid>`, `activePoll.<uid>`, `polls.<uid>`, `people.<uid>`,
    `notifFeed.<uid>`, `helpRequests.<uid>`, `festMember.<uid>`,
+   `postsFeed.<uid>` (a TRIMMED top-of-feed snapshot — see PostsView),
    `resolvedHouse.<uid>.…`, `chatEntry.<uid>.<slug>`,
+   `managedCommittee.<uid>.<slug>.<admin>`,
    `houseCalendar.<houseId>`; day-fresh data also embeds the local date —
    `whosUpNorth.<uid>.<date>`, `birthdays.<uid>.<date>`,
    `onThisDay.<uid>.<date>`). Pass `key = null` while the uid is unresolved —
@@ -1166,12 +1168,15 @@ useHelpRequests, useResolvedHouse, useHouseCalendar, FeedView, HouseHubCard,
 HomeSpotlight (callout completions), WeatherCard, ActivePollCard,
 WorkChecklist, WhosUpNorth/Birthdays/OnThisDay, PollsView, PeopleDirectory,
 NotificationsView, FestStatus + FamilyFestSpotlight (one shared
-`festMember.<uid>` key — a deduped fetch across both), ChatEntryButton, plus
-the identity snapshot. Still on bespoke memory-only caches (fine — behind
-navigations, adopt opportunistically): useManagedCommittee (lib/hooks.ts),
-the chat message caches (CommitteeChat/HouseChat — message bodies are
-deliberately NOT persisted on-device), CommitteeRoster, CommitteeJoin,
-CommitteeEmailMembers, and the `Admin*` caches.
+`festMember.<uid>` key — a deduped fetch across both), ChatEntryButton,
+useManagedCommittee, PostsView (the Main Feed: a trimmed `postsFeed.<uid>`
+snapshot of the top ~15 posts + their comments/reactions/members — never the
+full history, which would blow the 200KB cap), plus the identity snapshot.
+Still on bespoke memory-only caches (fine — behind navigations, adopt
+opportunistically): the chat message caches (CommitteeChat/HouseChat —
+message bodies are deliberately NOT persisted on-device: most sensitive
+content, and the rooms keep their in-session caches), CommitteeRoster,
+CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
 
 ## Conventions
 

@@ -5,6 +5,7 @@ import type { Post } from "@/lib/types";
 import { FAMILY_FEST } from "@/lib/data";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
 import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss } from "@/lib/hooks";
@@ -99,6 +100,17 @@ const LS = { hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
+// How many posts the persisted cold-open snapshot keeps (see the write in
+// refetch): the visible top of the feed, not the history.
+const POSTS_SNAPSHOT_COUNT = 15;
+interface PostsFeedSnapshot {
+  posts: FeedPost[];
+  comments: Record<string, CommentItem[]>;
+  reactions: Record<string, ReactionRow[]>;
+  members: Member[];
+  hasOccurredAt: boolean;
+}
+
 // True when a Supabase RPC failed because the function isn't in the DB yet
 // (its migration hasn't run) — PostgREST's schema-cache miss (PGRST202) or
 // Postgres 42883. Callers degrade to the pre-migration path, the same
@@ -125,10 +137,16 @@ function matchesName(name: string, query: string): boolean {
  * query (no PostgREST embed) so an ambiguous relationship can't blank the feed.
  */
 export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHeading?: boolean }) {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, userId, isAdmin, promptSignIn } = useIdentity();
   const configured = isSupabaseConfigured;
 
-  const [uid, setUid] = useState<string | null>(null);
+  // The REAL signed-in uid, straight from context (available on the first
+  // client tick via the identity snapshot — no auth round-trip). Deliberately
+  // not previewAsId: uid gates writes + ownership, which always belong to the
+  // real account.
+  const uid = userId;
+  const uidRef = useRef<string | null>(uid);
+  uidRef.current = uid;
   const [dbPosts, setDbPosts] = useState<FeedPost[]>([]);
   const [dbComments, setDbComments] = useState<Record<string, CommentItem[]>>({});
   const [dbReactions, setDbReactions] = useState<Record<string, ReactionRow[]>>({});
@@ -229,6 +247,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       .select("id, text, image_path, created_at, occurred_at, author_id, status")
       .order("occurred_at", { ascending: false });
     let postRowsRaw: PostRow[];
+    let occ = true;
     if (withOcc.error) {
       // status column missing (0040 not yet run) but occurred_at present? Keep
       // the timeline ordering; only drop to created_at if occurred_at is gone too.
@@ -238,19 +257,18 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         .order("occurred_at", { ascending: false });
       if (!withoutStatus.error) {
         postRowsRaw = (withoutStatus.data ?? []) as unknown as PostRow[];
-        setHasOccurredAt(true);
       } else {
         const base = await sb
           .from("posts")
           .select("id, text, image_path, created_at, author_id")
           .order("created_at", { ascending: false });
         postRowsRaw = (base.data ?? []) as unknown as PostRow[];
-        setHasOccurredAt(false);
+        occ = false;
       }
     } else {
       postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
-      setHasOccurredAt(true);
     }
+    setHasOccurredAt(occ);
     const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, profilesRes] = await others;
 
     const names = new Map<string, string>();
@@ -286,26 +304,25 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     }
 
     const postRows = postRowsRaw;
-    setDbPosts(
-      postRows.map((r) => {
-        const media = mediaByPost[r.id]?.length
-          ? mediaByPost[r.id]
-          : r.image_path
-            ? [{ url: sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl, type: "image" as const }]
-            : [];
-        return {
-          id: r.id,
-          author: nameOf(r.author_id),
-          authorId: r.author_id,
-          authorAvatar: avatarOf(r.author_id),
-          ts: r.occurred_at || r.created_at,
-          text: r.text || undefined,
-          media,
-          tags: tagsByPost[r.id] ?? [],
-          status: r.status ?? undefined,
-        };
-      }),
-    );
+    const mappedPosts = postRows.map((r) => {
+      const media = mediaByPost[r.id]?.length
+        ? mediaByPost[r.id]
+        : r.image_path
+          ? [{ url: sb.storage.from(BUCKET).getPublicUrl(r.image_path).data.publicUrl, type: "image" as const }]
+          : [];
+      return {
+        id: r.id,
+        author: nameOf(r.author_id),
+        authorId: r.author_id,
+        authorAvatar: avatarOf(r.author_id),
+        ts: r.occurred_at || r.created_at,
+        text: r.text || undefined,
+        media,
+        tags: tagsByPost[r.id] ?? [],
+        status: r.status ?? undefined,
+      };
+    });
+    setDbPosts(mappedPosts);
 
     const mentionsByComment: Record<string, string[]> = {};
     for (const m of (commentMentionsRes.data ?? []) as unknown as CommentMentionRow[]) {
@@ -323,7 +340,45 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     setDbReactions(reByPost);
 
     setFeedLoaded(true);
+
+    // Persist a TRIMMED snapshot for the next cold open: just the top of the
+    // feed (what's visible before any scrolling) with its comments/reactions,
+    // never the whole history — a big feed would blow the 200KB persist cap
+    // anyway. uid-scoped (posts are members-only under 0081), read back by the
+    // seed effect below.
+    const uidNow = uidRef.current;
+    if (uidNow) {
+      const top = mappedPosts.slice(0, POSTS_SNAPSHOT_COUNT);
+      const topIds = new Set(top.map((p) => p.id));
+      const trim = <T,>(all: Record<string, T>) =>
+        Object.fromEntries(Object.entries(all).filter(([id]) => topIds.has(id)));
+      writePersisted<PostsFeedSnapshot>(`postsFeed.${uidNow}`, {
+        posts: top,
+        comments: trim(byPost),
+        reactions: trim(reByPost),
+        members: memberList,
+        hasOccurredAt: occ,
+      });
+    }
   };
+
+  // Cold-open seed: paint the persisted top-of-feed immediately (post-mount,
+  // hydration-safe) while the full refetch runs behind it. Skipped once the
+  // real fetch has landed, and never re-applied after.
+  const feedSeededRef = useRef(false);
+  useEffect(() => {
+    if (!configured || !uid || feedSeededRef.current || feedLoaded) return;
+    const snap = readPersisted<PostsFeedSnapshot>(`postsFeed.${uid}`);
+    if (!snap) return;
+    feedSeededRef.current = true;
+    setDbPosts(snap.posts);
+    setDbComments(snap.comments);
+    setDbReactions(snap.reactions);
+    setMembers(snap.members);
+    setHasOccurredAt(snap.hasOccurredAt);
+    setFeedLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, feedLoaded]);
 
   useEffect(() => {
     const sb = supabase;
@@ -331,7 +386,6 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       setFeedLoaded(true);
       return;
     }
-    sb.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
     refetch();
     // Coalesce bursts of row events into a single refetch (the feed pulls ~6
     // queries each time), so a flurry of posts/reactions can't storm the DB.

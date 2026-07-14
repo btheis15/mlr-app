@@ -271,21 +271,23 @@ export function useUnreadNotifications(): number {
 // slug + viewer identity (admin flag + previewed member, mirroring useEvents'
 // previewAsId key). Without it the Lead/admin-only panels start hidden
 // (canManage=false) on every visit and pop in a moment later — reads like an RLS
-// glitch. Memory-only, written only inside the effect / exposed setter (never
-// during SSR), so a cold render still yields canManage=false to match the
-// server-rendered HTML — no hydration mismatch. The effect always re-fetches and
-// calls setCanManage with the fresh value, so a revoked Lead flips back to false.
+// glitch. Memory for tab switches, plus a persisted copy (never for previews)
+// so a cold app open paints the gate right too. Written only inside the effect /
+// exposed setter (never during SSR), so a cold first render still yields
+// canManage=false to match the server-rendered HTML — no hydration mismatch. The
+// effect always re-fetches and overwrites, so a revoked Lead flips back to false.
 const managedCommitteeCache = new Map<string, { committeeId: string | null; canManage: boolean }>();
 
 export function useManagedCommittee(
   slug: string,
   opts: { watch: string; load: (committeeId: string) => Promise<void> | void },
 ) {
-  const { user, isAdmin, previewAsId } = useIdentity();
+  const { user, userId, isAdmin, previewAsId } = useIdentity();
   // Include the real viewer identity: without it two different non-admin members
   // collide on `slug|false|self`, so a non-Lead briefly paints the Lead/admin
   // management panel from another viewer's cached canManage:true.
   const key = `${slug}|${user?.email ?? "guest"}|${isAdmin}|${previewAsId ?? "self"}`;
+  const storeKey = userId && !previewAsId ? `managedCommittee.${userId}.${slug}.${isAdmin}` : null;
   const cached = managedCommitteeCache.get(key);
   const [committeeId, setCommitteeId] = useState<string | null>(cached?.committeeId ?? null);
   const [canManage, setCanManage] = useState(cached?.canManage ?? false);
@@ -299,6 +301,17 @@ export function useManagedCommittee(
     if (!isSupabaseConfigured || !sb) return;
     let cancelled = false;
     let channel: ReturnType<typeof sb.channel> | null = null;
+    // Cold open: restore the persisted gate (post-mount, hydration-safe) so a
+    // Lead/admin's management panels don't pop in a beat late; the fetch below
+    // still re-derives and overwrites.
+    if (!managedCommitteeCache.has(key) && storeKey) {
+      const snap = readPersisted<{ committeeId: string | null; canManage: boolean }>(storeKey);
+      if (snap) {
+        managedCommitteeCache.set(key, snap);
+        setCommitteeId(snap.committeeId);
+        setCanManage(snap.canManage);
+      }
+    }
     (async () => {
       const cid = await fetchCommitteeId(slug);
       if (!cid || cancelled) return;
@@ -311,6 +324,7 @@ export function useManagedCommittee(
       // Source of truth for the cache — the effect always runs and overwrites
       // with the freshly fetched gate, so a revoked Lead corrects to false.
       managedCommitteeCache.set(key, { committeeId: cid, canManage: manage });
+      if (storeKey) writePersisted(storeKey, { committeeId: cid, canManage: manage });
       if (!manage) return;
       await loadRef.current(cid);
       if (cancelled) return;
@@ -335,9 +349,10 @@ export function useManagedCommittee(
   const setCanManageCached = useCallback(
     (v: boolean) => {
       managedCommitteeCache.set(key, { committeeId, canManage: v });
+      if (storeKey) writePersisted(storeKey, { committeeId, canManage: v });
       setCanManage(v);
     },
-    [key, committeeId],
+    [key, storeKey, committeeId],
   );
 
   return { committeeId, canManage, setCanManage: setCanManageCached, isAdmin };
