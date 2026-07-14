@@ -7,7 +7,7 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { FAMILY_FEST } from "@/lib/data";
-import type { Cabin, CabinAvailability, CabinBooking } from "@/lib/types";
+import type { Cabin, CabinAvailability, CabinBooking, CabinRoom, CabinRoomAvailability } from "@/lib/types";
 
 /** Add `n` whole days to an ISO date (YYYY-MM-DD), returning ISO. Anchored at
  *  local midnight and sliced back to a date, so it's DST/TZ-safe — same trick
@@ -128,6 +128,103 @@ export async function saveCabin(input: {
   return error ? { error: error.message } : {};
 }
 
+interface CabinRoomRow {
+  id: string;
+  cabin_id: string;
+  name: string;
+  beds: number;
+  description: string | null;
+  active: boolean;
+  sort_order: number;
+}
+
+function mapCabinRoomRow(r: CabinRoomRow): CabinRoom {
+  return {
+    id: r.id,
+    cabinId: r.cabin_id,
+    name: r.name,
+    beds: r.beds,
+    description: r.description ?? null,
+    active: r.active,
+    sortOrder: r.sort_order,
+  };
+}
+
+/** The named rooms/areas within a cabin (migration 0092), ordered. Empty for a
+ *  cabin that hasn't been broken into rooms — callers should treat that as
+ *  "use the plain room-count flow", not as an error. */
+export async function fetchCabinRooms(cabinId: string): Promise<CabinRoom[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("cabin_rooms")
+    .select("id, cabin_id, name, beds, description, active, sort_order")
+    .eq("cabin_id", cabinId)
+    .order("sort_order", { ascending: true });
+  return ((data ?? []) as CabinRoomRow[]).map(mapCabinRoomRow);
+}
+
+/** Create or update a room (admin-gated by RLS, migration 0092). */
+export async function saveCabinRoom(input: {
+  id?: string;
+  cabinId: string;
+  name: string;
+  beds: number;
+  description?: string | null;
+  active: boolean;
+  sortOrder?: number;
+}): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const row = {
+    cabin_id: input.cabinId,
+    name: input.name,
+    beds: input.beds,
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    active: input.active,
+    ...(input.sortOrder != null ? { sort_order: input.sortOrder } : {}),
+  };
+  const { error } = input.id
+    ? await sb.from("cabin_rooms").update(row).eq("id", input.id)
+    : await sb.from("cabin_rooms").insert(row);
+  return error ? { error: error.message } : {};
+}
+
+/** Delete a room (admin-gated by RLS). Any past bookings that reserved it keep
+ *  their history — cabin_booking_rooms cascades, so they just lose that link. */
+export async function deleteCabinRoom(id: string): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from("cabin_rooms").delete().eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+/** Per-room state (open/closed, already booked or not) for a date range. */
+export async function fetchRoomAvailability(
+  cabinId: string,
+  checkIn: string,
+  checkOut: string,
+): Promise<CabinRoomAvailability[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data, error } = await sb.rpc("cabin_room_availability", {
+    p_cabin_id: cabinId,
+    p_check_in: checkIn,
+    p_check_out: checkOut,
+  });
+  if (error) return [];
+  return (
+    (data ?? []) as { room_id: string; name: string; beds: number; description: string | null; active: boolean; available: boolean }[]
+  ).map((r) => ({
+    roomId: r.room_id,
+    name: r.name,
+    beds: r.beds,
+    description: r.description ?? null,
+    active: r.active,
+    available: r.available,
+  }));
+}
+
 /** Rooms still bookable for the whole [checkIn, checkOut) range, per cabin. */
 export async function fetchAvailability(checkIn: string, checkOut: string): Promise<CabinAvailability[]> {
   const sb = supabase;
@@ -142,8 +239,11 @@ export async function fetchAvailability(checkIn: string, checkOut: string): Prom
 /** Submit a request (pending, unless auto-approved by the caller afterward).
  *  Pass `forUserId` to book on behalf of another member — admin-only, enforced
  *  server-side; the booking lands under that member's id, with `booked_by`
- *  stamped to the admin who placed it (migration 0087). Returns the new id, or
- *  an error message. */
+ *  stamped to the admin who placed it (migration 0087). Pass `roomIds` for a
+ *  cabin that's been broken into named rooms (migration 0092) — required in
+ *  practice once a cabin has rooms, since that's the whole point of picking
+ *  specific ones instead of a bare guest count. Returns the new id, or an
+ *  error message. */
 export async function requestStay(input: {
   cabinId: string;
   checkIn: string;
@@ -151,6 +251,7 @@ export async function requestStay(input: {
   guests: number;
   notes?: string | null;
   forUserId?: string | null;
+  roomIds?: string[];
 }): Promise<{ id?: string; error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Sign-in isn't available yet." };
@@ -161,6 +262,7 @@ export async function requestStay(input: {
     p_guests: input.guests,
     p_notes: input.notes ?? null,
     p_for_user: input.forUserId ?? null,
+    p_room_ids: input.roomIds?.length ? input.roomIds : null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -177,7 +279,9 @@ export async function fetchMyBookings(asUserId?: string): Promise<CabinBooking[]
   if (!uid) return [];
   const { data } = await sb
     .from("cabin_bookings")
-    .select("id, cabin_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name)")
+    .select(
+      "id, cabin_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name), cabin_booking_rooms(room_id, cabin_rooms(name))",
+    )
     .eq("user_id", uid)
     .order("created_at", { ascending: false });
   return (data ?? []).map(mapBookingRow);
@@ -190,7 +294,9 @@ export async function fetchBookings(statuses: string[]): Promise<CabinBooking[]>
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabin_bookings")
-    .select("id, cabin_id, user_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name)")
+    .select(
+      "id, cabin_id, user_id, check_in, check_out, guests, notes, status, review_note, created_at, booked_by, cabins(name), cabin_booking_rooms(room_id, cabin_rooms(name))",
+    )
     .in("status", statuses)
     .order("check_in", { ascending: true });
   return (data ?? []).map(mapBookingRow);
@@ -213,6 +319,40 @@ export async function cancelStay(id: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {};
 }
 
+/** The specific room(s) an existing booking has attached, if any. */
+export async function fetchBookingRooms(bookingId: string): Promise<{ id: string; name: string }[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  const { data } = await sb
+    .from("cabin_booking_rooms")
+    .select("room_id, cabin_rooms(name)")
+    .eq("booking_id", bookingId);
+  return mapBookingRoomLinks((data ?? []) as BookingRoomLink[]);
+}
+
+/** Admin-only: (re)assign which room(s) an existing booking reserves — the
+ *  ongoing way to fill in/correct rooms on any reservation, including ones
+ *  made before rooms existed (migration 0092). Pass an empty array to clear
+ *  all room assignments. */
+export async function setBookingRooms(bookingId: string, roomIds: string[]): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.rpc("set_booking_rooms", { p_booking: bookingId, p_room_ids: roomIds });
+  return error ? { error: error.message } : {};
+}
+
+interface BookingRoomLink {
+  room_id: string;
+  cabin_rooms: { name: string } | { name: string }[] | null;
+}
+
+function mapBookingRoomLinks(links: BookingRoomLink[]): { id: string; name: string }[] {
+  return links.map((l) => {
+    const room = Array.isArray(l.cabin_rooms) ? l.cabin_rooms[0] : l.cabin_rooms;
+    return { id: l.room_id, name: room?.name ?? "Room" };
+  });
+}
+
 interface BookingRow {
   id: string;
   cabin_id: string;
@@ -228,6 +368,7 @@ interface BookingRow {
   // Supabase returns an embedded relation as an object (or array, depending on
   // the FK shape) — handle both defensively.
   cabins?: { name: string } | { name: string }[] | null;
+  cabin_booking_rooms?: BookingRoomLink[] | null;
 }
 
 function mapBookingRow(r: BookingRow): CabinBooking {
@@ -238,6 +379,7 @@ function mapBookingRow(r: BookingRow): CabinBooking {
     cabinName: cab?.name,
     userId: r.user_id,
     bookedBy: r.booked_by ?? null,
+    rooms: mapBookingRoomLinks(r.cabin_booking_rooms ?? []),
     checkIn: r.check_in,
     checkOut: r.check_out,
     guests: r.guests,

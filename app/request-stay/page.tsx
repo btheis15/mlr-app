@@ -391,6 +391,9 @@ function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: ()
           <p className="text-xs text-faint">
             {booking.guests} guest{booking.guests === 1 ? "" : "s"}
           </p>
+          {booking.rooms.length > 0 && (
+            <p className="text-xs text-faint">🛏️ {booking.rooms.map((r) => r.name).join(", ")}</p>
+          )}
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.chip}`}>{s.label}</span>
       </div>
