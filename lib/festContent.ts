@@ -152,6 +152,7 @@ interface DinnerRow {
   chef_user_id: string | null;
   chef_name: string | null;
   chef_phone: string | null;
+  crew_user_ids: string[] | null;
   houses: string[] | null;
   menu: string | null;
   served_time: string | null;
@@ -226,6 +227,8 @@ function mapDinner(r: DinnerRow): Dinner {
     title: r.title,
     emoji: r.emoji ?? "🍽️",
     chef: { name: r.chef_name?.trim() || "TBD", phone: r.chef_phone ?? undefined },
+    chefUserId: r.chef_user_id,
+    crewUserIds: r.crew_user_ids ?? [],
     houses: r.houses ?? [],
     menu: r.menu ?? "TBD",
     time: r.served_time ?? "TBD",
@@ -293,7 +296,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_dinners")
         .select(
-          "id, day, title, emoji, chef_user_id, chef_name, chef_phone, houses, menu, served_time, served_location, prep_time, prep_location",
+          "id, day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -428,6 +431,7 @@ export interface DinnerInput {
   chefUserId: string | null;
   chefName: string | null;
   chefPhone: string | null;
+  crewUserIds: string[];
   houses: string[];
   menu: string | null;
   servedTime: string | null;
@@ -444,6 +448,7 @@ export const saveDinner = (i: DinnerInput) =>
     chef_user_id: i.chefUserId,
     chef_name: i.chefName,
     chef_phone: i.chefPhone,
+    crew_user_ids: i.crewUserIds,
     houses: i.houses,
     menu: i.menu,
     served_time: i.servedTime,
@@ -453,6 +458,39 @@ export const saveDinner = (i: DinnerInput) =>
     position: i.position,
   });
 export const deleteDinner = (id: string) => deleteRow("fest_dinners", id);
+
+/** The subset of a dinner a chef/crew member (not necessarily a fest
+ *  admin/committee member) can self-edit — see migration 0099. Deliberately
+ *  narrower than DinnerInput: day/title/emoji/chef/crew/houses stay
+ *  admin/committee-managed; this is just "the operational details for the
+ *  day you're actually cooking." A plain partial update (not writeRow, which
+ *  always writes every DinnerInput field — this surface never has most of
+ *  them, e.g. `position`). RLS (chef_user_id / crew_user_ids match) is what
+ *  actually authorizes it. */
+export interface DinnerDetailsInput {
+  menu: string | null;
+  servedTime: string | null;
+  servedLocation: string | null;
+  prepTime: string | null;
+  prepLocation: string | null;
+}
+export async function updateDinnerDetails(id: string, i: DinnerDetailsInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("fest_dinners")
+    .update({
+      menu: i.menu,
+      served_time: i.servedTime,
+      served_location: i.servedLocation,
+      prep_time: i.prepTime,
+      prep_location: i.prepLocation,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
 
 export interface PayeeInput {
   id?: string;
@@ -657,7 +695,7 @@ export async function fetchDinnerDrafts(): Promise<DinnerDraft[]> {
   const { data } = await sb
     .from("fest_dinners")
     .select(
-      "id, day, title, emoji, chef_user_id, chef_name, chef_phone, houses, menu, served_time, served_location, prep_time, prep_location, position",
+      "id, day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location, position",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -670,6 +708,7 @@ export async function fetchDinnerDrafts(): Promise<DinnerDraft[]> {
     chefUserId: r.chef_user_id,
     chefName: r.chef_name,
     chefPhone: r.chef_phone,
+    crewUserIds: r.crew_user_ids ?? [],
     houses: r.houses ?? [],
     menu: r.menu,
     servedTime: r.served_time,

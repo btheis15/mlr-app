@@ -26,7 +26,7 @@ import { formatDateLong } from "@/lib/format";
  * editors get a quiet "Edit" link to the Planner.
  */
 export default function FamilyFestPage() {
-  const { config, schedule, dinners, activities } = useFestContent({ realtime: true });
+  const { config, schedule, dinners, activities, reload } = useFestContent({ realtime: true });
   const { user } = useIdentity();
   const [canEdit, setCanEdit] = useState(false);
 
@@ -84,6 +84,7 @@ export default function FamilyFestPage() {
         things={activities}
         startDate={config.startDate}
         endDate={config.endDate}
+        onDinnerSaved={reload}
       />
 
       <Link

@@ -16,7 +16,7 @@ import { formatDateLong } from "@/lib/format";
  * useFestContent (seed fallback offline) — static-export safe, all client-side.
  */
 export default function FestSchedulePage() {
-  const { config, schedule, dinners, activities } = useFestContent({ realtime: true });
+  const { config, schedule, dinners, activities, reload } = useFestContent({ realtime: true });
   const season = useFestSeason(config.startDate, config.endDate);
 
   return (
@@ -44,6 +44,7 @@ export default function FestSchedulePage() {
         things={activities}
         startDate={config.startDate}
         endDate={config.endDate}
+        onDinnerSaved={reload}
       />
     </div>
   );
