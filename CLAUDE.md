@@ -1143,8 +1143,11 @@ cross-account bleed):
    move one into an initializer "because it's faster".
 2. **User-scoped keys embed the auth uid** (`myHouse.<uid>`, `feed.<uid>`,
    `events.<uid|guest>`, `calloutsDone.<uid>`, `unread.<uid>`,
-   `workChecklist.<uid>`, `activePoll.<uid>`; day-fresh data also embeds the
-   local date — `whosUpNorth.<uid>.<date>`, `birthdays.<uid>.<date>`,
+   `workChecklist.<uid>`, `activePoll.<uid>`, `polls.<uid>`, `people.<uid>`,
+   `notifFeed.<uid>`, `helpRequests.<uid>`, `festMember.<uid>`,
+   `resolvedHouse.<uid>.…`, `chatEntry.<uid>.<slug>`,
+   `houseCalendar.<houseId>`; day-fresh data also embeds the local date —
+   `whosUpNorth.<uid>.<date>`, `birthdays.<uid>.<date>`,
    `onThisDay.<uid>.<date>`). Pass `key = null` while the uid is unresolved —
    the hook stays inert. Public data uses unscoped keys (`festContent`,
    `appImages`, `weather`).
@@ -1158,14 +1161,17 @@ cross-account bleed):
 Everything is stale-while-revalidate: a seed **always** gets a background
 refetch, so revoked access / deleted rows self-correct, and realtime
 subscriptions keep writing through `reload`/`mutate`. Migrated so far:
-useFestContent, useAppImages, useEvents, useUnreadNotifications, FeedView,
-HouseHubCard, HomeSpotlight (callout completions), WeatherCard,
-ActivePollCard, WorkChecklist, WhosUpNorth/Birthdays/OnThisDay, plus the
-identity snapshot. Still on bespoke memory-only caches (fine — behind
-navigations, adopt opportunistically): helpRequests/managedCommittee/
-resolvedHouse/houseCalendar in lib/hooks.ts, PollsView, PeopleDirectory,
-NotificationsView, the chat message caches, FestStatus, FamilyFestSpotlight,
-ChatEntryButton, CommitteeRoster, CommitteeJoin, and the `Admin*` caches.
+useFestContent, useAppImages, useEvents, useUnreadNotifications,
+useHelpRequests, useResolvedHouse, useHouseCalendar, FeedView, HouseHubCard,
+HomeSpotlight (callout completions), WeatherCard, ActivePollCard,
+WorkChecklist, WhosUpNorth/Birthdays/OnThisDay, PollsView, PeopleDirectory,
+NotificationsView, FestStatus + FamilyFestSpotlight (one shared
+`festMember.<uid>` key — a deduped fetch across both), ChatEntryButton, plus
+the identity snapshot. Still on bespoke memory-only caches (fine — behind
+navigations, adopt opportunistically): useManagedCommittee (lib/hooks.ts),
+the chat message caches (CommitteeChat/HouseChat — message bodies are
+deliberately NOT persisted on-device), CommitteeRoster, CommitteeJoin,
+CommitteeEmailMembers, and the `Admin*` caches.
 
 ## Conventions
 

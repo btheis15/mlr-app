@@ -9,6 +9,7 @@ import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
+import { useCachedResource } from "@/lib/swrCache";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
@@ -19,15 +20,11 @@ import type { ScheduleEvent, Dinner } from "@/lib/types";
  * once the async membership check resolves. Holding the last-known value lets a
  * returning member paint the correct (CTA-hidden) state immediately while the
  * effect still re-derives membership in the background — so a member who *left* the
- * committee gets the CTA back on the next refetch (never sticks). Memory-only, and
- * written *only* inside the effect (client-only), never at module top level or
- * during render: the map is empty at module-eval and `user` is null during
- * prerender, so a cold first render still starts `false` (CTA shown) — matching the
- * static-export / server HTML and avoiding a hydration mismatch. Mirrors
- * `useEvents`/`eventsCache` in lib/hooks.ts. (FestStatus.tsx duplicates this check;
- * kept bespoke for now.)
+ * committee gets the CTA back on the next refetch (never sticks). Rides the
+ * shared SWR cache under `festMember.<uid>` — the SAME key FestStatus uses, so
+ * both surfaces share one deduped fetch and one persisted snapshot, and a cold
+ * open paints the correct member/non-member view immediately.
  */
-const festMemberCache = new Map<string, boolean>();
 
 /**
  * The Family Fest presence on the resort home — a compact, phase-aware summary
@@ -57,33 +54,20 @@ export function FamilyFestSpotlight({
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today } = useDemoDate();
-  const { user } = useIdentity();
-  const key = user?.email ?? "self";
-  const [isMember, setIsMember] = useState(festMemberCache.get(key) ?? false);
-
-  // Point the shortcut at the committee chat once we know you're a member.
-  useEffect(() => {
-    let active = true;
-    if (!user) {
-      setIsMember(false);
-      return;
-    }
-    (async () => {
+  const { user, userId } = useIdentity();
+  // Members get no CTA; the shared, persisted snapshot means no CTA flash for
+  // a returning member even on a cold open, and the revalidate re-derives so
+  // leaving the committee re-shows the CTA.
+  const { data: isMember } = useCachedResource<boolean>(
+    user && userId ? `festMember.${userId}` : null,
+    false,
+    async () => {
       const cid = await fetchCommitteeId("family-fest");
-      if (!cid || !active) return;
-      // fetchJoinState resolves the signed-in user itself when no id is passed.
-      const state = await fetchJoinState(cid);
-      if (active) {
-        setIsMember(state === "member");
-        // Cache the last-known result so a returning member paints without the
-        // CTA flash; the effect always re-derives, so leaving re-shows the CTA.
-        festMemberCache.set(key, state === "member");
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [user]);
+      if (!cid) return false;
+      return (await fetchJoinState(cid, userId)) === "member";
+    },
+    { persist: "local" },
+  );
 
   // Members don't need a redirect — their chats live on the Feed/Chats tab now.
   // Only non-members get a shortcut (to join the committee).
