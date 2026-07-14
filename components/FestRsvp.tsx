@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useEvents } from "@/lib/hooks";
+import { useFestSeason } from "@/lib/useFestSeason";
 import { EMPTY_SUMMARY, effectiveStatus, eventDays, goingByDay } from "@/lib/events";
 import { formatDateLong } from "@/lib/format";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -35,9 +36,19 @@ export function FestRsvp() {
     setOpen(true);
   };
 
-  if (!today || loading) return null;
+  // Hooks must run unconditionally (before any early return below), so this
+  // is computed with fallbacks even before `event` resolves — getFestSeason
+  // degrades to "off-season" on empty/invalid dates, never throws.
   const event = events.find((e) => e.id === FEST_EVENT_ID);
+  const season = useFestSeason(event?.startDate ?? "", event?.endDate ?? event?.startDate ?? "");
+
+  if (!today || loading) return null;
   if (!event) return null;
+  // Once the week has actually started there's nothing left to RSVP for —
+  // FestStatus's "Happening today"/wrap takeover already covers you. Keeping
+  // this card around post-start would just be a stale "are you coming?" nag
+  // during/after the thing you're already at.
+  if (season?.isLive || season?.isWrap) return null;
 
   const m = mine[event.id] ?? null;
   const myStatus = m ? effectiveStatus(m.status, m.days) : null;
