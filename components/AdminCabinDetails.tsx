@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
-import { fetchCabinsAdmin, saveCabin } from "@/lib/cabins";
+import { fetchCabinsAdmin, fetchCabinRooms, saveCabin, saveCabinRoom, deleteCabinRoom } from "@/lib/cabins";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
-import type { Cabin } from "@/lib/types";
+import type { Cabin, CabinRoom } from "@/lib/types";
 
 /**
  * Admin editor for the cabins themselves (Admin → Cabin requests, above the
@@ -95,10 +95,22 @@ function CabinEditSheet({
   const [active, setActive] = useState(cabin.active);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [namedRooms, setNamedRooms] = useState<CabinRoom[]>([]);
 
-  const rooms = parseInt(roomCount, 10);
+  const loadRooms = useCallback(async () => {
+    setNamedRooms(await fetchCabinRooms(cabin.id));
+  }, [cabin.id]);
+  useEffect(() => { loadRooms(); }, [loadRooms]);
+
+  // Once the cabin has named rooms, the plain room-count field is derived
+  // (active room count) rather than a separate number an admin sets — the
+  // room list below is the real capacity now.
+  const hasNamedRooms = namedRooms.length > 0;
+
+  const activeNamedRoomCount = namedRooms.filter((r) => r.active).length;
+  const rooms = hasNamedRooms ? activeNamedRoomCount : parseInt(roomCount, 10);
   const beds = bedCount.trim() ? parseInt(bedCount, 10) : null;
-  const validRooms = Number.isFinite(rooms) && rooms >= 1;
+  const validRooms = hasNamedRooms || (Number.isFinite(rooms) && rooms >= 1);
   const validBeds = beds === null || (Number.isFinite(beds) && beds >= 0);
   const canSave = name.trim().length > 0 && validRooms && validBeds && !saving;
 
@@ -109,6 +121,8 @@ function CabinEditSheet({
     const { error: err } = await saveCabin({
       id: cabin.id,
       name: name.trim(),
+      // Kept in sync with the named-room count when the cabin has any, so
+      // the legacy field never drifts from the real capacity.
       roomCount: rooms,
       bedCount: beds,
       notes: notes.trim() || null,
@@ -152,9 +166,10 @@ function CabinEditSheet({
             type="number"
             inputMode="numeric"
             min={1}
-            value={roomCount}
+            value={hasNamedRooms ? activeNamedRoomCount : roomCount}
             onChange={(e) => setRoomCount(e.target.value)}
-            className={FIELD}
+            disabled={hasNamedRooms}
+            className={`${FIELD} disabled:opacity-60`}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -171,8 +186,12 @@ function CabinEditSheet({
         </label>
       </div>
       <p className="px-0.5 text-xs text-faint">
-        Rooms is used for booking capacity; beds is just so people know if they&rsquo;d be sharing a bed or room.
+        {hasNamedRooms
+          ? "Rooms is now based on the named rooms below (open ones count). Beds is a separate overall total, just informational."
+          : "Rooms is used for booking capacity; beds is just so people know if they’d be sharing a bed or room."}
       </p>
+
+      <CabinRoomsEditor cabinId={cabin.id} rooms={namedRooms} onChanged={loadRooms} />
 
       <div className="space-y-2">
         <SectionLabel>
@@ -205,5 +224,153 @@ function CabinEditSheet({
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{error}</p>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * Named rooms/areas within a cabin (migration 0092) — e.g. "Upstairs South
+ * Room". Each row edits/saves/deletes independently (like CommitteeMembers'
+ * inline area editor) rather than bundling into the cabin-level Save, since
+ * these are a separate table. A room marked inactive shows as "temporarily
+ * closed" everywhere it's used (booking pickers, availability).
+ */
+function CabinRoomsEditor({
+  cabinId,
+  rooms,
+  onChanged,
+}: {
+  cabinId: string;
+  rooms: CabinRoom[];
+  onChanged: () => Promise<void> | void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newBeds, setNewBeds] = useState("1");
+
+  const editRoom = (room: CabinRoom, patch: Partial<Pick<CabinRoom, "name" | "beds" | "active">>) =>
+    run(room.id, () => saveCabinRoom({ id: room.id, cabinId, name: room.name, beds: room.beds, active: room.active, ...patch }));
+
+  const run = async (id: string, rpc: () => Promise<{ error?: string }>) => {
+    setBusyId(id);
+    const { error } = await rpc();
+    setBusyId(null);
+    if (error) { window.alert(error); return; }
+    await onChanged();
+  };
+
+  const remove = (room: CabinRoom) => {
+    if (!window.confirm(`Delete "${room.name}"? Any past bookings keep their history but lose this room link.`)) return;
+    run(room.id, () => deleteCabinRoom(room.id));
+  };
+
+  const addRoom = async () => {
+    if (!newName.trim()) return;
+    const beds = parseInt(newBeds, 10);
+    setBusyId("new");
+    const { error } = await saveCabinRoom({
+      cabinId,
+      name: newName.trim(),
+      beds: Number.isFinite(beds) && beds >= 0 ? beds : 1,
+      active: true,
+      sortOrder: rooms.length,
+    });
+    setBusyId(null);
+    if (error) { window.alert(error); return; }
+    setNewName("");
+    setNewBeds("1");
+    setAdding(false);
+    await onChanged();
+  };
+
+  return (
+    <div className="space-y-2">
+      <SectionLabel>Rooms / areas</SectionLabel>
+      {rooms.length > 0 && (
+        <ul className="space-y-1.5">
+          {rooms.map((r) => (
+            <li key={r.id} className="flex items-center gap-2 rounded-xl bg-card p-2 ring-1 ring-border">
+              <input
+                value={r.name}
+                onChange={(e) => editRoom(r, { name: e.target.value })}
+                className="min-w-0 flex-1 rounded-lg bg-background px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={r.beds}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (Number.isFinite(v) && v >= 0) editRoom(r, { beds: v });
+                }}
+                aria-label={`${r.name} beds`}
+                className="w-14 shrink-0 rounded-lg bg-background px-2 py-1.5 text-center text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={() => editRoom(r, { active: !r.active })}
+                disabled={busyId === r.id}
+                className={`press shrink-0 rounded-full px-2 py-1.5 text-[10px] font-semibold ring-1 disabled:opacity-50 ${
+                  r.active ? "bg-primary/10 text-primary ring-primary/30" : "bg-foreground/10 text-muted ring-border"
+                }`}
+              >
+                {r.active ? "Open" : "Closed"}
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(r)}
+                disabled={busyId === r.id}
+                aria-label={`Delete ${r.name}`}
+                className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adding ? (
+        <div className="flex items-center gap-2 rounded-xl bg-background p-2 ring-1 ring-border">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Room/area name"
+            autoFocus
+            className="min-w-0 flex-1 rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+          />
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={newBeds}
+            onChange={(e) => setNewBeds(e.target.value)}
+            aria-label="Beds"
+            className="w-14 shrink-0 rounded-lg bg-card px-2 py-1.5 text-center text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button
+            type="button"
+            onClick={addRoom}
+            disabled={busyId === "new" || !newName.trim()}
+            className="press shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            Add
+          </button>
+          <button type="button" onClick={() => setAdding(false)} className="press shrink-0 text-xs text-foreground/50">
+            ✕
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="press text-xs font-semibold text-primary">
+          + Add a room/area
+        </button>
+      )}
+      {rooms.length === 0 && (
+        <p className="px-0.5 text-xs text-faint">
+          No named rooms yet — the plain "Rooms" number above still applies until you add some.
+        </p>
+      )}
+    </div>
   );
 }

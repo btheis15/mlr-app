@@ -453,6 +453,31 @@ export interface CabinAvailability {
   available: number;
 }
 
+/** A named room/area within a cabin (migration 0092) — e.g. "Upstairs South
+ *  Room". Lets a cabin with fuzzy "N rooms" capacity instead offer specific,
+ *  pickable spots (so people can tell if they'd be sharing a room), and lets
+ *  one be marked temporarily closed (`active: false`) without deleting it. A
+ *  cabin with no rooms defined keeps the old plain room-count booking flow. */
+export interface CabinRoom {
+  id: string;
+  cabinId: string;
+  name: string;
+  beds: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+/** A room's state for a specific date range — from cabin_room_availability(). */
+export interface CabinRoomAvailability {
+  roomId: string;
+  name: string;
+  beds: number;
+  active: boolean;
+  /** False if closed (`active` false) OR already approved-booked for an
+   *  overlapping range. */
+  available: boolean;
+}
+
 export type CabinBookingStatus = "pending" | "approved" | "denied" | "cancelled";
 
 /** One stay request. `checkOut` is the departure date (exclusive): a stay
@@ -466,6 +491,9 @@ export interface CabinBooking {
   // Set when an admin booked this on behalf of userId (migration 0087) —
   // null/undefined for a normal self-service request.
   bookedBy?: string | null;
+  // Specific room(s) this booking reserves (migration 0092) — empty for a
+  // cabin with no named rooms, or a legacy booking made before they existed.
+  rooms: { id: string; name: string }[];
   checkIn: string; // ISO date YYYY-MM-DD
   checkOut: string; // ISO date YYYY-MM-DD (departure, exclusive)
   guests: number;

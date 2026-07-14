@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Cabin } from "@/lib/types";
+import type { Cabin, CabinRoomAvailability } from "@/lib/types";
 import {
   FF_CHECK_IN,
   FF_CHECK_OUT,
   addDays,
   fetchAvailability,
+  fetchRoomAvailability,
   formatStay,
   requestStay,
   reviewStay,
   todayISO,
 } from "@/lib/cabins";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
+import { CabinRoomPicker } from "@/components/CabinRoomPicker";
 import { useSheetDismiss } from "@/lib/hooks";
 
 // Bottom sheet for requesting a room in one cabin (scaffolding + dismiss motion
@@ -43,30 +45,53 @@ export function CabinRequestSheet({
   const [guests, setGuests] = useState(1);
   const [notes, setNotes] = useState("");
   const [available, setAvailable] = useState<number | null>(null);
+  const [rooms, setRooms] = useState<CabinRoomAvailability[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const validRange = checkOut > checkIn;
   const isFFWeek = checkIn === FF_CHECK_IN && checkOut === FF_CHECK_OUT;
+  // Once a cabin has ANY named rooms (migration 0092), picking specific ones
+  // replaces the plain guest-count-only flow — that's the whole point.
+  const hasRooms = rooms.length > 0;
 
   // Live availability for the chosen range (debounced on date changes).
   useEffect(() => {
     if (!validRange) {
       setAvailable(null);
+      setRooms([]);
       return;
     }
     let cancelled = false;
+    setRoomsLoading(true);
     const t = window.setTimeout(async () => {
-      const rows = await fetchAvailability(checkIn, checkOut);
+      const [rows, roomRows] = await Promise.all([
+        fetchAvailability(checkIn, checkOut),
+        fetchRoomAvailability(cabin.id, checkIn, checkOut),
+      ]);
       if (cancelled) return;
       const mine = rows.find((r) => r.cabinId === cabin.id);
       setAvailable(mine ? mine.available : null);
+      setRooms(roomRows);
+      setRoomsLoading(false);
+      // Drop any prior pick that's no longer available for the new range.
+      setSelectedRoomIds((prev) => new Set([...prev].filter((id) => roomRows.some((r) => r.roomId === id && r.available))));
     }, 250);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
   }, [cabin.id, checkIn, checkOut, validRange]);
+
+  const toggleRoom = (roomId: string) =>
+    setSelectedRoomIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
 
   const onCheckIn = (v: string) => {
     setCheckIn(v);
@@ -78,8 +103,10 @@ export function CabinRequestSheet({
     setCheckOut(FF_CHECK_OUT);
   };
 
+  const canSubmit = validRange && !pending && (!hasRooms || selectedRoomIds.size > 0);
+
   const submit = async () => {
-    if (!validRange || pending) return;
+    if (!canSubmit) return;
     setPending(true);
     setError(null);
     const { id, error: err } = await requestStay({
@@ -89,6 +116,7 @@ export function CabinRequestSheet({
       guests,
       notes,
       forUserId: forUser?.id,
+      roomIds: hasRooms ? [...selectedRoomIds] : undefined,
     });
     if (err) {
       setPending(false);
@@ -130,7 +158,7 @@ export function CabinRequestSheet({
           <button
             type="button"
             onClick={submit}
-            disabled={!validRange || pending}
+            disabled={!canSubmit}
             className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
             {pending ? "Sending…" : forUser ? `Book & approve for ${forUser.name}` : "Submit request"}
@@ -217,6 +245,16 @@ export function CabinRequestSheet({
               <p className="px-0.5 text-xs text-accent">Check-out must be after check-in.</p>
             )}
           </div>
+
+          {/* Room picker — only for a cabin broken into named rooms/areas
+              (migration 0092). Picking N rooms is how you reserve N beds. */}
+          {validRange && hasRooms && (
+            <div className="space-y-2">
+              <SectionLabel>Which room{selectedRoomIds.size !== 1 ? "(s)" : ""}?</SectionLabel>
+              <p className="px-0.5 text-xs text-muted">Need 2 beds? Pick 2 rooms.</p>
+              <CabinRoomPicker rooms={rooms} selected={selectedRoomIds} onToggle={toggleRoom} loading={roomsLoading} />
+            </div>
+          )}
 
           {/* Guests */}
           <div className="space-y-2">

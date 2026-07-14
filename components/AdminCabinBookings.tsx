@@ -7,6 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { useBusyAction } from "@/lib/hooks";
 import { fetchProfiles, profileMap, type ProfileLite } from "@/lib/roles";
 import { fetchBookings, formatStay, reviewStay } from "@/lib/cabins";
+import { BookingRoomsSheet } from "@/components/BookingRoomsSheet";
 import type { CabinBooking } from "@/lib/types";
 
 /**
@@ -49,6 +50,7 @@ export function AdminCabinBookings() {
   // paint still gets the flash) and only once (deepLinked ref).
   const [flashId, setFlashId] = useState<string | null>(null);
   const deepLinked = useRef(false);
+  const [assigningRooms, setAssigningRooms] = useState<CabinBooking | null>(null);
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([fetchBookings(["pending"]), fetchBookings(["approved"])]);
@@ -141,6 +143,13 @@ export function AdminCabinBookings() {
                       {b.guests} guest{b.guests === 1 ? "" : "s"}
                       {b.bookedBy && ` · booked by ${people.get(b.bookedBy)?.name ?? "an admin"}`}
                     </p>
+                    <p className="text-xs text-muted">
+                      🛏️ {b.rooms.length > 0 ? b.rooms.map((r) => r.name).join(", ") : "No rooms assigned"}
+                      {" · "}
+                      <button type="button" onClick={() => setAssigningRooms(b)} className="press font-medium text-primary">
+                        {b.rooms.length > 0 ? "Change" : "Assign"}
+                      </button>
+                    </p>
                   </div>
                 </div>
                 {b.notes && (
@@ -195,12 +204,27 @@ export function AdminCabinBookings() {
                       {b.cabinName} · {formatStay(b.checkIn, b.checkOut)} · {b.guests}👤
                       {b.bookedBy && ` · booked by ${people.get(b.bookedBy)?.name ?? "an admin"}`}
                     </p>
+                    <p className="truncate text-xs text-muted">
+                      🛏️ {b.rooms.length > 0 ? b.rooms.map((r) => r.name).join(", ") : "No rooms assigned"}
+                      {" · "}
+                      <button type="button" onClick={() => setAssigningRooms(b)} className="press font-medium text-primary">
+                        {b.rooms.length > 0 ? "Change" : "Assign"}
+                      </button>
+                    </p>
                   </div>
                 </li>
               );
             })}
           </ul>
         </section>
+      )}
+
+      {assigningRooms && (
+        <BookingRoomsSheet
+          booking={assigningRooms}
+          onClose={() => setAssigningRooms(null)}
+          onSaved={load}
+        />
       )}
     </div>
   );

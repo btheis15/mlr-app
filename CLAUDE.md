@@ -725,6 +725,65 @@ creator or an admin closes it, or when its optional `closes_on` date has passed
   (question + options form). Home's [`ActivePollCard`](components/ActivePollCard.tsx)
   spotlights the newest open poll (see **Home delight cards**).
 
+## Cabin stays
+
+"Request a Cabin Stay" (`/request-stay`) — members request a room in one of
+the two houses (`cabins`: Cabin 1, Red & White House) for any date range,
+defaulting to Family Fest week; admins approve/deny from Admin → Cabin
+requests. Same shape as events/attendance: public-read tables, all writes
+through SECURITY DEFINER RPCs. Data model: migration
+[`0032`](supabase/migrations/0032_cabin_bookings.sql) (`cabins`,
+`cabin_bookings`, `request_cabin_stay`/`review_cabin_stay`/`cancel_cabin_stay`/
+`cabin_availability`). Client seam [`lib/cabins.ts`](lib/cabins.ts); surfaces
+[`app/request-stay/page.tsx`](app/request-stay/page.tsx),
+[`CabinRequestSheet`](components/CabinRequestSheet.tsx),
+[`AdminCabinBookings`](components/AdminCabinBookings.tsx).
+
+- **Admin-editable cabin details** (migration
+  [`0089`](supabase/migrations/0089_cabin_editable_details.sql)): name, room
+  count, an overall `bed_count`, a free-form `notes` line shown to members
+  (e.g. "water not hooked up yet"), and an `active` toggle to pull a cabin out
+  of the bookable list without losing its booking history. Edited via
+  [`AdminCabinDetails`](components/AdminCabinDetails.tsx) (Admin → Cabin
+  requests → Cabins).
+- **Admin books on behalf of a member** (migration
+  [`0087`](supabase/migrations/0087_cabin_booking_for_member.sql)) — for family
+  who don't use the app themselves. `request_cabin_stay` takes an optional
+  admin-only `p_for_user`; the booking lands under that member's id with
+  `booked_by` stamped to the admin, shown in the admin queue as "booked by
+  {admin}". The `/request-stay` "Booking for" picker (admin-only) sets this,
+  and the request auto-approves right after creation (`reviewStay`) instead of
+  sitting in the pending queue for the same admin to approve a second time.
+- **Named rooms/areas within a cabin** (migration
+  [`0092`](supabase/migrations/0092_cabin_rooms.sql)) — a cabin can be broken
+  into specific, pickable rooms (`cabin_rooms`: name, `beds`, `active`) instead
+  of a bare room count, e.g. Red & White House's "Upstairs South Room",
+  "Upstairs East Room", "Upstairs Open Area", "Downstairs Near Bathroom",
+  "Downstairs Near Stairs" (seeded closed). **A cabin with zero `cabin_rooms`
+  rows keeps the original plain-room-count flow untouched** — this is additive,
+  not a replacement. Once a cabin has rooms:
+  - Booking requires picking specific room(s) — one room per bed needed — via
+    the shared [`CabinRoomPicker`](components/CabinRoomPicker.tsx) (used in
+    both `CabinRequestSheet` and the admin's room-reassignment sheet), backed
+    by `cabin_room_availability(cabin, check_in, check_out)` and
+    `cabin_booking_rooms` (which room(s) a booking reserves — a booking can
+    reserve more than one).
+  - `review_cabin_stay`'s capacity check branches: a booking with rooms
+    attached is checked per-room against other approved bookings of the same
+    room; one with none (legacy, or a cabin with no rooms) keeps the original
+    cabin-wide `room_count` math.
+  - `cabin_availability`'s "X of Y rooms left" derives Y/X from the active
+    `cabin_rooms` count/per-room overlap instead of the manually-set
+    `room_count` field, so the two can't drift out of sync once rooms exist.
+  - **`set_booking_rooms(booking, room_ids)`** is a standalone admin-only RPC
+    to (re)assign rooms on **any** existing booking, any time — not just at
+    creation. This is how reservations made before rooms existed get their
+    room assignments filled in by hand, via "Assign/Change" on each row in
+    [`AdminCabinBookings`](components/AdminCabinBookings.tsx) →
+    [`BookingRoomsSheet`](components/BookingRoomsSheet.tsx). Room CRUD itself
+    (add/rename/set beds/open-close/delete) is inline in
+    [`AdminCabinDetails`](components/AdminCabinDetails.tsx)'s edit sheet.
+
 ## Content safeguards (feed moderation)
 
 Layered safeguards on the social surfaces (Posts + comments + uploaded media) so
