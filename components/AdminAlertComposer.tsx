@@ -7,6 +7,8 @@ import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
 import { pushLocalAnnouncement } from "@/lib/localAnnouncements";
 import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
+import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
+import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
 
 /**
  * How long an alert sits in everyone's banner before it auto-hides (people can
@@ -39,6 +41,7 @@ export function AdminAlertComposer() {
   const [emailAudience, setEmailAudience] = useState<"all" | "admins">("all");
   const [expiryHours, setExpiryHours] = useState(DEFAULT_EXPIRY_HOURS);
   const [eventTarget, setEventTarget] = useState<EventTarget>({ eventId: null, excludeNotAttending: true });
+  const [scheduleAt, setScheduleAt] = useState<string | null>(null);
   const { pending: sending, status, show, run } = useSaveStatus();
 
   const submit = (e: React.FormEvent) => {
@@ -48,6 +51,32 @@ export function AdminAlertComposer() {
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
 
     const sb = supabase;
+    if (isSupabaseConfigured && sb && scheduleAt) {
+      run(async () => {
+        const { error } = await scheduleBroadcast(
+          "announcement",
+          {
+            title: title.trim(),
+            body: body.trim() || null,
+            expiryHours,
+            notifyEmail,
+            emailAudience,
+            eventId: eventTarget.eventId,
+            excludeNotAttending: eventTarget.excludeNotAttending,
+          },
+          scheduleAt,
+        );
+        if (error) {
+          show(`Couldn't schedule: ${error}`, 0);
+          return;
+        }
+        setTitle(""); setBody(""); setEmailAudience("all"); setExpiryHours(DEFAULT_EXPIRY_HOURS);
+        setEventTarget({ eventId: null, excludeNotAttending: true });
+        setScheduleAt(null);
+        return `Scheduled for ${new Date(scheduleAt).toLocaleString()} ✓`;
+      }, 6000);
+      return;
+    }
     if (isSupabaseConfigured && sb) {
       run(async () => {
         const uid = await getCurrentUserId();
@@ -108,6 +137,7 @@ export function AdminAlertComposer() {
         className="w-full rounded-xl bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
       {isSupabaseConfigured && <EventTargetPicker value={eventTarget} onChange={setEventTarget} />}
+      {isSupabaseConfigured && <ScheduleSendPicker value={scheduleAt} onChange={setScheduleAt} />}
 
       <label className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
         <span>Hide from the banner after</span>
@@ -141,7 +171,7 @@ export function AdminAlertComposer() {
       )}
       <div className="flex items-center justify-end gap-3">
         <button type="submit" disabled={!title.trim() || sending} className="press rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">
-          {sending ? "Posting…" : "Post"}
+          {sending ? (scheduleAt ? "Scheduling…" : "Posting…") : scheduleAt ? "Schedule" : "Post"}
         </button>
       </div>
       {status && <p className="text-xs font-medium text-accent">{status}</p>}

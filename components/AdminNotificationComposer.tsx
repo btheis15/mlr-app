@@ -6,6 +6,8 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import { useSaveStatus } from "@/lib/hooks";
 import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
+import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
+import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
 
 type Audience = "everyone" | "beta" | "admins";
 
@@ -42,6 +44,7 @@ export function AdminNotificationComposer() {
   const [expiryHours, setExpiryHours] = useState<number | null>(null);
   const [alsoBanner, setAlsoBanner] = useState(false);
   const [eventTarget, setEventTarget] = useState<EventTarget>({ eventId: null, excludeNotAttending: true });
+  const [scheduleAt, setScheduleAt] = useState<string | null>(null);
   const { pending: sending, status, show, run } = useSaveStatus();
 
   // App admins only (send_broadcast_notification re-checks this server-side too).
@@ -55,8 +58,37 @@ export function AdminNotificationComposer() {
       show("Sending notifications needs the backend configured.", 4000);
       return;
     }
-    const expiresAt = expiryHours == null ? null : new Date(Date.now() + expiryHours * 3600 * 1000).toISOString();
     const link = url.trim() || null;
+
+    if (scheduleAt) {
+      run(async () => {
+        const { error } = await scheduleBroadcast(
+          "notification",
+          {
+            title: title.trim(),
+            body: body.trim() || null,
+            url: link,
+            audience,
+            expiryHours,
+            alsoBanner,
+            eventId: eventTarget.eventId,
+            excludeNotAttending: eventTarget.excludeNotAttending,
+          },
+          scheduleAt,
+        );
+        if (error) {
+          show(`Couldn't schedule: ${error}`, 0);
+          return;
+        }
+        setTitle(""); setBody(""); setUrl(""); setExpiryHours(null); setAlsoBanner(false);
+        setEventTarget({ eventId: null, excludeNotAttending: true });
+        setScheduleAt(null);
+        return `Scheduled for ${new Date(scheduleAt).toLocaleString()} ✓`;
+      }, 6000);
+      return;
+    }
+
+    const expiresAt = expiryHours == null ? null : new Date(Date.now() + expiryHours * 3600 * 1000).toISOString();
 
     run(async () => {
       let { data, error } = await sb.rpc("send_broadcast_notification", {
@@ -170,6 +202,7 @@ export function AdminNotificationComposer() {
       </div>
 
       <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
+      <ScheduleSendPicker value={scheduleAt} onChange={setScheduleAt} />
 
       <label className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
         <span>Stop counting toward the badge after</span>
@@ -193,7 +226,7 @@ export function AdminNotificationComposer() {
 
       <div className="flex items-center justify-end">
         <button type="submit" disabled={!title.trim() || sending} className="press rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">
-          {sending ? "Sending…" : "Send"}
+          {sending ? (scheduleAt ? "Scheduling…" : "Sending…") : scheduleAt ? "Schedule" : "Send"}
         </button>
       </div>
       {status && <p className="text-xs font-medium text-accent">{status}</p>}

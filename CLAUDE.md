@@ -599,6 +599,33 @@ client's `effectiveStatus()`.
   columns/params on a column/param-not-found error), matching the existing
   `email_audience` fallback pattern in `AdminAlertComposer`.
 
+### Scheduled broadcasts (migration 0097)
+
+Both `AdminAlertComposer` and `AdminNotificationComposer` carry a shared
+**"Send now" / "Schedule for later"** toggle
+([`ScheduleSendPicker`](components/ScheduleSendPicker.tsx)). Scheduling one
+writes a row to `scheduled_broadcasts` (`kind: 'announcement' | 'notification'`,
+a `payload` jsonb mirroring exactly what the composer already collects,
+`scheduled_at`) via `schedule_broadcast()` — client seam
+[`lib/scheduledBroadcasts.ts`](lib/scheduledBroadcasts.ts). The actual send
+happens **entirely inside Postgres via `pg_cron`** (already enabled on this
+project — not the mac mini, not a Vercel cron), so a scheduled item still
+fires even if the mini is asleep/off or nobody has the app open:
+`run_scheduled_broadcasts()` ticks every minute, fires anything due (one row
+at a time, wrapped so a bad payload can't sink the rest of the queue),
+re-derives `expires_at` **relative to when it actually posts** (not when it
+was scheduled — "6 hours" means 6 hours from going live either way), and
+mirrors the exact same audience/event-targeting rules as an immediate send
+(`send_broadcast_notification`) — see **Event-targeted broadcasts** above,
+which this reuses rather than duplicating.
+
+Admin → Alerts & Notifications → **Scheduled**
+([`AdminScheduledBroadcasts`](components/AdminScheduledBroadcasts.tsx)) is the
+queue view: pending items with **Cancel** (`cancel_scheduled_broadcast`, a
+no-op if it already fired), plus recently-sent/failed rows for visibility — a
+failure is recorded on the row (`error`) rather than silently dropped, and
+surfaces there. Kept live via Realtime, same shape as `AdminCabinBookings`.
+
 ## Home delight cards
 
 Below the quick-actions grid, Home carries a run of light, **self-hiding
