@@ -8,12 +8,15 @@ import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
 import { COMMITTEES } from "@/lib/data";
 
 /**
- * "X admins" panel — the people with app/chat access to this committee.
- * Shown to its **Lead** or an **app admin** (migration 0015). Leads can
- * add/remove regular members and, as of migration 0051, can promote/demote
- * leads too (was admin-only). Area assignments live in committee_members.areas
- * (migration 0051) and are editable inline here. All writes go through the
- * gated set_committee_member / set_committee_lead / set_committee_areas RPCs.
+ * "X members" panel — the people with app/chat access to this committee.
+ * Shown to its **Lead** or an **app admin** (migration 0015). There is no
+ * separate "committee admin" tier (deliberately removed, migration 0076) —
+ * within a committee you're either a plain member or a Lead; the only admins
+ * are overall app admins. Leads can add/remove regular members and, as of
+ * migration 0051, can promote/demote leads too (was admin-only). Area
+ * assignments live in committee_members.areas (migration 0051) and are
+ * editable inline here. All writes go through the gated set_committee_member /
+ * set_committee_lead / set_committee_areas RPCs.
  */
 interface Row {
   id: string;
@@ -165,7 +168,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
           {isAdmin ? "Admin" : "Lead"}
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-semibold">{name} admins</h2>
+          <h2 className="text-sm font-semibold">{name} members</h2>
           <p className="text-xs text-faint">App access · chat · management</p>
         </div>
         <span className="text-xs text-faint">{members.length}</span>
@@ -292,7 +295,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
         })}
         {members.length === 0 && (
           <p className="py-2 text-center text-xs text-faint">
-            No admins yet — approve a request or add someone below.
+            No members yet — approve a request or add someone below.
           </p>
         )}
       </ul>
