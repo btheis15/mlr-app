@@ -38,17 +38,26 @@ export const FALLBACK_DUES: DuesTier[] = [
   { id: "no-food", label: "Without food", amount: null, note: "per person" },
 ];
 
+/** One action link on a call-out (migration 0093) — tel:… / mailto:… /
+ *  https:…. A call-out can carry more than one (e.g. two separate order
+ *  forms); each renders as its own line/button in CalloutCard so they read as
+ *  distinctly separate actions. */
+export interface CalloutLink {
+  href: string;
+  label: string | null;
+}
+
 /** A Home call-out card — a swipe-away StackItem above the permanent Family
  *  Fest spotlight (see HomeSpotlight/CalloutStack). Admin-managed rows in
- *  `home_callouts` (migration 0083); `dismissId` is the CalloutStack
- *  session-dismissal key, versioned by editors so an updated card resurfaces. */
+ *  `home_callouts` (migration 0083, moved to Admin → Alerts & Notifications);
+ *  `dismissId` is the CalloutStack session-dismissal key, versioned by editors
+ *  so an updated card resurfaces. */
 export interface HomeCallout {
   id: string;
   title: string | null;
   body: string | null;
   imageUrl: string | null;
-  linkHref: string | null; // tel:… / mailto:… / https:…
-  linkLabel: string | null;
+  links: CalloutLink[];
   startsOn: string | null; // ISO date; null = show immediately
   endsOn: string | null; // ISO date, inclusive; null = open-ended
   dismissId: string;
@@ -66,8 +75,7 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     title: null,
     body: null,
     imageUrl: "/ff2026-tshirt-order.jpg",
-    linkHref: "tel:7153653195",
-    linkLabel: "📞 Call Tricia at Metro to order",
+    links: [{ href: "tel:7153653195", label: "📞 Call Tricia at Metro to order" }],
     startsOn: null,
     endsOn: "2026-07-15",
     dismissId: "tshirt-order-jul15-2026",
@@ -166,8 +174,7 @@ interface CalloutRow {
   title: string | null;
   body: string | null;
   image_url: string | null;
-  link_href: string | null;
-  link_label: string | null;
+  links: { href: string; label: string | null }[] | null;
   starts_on: string | null;
   ends_on: string | null;
   dismiss_id: string;
@@ -176,7 +183,7 @@ interface CalloutRow {
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, link_href, link_label, starts_on, ends_on, dismiss_id, position, is_active";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -245,8 +252,7 @@ function mapCallout(r: CalloutRow): HomeCallout {
     title: r.title,
     body: r.body,
     imageUrl: r.image_url,
-    linkHref: r.link_href,
-    linkLabel: r.link_label,
+    links: Array.isArray(r.links) ? r.links : [],
     startsOn: r.starts_on,
     endsOn: r.ends_on,
     dismissId: r.dismiss_id,
@@ -506,8 +512,7 @@ export interface CalloutInput {
   title: string | null;
   body: string | null;
   imageUrl: string | null;
-  linkHref: string | null;
-  linkLabel: string | null;
+  links: CalloutLink[];
   startsOn: string | null;
   endsOn: string | null;
   dismissId: string;
@@ -521,8 +526,7 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     title: i.title,
     body: i.body,
     image_url: i.imageUrl,
-    link_href: i.linkHref,
-    link_label: i.linkLabel,
+    links: i.links,
     starts_on: i.startsOn,
     ends_on: i.endsOn,
     dismiss_id: i.dismissId,
