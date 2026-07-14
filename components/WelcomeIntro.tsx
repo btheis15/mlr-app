@@ -163,7 +163,7 @@ export function WelcomeIntro() {
 
   return (
     <div
-      className={`fixed inset-0 z-[60] flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center ${closing ? "scrim-out" : "scrim-in"}`}
+      className={`fixed inset-0 z-[60] flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`}
     >
       <div
         className={`relative flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-background ring-1 ring-border ${closing ? "pop-close" : "pop-panel"}`}

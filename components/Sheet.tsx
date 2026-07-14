@@ -48,7 +48,12 @@ export function Sheet({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
+      // pointer-events-none once closing starts: the panel is only fading/sliding
+      // out at that point (the CSS scrim/panel animations are 200ms — well short
+      // of the ~440ms useSheetDismiss waits before actually unmounting), so
+      // without this the invisible-but-still-mounted overlay silently eats any
+      // click aimed at the page underneath for that whole gap.
+      className={`fixed inset-0 z-[60] flex items-end justify-center sm:items-center ${closing ? "pointer-events-none" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}

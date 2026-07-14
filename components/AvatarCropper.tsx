@@ -87,7 +87,7 @@ export function AvatarCropper({
   };
 
   return (
-    <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 ${closing ? "scrim-out" : "scrim-in"}`} role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`} role="dialog" aria-modal="true">
       <div className={`w-full max-w-sm space-y-4 rounded-3xl bg-background p-5 ring-1 ring-border ${closing ? "pop-close" : "pop-panel"}`}>
         <p className="text-center text-sm font-semibold">Position your photo</p>
         <div
