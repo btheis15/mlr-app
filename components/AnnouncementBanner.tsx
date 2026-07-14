@@ -5,6 +5,8 @@ import type { Announcement } from "@/lib/types";
 import { timeAgo } from "@/lib/format";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { LOCAL_ANNOUNCEMENTS_KEY, loadLocalAnnouncements } from "@/lib/localAnnouncements";
+import { useEvents } from "@/lib/hooks";
+import { isHiddenForEventTarget } from "@/lib/eventTargeting";
 
 const DISMISSED_KEY = "mlr-dismissed-announcements";
 
@@ -15,6 +17,8 @@ interface AnnouncementRow {
   severity: string;
   created_at: string;
   expires_at: string | null;
+  event_id: string | null;
+  exclude_not_attending: boolean;
 }
 
 /**
@@ -24,6 +28,10 @@ interface AnnouncementRow {
  * doesn't nag after it's been read.
  */
 export function AnnouncementBanner({ items }: { items: Announcement[] }) {
+  // The viewer's own RSVPs, for alerts targeted at an event (see
+  // lib/eventTargeting.ts) — hides an alert from anyone who explicitly
+  // RSVP'd "Can't make it" to the linked event.
+  const { mine } = useEvents();
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [local, setLocal] = useState<Announcement[]>([]);
   const [db, setDb] = useState<Announcement[]>([]);
@@ -62,13 +70,22 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
     const loadDb = async () => {
       const { data } = await sb
         .from("announcements")
-        .select("id, title, body, severity, created_at, expires_at")
+        .select("id, title, body, severity, created_at, expires_at, event_id, exclude_not_attending")
         .order("created_at", { ascending: false })
         .limit(20);
       if (cancelled) return;
       setDb(
         ((data ?? []) as AnnouncementRow[])
-          .map((r) => ({ id: r.id, severity: r.severity === "info" ? "info" : "alert", title: r.title, body: r.body || undefined, ts: r.created_at, expiresAt: r.expires_at || undefined })),
+          .map((r) => ({
+            id: r.id,
+            severity: r.severity === "info" ? "info" : "alert",
+            title: r.title,
+            body: r.body || undefined,
+            ts: r.created_at,
+            expiresAt: r.expires_at || undefined,
+            eventId: r.event_id,
+            excludeNotAttending: r.exclude_not_attending,
+          })),
       );
     };
     loadDb();
@@ -113,7 +130,10 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
   // Then drop anything dismissed on this device; seed items still honor an
   // expiry if they happen to carry one.
   const visible = merged.filter(
-    (a) => !dismissed.includes(a.id) && (!a.expiresAt || new Date(a.expiresAt).getTime() > now),
+    (a) =>
+      !dismissed.includes(a.id) &&
+      (!a.expiresAt || new Date(a.expiresAt).getTime() > now) &&
+      !isHiddenForEventTarget(mine, a.eventId, a.excludeNotAttending),
   );
   if (visible.length === 0) return null;
 

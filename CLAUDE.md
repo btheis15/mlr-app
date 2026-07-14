@@ -567,6 +567,65 @@ Checklist, the quick-actions grid) always in view without extra scrolling.
   sits on its **own channel** in [`lib/useFestContent.ts`](lib/useFestContent.ts)
   so a pre-0083 database can't fail the fest tables' shared channel join.
 
+### Event-targeted broadcasts (migration 0096)
+
+All three admin broadcast tools under Admin → Alerts & Notifications — Home
+call-outs, the top-of-app banner ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)),
+and the Activity-tab notification composer
+([`AdminNotificationComposer`](components/AdminNotificationComposer.tsx)) —
+share one **"link to an event"** control
+([`EventTargetPicker`](components/EventTargetPicker.tsx)): pick an event, and
+an "only show to people attending" checkbox defaults **on**. The rule (see
+[`lib/eventTargeting.ts`](lib/eventTargeting.ts) `isHiddenForEventTarget()`) is
+deliberately narrow — it hides the item **only** from someone who explicitly
+RSVP'd "Can't make it" to that event; a no-response member (or Going/Maybe)
+still sees it, since they might still come and seeing it could nudge them to
+RSVP. `event_attendance.status` is always the rolled-up value (kept in sync by
+the client even for day-RSVP events like Family Fest — see `EventSheet`'s
+day-picker), so a plain `status = 'not_going'` check is equivalent to the
+client's `effectiveStatus()`.
+
+- **Call-outs and the banner are fully client-rendered**, so filtering happens
+  in the browser: `HomeSpotlight`/`AnnouncementBanner` both call `useEvents()`
+  for the viewer's own `mine` RSVP map and run it through
+  `isHiddenForEventTarget()`. `home_callouts`/`announcements` just carry two
+  new columns (`event_id`, `exclude_not_attending`).
+- **Broadcast notifications persist one row per recipient at send time**, so
+  the filtering has to happen server-side: `send_broadcast_notification` grew
+  two trailing-default params (`p_event_id`, `p_exclude_not_attending`) and
+  excludes any profile with a matching `event_attendance.status = 'not_going'`
+  row from the insert.
+- Every write path degrades gracefully pre-migration (retries without the new
+  columns/params on a column/param-not-found error), matching the existing
+  `email_audience` fallback pattern in `AdminAlertComposer`.
+
+### Scheduled broadcasts (migration 0097)
+
+Both `AdminAlertComposer` and `AdminNotificationComposer` carry a shared
+**"Send now" / "Schedule for later"** toggle
+([`ScheduleSendPicker`](components/ScheduleSendPicker.tsx)). Scheduling one
+writes a row to `scheduled_broadcasts` (`kind: 'announcement' | 'notification'`,
+a `payload` jsonb mirroring exactly what the composer already collects,
+`scheduled_at`) via `schedule_broadcast()` — client seam
+[`lib/scheduledBroadcasts.ts`](lib/scheduledBroadcasts.ts). The actual send
+happens **entirely inside Postgres via `pg_cron`** (already enabled on this
+project — not the mac mini, not a Vercel cron), so a scheduled item still
+fires even if the mini is asleep/off or nobody has the app open:
+`run_scheduled_broadcasts()` ticks every minute, fires anything due (one row
+at a time, wrapped so a bad payload can't sink the rest of the queue),
+re-derives `expires_at` **relative to when it actually posts** (not when it
+was scheduled — "6 hours" means 6 hours from going live either way), and
+mirrors the exact same audience/event-targeting rules as an immediate send
+(`send_broadcast_notification`) — see **Event-targeted broadcasts** above,
+which this reuses rather than duplicating.
+
+Admin → Alerts & Notifications → **Scheduled**
+([`AdminScheduledBroadcasts`](components/AdminScheduledBroadcasts.tsx)) is the
+queue view: pending items with **Cancel** (`cancel_scheduled_broadcast`, a
+no-op if it already fired), plus recently-sent/failed rows for visibility — a
+failure is recorded on the row (`error`) rather than silently dropped, and
+surfaces there. Kept live via Realtime, same shape as `AdminCabinBookings`.
+
 ## Home delight cards
 
 Below the quick-actions grid, Home carries a run of light, **self-hiding

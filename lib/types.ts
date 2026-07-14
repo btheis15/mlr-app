@@ -32,6 +32,11 @@ export interface Announcement {
    * (e.g. the seed welcome notice).
    */
   expiresAt?: string;
+  // Event targeting (migration 0096) — see lib/eventTargeting.ts. Set when an
+  // admin links this alert to an event; AnnouncementBanner hides it from
+  // anyone who explicitly RSVP'd "Can't make it" to that event.
+  eventId?: string | null;
+  excludeNotAttending?: boolean;
 }
 
 /** The signed-in guest. Identity is name + email for now (no verification yet);

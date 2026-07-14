@@ -3,6 +3,7 @@ import { BackLink } from "@/components/BackLink";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
 import { AdminCallouts } from "@/components/AdminCallouts";
+import { AdminScheduledBroadcasts } from "@/components/AdminScheduledBroadcasts";
 
 export default function AdminAlertsPage() {
   return (
@@ -15,6 +16,16 @@ export default function AdminAlertsPage() {
             Reach everyone — a banner notice, or their Activity tab.
           </p>
         </header>
+
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
+            Scheduled
+          </p>
+          <p className="px-1 text-xs text-muted">
+            Alerts/notifications queued for a future send time.
+          </p>
+          <AdminScheduledBroadcasts />
+        </div>
 
         <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
