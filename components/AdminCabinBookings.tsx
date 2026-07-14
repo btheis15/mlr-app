@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -42,6 +42,13 @@ export function AdminCabinBookings() {
   const [people, setPeople] = useState<Map<string, ProfileLite>>(adminCabinCache?.people ?? new Map());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const { busy, run } = useBusyAction();
+  // Deep-link from a "X requested a cabin stay" notification
+  // (/admin/cabins?booking=<id>) — scroll to and flash-ring that request
+  // instead of leaving the admin to find it in the list themselves. Fires
+  // once pending has loaded (not on `loading`, so the warm-cache instant
+  // paint still gets the flash) and only once (deepLinked ref).
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const deepLinked = useRef(false);
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([fetchBookings(["pending"]), fetchBookings(["approved"])]);
@@ -56,6 +63,17 @@ export function AdminCabinBookings() {
     // Realtime + the next load() keep it current.
     adminCabinCache = { pending: p, approved: a, people: ppl };
   }, []);
+
+  useEffect(() => {
+    if (deepLinked.current || typeof window === "undefined" || pending.length === 0) return;
+    const want = new URLSearchParams(window.location.search).get("booking");
+    if (!want) return;
+    if (!pending.some((b) => b.id === want)) return;
+    deepLinked.current = true;
+    setFlashId(want);
+    window.setTimeout(() => document.getElementById(`cabin-request-${want}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    window.setTimeout(() => setFlashId(null), 2200);
+  }, [pending]);
 
   useEffect(() => {
     if (!isAdmin || !isSupabaseConfigured) return;
@@ -107,7 +125,11 @@ export function AdminCabinBookings() {
           pending.map((b) => {
             const who = b.userId ? people.get(b.userId) : undefined;
             return (
-              <div key={b.id} className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
+              <div
+                key={b.id}
+                id={`cabin-request-${b.id}`}
+                className={`space-y-2 rounded-2xl bg-card p-3 transition-shadow ${flashId === b.id ? "ring-2 ring-primary" : "ring-1 ring-border"}`}
+              >
                 <div className="flex items-center gap-2">
                   <Avatar name={who?.name ?? "Member"} url={who?.avatarUrl} size={36} />
                   <div className="min-w-0 flex-1">
