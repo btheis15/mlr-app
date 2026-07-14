@@ -72,6 +72,14 @@ export function profileMap(profiles: ProfileLite[]): Map<string, ProfileLite> {
  * My standing with a committee: "member", "pending" (requested, awaiting
  * approval), or "none". Pass `userId` to skip the auth round-trip when you
  * already know it.
+ *
+ * Checks `committee_members` AND a linked `committee_roster` slot — the
+ * roster has been the real access gate since migration 0057 (a pre-registered
+ * person who verifies with their roster email is auto-linked with no
+ * join-request needed), but this function originally only checked
+ * `committee_members`, so a roster-linked member was wrongly shown "request
+ * to join" for chat they already had access to. See fetchMyAreas, whose own
+ * comment already called this split out.
  */
 export async function fetchJoinState(
   committeeId: string,
@@ -88,6 +96,17 @@ export async function fetchJoinState(
     .eq("user_id", me)
     .maybeSingle();
   if (mem) return "member";
+  const { data: committee } = await sb.from("committees").select("slug").eq("id", committeeId).maybeSingle();
+  const slug = (committee as { slug: string } | null)?.slug;
+  if (slug) {
+    const { data: roster } = await sb
+      .from("committee_roster")
+      .select("id")
+      .eq("committee_slug", slug)
+      .eq("linked_user_id", me)
+      .maybeSingle();
+    if (roster) return "member";
+  }
   const { data: req } = await sb
     .from("committee_join_requests")
     .select("status")
