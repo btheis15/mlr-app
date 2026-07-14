@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { useBusyAction } from "@/lib/hooks";
 import { fetchProfiles, profileMap, type ProfileLite } from "@/lib/roles";
 import { fetchBookings, formatStay, reviewStay, cancelStay } from "@/lib/cabins";
-import { BookingRoomsSheet } from "@/components/BookingRoomsSheet";
+import { EditBookingSheet } from "@/components/EditBookingSheet";
 import type { CabinBooking } from "@/lib/types";
 
 /**
@@ -50,7 +50,7 @@ export function AdminCabinBookings() {
   // paint still gets the flash) and only once (deepLinked ref).
   const [flashId, setFlashId] = useState<string | null>(null);
   const deepLinked = useRef(false);
-  const [assigningRooms, setAssigningRooms] = useState<CabinBooking | null>(null);
+  const [editing, setEditing] = useState<CabinBooking | null>(null);
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([fetchBookings(["pending"]), fetchBookings(["approved"])]);
@@ -159,8 +159,8 @@ export function AdminCabinBookings() {
                     <p className="text-xs text-muted">
                       🛏️ {b.rooms.length > 0 ? b.rooms.map((r) => r.name).join(", ") : "No rooms assigned"}
                       {" · "}
-                      <button type="button" onClick={() => setAssigningRooms(b)} className="press font-medium text-primary">
-                        {b.rooms.length > 0 ? "Change" : "Assign"}
+                      <button type="button" onClick={() => setEditing(b)} className="press font-medium text-primary">
+                        Edit
                       </button>
                     </p>
                   </div>
@@ -227,8 +227,8 @@ export function AdminCabinBookings() {
                     <p className="truncate text-xs text-muted">
                       🛏️ {b.rooms.length > 0 ? b.rooms.map((r) => r.name).join(", ") : "No rooms assigned"}
                       {" · "}
-                      <button type="button" onClick={() => setAssigningRooms(b)} className="press font-medium text-primary">
-                        {b.rooms.length > 0 ? "Change" : "Assign"}
+                      <button type="button" onClick={() => setEditing(b)} className="press font-medium text-primary">
+                        Edit
                       </button>
                     </p>
                   </div>
@@ -246,10 +246,10 @@ export function AdminCabinBookings() {
         </section>
       )}
 
-      {assigningRooms && (
-        <BookingRoomsSheet
-          booking={assigningRooms}
-          onClose={() => setAssigningRooms(null)}
+      {editing && (
+        <EditBookingSheet
+          booking={editing}
+          onClose={() => setEditing(null)}
           onSaved={load}
         />
       )}
