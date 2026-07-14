@@ -99,6 +99,27 @@ export function FeedView() {
   // (which lives outside the load effect's closure) can trigger a refresh.
   const computeSummariesRef = useRef<() => Promise<void>>(async () => {});
 
+  // Messages-style push/pop for the full-screen room containers: the room
+  // slides in from the right on open (chat-push, plays on mount) and Back
+  // holds the room mounted just long enough to slide it back out (chat-pop)
+  // before navigating — the same state-timed close idiom as useSheetDismiss.
+  const [chatClosing, setChatClosing] = useState(false);
+  const chatAnim = chatClosing ? "chat-pop" : "chat-push";
+  const closeChat = (after: () => void) => {
+    const reduce =
+      typeof window !== "undefined" &&
+      Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    if (reduce || chatClosing) {
+      after();
+      return;
+    }
+    setChatClosing(true);
+    setTimeout(() => {
+      setChatClosing(false);
+      after();
+    }, 240); // matches the chat-pop duration in globals.css
+  };
+
   // Persisted-snapshot seed + house deep-link fast path (post-mount, so it's
   // hydration-safe). On a cold app open the module cache is empty; restore the
   // last known channel list from storage so the Chats list paints instantly —
@@ -438,11 +459,11 @@ export function FeedView() {
   // The house chat opened from the list.
   if (houseChannel && active === houseChannel.key) {
     return (
-      <div ref={chatBoxRef} data-ptr-block className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+      <div ref={chatBoxRef} data-ptr-block className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
           <BackButton
             label={openedFromHouseRef.current ? "House" : "Feed"}
-            onClick={() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); }}
+            onClick={() => closeChat(() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); })}
           />
           <div className="min-w-0 flex-1 text-center">
             <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
@@ -461,9 +482,9 @@ export function FeedView() {
   if (activeChannel) {
     return (
       <>
-        <div ref={chatBoxRef} data-ptr-block className="fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background" style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <div ref={chatBoxRef} data-ptr-block className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-            <BackButton label="Feed" onClick={() => setActive("list")} />
+            <BackButton label="Feed" onClick={() => closeChat(() => setActive("list"))} />
             <div className="min-w-0 flex-1 text-center">
               <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
               {activeChannel.subtitle && <p className="truncate text-[11px] text-foreground/45">{activeChannel.subtitle}</p>}
