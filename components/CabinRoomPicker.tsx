@@ -62,6 +62,7 @@ export function CabinRoomPicker({
                 🛏️ {r.beds} bed{r.beds === 1 ? "" : "s"}
                 {status && <span className={disabled ? "text-accent" : "text-muted"}> · {status}</span>}
               </span>
+              {r.description?.trim() && <span className="mt-0.5 block text-xs text-faint">{r.description}</span>}
             </span>
           </button>
         );

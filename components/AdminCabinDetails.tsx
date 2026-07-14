@@ -248,8 +248,18 @@ function CabinRoomsEditor({
   const [newName, setNewName] = useState("");
   const [newBeds, setNewBeds] = useState("1");
 
-  const editRoom = (room: CabinRoom, patch: Partial<Pick<CabinRoom, "name" | "beds" | "active">>) =>
-    run(room.id, () => saveCabinRoom({ id: room.id, cabinId, name: room.name, beds: room.beds, active: room.active, ...patch }));
+  const editRoom = (room: CabinRoom, patch: Partial<Pick<CabinRoom, "name" | "beds" | "description" | "active">>) =>
+    run(room.id, () =>
+      saveCabinRoom({
+        id: room.id,
+        cabinId,
+        name: room.name,
+        beds: room.beds,
+        description: room.description,
+        active: room.active,
+        ...patch,
+      }),
+    );
 
   const run = async (id: string, rpc: () => Promise<{ error?: string }>) => {
     setBusyId(id);
@@ -289,43 +299,52 @@ function CabinRoomsEditor({
       {rooms.length > 0 && (
         <ul className="space-y-1.5">
           {rooms.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 rounded-xl bg-card p-2 ring-1 ring-border">
+            <li key={r.id} className="space-y-1.5 rounded-xl bg-card p-2 ring-1 ring-border">
+              <div className="flex items-center gap-2">
+                <input
+                  value={r.name}
+                  onChange={(e) => editRoom(r, { name: e.target.value })}
+                  className="min-w-0 flex-1 rounded-lg bg-background px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={r.beds}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (Number.isFinite(v) && v >= 0) editRoom(r, { beds: v });
+                  }}
+                  aria-label={`${r.name} beds`}
+                  className="w-14 shrink-0 rounded-lg bg-background px-2 py-1.5 text-center text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => editRoom(r, { active: !r.active })}
+                  disabled={busyId === r.id}
+                  className={`press shrink-0 rounded-full px-2 py-1.5 text-[10px] font-semibold ring-1 disabled:opacity-50 ${
+                    r.active ? "bg-primary/10 text-primary ring-primary/30" : "bg-foreground/10 text-muted ring-border"
+                  }`}
+                >
+                  {r.active ? "Open" : "Closed"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(r)}
+                  disabled={busyId === r.id}
+                  aria-label={`Delete ${r.name}`}
+                  className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
               <input
-                value={r.name}
-                onChange={(e) => editRoom(r, { name: e.target.value })}
-                className="min-w-0 flex-1 rounded-lg bg-background px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                value={r.description ?? ""}
+                onChange={(e) => editRoom(r, { description: e.target.value || null })}
+                placeholder="Description (optional) — e.g. small room, no closet"
+                aria-label={`${r.name} description`}
+                className="w-full rounded-lg bg-background px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
               />
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={r.beds}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  if (Number.isFinite(v) && v >= 0) editRoom(r, { beds: v });
-                }}
-                aria-label={`${r.name} beds`}
-                className="w-14 shrink-0 rounded-lg bg-background px-2 py-1.5 text-center text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-              />
-              <button
-                type="button"
-                onClick={() => editRoom(r, { active: !r.active })}
-                disabled={busyId === r.id}
-                className={`press shrink-0 rounded-full px-2 py-1.5 text-[10px] font-semibold ring-1 disabled:opacity-50 ${
-                  r.active ? "bg-primary/10 text-primary ring-primary/30" : "bg-foreground/10 text-muted ring-border"
-                }`}
-              >
-                {r.active ? "Open" : "Closed"}
-              </button>
-              <button
-                type="button"
-                onClick={() => remove(r)}
-                disabled={busyId === r.id}
-                aria-label={`Delete ${r.name}`}
-                className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-50"
-              >
-                ✕
-              </button>
             </li>
           ))}
         </ul>

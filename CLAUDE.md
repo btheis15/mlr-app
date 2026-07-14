@@ -760,13 +760,15 @@ through SECURITY DEFINER RPCs. Data model: migration
   and the request auto-approves right after creation (`reviewStay`) instead of
   sitting in the pending queue for the same admin to approve a second time.
 - **Named rooms/areas within a cabin** (migration
-  [`0092`](supabase/migrations/0092_cabin_rooms.sql)) — a cabin can be broken
-  into specific, pickable rooms (`cabin_rooms`: name, `beds`, `active`) instead
-  of a bare room count, e.g. Red & White House's "Upstairs South Room",
-  "Upstairs East Room", "Upstairs Open Area", "Downstairs Near Bathroom",
-  "Downstairs Near Stairs" (seeded closed). **A cabin with zero `cabin_rooms`
-  rows keeps the original plain-room-count flow untouched** — this is additive,
-  not a replacement. Once a cabin has rooms:
+  [`0092`](supabase/migrations/0092_cabin_rooms.sql); room `description` added
+  in [`0094`](supabase/migrations/0094_cabin_room_description.sql)) — a cabin
+  can be broken into specific, pickable rooms (`cabin_rooms`: name, `beds`, a
+  free-form `description` shown to members in the picker e.g. "small room, no
+  closet", `active`) instead of a bare room count, e.g. Red & White House's
+  "Upstairs South Room", "Upstairs East Room", "Upstairs Open Area",
+  "Downstairs Near Bathroom", "Downstairs Near Stairs" (seeded closed). **A
+  cabin with zero `cabin_rooms` rows keeps the original plain-room-count flow
+  untouched** — this is additive, not a replacement. Once a cabin has rooms:
   - Booking requires picking specific room(s) — one room per bed needed — via
     the shared [`CabinRoomPicker`](components/CabinRoomPicker.tsx) (used in
     both `CabinRequestSheet` and the admin's room-reassignment sheet), backed
@@ -780,13 +782,18 @@ through SECURITY DEFINER RPCs. Data model: migration
   - `cabin_availability`'s "X of Y rooms left" derives Y/X from the active
     `cabin_rooms` count/per-room overlap instead of the manually-set
     `room_count` field, so the two can't drift out of sync once rooms exist.
+  - **Toggling a room (or a whole cabin) closed only blocks NEW picks** —
+    `cabin_room_availability`/`request_cabin_stay`/`set_booking_rooms` all gate
+    on `active`, but none of them touch `cabin_booking_rooms` rows already tied
+    to existing reservations, so a room/cabin can be closed to future bookings
+    without disturbing anyone already booked into it.
   - **`set_booking_rooms(booking, room_ids)`** is a standalone admin-only RPC
     to (re)assign rooms on **any** existing booking, any time — not just at
     creation. This is how reservations made before rooms existed get their
     room assignments filled in by hand, via "Assign/Change" on each row in
     [`AdminCabinBookings`](components/AdminCabinBookings.tsx) →
     [`BookingRoomsSheet`](components/BookingRoomsSheet.tsx). Room CRUD itself
-    (add/rename/set beds/open-close/delete) is inline in
+    (add/rename/set beds/description/open-close/delete) is inline in
     [`AdminCabinDetails`](components/AdminCabinDetails.tsx)'s edit sheet.
 
 ## Content safeguards (feed moderation)

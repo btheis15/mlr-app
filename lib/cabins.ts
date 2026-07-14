@@ -133,12 +133,21 @@ interface CabinRoomRow {
   cabin_id: string;
   name: string;
   beds: number;
+  description: string | null;
   active: boolean;
   sort_order: number;
 }
 
 function mapCabinRoomRow(r: CabinRoomRow): CabinRoom {
-  return { id: r.id, cabinId: r.cabin_id, name: r.name, beds: r.beds, active: r.active, sortOrder: r.sort_order };
+  return {
+    id: r.id,
+    cabinId: r.cabin_id,
+    name: r.name,
+    beds: r.beds,
+    description: r.description ?? null,
+    active: r.active,
+    sortOrder: r.sort_order,
+  };
 }
 
 /** The named rooms/areas within a cabin (migration 0092), ordered. Empty for a
@@ -149,7 +158,7 @@ export async function fetchCabinRooms(cabinId: string): Promise<CabinRoom[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabin_rooms")
-    .select("id, cabin_id, name, beds, active, sort_order")
+    .select("id, cabin_id, name, beds, description, active, sort_order")
     .eq("cabin_id", cabinId)
     .order("sort_order", { ascending: true });
   return ((data ?? []) as CabinRoomRow[]).map(mapCabinRoomRow);
@@ -161,6 +170,7 @@ export async function saveCabinRoom(input: {
   cabinId: string;
   name: string;
   beds: number;
+  description?: string | null;
   active: boolean;
   sortOrder?: number;
 }): Promise<{ error?: string }> {
@@ -170,6 +180,7 @@ export async function saveCabinRoom(input: {
     cabin_id: input.cabinId,
     name: input.name,
     beds: input.beds,
+    ...(input.description !== undefined ? { description: input.description } : {}),
     active: input.active,
     ...(input.sortOrder != null ? { sort_order: input.sortOrder } : {}),
   };
@@ -202,9 +213,16 @@ export async function fetchRoomAvailability(
     p_check_out: checkOut,
   });
   if (error) return [];
-  return ((data ?? []) as { room_id: string; name: string; beds: number; active: boolean; available: boolean }[]).map(
-    (r) => ({ roomId: r.room_id, name: r.name, beds: r.beds, active: r.active, available: r.available }),
-  );
+  return (
+    (data ?? []) as { room_id: string; name: string; beds: number; description: string | null; active: boolean; available: boolean }[]
+  ).map((r) => ({
+    roomId: r.room_id,
+    name: r.name,
+    beds: r.beds,
+    description: r.description ?? null,
+    active: r.active,
+    available: r.available,
+  }));
 }
 
 /** Rooms still bookable for the whole [checkIn, checkOut) range, per cabin. */

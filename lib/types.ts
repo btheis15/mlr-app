@@ -463,6 +463,9 @@ export interface CabinRoom {
   cabinId: string;
   name: string;
   beds: number;
+  // Free-form admin note about this specific room (migration 0094), e.g.
+  // "small room, no closet" — shown to members in the room picker.
+  description: string | null;
   active: boolean;
   sortOrder: number;
 }
@@ -472,6 +475,7 @@ export interface CabinRoomAvailability {
   roomId: string;
   name: string;
   beds: number;
+  description: string | null;
   active: boolean;
   /** False if closed (`active` false) OR already approved-booked for an
    *  overlapping range. */
