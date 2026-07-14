@@ -183,10 +183,10 @@ function TodayDinner({ d }: { d: Dinner }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-sm font-semibold">Dinner · {d.title}</h3>
-            <span className="shrink-0 text-xs font-medium text-accent">{d.time}</span>
+            <span className="shrink-0 text-xs font-medium text-accent">{formatTime(d.time)}</span>
           </div>
           <p className="text-xs text-foreground/50">
-            📍 <Protected label="Sign in for location">{d.location}</Protected> · prep starts {d.prepTime}
+            📍 <Protected label="Sign in for location">{d.location}</Protected> · prep starts {formatTime(d.prepTime)}
           </p>
           <p className="mt-1 text-xs text-foreground/70">{d.menu}</p>
         </div>

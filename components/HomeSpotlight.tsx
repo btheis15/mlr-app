@@ -44,7 +44,7 @@ function isLive(c: HomeCallout, today: string | null): boolean {
  */
 export function HomeSpotlight() {
   // Live fest content (schedule + meta + call-outs) so Home matches the Planner.
-  const { config, schedule, callouts } = useFestContent({ realtime: true });
+  const { config, schedule, dinners, callouts } = useFestContent({ realtime: true });
   const { today } = useDemoDate();
   // The viewer's own RSVPs, for callouts targeted at an event (see
   // lib/eventTargeting.ts) — hides a card from anyone who explicitly RSVP'd
@@ -112,6 +112,7 @@ export function HomeSpotlight() {
         startDate={config.startDate}
         endDate={config.endDate}
         schedule={schedule}
+        dinners={dinners}
       />
     ),
   });
