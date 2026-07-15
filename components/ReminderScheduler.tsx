@@ -207,6 +207,11 @@ export function ReminderScheduler({
           )}
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Notification title" className={`${FIELD} w-full`} />
           <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Details (optional)" rows={2} className={`${FIELD} w-full resize-none`} />
+          {sourceType === "callout" && (
+            <p className="px-0.5 text-[11px] text-faint">
+              Skips anyone who already marked this callout &ldquo;done&rdquo;.
+            </p>
+          )}
           {computedAt && (
             <p className="px-0.5 text-[11px] text-faint">
               {inPast ? "That time has already passed." : `Sends ${formatWhen(computedAt.toISOString())}`}
