@@ -138,6 +138,7 @@ function EditScheduledBroadcastSheet({
   const save = useSaveStatus();
   const [title, setTitle] = useState(item.payload.title);
   const [body, setBody] = useState(item.payload.body ?? "");
+  const [excludeDone, setExcludeDone] = useState(item.payload.excludeCalloutDone ?? true);
   const toLocalInput = (iso: string) => {
     const d = new Date(iso);
     d.setSeconds(0, 0);
@@ -153,7 +154,12 @@ function EditScheduledBroadcastSheet({
       if (!scheduleAt) return "Pick a send time.";
       const { error } = await updateScheduledBroadcast(
         item.id,
-        { ...item.payload, title: title.trim(), body: body.trim() || null },
+        {
+          ...item.payload,
+          title: title.trim(),
+          body: body.trim() || null,
+          ...(item.payload.sourceType === "callout" ? { excludeCalloutDone: excludeDone } : {}),
+        },
         new Date(scheduleAt).toISOString(),
       );
       if (error) return error;
@@ -193,6 +199,17 @@ function EditScheduledBroadcastSheet({
         <SectionLabel>Body (optional)</SectionLabel>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} />
       </div>
+      {item.payload.sourceType === "callout" && (
+        <label className="flex items-center justify-between gap-2 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="text-sm">Skip anyone who already marked this callout &ldquo;done&rdquo;</span>
+          <input
+            type="checkbox"
+            checked={excludeDone}
+            onChange={(e) => setExcludeDone(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+      )}
       <div className="space-y-2">
         <SectionLabel>Send time</SectionLabel>
         <input

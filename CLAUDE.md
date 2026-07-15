@@ -725,14 +725,20 @@ broadcasts** above), tagged with `sourceType`/`sourceId`/`sourceLabel` in
 the same `eventId`/`excludeNotAttending` targeting as the other broadcast
 composers when the event/callout itself has (or is linked to) an event.
 
-**A callout reminder skips anyone who already marked that callout "done"**
-(migration [`0102`](supabase/migrations/0102_reminder_exclude_callout_done.sql)
-— `home_callout_completions`, the permanent per-member "I did this" from
-migration 0098, distinct from the session-only swipe dismiss). This is the one
-place `run_scheduled_broadcasts()` reads `payload.sourceType`/`sourceId`
-directly rather than treating it as an opaque label — when `sourceType =
-'callout'`, it excludes any recipient with a completion row for that callout id
-before sending, same idea as `excludeNotAttending` for event targeting.
+**A callout reminder can skip anyone who already marked that callout "done"**
+(`home_callout_completions`, the permanent per-member "I did this" from
+migration 0098, distinct from the session-only swipe dismiss) — a checkbox in
+`ReminderScheduler`, **"Skip anyone who already marked this callout 'done'"**,
+default **on**, stored as `payload.excludeCalloutDone` (editable later too, in
+`AdminScheduledBroadcasts`' edit sheet). This is the one payload field
+`run_scheduled_broadcasts()` reads directly rather than treating as an opaque
+label — when `sourceType = 'callout'` and the flag is on (`coalesce(...,
+true)`, so pre-toggle rows from migration 0102 keep behaving as before), it
+excludes any recipient with a completion row for that callout id before
+sending, same idea as `excludeNotAttending` for event targeting. Migrations
+[`0102`](supabase/migrations/0102_reminder_exclude_callout_done.sql) (always-on)
+→ [`0103`](supabase/migrations/0103_reminder_exclude_callout_done_toggle.sql)
+(made it optional).
 
 Only usable once the item has a real id — a brand-new, unsaved event/callout
 has nothing to attach a queued row to yet, so `ReminderScheduler` is mounted

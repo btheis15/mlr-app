@@ -94,6 +94,7 @@ export function ReminderScheduler({
   const [customAt, setCustomAt] = useState(toLocalInput(new Date(Date.now() + DAY).toISOString()));
   const [title, setTitle] = useState(defaultTitle ?? `Reminder: ${sourceLabel}`);
   const [body, setBody] = useState(defaultBody ?? "");
+  const [excludeDone, setExcludeDone] = useState(true);
   const save = useSaveStatus();
   const { busy, run } = useBusyAction();
 
@@ -128,6 +129,7 @@ export function ReminderScheduler({
           sourceType,
           sourceId,
           sourceLabel,
+          excludeCalloutDone: sourceType === "callout" ? excludeDone : undefined,
         },
         computedAt.toISOString(),
       );
@@ -208,9 +210,15 @@ export function ReminderScheduler({
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Notification title" className={`${FIELD} w-full`} />
           <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Details (optional)" rows={2} className={`${FIELD} w-full resize-none`} />
           {sourceType === "callout" && (
-            <p className="px-0.5 text-[11px] text-faint">
-              Skips anyone who already marked this callout &ldquo;done&rdquo;.
-            </p>
+            <label className="flex items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-2 text-xs text-foreground/70 ring-1 ring-border">
+              <span>Skip anyone who already marked this callout &ldquo;done&rdquo;</span>
+              <input
+                type="checkbox"
+                checked={excludeDone}
+                onChange={(e) => setExcludeDone(e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+              />
+            </label>
           )}
           {computedAt && (
             <p className="px-0.5 text-[11px] text-faint">
