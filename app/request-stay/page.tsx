@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { CabinRequestSheet } from "@/components/CabinRequestSheet";
+import { PickMyRoomSheet } from "@/components/PickMyRoomSheet";
 import { SkeletonList } from "@/components/Skeleton";
 import { Avatar } from "@/components/Avatar";
 import { Sheet, FIELD } from "@/components/Sheet";
@@ -16,6 +17,7 @@ import {
   FF_CHECK_OUT,
   cancelStay,
   fetchAvailability,
+  fetchCabinRooms,
   fetchCabins,
   fetchMyBookings,
   formatStay,
@@ -215,7 +217,7 @@ export default function RequestStayPage() {
             <section className="space-y-2">
               <h2 className="px-0.5 text-sm font-semibold">Your requests</h2>
               {myBookings.map((b) => (
-                <BookingRow key={b.id} booking={b} onCancel={() => cancel(b)} />
+                <BookingRow key={b.id} booking={b} onCancel={() => cancel(b)} onRoomPicked={load} />
               ))}
             </section>
           )}
@@ -379,9 +381,32 @@ const STATUS: Record<CabinBooking["status"], { label: string; chip: string }> = 
   cancelled: { label: "Cancelled", chip: "bg-foreground/10 text-faint" },
 };
 
-function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: () => void }) {
+function BookingRow({
+  booking,
+  onCancel,
+  onRoomPicked,
+}: {
+  booking: CabinBooking;
+  onCancel: () => void;
+  onRoomPicked: () => Promise<void> | void;
+}) {
   const s = STATUS[booking.status];
   const canCancel = booking.status === "pending" || booking.status === "approved";
+  const needsRoom = booking.rooms.length === 0 && (booking.status === "pending" || booking.status === "approved");
+  const [hasNamedRooms, setHasNamedRooms] = useState(false);
+  const [pickingRoom, setPickingRoom] = useState(false);
+
+  useEffect(() => {
+    if (!needsRoom) return;
+    let cancelled = false;
+    fetchCabinRooms(booking.cabinId).then((rows) => {
+      if (!cancelled) setHasNamedRooms(rows.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.cabinId, needsRoom]);
+
   return (
     <div className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-start justify-between gap-2">
@@ -391,8 +416,13 @@ function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: ()
           <p className="text-xs text-faint">
             {booking.guests} guest{booking.guests === 1 ? "" : "s"}
           </p>
-          {booking.rooms.length > 0 && (
+          {booking.rooms.length > 0 ? (
             <p className="text-xs text-faint">🛏️ {booking.rooms.map((r) => r.name).join(", ")}</p>
+          ) : (
+            needsRoom &&
+            hasNamedRooms && (
+              <p className="text-xs font-medium text-accent">🛏️ No room picked yet</p>
+            )
           )}
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.chip}`}>{s.label}</span>
@@ -402,13 +432,24 @@ function BookingRow({ booking, onCancel }: { booking: CabinBooking; onCancel: ()
           <span className="font-medium">Note from the admin:</span> {booking.reviewNote}
         </p>
       )}
-      {canCancel && (
-        <button
-          onClick={onCancel}
-          className="press text-xs font-medium text-accent"
-        >
-          Cancel request
-        </button>
+      <div className="flex items-center gap-3">
+        {needsRoom && hasNamedRooms && (
+          <button onClick={() => setPickingRoom(true)} className="press text-xs font-medium text-primary">
+            Choose your room
+          </button>
+        )}
+        {canCancel && (
+          <button onClick={onCancel} className="press text-xs font-medium text-accent">
+            Cancel request
+          </button>
+        )}
+      </div>
+      {pickingRoom && (
+        <PickMyRoomSheet
+          booking={booking}
+          onClose={() => setPickingRoom(false)}
+          onSaved={onRoomPicked}
+        />
       )}
     </div>
   );

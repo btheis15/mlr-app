@@ -138,18 +138,29 @@ async function start() {
     const note = d.review_note
       ? `<p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:14px"><strong>Note from the admin:</strong> ${escapeHtml(d.review_note)}</p>`
       : "";
+    // Nudge an approved requester with no room yet to pick one themselves
+    // (migration 0106/0107) — only when the cabin actually uses named rooms;
+    // a plain room-count cabin has nothing to pick.
+    const needsRoomPick = approved && d.cabin_has_rooms && !d.room_names;
+    const roomLine = d.room_names
+      ? [["Room", escapeHtml(d.room_names)]]
+      : [];
     const detailRows = [
       ["Cabin", escapeHtml(d.cabin_name)],
       ["Check-in", `${fmtFull(d.check_in)} <span style="color:#888">(from 4:00 PM)</span>`],
       ["Check-out", `${fmtFull(d.check_out)} <span style="color:#888">(by 11:00 AM)</span>`],
       ["Nights", String(n)],
       ["Guests", String(d.guests)],
+      ...roomLine,
     ]
       .map(
         ([k, v]) =>
           `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:nowrap;vertical-align:top">${k}</td><td style="padding:4px 0"><strong>${v}</strong></td></tr>`,
       )
       .join("");
+    const roomPickNote = needsRoomPick
+      ? `<p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:14px">🛏️ <strong>No room picked yet</strong> — open the app, find this stay under <strong>Cabin Bookings → Your requests</strong>, and tap <strong>Choose your room</strong> once you know which one you want.</p>`
+      : "";
 
     const html = approved
       ? `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
@@ -159,6 +170,7 @@ async function start() {
 <table style="border-collapse:collapse;font-size:14px;margin:0 0 4px">${detailRows}</table>
 ${d.notes ? `<p style="margin:12px 0 0;font-size:13px;color:#555">Your note: “${escapeHtml(d.notes)}”</p>` : ""}
 ${note}
+${roomPickNote}
 <p style="margin:20px 0 0"><a href="${APP_URL}/request-stay" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">View in the app →</a></p>
 <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
 <p style="color:#888;font-size:12px;margin:0">Muskellunge Lake Resort · Muskellunge Lake, 5 mi from Tomahawk on Hwy 8, Tomahawk, WI</p>
@@ -174,7 +186,7 @@ ${note}
 </div>`;
 
     const text = approved
-      ? `Your cabin stay is confirmed.\n\nCabin: ${d.cabin_name}\nCheck-in: ${fmtFull(d.check_in)} (from 4:00 PM)\nCheck-out: ${fmtFull(d.check_out)} (by 11:00 AM)\nNights: ${n}\nGuests: ${d.guests}${d.review_note ? `\n\nNote from the admin: ${d.review_note}` : ""}\n\nView in the app: ${APP_URL}/request-stay\n\n— Muskellunge Lake Resort`
+      ? `Your cabin stay is confirmed.\n\nCabin: ${d.cabin_name}\nCheck-in: ${fmtFull(d.check_in)} (from 4:00 PM)\nCheck-out: ${fmtFull(d.check_out)} (by 11:00 AM)\nNights: ${n}\nGuests: ${d.guests}${d.room_names ? `\nRoom: ${d.room_names}` : ""}${d.review_note ? `\n\nNote from the admin: ${d.review_note}` : ""}${needsRoomPick ? `\n\nNo room picked yet — open the app, find this stay under Cabin Bookings → Your requests, and tap Choose your room once you know which one you want.` : ""}\n\nView in the app: ${APP_URL}/request-stay\n\n— Muskellunge Lake Resort`
       : `Thanks for your cabin stay request for ${d.cabin_name} (${stay}). Unfortunately we weren't able to approve it this time.${d.review_note ? `\n\nNote from the admin: ${d.review_note}` : ""}\n\nQuestions or different dates? Reply to this email or reach out to an admin.\n\n— Muskellunge Lake Resort`;
 
     try {
@@ -183,6 +195,76 @@ ${note}
     } catch (e) {
       console.error("[mailer] cabin send failed:", e && e.message);
       await sb.from("cabin_bookings").update({ decision_email_sent_at: null }).eq("id", row.id); // let a retry pick it up
+    }
+  }
+
+  // Email the requester when an admin edits an existing booking's dates/guests/
+  // notes and opts in to notifying them (migration 0105) — distinct from the
+  // approve/deny confirmation: an edit can happen any number of times, so it
+  // claims by advancing edit_email_sent_at to match this edit's
+  // edit_notify_requested_at rather than a one-shot boolean.
+  async function handleCabinEdit(row) {
+    if (!row || !row.edit_notify_requested_at) return;
+    if (row.edit_email_sent_at && row.edit_email_sent_at >= row.edit_notify_requested_at) return;
+    // Claim by advancing edit_email_sent_at to this edit's requested_at, only
+    // if nobody else already claimed this exact edit (matching both
+    // timestamps guards against a concurrent duplicate event for the same
+    // edit; a later edit gets a newer requested_at and claims independently).
+    const { data: claimed } = await sb
+      .from("cabin_bookings")
+      .update({ edit_email_sent_at: row.edit_notify_requested_at })
+      .eq("id", row.id)
+      .eq("edit_notify_requested_at", row.edit_notify_requested_at)
+      .or(`edit_email_sent_at.is.null,edit_email_sent_at.neq.${row.edit_notify_requested_at}`)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("cabin_booking_notification", { p_booking: row.id });
+    const d = (info || [])[0];
+    if (error || !d || !d.requester_email) {
+      console.log(`[mailer] cabin edit ${row.id}: no recipient (${error ? error.message : "no email"})`);
+      return;
+    }
+
+    const stay = `${fmtFull(d.check_in)} → ${fmtFull(d.check_out)}`;
+    const n = nightsBetween(d.check_in, d.check_out);
+    const needsRoomPick = d.cabin_has_rooms && !d.room_names;
+    const detailRows = [
+      ["Cabin", escapeHtml(d.cabin_name)],
+      ["Check-in", `${fmtFull(d.check_in)} <span style="color:#888">(from 4:00 PM)</span>`],
+      ["Check-out", `${fmtFull(d.check_out)} <span style="color:#888">(by 11:00 AM)</span>`],
+      ["Nights", String(n)],
+      ["Guests", String(d.guests)],
+      ...(d.room_names ? [["Room", escapeHtml(d.room_names)]] : []),
+    ]
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:nowrap;vertical-align:top">${k}</td><td style="padding:4px 0"><strong>${v}</strong></td></tr>`,
+      )
+      .join("");
+    const roomPickNote = needsRoomPick
+      ? `<p style="margin:16px 0 0;padding:12px 14px;background:#f6f6f1;border-radius:10px;font-size:14px">🛏️ <strong>No room picked yet</strong> — open the app, find this stay under <strong>Cabin Bookings → Your requests</strong>, and tap <strong>Choose your room</strong> once you know which one you want.</p>`
+      : "";
+    const subject = `Your cabin stay was updated — ${d.cabin_name}`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:18px;margin:0 0 2px"><strong>Your cabin stay was updated</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
+<p style="margin:0 0 12px;font-size:15px">Hi ${escapeHtml(d.requester_name)}, an admin made a change to your ${escapeHtml(d.cabin_name)} stay. Here's the current state:</p>
+<table style="border-collapse:collapse;font-size:14px;margin:0 0 4px">${detailRows}</table>
+${d.notes ? `<p style="margin:12px 0 0;font-size:13px;color:#555">Notes: "${escapeHtml(d.notes)}"</p>` : ""}
+${roomPickNote}
+<p style="margin:20px 0 0"><a href="${APP_URL}/request-stay" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">View in the app →</a></p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">Muskellunge Lake Resort · Tomahawk, WI</p>
+</div>`;
+    const text = `Your cabin stay was updated.\n\nCabin: ${d.cabin_name}\nCheck-in: ${fmtFull(d.check_in)} (from 4:00 PM)\nCheck-out: ${fmtFull(d.check_out)} (by 11:00 AM)\nNights: ${n}\nGuests: ${d.guests}${d.room_names ? `\nRoom: ${d.room_names}` : ""}${d.notes ? `\n\nNotes: ${d.notes}` : ""}${needsRoomPick ? `\n\nNo room picked yet — open the app, find this stay under Cabin Bookings → Your requests, and tap Choose your room once you know which one you want.` : ""}\n\nView in the app: ${APP_URL}/request-stay\n\n— Muskellunge Lake Resort`;
+
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: d.requester_email, subject, text, html });
+      console.log(`[mailer] cabin edit emailed to ${d.requester_email} (stay: ${stay})`);
+    } catch (e) {
+      console.error("[mailer] cabin edit send failed:", e && e.message);
+      await sb.from("cabin_bookings").update({ edit_email_sent_at: null }).eq("id", row.id); // let a retry pick it up
     }
   }
 
@@ -206,16 +288,26 @@ ${note}
     .limit(10);
   for (const row of cabinPending || []) await handleCabinDecision(row);
 
-  // Live: email on each new alert + each cabin stay decision.
+  // Sweep recent requested-but-unemailed edit notices (requested while down).
+  const { data: editPending } = await sb
+    .from("cabin_bookings")
+    .select("id, edit_notify_requested_at, edit_email_sent_at")
+    .not("edit_notify_requested_at", "is", null)
+    .order("edit_notify_requested_at", { ascending: false })
+    .limit(10);
+  for (const row of editPending || []) await handleCabinEdit(row);
+
+  // Live: email on each new alert + each cabin stay decision/edit.
   sb.channel("alert-mailer")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (payload) => {
       handle(payload.new).catch((e) => console.error("[mailer] handle error:", e && e.message));
     })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cabin_bookings" }, (payload) => {
       handleCabinDecision(payload.new).catch((e) => console.error("[mailer] cabin handle error:", e && e.message));
+      handleCabinEdit(payload.new).catch((e) => console.error("[mailer] cabin edit handle error:", e && e.message));
     })
     .subscribe((status) => console.log("[mailer] realtime:", status));
-  console.log("[mailer] watching for alerts + cabin stay decisions to email");
+  console.log("[mailer] watching for alerts + cabin stay decisions/edits to email");
 }
 
 module.exports = { start, enabled };

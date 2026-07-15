@@ -1002,6 +1002,40 @@ through SECURITY DEFINER RPCs. Data model: migration
     calls this alongside `set_booking_rooms` so the whole request — dates,
     headcount, notes, and room picks — is editable in one sheet.
 
+- **Room pick is optional; decision + edit emails are opt-in per action**
+  (migrations [`0104`](supabase/migrations/0104_cabin_review_email_toggle.sql)–
+  [`0107`](supabase/migrations/0107_cabin_notification_room_status.sql)) —
+  for booking (incl. on behalf of someone who doesn't use the app),
+  [`CabinRequestSheet`](components/CabinRequestSheet.tsx) has a **"Not sure
+  yet"** checkbox that skips the room pick entirely instead of forcing one; a
+  request/booking can sit with zero rooms attached indefinitely.
+  - **`review_cabin_stay`** grew `p_notify` (default true): unchecking "Email
+    them a confirmation" in [`AdminCabinBookings`](components/AdminCabinBookings.tsx)
+    (or the `forUser` auto-approve flow in `CabinRequestSheet`) pre-stamps
+    `decision_email_sent_at` at review time, which "claims" the row the same
+    way the mini's alert-mailer does — so it silently skips the send. No new
+    column needed.
+  - **`admin_update_cabin_booking`** grew `p_notify` (default **false** — most
+    edits are small corrections that don't warrant a new email): checking
+    "Email them about this update" in `EditBookingSheet` stamps
+    `edit_notify_requested_at`; the mailer claims by advancing the sibling
+    `edit_email_sent_at` column to match, so each edit can independently
+    trigger (or skip) its own notice.
+  - **Self-service room pick.** `set_booking_rooms` was admin-only; it now
+    also allows the booking's own requester (`user_id = auth.uid()`), so
+    someone booked without a room (by themselves or by an admin on their
+    behalf) can come back to **Cabin Bookings → Your requests** and pick
+    their own room once they know, via the new
+    [`PickMyRoomSheet`](components/PickMyRoomSheet.tsx) (`app/request-stay/page.tsx`'s
+    `BookingRow` shows a "Choose your room" affordance whenever the booking
+    has no room and its cabin uses named rooms). Picking a room blocks it off
+    from other bookings the same way the admin flow does — same RPC, same
+    overlap check.
+  - **`cabin_booking_notification`** (the mini's service-role-only info
+    fetcher) now also returns `room_names` + `cabin_has_rooms`, so the
+    approval-confirmation and edit-notice emails can nudge an unassigned
+    requester: "No room picked yet — open the app… and tap Choose your room."
+
 ## Content safeguards (feed moderation)
 
 Layered safeguards on the social surfaces (Posts + comments + uploaded media) so

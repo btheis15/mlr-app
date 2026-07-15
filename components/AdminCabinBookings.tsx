@@ -42,6 +42,7 @@ export function AdminCabinBookings() {
   const [approved, setApproved] = useState<CabinBooking[]>(adminCabinCache?.approved ?? []);
   const [people, setPeople] = useState<Map<string, ProfileLite>>(adminCabinCache?.people ?? new Map());
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [notify, setNotify] = useState<Record<string, boolean>>({});
   const { busy, run } = useBusyAction();
   // Deep-link from a "X requested a cabin stay" notification
   // (/admin/cabins?booking=<id>) — scroll to and flash-ring that request
@@ -97,12 +98,17 @@ export function AdminCabinBookings() {
 
   const review = (b: CabinBooking, approve: boolean) =>
     run(b.id, async () => {
-      const { error } = await reviewStay(b.id, approve, notes[b.id]);
+      const { error } = await reviewStay(b.id, approve, notes[b.id], notify[b.id] ?? true);
       if (error) {
         window.alert(error);
         return;
       }
       setNotes((n) => {
+        const next = { ...n };
+        delete next[b.id];
+        return next;
+      });
+      setNotify((n) => {
         const next = { ...n };
         delete next[b.id];
         return next;
@@ -177,6 +183,15 @@ export function AdminCabinBookings() {
                   placeholder="Optional note (included in their email)"
                   className="w-full rounded-xl bg-background px-3 py-2 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
                 />
+                <label className="flex items-center gap-1.5 px-0.5 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={notify[b.id] ?? true}
+                    onChange={(e) => setNotify((n) => ({ ...n, [b.id]: e.target.checked }))}
+                    className="h-3.5 w-3.5 rounded"
+                  />
+                  Email them a confirmation
+                </label>
                 <div className="flex gap-2">
                   <button
                     disabled={busy === b.id}

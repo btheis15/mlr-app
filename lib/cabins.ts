@@ -302,12 +302,24 @@ export async function fetchBookings(statuses: string[]): Promise<CabinBooking[]>
   return (data ?? []).map(mapBookingRow);
 }
 
-/** Approve or deny a request (admin-only). Returns an error message on failure
+/** Approve or deny a request (admin-only). Pass `notify = false` to skip the
+ *  requester's confirmation email (migration 0104) — e.g. booking on behalf of
+ *  someone who doesn't use email/the app. Returns an error message on failure
  *  (e.g. the capacity guard tripping). */
-export async function reviewStay(id: string, approve: boolean, note?: string | null): Promise<{ error?: string }> {
+export async function reviewStay(
+  id: string,
+  approve: boolean,
+  note?: string | null,
+  notify: boolean = true,
+): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.rpc("review_cabin_stay", { p_booking: id, p_approve: approve, p_note: note ?? null });
+  const { error } = await sb.rpc("review_cabin_stay", {
+    p_booking: id,
+    p_approve: approve,
+    p_note: note ?? null,
+    p_notify: notify,
+  });
   return error ? { error: error.message } : {};
 }
 
@@ -334,10 +346,13 @@ export async function fetchBookingRooms(bookingId: string): Promise<{ id: string
  *  for corrections after the fact, e.g. a member asked for 2 beds and only
  *  needs 1. Works on a pending OR approved booking; capacity is still
  *  enforced at review_cabin_stay() time, not here. Pair with setBookingRooms
- *  for reassigning which specific room(s) it reserves. */
+ *  for reassigning which specific room(s) it reserves. Pass `notify = true`
+ *  to email the requester about the change (migration 0105) — off by default,
+ *  since most edits are small corrections that don't warrant a new email. */
 export async function updateBookingDetails(
   bookingId: string,
   input: { checkIn: string; checkOut: string; guests: number; notes?: string | null },
+  notify: boolean = false,
 ): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -347,6 +362,7 @@ export async function updateBookingDetails(
     p_check_out: input.checkOut,
     p_guests: input.guests,
     p_notes: input.notes ?? null,
+    p_notify: notify,
   });
   return error ? { error: error.message } : {};
 }

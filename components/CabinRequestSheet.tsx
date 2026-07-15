@@ -48,6 +48,8 @@ export function CabinRequestSheet({
   const [rooms, setRooms] = useState<CabinRoomAvailability[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
+  const [skipRoomPick, setSkipRoomPick] = useState(false);
+  const [notify, setNotify] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,7 +105,7 @@ export function CabinRequestSheet({
     setCheckOut(FF_CHECK_OUT);
   };
 
-  const canSubmit = validRange && !pending && (!hasRooms || selectedRoomIds.size > 0);
+  const canSubmit = validRange && !pending && (!hasRooms || skipRoomPick || selectedRoomIds.size > 0);
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -116,7 +118,7 @@ export function CabinRequestSheet({
       guests,
       notes,
       forUserId: forUser?.id,
-      roomIds: hasRooms ? [...selectedRoomIds] : undefined,
+      roomIds: hasRooms && !skipRoomPick ? [...selectedRoomIds] : undefined,
     });
     if (err) {
       setPending(false);
@@ -124,7 +126,7 @@ export function CabinRequestSheet({
       return;
     }
     if (forUser && id) {
-      const { error: approveErr } = await reviewStay(id, true);
+      const { error: approveErr } = await reviewStay(id, true, null, notify);
       if (approveErr) {
         setPending(false);
         window.alert(`Booked for ${forUser.name}, but couldn't auto-approve: ${approveErr}\n\nIt's saved as pending — approve it from Admin → Cabin Stays.`);
@@ -155,6 +157,17 @@ export function CabinRequestSheet({
       }
       footer={
         <>
+          {forUser && (
+            <label className="mb-2 flex items-center gap-1.5 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={notify}
+                onChange={(e) => setNotify(e.target.checked)}
+                className="h-3.5 w-3.5 rounded"
+              />
+              Email {forUser.name} a confirmation
+            </label>
+          )}
           <button
             type="button"
             onClick={submit}
@@ -247,12 +260,36 @@ export function CabinRequestSheet({
           </div>
 
           {/* Room picker — only for a cabin broken into named rooms/areas
-              (migration 0092). Picking N rooms is how you reserve N beds. */}
+              (migration 0092). Picking N rooms is how you reserve N beds.
+              "Not sure yet" skips the pick entirely — an admin can assign a
+              room later from Admin → Cabin requests once it's known. */}
           {validRange && hasRooms && (
             <div className="space-y-2">
-              <SectionLabel>Which room{selectedRoomIds.size !== 1 ? "(s)" : ""}?</SectionLabel>
-              <p className="px-0.5 text-xs text-muted">Need 2 beds? Pick 2 rooms.</p>
-              <CabinRoomPicker rooms={rooms} selected={selectedRoomIds} onToggle={toggleRoom} loading={roomsLoading} />
+              <div className="flex items-center justify-between gap-2">
+                <SectionLabel>Which room{selectedRoomIds.size !== 1 ? "(s)" : ""}?</SectionLabel>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={skipRoomPick}
+                    onChange={(e) => {
+                      setSkipRoomPick(e.target.checked);
+                      if (e.target.checked) setSelectedRoomIds(new Set());
+                    }}
+                    className="h-3.5 w-3.5 rounded"
+                  />
+                  Not sure yet
+                </label>
+              </div>
+              {skipRoomPick ? (
+                <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/70 ring-1 ring-border">
+                  No room picked — an admin can assign one later once you know.
+                </p>
+              ) : (
+                <>
+                  <p className="px-0.5 text-xs text-muted">Need 2 beds? Pick 2 rooms.</p>
+                  <CabinRoomPicker rooms={rooms} selected={selectedRoomIds} onToggle={toggleRoom} loading={roomsLoading} />
+                </>
+              )}
             </div>
           )}
 

@@ -16,7 +16,11 @@ const MAX_GUESTS = 16;
  * room), "move their room" (swap the pick), or a plain date/headcount fix.
  * Opens from Admin → Cabin requests on any pending or approved booking; save
  * writes both admin_update_cabin_booking (0095) and set_booking_rooms (0092).
- * Capacity is still enforced at review_cabin_stay() time, not here.
+ * Capacity is still enforced at review_cabin_stay() time, not here. Rooms are
+ * optional — leaving none selected is how a booking with an unknown room
+ * assignment stays that way until an admin picks one here later. An "Email
+ * them about this update" checkbox (off by default, migration 0105) lets the
+ * admin choose whether this particular edit is worth notifying the requester.
  */
 export function EditBookingSheet({
   booking,
@@ -35,6 +39,7 @@ export function EditBookingSheet({
   const [rooms, setRooms] = useState<CabinRoomAvailability[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set(booking.rooms.map((r) => r.id)));
+  const [notify, setNotify] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,7 +89,7 @@ export function EditBookingSheet({
     if (!canSave) return;
     setSaving(true);
     setError(null);
-    const { error: detailsErr } = await updateBookingDetails(booking.id, { checkIn, checkOut, guests, notes });
+    const { error: detailsErr } = await updateBookingDetails(booking.id, { checkIn, checkOut, guests, notes }, notify);
     if (detailsErr) {
       setSaving(false);
       setError(detailsErr);
@@ -115,14 +120,25 @@ export function EditBookingSheet({
         </>
       }
       footer={
-        <button
-          type="button"
-          onClick={save}
-          disabled={!canSave}
-          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save changes"}
-        </button>
+        <>
+          <label className="mb-2 flex items-center gap-1.5 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              className="h-3.5 w-3.5 rounded"
+            />
+            Email them about this update
+          </label>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </>
       }
     >
       <div className="space-y-2">
