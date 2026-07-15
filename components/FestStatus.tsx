@@ -1,17 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { Protected, useGuest } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
-import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
+import { fetchCommitteeId, fetchJoinState, getCurrentUserId } from "@/lib/roles";
 import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, plural } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
+import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
+import {
+  canEditFest,
+  fetchMemberOptions,
+  fetchDinnerDrafts,
+  fetchScheduleDrafts,
+  type FestMemberOption,
+  type DinnerDraft,
+  type ScheduleDraft,
+} from "@/lib/festContent";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
@@ -40,15 +52,62 @@ export function FestStatus({
   endDate,
   events,
   dinners,
+  onContentSaved,
 }: {
   startDate: string;
   endDate: string;
   events: ScheduleEvent[];
   dinners: Dinner[];
+  /** Called after an edit saves from the "Happening today" cards below, so
+   *  the caller's own useFestContent() instance re-fetches — mirrors
+   *  FestWeek's identical prop (see migration 0099). */
+  onContentSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
   const { today: t } = useDemoDate();
   const { user, userId } = useIdentity();
+
+  // Full admin/committee editing (mirrors FestWeek's identical wiring) — the
+  // "Happening today" cards are always fully expanded (no tap needed), so
+  // unlike FestWeek's collapsible rows, the edit button here just sits
+  // directly on the card. Chef/crew get the narrower DinnerDetailsEditSheet
+  // for their own dinner; full editors get the Planner's own DinnerSheet/
+  // ScheduleSheet, same as FestWeek.
+  const [uid, setUid] = useState<string | null>(null);
+  const [canEditAll, setCanEditAll] = useState(false);
+  const [members, setMembers] = useState<FestMemberOption[]>([]);
+  const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
+  const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
+  const festDayOptions = eventDays(startDate, endDate);
+
+  const reloadAdminData = useCallback(() => {
+    fetchMemberOptions().then(setMembers);
+    fetchDinnerDrafts().then(setDinnerDrafts);
+    fetchScheduleDrafts().then(setScheduleDrafts);
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setUid(null);
+      setCanEditAll(false);
+      return;
+    }
+    let active = true;
+    getCurrentUserId().then((id) => active && setUid(id));
+    canEditFest().then((ok) => {
+      if (!active) return;
+      setCanEditAll(ok);
+      if (ok) reloadAdminData();
+    });
+    return () => {
+      active = false;
+    };
+  }, [user, reloadAdminData]);
+
+  const onSaved = () => {
+    onContentSaved?.();
+    if (canEditAll) reloadAdminData();
+  };
 
   // Members of the Family Fest committee don't need the "join" prompt.
   // Seeded from the shared cache (no CTA flash for members, even on a cold
@@ -82,9 +141,27 @@ export function FestStatus({
         </div>
 
         {today.map((e) => (
-          <TodayEvent key={e.id} e={e} />
+          <TodayEvent
+            key={e.id}
+            e={e}
+            canEditAll={canEditAll}
+            draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
+            days={festDayOptions}
+            members={members}
+            onSaved={onSaved}
+          />
         ))}
-        {dinner && <TodayDinner d={dinner} />}
+        {dinner && (
+          <TodayDinner
+            d={dinner}
+            uid={uid}
+            canEditAll={canEditAll}
+            draft={dinnerDrafts.find((d) => d.id === dinner.id) ?? null}
+            days={festDayOptions}
+            members={members}
+            onSaved={onSaved}
+          />
+        )}
         {today.length === 0 && !dinner && (
           <p className="rounded-2xl bg-card p-4 text-center text-sm text-foreground/60 ring-1 ring-border">
             Nothing scheduled today — enjoy the lake! 🛶
@@ -130,8 +207,25 @@ export function FestStatus({
   );
 }
 
-/** Today's event, fully expanded — the day-of detail people need at a glance. */
-function TodayEvent({ e }: { e: ScheduleEvent }) {
+/** Today's event, fully expanded — the day-of detail people need at a glance.
+ *  Carries the same in-place edit affordance as FestWeek's EventRow, just
+ *  without the tap-to-expand step (this card is already fully shown). */
+function TodayEvent({
+  e,
+  canEditAll,
+  draft,
+  days,
+  members,
+  onSaved,
+}: {
+  e: ScheduleEvent;
+  canEditAll: boolean;
+  draft: ScheduleDraft | null;
+  days: string[];
+  members: FestMemberOption[];
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex gap-3">
@@ -154,12 +248,55 @@ function TodayEvent({ e }: { e: ScheduleEvent }) {
         </div>
       </div>
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
+      {canEditAll && draft && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="press mt-3 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+        >
+          ✏️ Edit this event
+        </button>
+      )}
+      {editing && draft && (
+        <ScheduleSheet
+          draft={draft}
+          days={days}
+          members={members}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/** Tonight's dinner, expanded — menu + head chef contact. */
-function TodayDinner({ d }: { d: Dinner }) {
+/** Tonight's dinner, expanded — menu + head chef contact. Same edit story as
+ *  FestWeek's DinnerRow: full editors get the Planner's DinnerSheet, the
+ *  chef/crew get the narrower DinnerDetailsEditSheet for their own dinner. */
+function TodayDinner({
+  d,
+  uid,
+  canEditAll,
+  draft,
+  days,
+  members,
+  onSaved,
+}: {
+  d: Dinner;
+  uid: string | null;
+  canEditAll: boolean;
+  draft: DinnerDraft | null;
+  days: string[];
+  members: FestMemberOption[];
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const canEditThis = canEditAll || Boolean(uid && (d.chefUserId === uid || d.crewUserIds.includes(uid)));
+  const fullEdit = canEditAll && Boolean(draft);
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex gap-3">
@@ -176,6 +313,31 @@ function TodayDinner({ d }: { d: Dinner }) {
         </div>
       </div>
       <Contact label="Head chef" name={d.chef.name} phone={d.chef.phone} />
+      {canEditThis && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="press mt-3 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+        >
+          ✏️ Edit this dinner
+        </button>
+      )}
+      {editing && fullEdit && draft && (
+        <DinnerSheet
+          draft={draft}
+          days={days}
+          members={members}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
+      {editing && !fullEdit && (
+        <DinnerDetailsEditSheet dinner={d} onClose={() => setEditing(false)} onSaved={onSaved} />
+      )}
     </div>
   );
 }
