@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
-import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateLong, formatTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
@@ -27,8 +26,10 @@ import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
  * The week at a glance: anytime "things to do", then every day as a card that
  * shows its events + that night's dinner. Each event and the dinner expands
  * IN PLACE to its full detail (location, about, what-to-bring, lead / chef,
- * menu, crew) — no drilling into a separate page. During the live week, today
- * is omitted here (FestStatus shows it in full up top).
+ * menu, crew) — no drilling into a separate page. Today stays listed here too
+ * even during the live week (FestStatus additionally shows it in full up top,
+ * with its own edit affordance) — so the day-by-day list is always complete
+ * and always has its edit controls, not just "the rest of the week".
  */
 export function FestWeek({
   events,
@@ -49,7 +50,6 @@ export function FestWeek({
   onContentSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
-  const { today } = useDemoDate();
   const { user } = useIdentity();
   const [uid, setUid] = useState<string | null>(null);
   const [canEditAll, setCanEditAll] = useState(false);
@@ -96,11 +96,9 @@ export function FestWeek({
     if (canEditAll) reloadAdminData();
   };
 
-  const allDays = Array.from(
+  const days = Array.from(
     new Set([...events.map((e) => e.day), ...dinners.map((d) => d.day)]),
   ).sort();
-  // While live, today is shown in full by FestStatus above — drop it here.
-  const days = season?.isLive ? allDays.filter((d) => d !== today) : allDays;
 
   return (
     <section className="space-y-3">
@@ -132,7 +130,7 @@ export function FestWeek({
 
       {days.length > 0 && (
         <h2 className="text-sm font-semibold text-primary">
-          {season?.isLive ? "The rest of the week" : "The whole week"}
+          The whole week
         </h2>
       )}
 

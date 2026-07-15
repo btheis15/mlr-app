@@ -539,9 +539,11 @@ Writing to `fest_dinners`/`fest_schedule_items` normally requires
 through the full [`FestPlanner`](components/FestPlanner.tsx) at
 `/family-fest/master`. Two things layer on top of that, both surfaced right
 where the schedule/dinner already show up — [`FestWeek`](components/FestWeek.tsx)'s
-`EventRow`/`DinnerRow` (the Overview/Schedule accordion) and
-[`FestDinnerDetail`](components/FestDinnerDetail.tsx) (the standalone
-`dinners/[id]` page) — instead of only inside the Planner:
+`EventRow`/`DinnerRow` (the Overview/Schedule accordion), [`FestStatus`](components/FestStatus.tsx)'s
+`TodayEvent`/`TodayDinner` (the "Happening today" cards during the live week —
+same edit affordance, just without the tap-to-expand step since those cards
+are always fully shown), and [`FestDinnerDetail`](components/FestDinnerDetail.tsx)
+(the standalone `dinners/[id]` page) — instead of only inside the Planner:
 
 - **Chef/crew self-edit.** A dinner's **head chef and any assigned crew
   members** don't need to be on the Family Fest committee to be the ones
@@ -571,20 +573,25 @@ where the schedule/dinner already show up — [`FestWeek`](components/FestWeek.t
     families are teaming up, crew members says who specifically gets edit
     rights).
 - **Full admin/committee editing, in place.** A viewer with full
-  `can_edit_fest()` access gets an Edit affordance on **every** row here, not
-  just dinners — `EventRow` and `DinnerRow`/`FestDinnerDetail` all reuse the
-  Planner's own `ScheduleSheet`/`DinnerSheet` (both now `export`ed from
-  `FestPlanner.tsx` for exactly this) rather than a duplicate, narrower form —
-  so an admin can change a dinner's chef, crew, houses, day, and title (or an
-  event's time, location, lead, everything) right from the accordion/detail
-  view, with no trip to `/family-fest/master` needed. This needs the full
-  `DinnerDraft`/`ScheduleDraft` (carrying `position`, which the display
-  `Dinner`/`ScheduleEvent` types don't) plus the member directory, so
-  `FestWeek`/`FestDinnerDetail` fetch `fetchDinnerDrafts()`/
-  `fetchScheduleDrafts()`/`fetchMemberOptions()` themselves, but **only once
-  `canEditFest()` resolves true** — a chef/crew self-editor or a regular
-  member never pays for that extra round-trip. A chef/crew (non-admin)
-  self-editor still gets only the narrower `DinnerDetailsEditSheet`.
+  `can_edit_fest()` access gets an Edit affordance on **every** row/card here,
+  not just dinners — `EventRow`/`DinnerRow`, `TodayEvent`/`TodayDinner`, and
+  `FestDinnerDetail` all reuse the Planner's own `ScheduleSheet`/`DinnerSheet`
+  (both now `export`ed from `FestPlanner.tsx` for exactly this) rather than a
+  duplicate, narrower form — so an admin can change a dinner's chef, crew,
+  houses, day, and title (or an event's time, location, lead, everything)
+  right from the accordion/"Happening today"/detail view, with no trip to
+  `/family-fest/master` needed. This needs the full `DinnerDraft`/`ScheduleDraft`
+  (carrying `position`, which the display `Dinner`/`ScheduleEvent` types don't)
+  plus the member directory, so `FestWeek`/`FestStatus`/`FestDinnerDetail` each
+  fetch `fetchDinnerDrafts()`/`fetchScheduleDrafts()`/`fetchMemberOptions()`
+  themselves, but **only once `canEditFest()` resolves true** — a chef/crew
+  self-editor or a regular member never pays for that extra round-trip. A
+  chef/crew (non-admin) self-editor still gets only the narrower
+  `DinnerDetailsEditSheet`. **`FestWeek`'s day-by-day accordion always lists
+  every day, including today** — it used to omit today while the fest is
+  live (on the theory that `FestStatus` already covers it up top), but that
+  meant losing today's entry from the list entirely, plus its edit affordance
+  had no equivalent up top until `FestStatus` gained its own here.
 
 ## Home call-out stack
 
