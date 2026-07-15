@@ -74,7 +74,7 @@ export async function fetchEvents(): Promise<ResortEvent[]> {
     try {
       const { data } = await sb
         .from("events")
-        .select("id, slug, kind, title, emoji, description, location, start_date, end_date, day_rsvp, source")
+        .select("id, slug, kind, title, emoji, description, location, start_date, start_time, end_date, day_rsvp, source")
         .order("start_date", { ascending: true });
       dbEvents = ((data ?? []) as EventRow[]).map(mapEventRow);
     } catch {
@@ -236,6 +236,8 @@ export interface EventInput {
   location?: string | null;
   description?: string | null;
   dayRsvp: boolean;
+  /** Optional "HH:MM" — see ResortEvent.startTime. */
+  startTime?: string | null;
 }
 
 /** Create an event (admin-only). Returns the new id, or an error message. */
@@ -251,6 +253,7 @@ export async function createEvent(input: EventInput): Promise<{ id?: string; err
     p_location: input.location ?? null,
     p_description: input.description ?? null,
     p_day_rsvp: input.dayRsvp,
+    p_start_time: input.startTime ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -270,6 +273,7 @@ export async function updateEvent(id: string, input: EventInput): Promise<{ erro
     p_location: input.location ?? null,
     p_description: input.description ?? null,
     p_day_rsvp: input.dayRsvp,
+    p_start_time: input.startTime ?? null,
   });
   return error ? { error: error.message } : {};
 }
@@ -305,6 +309,7 @@ interface EventRow {
   description: string | null;
   location: string | null;
   start_date: string;
+  start_time: string | null;
   end_date: string | null;
   day_rsvp: boolean;
   source: string;
@@ -320,6 +325,7 @@ function mapEventRow(r: EventRow): ResortEvent {
     description: r.description ?? undefined,
     location: r.location ?? undefined,
     startDate: r.start_date,
+    startTime: r.start_time ? r.start_time.slice(0, 5) : null,
     endDate: r.end_date,
     dayRsvp: r.day_rsvp,
     source: (r.source as ResortEvent["source"]) ?? "admin",

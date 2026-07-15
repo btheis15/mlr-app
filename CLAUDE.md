@@ -703,10 +703,43 @@ which this reuses rather than duplicating.
 
 Admin → Alerts & Notifications → **Scheduled**
 ([`AdminScheduledBroadcasts`](components/AdminScheduledBroadcasts.tsx)) is the
-queue view: pending items with **Cancel** (`cancel_scheduled_broadcast`, a
-no-op if it already fired), plus recently-sent/failed rows for visibility — a
-failure is recorded on the row (`error`) rather than silently dropped, and
-surfaces there. Kept live via Realtime, same shape as `AdminCabinBookings`.
+queue view: pending items with **Edit** (`update_scheduled_broadcast`, migration
+0101 — title/body/send-time, refuses once the row has already fired/cancelled)
+and **Cancel** (`cancel_scheduled_broadcast`, a no-op if it already fired), plus
+recently-sent/failed rows for visibility — a failure is recorded on the row
+(`error`) rather than silently dropped, and surfaces there. Kept live via
+Realtime, same shape as `AdminCabinBookings`.
+
+### Event/callout reminders (migration 0101)
+
+An admin can attach one or more **reminder notifications** to a specific event
+or Home callout — e.g. "remind everyone 1 day before the Faire sign-up
+deadline" or "2 hours before the work weekend starts" — via
+[`ReminderScheduler`](components/ReminderScheduler.tsx), embedded in
+`EventComposer` (when editing an existing event) and `AdminCallouts`' sheet
+(when editing an existing callout). A reminder is nothing new under the
+hood — it's just another row in `scheduled_broadcasts` (see **Scheduled
+broadcasts** above), tagged with `sourceType`/`sourceId`/`sourceLabel` in
+`payload` (purely a client-side label — opaque to `run_scheduled_broadcasts()`)
+so `ReminderScheduler` can list "reminders for this item" and
+`AdminScheduledBroadcasts` can show what a reminder is attached to. It reuses
+the same `eventId`/`excludeNotAttending` targeting as the other broadcast
+composers when the event/callout itself has (or is linked to) an event.
+
+Only usable once the item has a real id — a brand-new, unsaved event/callout
+has nothing to attach a queued row to yet, so `ReminderScheduler` is mounted
+only when editing an existing one (save first, then add reminders).
+
+Two anchors gained an optional time to compute "N hours/days before" from:
+- **`events.start_time`** (time, optional) — a plain `start_date` has no
+  time-of-day; setting this offers hour-based offsets (1/2 hours before), not
+  just day-based ones (which otherwise default to firing at 9am).
+- **`home_callouts.deadline_at`** (timestamptz, optional) — distinct from
+  `starts_on`/`ends_on` (which only gate the show/hide window), this is the
+  actual "due by" moment a reminder counts down to.
+
+Without an anchor set, `ReminderScheduler` falls back to an exact custom
+date/time picker instead of relative offsets.
 
 ## Home delight cards
 

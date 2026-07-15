@@ -7,6 +7,7 @@ import { fetchWorkItems, fetchEventWorkItems, syncEventWorkItems } from "@/lib/w
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
+import { ReminderScheduler } from "@/components/ReminderScheduler";
 
 // Admin create/edit form for a resort event, in a bottom sheet (scaffolding +
 // dismiss motion from Sheet / useSheetDismiss). Family Fest isn't edited here —
@@ -36,6 +37,7 @@ export function EventComposer({
   const [emoji, setEmoji] = useState(event?.emoji ?? "");
   const [kind, setKind] = useState<EventKind>(event?.kind === "family_fest" ? "custom" : (event?.kind ?? "work_weekend"));
   const [startDate, setStartDate] = useState(event?.startDate ?? today ?? "");
+  const [startTime, setStartTime] = useState(event?.startTime ?? "");
   const [endDate, setEndDate] = useState(event?.endDate ?? "");
   const [location, setLocation] = useState(event?.location ?? "");
   const [description, setDescription] = useState(event?.description ?? "");
@@ -80,6 +82,7 @@ export function EventComposer({
       location: location.trim() || null,
       description: description.trim() || null,
       dayRsvp: multiDay && dayRsvp,
+      startTime: startTime || null,
     };
     let eventId: string | undefined;
     if (event?.persisted) {
@@ -175,6 +178,17 @@ export function EventComposer({
                 />
               </label>
             </div>
+            <label className="flex flex-col gap-1">
+              <span className="px-0.5 text-xs text-muted">
+                Start time <span className="font-normal text-faint">(optional — lets reminders offer "N hours before")</span>
+              </span>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className={`${sel} w-full`}
+              />
+            </label>
             {!validRange && <p className="px-0.5 text-xs text-accent">End date must be on or after the start.</p>}
             {multiDay && (
               <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
@@ -212,6 +226,25 @@ export function EventComposer({
               className={`${sel} w-full resize-none`}
             />
           </div>
+
+          {event?.persisted && (
+            <div className="space-y-2">
+              <SectionLabel>
+                Reminders <span className="font-normal normal-case text-faint">(optional)</span>
+              </SectionLabel>
+              <ReminderScheduler
+                sourceType="event"
+                sourceId={event.id}
+                sourceLabel={title.trim() || event.title}
+                anchor={{
+                  ms: new Date(`${startDate}T${startTime || "09:00"}:00`).getTime(),
+                  hasTime: Boolean(startTime),
+                }}
+                defaultTitle={`Reminder: ${title.trim() || event.title}`}
+                eventId={event.id}
+              />
+            </div>
+          )}
 
           {/* Work items — link checklist items so attendees know what's planned */}
           {allWorkItems.length > 0 && (

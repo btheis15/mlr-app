@@ -16,6 +16,8 @@ import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { formatDate } from "@/lib/format";
 import { uploadSiteImage } from "@/lib/appImages";
 import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
+import { ReminderScheduler } from "@/components/ReminderScheduler";
+import { toDatetimeLocal } from "@/lib/format";
 import {
   fetchCallouts,
   saveCallout,
@@ -211,6 +213,7 @@ function CalloutSheet({
   );
   const [startsOn, setStartsOn] = useState(draft?.startsOn ?? "");
   const [endsOn, setEndsOn] = useState(draft?.endsOn ?? "");
+  const [deadlineAt, setDeadlineAt] = useState(draft?.deadlineAt ? toDatetimeLocal(draft.deadlineAt) : "");
   const [dismissId, setDismissId] = useState(draft?.dismissId ?? "");
   // Auto-suggest the dismiss id (slug + date) until the editor types their own.
   const [dismissTouched, setDismissTouched] = useState(Boolean(draft));
@@ -275,6 +278,7 @@ function CalloutSheet({
     isActive: active,
     eventId: eventTarget.eventId,
     excludeNotAttending: eventTarget.excludeNotAttending,
+    deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
   };
 
   const hasContent = Boolean(title.trim() || body.trim() || imageUrl);
@@ -295,6 +299,7 @@ function CalloutSheet({
         isActive: active,
         eventId: eventTarget.eventId,
         excludeNotAttending: eventTarget.excludeNotAttending,
+        deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
       });
       if (error) return error;
       onSaved();
@@ -395,7 +400,24 @@ function CalloutSheet({
         <input type="date" value={endsOn} min={startsOn || undefined} onChange={(e) => setEndsOn(e.target.value)} className={`${FIELD} w-full`} />
       </Field>
       {!validRange && <p className="text-xs text-accent">&ldquo;Show through&rdquo; must be on or after &ldquo;show from&rdquo;.</p>}
+      <Field label="Deadline (optional)">
+        <input type="datetime-local" value={deadlineAt} onChange={(e) => setDeadlineAt(e.target.value)} className={`${FIELD} w-full`} />
+        <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+          The actual due-by moment (e.g. "order by Friday 5pm") — separate from the show
+          window above. Reminders below count down to this.
+        </p>
+      </Field>
       <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
+      {draft && (
+        <ReminderScheduler
+          sourceType="callout"
+          sourceId={draft.id}
+          sourceLabel={title.trim() || draft.title?.trim() || "this callout"}
+          anchor={deadlineAt ? { ms: new Date(deadlineAt).getTime(), hasTime: true } : null}
+          defaultTitle={title.trim() ? `Reminder: ${title.trim()}` : undefined}
+          eventId={eventTarget.eventId}
+        />
+      )}
       <Field label="Dismiss id">
         <input
           value={effectiveDismissId}
