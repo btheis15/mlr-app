@@ -150,11 +150,11 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`lib/polls.ts`](lib/polls.ts) + [`components/PollsView.tsx`](components/PollsView.tsx) /
   [`components/PollComposer.tsx`](components/PollComposer.tsx). See CLAUDE.md →
   **Family polls**.
-- **Pull-to-refresh** — [`components/PullToRefresh.tsx`](components/PullToRefresh.tsx),
-  mounted in [`app/template.tsx`](app/template.tsx), re-adds the pull-down-to-reload
-  gesture the app otherwise disables (the fixed TabBar needs
-  `overscroll-behavior-y: none`) — dependency-free, axis-locked against
-  horizontal swipe cards, skips open sheets/inner scrollers, reduce-motion aware.
+- **Native scroll bounce** — `#app-scroll` (the `<main>` in `app/layout.tsx`) is
+  the one scroll container; `html`/`body` never scroll, so the fixed TabBar
+  never gets dragged during a rubber-band bounce (see CLAUDE.md → **Scrolling
+  & bounce**). No pull-to-refresh gesture — realtime + `UpdateBanner` keep
+  things current instead.
 - **Ask for Help (BETA)** — at `/help-requests` (the "Ask for Help" tile on Home), a member who's at the resort posts
   a short request for a hand (moving, setup, a ride, supplies, or 🚨 urgent); willing
   members who are *also* at the resort get a push, tap **On my way**, and the request

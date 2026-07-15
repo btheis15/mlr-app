@@ -82,62 +82,28 @@ body {
   font-size: 1rem;
 }
 
-/* Kill iOS rubber-band overscroll on the page scroller. Without this, dragging
-   past the top/bottom bounces the whole document, and WebKit drags the
-   `position: fixed` TabBar along with the bounce — so the bar appears to "come
-   up" off the bottom edge for a moment while scrolling. `overscroll-behavior`
-   contains the scroll to this element (no bounce-chaining, no pull-to-refresh),
-   which keeps the fixed bar pinned. Paired with the opaque-bg fix from #192.
-   Light-mode PWA target is iOS 16.4+, which supports this. */
+/* Real iOS rubber-band bounce, without the classic WebKit bug where dragging
+   past the top/bottom of the DOCUMENT drags any `position: fixed` element
+   (the TabBar) along with it. Fix: the document itself (html/body) never
+   scrolls — `#app-scroll` (the <main> in app/layout.tsx) is the one and only
+   scroll container, sized to the viewport. Since the TabBar sits fixed
+   relative to the viewport as a SIBLING of `#app-scroll`, not a descendant,
+   its own internal momentum/bounce never touches the viewport — the TabBar
+   never moves. `overscroll-behavior-y: contain` stops the bounce from
+   chaining into any browser-level gesture (e.g. a rubber-band overscroll
+   accidentally triggering a back-swipe); it does NOT suppress the native
+   elastic bounce itself, which is exactly what we want here. Scroll position
+   resets to top on every navigation via ScrollReset (mounted in
+   app/template.tsx) since #app-scroll, unlike template.tsx's children,
+   doesn't remount per route. */
 html,
 body {
-  overscroll-behavior-y: none;
+  height: 100%;
+  overflow: hidden;
 }
-
-/* ── Pull-to-refresh (components/PullToRefresh.tsx) ───────────────────────────
-   Since the rule above also kills native PTR, a small custom indicator drops in
-   from under the top edge on a deliberate downward drag at scrollTop 0. Fixed +
-   portaled to <body> so page transforms (page-enter) can't reposition it. */
-.ptr {
-  position: fixed;
-  top: env(safe-area-inset-top);
-  left: 0;
-  right: 0;
-  z-index: 55; /* above content, under sheets/scrims (z-60) */
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-.ptr-circle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.25rem;
-  width: 2.25rem;
-  border-radius: 9999px;
-  background: var(--color-background);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--color-border);
-  color: var(--color-primary);
-}
-.ptr-arrow {
-  transition: transform 0.15s ease;
-}
-.ptr-spin {
-  animation: ptr-spin 0.8s linear infinite;
-}
-@keyframes ptr-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ptr-arrow {
-    transition: none;
-  }
-  .ptr-spin {
-    animation: none;
-    opacity: 0.7;
-  }
+#app-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 
