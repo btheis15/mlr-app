@@ -720,11 +720,19 @@ deadline" or "2 hours before the work weekend starts" — via
 (when editing an existing callout). A reminder is nothing new under the
 hood — it's just another row in `scheduled_broadcasts` (see **Scheduled
 broadcasts** above), tagged with `sourceType`/`sourceId`/`sourceLabel` in
-`payload` (purely a client-side label — opaque to `run_scheduled_broadcasts()`)
-so `ReminderScheduler` can list "reminders for this item" and
+`payload` so `ReminderScheduler` can list "reminders for this item" and
 `AdminScheduledBroadcasts` can show what a reminder is attached to. It reuses
 the same `eventId`/`excludeNotAttending` targeting as the other broadcast
 composers when the event/callout itself has (or is linked to) an event.
+
+**A callout reminder skips anyone who already marked that callout "done"**
+(migration [`0102`](supabase/migrations/0102_reminder_exclude_callout_done.sql)
+— `home_callout_completions`, the permanent per-member "I did this" from
+migration 0098, distinct from the session-only swipe dismiss). This is the one
+place `run_scheduled_broadcasts()` reads `payload.sourceType`/`sourceId`
+directly rather than treating it as an opaque label — when `sourceType =
+'callout'`, it excludes any recipient with a completion row for that callout id
+before sending, same idea as `excludeNotAttending` for event targeting.
 
 Only usable once the item has a real id — a brand-new, unsaved event/callout
 has nothing to attach a queued row to yet, so `ReminderScheduler` is mounted
