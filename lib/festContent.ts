@@ -69,6 +69,10 @@ export interface HomeCallout {
   // who explicitly RSVP'd "Can't make it" to that event.
   eventId: string | null;
   excludeNotAttending: boolean;
+  /** Optional due-by timestamp (e.g. "order t-shirts by Friday 5pm") — distinct
+   *  from startsOn/endsOn, which only gate when the card is shown. Reminder
+   *  offsets (lib/scheduledBroadcasts.ts) are computed relative to this. */
+  deadlineAt: string | null;
 }
 
 /** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
@@ -89,6 +93,7 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     isActive: true,
     eventId: null,
     excludeNotAttending: false,
+    deadlineAt: null,
   },
 ];
 
@@ -191,10 +196,11 @@ interface CalloutRow {
   is_active: boolean;
   event_id: string | null;
   exclude_not_attending: boolean;
+  deadline_at: string | null;
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -273,6 +279,7 @@ function mapCallout(r: CalloutRow): HomeCallout {
     isActive: r.is_active,
     eventId: r.event_id,
     excludeNotAttending: r.exclude_not_attending,
+    deadlineAt: r.deadline_at,
   };
 }
 
@@ -570,6 +577,7 @@ export interface CalloutInput {
   isActive: boolean;
   eventId: string | null;
   excludeNotAttending: boolean;
+  deadlineAt: string | null;
 }
 export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -586,6 +594,7 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     is_active: i.isActive,
     event_id: i.eventId,
     exclude_not_attending: i.excludeNotAttending,
+    deadline_at: i.deadlineAt,
   };
   const q = i.id
     ? sb.from("home_callouts").update(row).eq("id", i.id)

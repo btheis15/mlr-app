@@ -547,6 +547,10 @@ export interface ResortEvent {
   startDate: string;
   /** ISO "YYYY-MM-DD"; null/absent ⇒ single-day. */
   endDate?: string | null;
+  /** Optional "HH:MM" (24h, local resort time) — when set, reminder offsets
+   *  (see lib/scheduledBroadcasts.ts) can be hour-based ("2 hours before");
+   *  otherwise only day-based offsets are offered. */
+  startTime?: string | null;
   /** Multi-day events can offer a per-day RSVP drill-down (Family Fest). */
   dayRsvp: boolean;
   /** "admin" = a native event (seed or DB row); "gcal" = a future Google-Calendar

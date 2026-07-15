@@ -23,6 +23,14 @@ export interface BroadcastPayload {
   alsoBanner?: boolean;
   eventId?: string | null;
   excludeNotAttending?: boolean;
+  /** Set when this queued item is a reminder generated from an event/callout's
+   *  "Reminders" section (see ReminderScheduler) rather than composed directly
+   *  in the Alerts screen — lets the event/callout editor list "reminders for
+   *  this item" and the admin queue show what a reminder is attached to.
+   *  Opaque to run_scheduled_broadcasts(); purely a client-side label. */
+  sourceType?: "event" | "callout" | null;
+  sourceId?: string | null;
+  sourceLabel?: string | null;
 }
 
 export interface ScheduledBroadcast {
@@ -100,4 +108,39 @@ export async function cancelScheduledBroadcast(id: string): Promise<{ error?: st
   if (!sb) return { error: "Not available." };
   const { error } = await sb.rpc("cancel_scheduled_broadcast", { p_id: id });
   return error ? { error: error.message } : {};
+}
+
+/** Edit a still-pending queued item's content/send time in place (migration
+ *  0101). Fails if it's already sent or been cancelled. */
+export async function updateScheduledBroadcast(
+  id: string,
+  payload: BroadcastPayload,
+  scheduledAt: string,
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.rpc("update_scheduled_broadcast", {
+    p_id: id,
+    p_payload: payload,
+    p_scheduled_at: scheduledAt,
+  });
+  return error ? { error: error.message } : {};
+}
+
+/** The pending/recent reminders attached to one event/callout (matched on
+ *  payload.sourceType + sourceId), oldest-first — for the "Reminders" list
+ *  embedded in EventComposer/AdminCallouts. */
+export async function fetchScheduledBroadcastsBySource(
+  sourceType: "event" | "callout",
+  sourceId: string,
+): Promise<ScheduledBroadcast[]> {
+  const sb = supabase;
+  if (!sb) return [];
+  const { data } = await sb
+    .from("scheduled_broadcasts")
+    .select("id, kind, payload, scheduled_at, sent_at, cancelled_at, error, created_at")
+    .is("cancelled_at", null)
+    .contains("payload", { sourceType, sourceId })
+    .order("scheduled_at", { ascending: true });
+  return ((data ?? []) as ScheduledBroadcastRow[]).map(mapRow);
 }

@@ -169,6 +169,17 @@ export default function ProfilePage() {
         <ChangeEmail />
       </SettingsGroup>
 
+      {isAdmin && (
+        <SettingsGroup title="Admin">
+          <SettingsRow
+            icon="🛠"
+            title="Admin dashboard"
+            subtitle="Manage members, alerts, content & more"
+            href="/admin"
+          />
+        </SettingsGroup>
+      )}
+
       <SettingsGroup title="Notifications">
         <CollapsibleSection
           bare
@@ -223,14 +234,6 @@ export default function ProfilePage() {
       <InstallButton />
 
       <SettingsGroup title="More">
-        {isAdmin && (
-          <SettingsRow
-            icon="🛠"
-            title="Admin dashboard"
-            subtitle="Manage members, alerts, content & more"
-            href="/admin"
-          />
-        )}
         <SettingsRow icon="❓" title="Help & how-to" href="/help" />
       </SettingsGroup>
 
