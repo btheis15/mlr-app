@@ -144,15 +144,20 @@ technical members are smoothed:
 - **First-run member onboarding** — [`WelcomeIntro`](components/WelcomeIntro.tsx) is a guided two-step sheet that pops the first time a **brand-new** member verifies their sign-in code, when their profile is still essentially empty (only the name they typed at signup). **Step 1** welcomes them and collects the basics inline — phone, birthday, preferred payment — so they never have to discover Settings; **step 2** explains push and drops them into the real [`PushToggle`](components/PushToggle.tsx) settings (master on by default → untick what they don't want), then lands them on Home. It's gated by `IdentityProvider` `needsIntro` (`profiles.intro_seen` false **and** the profile is sparse), computed in a **separate, guarded** query so a pre-migration column never breaks sign-in. It deliberately **supersedes the standalone [`PushPrompt`](components/PushPrompt.tsx)** (which now holds off while `needsIntro`, and reaching the push step stamps `push_prompted` so nobody is asked twice). Migration [`0045`](supabase/migrations/0045_member_intro.sql) adds `profiles.intro_seen` (new accounts default false; existing members backfilled true so the current family isn't re-onboarded).
 - **Text size + zoom** — [`TextSizeControl`](components/TextSizeControl.tsx) overrides the `<html>` rem root (17/19/21px); a boot script in [`layout.tsx`](app/layout.tsx) re-applies the saved choice before paint. Pinch-zoom is now allowed (viewport `userScalable: true`, was disabled). `body` uses `font-size: 1rem` so the override scales the whole app — **don't re-pin a px font-size on `body`/`html`** or you break it.
 - **Sign-in walls** ([`Guard`](components/Guard.tsx), `CommitteeJoin`, `CommitteeChat`) carry a "just your name & email, no password" reassurance.
-- **Pull-to-refresh** — [`PullToRefresh`](components/PullToRefresh.tsx), mounted
-  in [`app/template.tsx`](app/template.tsx), re-adds the native gesture the app
-  intentionally disables elsewhere (`overscroll-behavior-y: none` on html/body
-  stops the fixed TabBar from bouncing — see `app/globals.css`). Dependency-free:
-  drag down from the document scroller's top → a damped indicator follows,
-  release past a threshold → one `location.reload()`. Axis-locked against
-  CalloutStack's horizontal swipes, skips when a sheet/dialog is open or the
-  touch starts inside an inner scroller (chat lists, sheet bodies), reduce-motion
-  aware, touch-only, reloads at most once per gesture.
+- **Scrolling & bounce** — `#app-scroll` (the `<main>` in [`app/layout.tsx`](app/layout.tsx))
+  is the app's one and only scroll container; `html`/`body` never scroll (see
+  the note in [`app/globals.css`](app/globals.css)). This gives real native
+  iOS rubber-band bounce at both edges without the classic WebKit bug where
+  dragging past the DOCUMENT's top/bottom drags any `position: fixed` element
+  (the TabBar) along with it — the TabBar sits fixed relative to the viewport
+  as a sibling of `#app-scroll`, not a descendant, so it never moves regardless
+  of how `#app-scroll` bounces. There's no pull-to-refresh gesture (removed —
+  realtime subscriptions keep data current, and [`UpdateBanner`](components/UpdateBanner.tsx)
+  already nudges a refresh when a new build ships); [`ScrollReset`](components/ScrollReset.tsx)
+  (mounted in `app/template.tsx`, same per-navigation lifecycle the old
+  PullToRefresh rode) resets `#app-scroll` to the top on every route change,
+  since it — unlike `template.tsx`'s children — lives in the persistent
+  `RootLayout` and doesn't remount on its own.
 
 ## Committees & account linking
 

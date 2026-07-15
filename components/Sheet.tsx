@@ -15,9 +15,8 @@ import { usePathname } from "next/navigation";
 //     …scrollable body…
 //   </Sheet>
 //
-// Portaled to <body> (same fix as PullToRefresh's `.ptr`, see globals.css's
-// note by it): the page content every sheet would otherwise render inside
-// carries `.page-enter`'s translate3d slide-in animation (app/template.tsx),
+// Portaled to <body>: the page content every sheet would otherwise render
+// inside carries `.page-enter`'s translate3d slide-in animation (app/template.tsx),
 // and on iOS Safari an element that's ever been animated/transformed keeps
 // acting as a containing block for `position: fixed` descendants even after
 // the animation finishes — so an un-portaled sheet gets trapped inside that
@@ -59,10 +58,9 @@ export function Sheet({
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  // Server/first-client-tick render nothing (no `document` yet, and matches
-  // every other portal in this app — see PullToRefresh) — a sheet only ever
-  // mounts in response to a client interaction, so this never affects the
-  // static-export HTML.
+  // Server/first-client-tick render nothing (no `document` yet) — a sheet
+  // only ever mounts in response to a client interaction, so this never
+  // affects the static-export HTML.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   // Portaling exits the `.ff-section` subtree (see the note above), which

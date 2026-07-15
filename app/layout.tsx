@@ -79,7 +79,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full text-foreground antialiased">
+      <body className="h-full overflow-hidden text-foreground antialiased">
         <DemoDateProvider>
           <IdentityProvider>
             {/* App-open splash: logo pops, holds until auth resolves, then flies
@@ -89,8 +89,13 @@ export default async function RootLayout({
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />
+          {/* The one and only scroll container (see globals.css's #app-scroll
+              note) — html/body never scroll, so the fixed TabBar below never
+              gets dragged during a rubber-band bounce, and real native bounce
+              can be re-enabled here safely. */}
           <main
-            className="mx-auto w-full max-w-md px-4 pt-2"
+            id="app-scroll"
+            className="h-full w-full overflow-y-auto"
             style={{
               paddingTop: "env(safe-area-inset-top)",
               // Clear the fixed TabBar, which grows by the home-indicator inset
@@ -99,12 +104,14 @@ export default async function RootLayout({
               paddingBottom: "calc(6rem + env(safe-area-inset-bottom))",
             }}
           >
-            <AppHeader />
-            <div className="pt-1">
-              <UpdateBanner />
-              <AnnouncementBanner items={announcements} />
+            <div className="mx-auto w-full max-w-md px-4 pt-2">
+              <AppHeader />
+              <div className="pt-1">
+                <UpdateBanner />
+                <AnnouncementBanner items={announcements} />
+              </div>
+              {children}
             </div>
-            {children}
           </main>
           <TabBar />
           <PreviewBanner />
