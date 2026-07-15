@@ -17,7 +17,6 @@ interface MemberRow {
   household: string | null;
   email?: string | null; // only present via the admin RPC (private)
   is_admin: boolean;
-  beta_tester?: boolean; // present via admin_members() once migration 0029 is run
   house_name?: string | null; // present via admin_members() once migration 0064 is run
 }
 
@@ -167,19 +166,6 @@ export function AdminMembers() {
     setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_admin: value } : x)));
   };
 
-  // Add/remove the Beta Tester role (migration 0029). Low-stakes (it just lets an
-  // admin send test notifications to this group), so no confirm — keep it quick.
-  const setBeta = async (m: MemberRow, value: boolean) => {
-    const sb = supabase;
-    if (!sb) return;
-    const { error: e } = await run(m.id, () => sb.rpc("set_beta_tester", { target: m.id, value }));
-    if (e) {
-      window.alert(e.message || "Couldn't update beta tester.");
-      return;
-    }
-    setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, beta_tester: value } : x)));
-  };
-
   // Permanently delete a member: their account + everything they posted. Gated
   // server-side too (delete_member, migration 0009) — admins can't be deleted
   // without demoting first, and you can't delete yourself. Double-confirm here
@@ -223,8 +209,7 @@ export function AdminMembers() {
 
       <p className="text-xs text-muted">
         Everyone who&rsquo;s signed in. Tap <strong>Make admin</strong> to give someone admin access (post
-        alerts, manage members), or <strong>Remove</strong> to take it away. Tap <strong>Beta</strong> to add
-        someone to the Beta Tester group, so you can send them test notifications before sending to everyone.
+        alerts, manage members), or <strong>Remove</strong> to take it away.
       </p>
 
       <div className="space-y-2 rounded-xl bg-background p-3 ring-1 ring-border">
@@ -295,9 +280,6 @@ export function AdminMembers() {
                       {m.is_admin && (
                         <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Admin</span>
                       )}
-                      {m.beta_tester && (
-                        <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Beta</span>
-                      )}
                       {m.house_name && (
                         <span className="shrink-0 rounded-full bg-lake/15 px-1.5 py-0.5 text-[10px] font-semibold text-lake">🏠 {m.house_name}</span>
                       )}
@@ -322,21 +304,6 @@ export function AdminMembers() {
                         ✏️ Edit info
                       </button>
                     )}
-                    {/* Beta toggle works on your own row too — useful for an
-                        admin to add themselves to the beta group. */}
-                    <button
-                      onClick={() => setBeta(m, !m.beta_tester)}
-                      disabled={busyId === m.id}
-                      aria-label={m.beta_tester ? `Remove ${name} from beta testers` : `Make ${name} a beta tester`}
-                      title="Beta Tester — sees features being trialed + admin test notifications"
-                      className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
-                        m.beta_tester
-                          ? "bg-amber-500/15 text-amber-700 ring-amber-500/40"
-                          : "bg-background text-muted ring-border"
-                      }`}
-                    >
-                      {busyId === m.id ? "…" : m.beta_tester ? "Beta ✓" : "Beta"}
-                    </button>
                     {!isMe && (
                       <button
                         onClick={() => setAdmin(m, !m.is_admin)}

@@ -314,7 +314,7 @@ export default function GuidePage() {
         </p>
       </GuideSection>
 
-      <GuideSection id="help-requests" emoji="🙌" title="Ask for Help (beta)">
+      <GuideSection id="help-requests" emoji="🙌" title="Ask for Help">
         <p>
           Ask for Help is for the moment you&rsquo;re actually at the resort
           and could use an extra pair of hands — moving logs, setting up for
@@ -331,10 +331,6 @@ export default function GuidePage() {
           Marking a request <b>🚨 Urgent</b> is for real emergencies — it
           bypasses all the usual filtering and alerts every single member,
           not just the people who opted in.
-        </p>
-        <p>
-          This feature is currently in beta, so you may see it appear
-          gradually as it rolls out to more members.
         </p>
       </GuideSection>
 

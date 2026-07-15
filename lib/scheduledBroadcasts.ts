@@ -16,7 +16,7 @@ export interface BroadcastPayload {
   title: string;
   body?: string | null;
   url?: string | null;
-  audience?: "everyone" | "beta" | "admins";
+  audience?: "everyone" | "admins";
   expiryHours?: number | null;
   notifyEmail?: boolean;
   emailAudience?: "all" | "admins";

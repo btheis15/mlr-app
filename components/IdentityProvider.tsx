@@ -32,10 +32,6 @@ interface IdentityValue {
    *  `profiles.is_admin` flag (the single source of truth). Forced false while
    *  previewing as a member/guest. */
   isAdmin: boolean;
-  /** True when the signed-in user has the Beta Tester role (`profiles.beta_tester`,
-   *  migration 0029) — used to gate things being trialed. Forced false while
-   *  previewing, like isAdmin. */
-  isBetaTester: boolean;
   /** True once the initial auth check has settled — i.e. we've read the stored
    *  session (and loaded its profile) or determined there is none. `user` is
    *  trustworthy only after this flips true; before it, we simply don't know yet.
@@ -95,7 +91,6 @@ interface IdentityValue {
 const IdentityContext = createContext<IdentityValue>({
   user: null,
   isAdmin: false,
-  isBetaTester: false,
   authReady: true,
   userId: null,
   previewMode: "off",
@@ -129,7 +124,6 @@ interface ProfileRow {
   push_prompted: boolean | null;
   willing_to_help: boolean | null;
   is_admin: boolean;
-  beta_tester: boolean | null;
 }
 
 /**
@@ -151,14 +145,12 @@ interface ProfileRow {
 interface IdentitySnapshot {
   user: User;
   isAdmin: boolean;
-  isBetaTester: boolean;
 }
 
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [adminFlag, setAdminFlag] = useState(false);
-  const [betaFlag, setBetaFlag] = useState(false);
   // One-shot guard: the persisted snapshot may only seed BEFORE the first
   // network profile load — a later onAuthStateChange re-entry must never
   // clobber fresher state with the stale snapshot.
@@ -207,7 +199,6 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setUserId(null);
           setAdminFlag(false);
-          setBetaFlag(false);
           setNeedsIntro(false);
           setInvitedViaLink(false);
         }
@@ -231,13 +222,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         if (snap?.user) {
           setUser(snap.user);
           setAdminFlag(Boolean(snap.isAdmin));
-          setBetaFlag(Boolean(snap.isBetaTester));
         }
       }
       const email = session.user.email ?? "";
       const { data } = await sb
         .from("profiles")
-        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, notif_types, push_prompted, willing_to_help, is_admin, beta_tester")
+        .select("display_name, avatar_url, email_alerts, push_types, push_self_notify, notify_new_members, notif_types, push_prompted, willing_to_help, is_admin")
         .eq("id", session.user.id)
         .maybeSingle();
       if (!active) return;
@@ -247,12 +237,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       const nextUser: User = { name, email, emailAlerts: profile?.email_alerts ?? true, pushTypes: (profile?.push_types as PushType[] | null) ?? [], pushSelfNotify: profile?.push_self_notify ?? false, notifyNewMembers: profile?.notify_new_members ?? true, notifTypes: (profile?.notif_types as NotifPrefType[] | null) ?? DEFAULT_NOTIF_TYPES, pushPrompted: profile?.push_prompted ?? true, willingToHelp: profile?.willing_to_help ?? false, avatarUrl: profile?.avatar_url ?? null };
       setUser(nextUser);
       setAdminFlag(Boolean(profile?.is_admin));
-      setBetaFlag(Boolean(profile?.beta_tester));
       // Refresh the on-device snapshot with the server truth (see restore above).
       writePersisted<IdentitySnapshot>(`identity.${session.user.id}`, {
         user: nextUser,
         isAdmin: Boolean(profile?.is_admin),
-        isBetaTester: Boolean(profile?.beta_tester),
       });
 
       // Assess whether to show the first-run Welcome intro: a separate, GUARDED
@@ -324,7 +312,6 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     writePersisted<IdentitySnapshot>(`identity.${id}`, {
       user: patched,
       isAdmin: adminFlag,
-      isBetaTester: betaFlag,
     });
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.display_name = patch.name;
@@ -433,7 +420,6 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setUserId(null);
     setAdminFlag(false);
-    setBetaFlag(false);
     setNeedsIntro(false);
     setInvitedViaLink(false);
     setPreviewState("off");
@@ -453,14 +439,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         ? { name: previewMember.name, email: "", emailAlerts: user?.emailAlerts ?? true, pushTypes: [], pushSelfNotify: false, notifyNewMembers: false, notifTypes: DEFAULT_NOTIF_TYPES, pushPrompted: true, willingToHelp: false, avatarUrl: previewMember.avatarUrl }
         : user;
   const effectiveAdmin = previewMode === "off" ? adminFlag : false;
-  const effectiveBeta = previewMode === "off" ? betaFlag : false;
 
   return (
     <IdentityContext.Provider
       value={{
         user: effectiveUser,
         isAdmin: effectiveAdmin,
-        isBetaTester: effectiveBeta,
         authReady,
         userId,
         previewMode,

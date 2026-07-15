@@ -42,7 +42,7 @@ export default function AdminAlertsPage() {
             Send a notification
           </p>
           <p className="px-1 text-xs text-muted">
-            To everyone, beta testers, or admins · lands in their Activity tab.
+            To everyone or admins · lands in their Activity tab.
           </p>
           <AdminNotificationComposer />
         </div>

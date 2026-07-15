@@ -362,7 +362,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   the first client tick). Identity is a verified Supabase email-OTP session
   (persisted on-device by supabase-js); at sign-in the guest opts in/out of
   email alerts. An **on-device identity snapshot** (`mlr.cache.v1.identity.<uid>`,
-  written after each profile load) restores `user`/`isAdmin`/`isBetaTester` on
+  written after each profile load) restores `user`/`isAdmin` on
   the first client tick of a cold open — so a returning member never flashes
   the guest view (or the SignInWall) while the profile refetches. It's cleared
   by `signOut()` (via `clearAllCaches()`), never written during preview, and
@@ -772,7 +772,7 @@ own RSVP) — the same shape as the cabin feature.
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
   Google-Calendar ICS feed (see Backend seams).
 
-## Ask for Help (BETA)
+## Ask for Help
 
 A member who's **at the resort** posts a short request for a hand (moving logs,
 setting up, a ride, supplies, or the rare 🚨 Urgent); members who opted into
@@ -781,10 +781,11 @@ notification + phone push, can tap **On my way** (the only response), and see op
 requests in a shared **log** ([`/help-requests`](app/help-requests/page.tsx) →
 [`HelpRequestsView`](components/HelpRequestsView.tsx)). The requester says how many
 people they need; once that many are on the way the request reads **✅ Covered** and
-everyone eligible is told (so others don't bother). **Beta-gated** behind
-`profiles.beta_tester` (entry: a self-hiding Home card
-[`AskForHelpHomeCard`](components/AskForHelpHomeCard.tsx) + a Profile → Beta link;
-the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives there too).
+everyone eligible is told (so others don't bother). Open to every signed-in member
+(the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives in
+Profile) — it was originally gated behind a `profiles.beta_tester` role, dropped
+in migration [`0100`](supabase/migrations/0100_remove_beta_tester.sql) along with
+the Beta Tester concept entirely.
 
 - **Presence with no geolocation.** A PWA can't track location in the background,
   so "at the resort right now" is derived from data we already have: you're present
@@ -798,12 +799,11 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
 - **Targeting is client-snapshotted, server-resolved.** The client merges DB + seed
   events (Family Fest's dates live in code) to compute the live-event ids
   ([`helpTargeting`](lib/helpRequests.ts)) and passes them to `request_help`; the
-  server resolves recipients via `_help_recipients` (willing + present + beta + the
+  server resolves recipients via `_help_recipients` (willing + present + the
   `help_request` notif pref) and re-checks the **requester** is present. It *trusts*
   the client's event-window snapshot — recomputing server-side would mean moving
-  seed-event dates into the DB and would break the demo-date test override. That's an
-  accepted beta trade-off; **GA hardening:** persist seed event windows + re-derive in
-  the RPC (see the 0037 header).
+  seed-event dates into the DB. Possible hardening: persist seed event windows +
+  re-derive in the RPC (see the 0037 header).
 - **Data flow** mirrors the cabin + events features: a public(member)-read table
   written only via SECURITY DEFINER RPCs (`request_help` → `(id, notified)`,
   `respond_to_help`, `withdraw_help`, `set_help_status`), AFTER-INSERT triggers that
@@ -825,15 +825,14 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   bringer per item), and claiming an item also records an "on my way" response so
   it counts toward the head-count. Shown in [`HelpCard`](components/HelpRequestsView.tsx)
   with a "n/N covered" tally.
-- **Beta testing affordances** (migration [`0038`](supabase/migrations/0038_help_test_affordances.sql)):
-  **admins bypass the requester presence gate** (post from anywhere to test/demo —
-  the beta gate + recipient presence still apply, so use "Notify everyone willing"
-  to reach people when off-season), and **beta-tester requesters get a self-ping**
-  for their own request (`_notify` normally skips the actor) so it can be verified
-  solo. Both fall away at GA (they key on `is_admin` / `beta_tester`).
+- **Admins bypass the requester presence gate** (migration [`0038`](supabase/migrations/0038_help_test_affordances.sql)) —
+  they can post from anywhere to test/demo (recipient presence still applies, so
+  use "Notify everyone willing" to reach people when off-season). The
+  beta-tester-requester self-ping this migration originally added was removed
+  along with the Beta Tester concept (migration 0100).
 - **Urgent goes to EVERYONE** (migration [`0046`](supabase/migrations/0046_help_bring_items_and_urgent_broadcast.sql)).
   A request with `category = 'urgent'` is an emergency, so it bypasses the
-  willing + present + beta filters and alerts **every member app-wide** via a new
+  willing + present filter and alerts **every member app-wide** via a new
   `help_urgent` notification kind (default on, mutable in Profile → Notifications;
   `NotifPrefs`). `notif_on_help_request` branches: urgent fans `help_urgent` out to
   all profiles (gated only by their `help_urgent` pref); everything else still uses
@@ -841,9 +840,7 @@ the [`WillingToHelpToggle`](components/WillingToHelpToggle.tsx) opt-in lives the
   way. The mini's push-sender treats `help_urgent` as an **override push** — anyone
   whose phone push is on (non-empty `push_types`) gets buzzed regardless of their
   per-category picks (so it isn't gated on `push_types` membership like the other
-  feed pushes). Non-beta members can also **respond to / help with** an urgent
-  request (`respond_to_help` + `claim_help_item` waive the beta gate for urgent).
-  Non-urgent types keep the willing + present targeting and the beta gate.
+  feed pushes).
 
 ## Family polls
 
@@ -1034,18 +1031,19 @@ live unread **badge** in [`TabBar`](components/TabBar.tsx) via
 [`useUnreadNotifications`](lib/hooks.ts); per-member kind prefs
 ([`NotifPrefs`](components/NotifPrefs.tsx) → `profiles.notif_types`); and an admin
 sender ([`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) →
-`send_broadcast_notification`) that targets **Everyone / Beta testers / Admins**
+`send_broadcast_notification`) that targets **Everyone / Admins**
 (with an optional banner mirror for Everyone). **Read model:** `seen_at` drives
 the badge (opening the tab clears it), `read_at` drives per-item bold, `expires_at`
-drops an item from the badge while keeping it in the list. **Beta Tester** is a new
-admin-assigned role (`profiles.beta_tester`, toggled in
-[`AdminMembers`](components/AdminMembers.tsx)) used to dry-run notifications.
+drops an item from the badge while keeping it in the list.
 **Data model:** [`0029`](supabase/migrations/0029_beta_tester_and_notif_prefs.sql)
-(`beta_tester`, `notif_types`, `set_beta_tester`) +
+(`notif_types`) +
 [`0030`](supabase/migrations/0030_notifications_feed.sql) (the `notifications`
 table, fan-out triggers on the source tables, and the `mark_*` /
 `send_broadcast_notification` RPCs). Rows are written **only** by SECURITY DEFINER
-triggers/RPCs (no client insert); members can read/dismiss their own.
+triggers/RPCs (no client insert); members can read/dismiss their own. (The
+former **Beta Tester** admin-assigned role/audience — `profiles.beta_tester`,
+`set_beta_tester` — was removed in migration
+[`0100`](supabase/migrations/0100_remove_beta_tester.sql).)
 
 **Mac-mini media server** ([`media-server/`](media-server/)) also now
 **transcodes uploaded videos** to web-friendly ≤1080p H.264 MP4 via `ffmpeg`
@@ -1064,52 +1062,6 @@ aware), `/geocode` now requires sign-in (same `requireUser` check as
 see the README), and the `MAX_MB` upload cap default dropped to **256** (was
 1024). See [`media-server/README.md`](media-server/README.md) for the full
 list and the `npm install` + restart needed on the mini.
-
-## AI Assistant ("Ask MLR")
-
-A signed-in convenience bot (floating ✨ button → [`AssistantButton`](components/AssistantButton.tsx)
-→ [`AssistantChat`](components/AssistantChat.tsx) on `Sheet`) that answers
-questions from app data the member can already see — schedule, who's in charge,
-contacts, locations, "where do I find this?". **Off by default for everyone.**
-The button shows only when you're a **Beta Tester** (`profiles.beta_tester`) **and**
-you've turned it on in Profile → Beta features ([`AssistantToggle`](components/AssistantToggle.tsx),
-a per-device localStorage switch via [`lib/assistantToggle.ts`](lib/assistantToggle.ts),
-default off; the toggle itself only renders for beta testers). **Two hard
-guarantees:** (1) **signed-in only** (beta implies signed-in; `askAssistant`
-refuses guests; the future server route re-checks the Supabase token), and (2)
-**chats are never a source** — resort/committee chat are absent from retrieval by design;
-**posts** (public to any signed-in member) are the only sanctioned social source
-(allow-listed, not yet wired). So the privacy bar is just "signed-in + no chats"
-— it does *not* depend on the larger RLS hardening.
-
-Pipeline lives in [`lib/assistant/`](lib/assistant/): `index.ts` (`askAssistant`
-orchestrator — sign-in gate, 500-char cap), `intent.ts` (pure `classifyIntent` /
-`resolveDay`), `retrieval.ts` (the **allow-list** over static `lib/data.ts` —
-`SOURCE_ALLOWLIST`, chats excluded), `generate.ts` (the single swappable model
-seam + system prompt). It runs **client-side today** (all v1 data is static, so
-nothing new is exposed) and drops into a `POST /api/assistant` route unchanged.
-
-**Model is swappable behind `generateAssistantAnswer()`.** With none wired it
-answers via a deterministic *grounded stub* (no invention; assembled from the
-retrieved records). Otherwise it points `ASSISTANT_FM_URL` at **Apple Foundation
-Models** running in a small Swift service on the Mac mini
-([`media-server/fm-service/`](media-server/fm-service/)) — Apple's models only run
-on Apple devices, so generation lives on the mini while orchestration stays on
-Vercel (contract: `POST {system,question,context} → {answer,model}`). On **macOS
-27** the service is wired to prefer Apple's **Private Cloud Compute** model (far
-more capable, ~32K context) with on-device fallback, decided by a startup probe.
-⚠️ But PCC *inference* is entitlement-gated and **currently not attainable**: it
-fails with `ModelManagerError 1046`; the only third-party capability is the
-**request-only** `com.apple.developer.foundation-model-adapter` (for custom
-adapters), a **free Personal Team can't get it** (Xcode provisioning rejects it
-verbatim), and even a legit Xcode dev signature (`get-task-allow`) doesn't bypass
-the gate. Enabling it would need a paid membership + an Apple-approved entitlement.
-So the bot runs **on-device** today; the probe auto-switches to PCC if it ever
-becomes reachable. Full findings in [`media-server/fm-service/README.md`](media-server/fm-service/README.md).
-Also note: `swift build` on the current CLT beta needs a `DYLD_FALLBACK_FRAMEWORK_PATH`
-workaround (README). The `/api/assistant` route ships **Vercel-only** (a POST
-handler breaks the Pages `output: export`); its wrapper + env vars are in
-[`docs/ai-assistant.md`](docs/ai-assistant.md).
 
 ## Loading stability & the SWR cache
 

@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency } from "@/lib/types";
 
 /** Display + sort metadata for each urgency level (most urgent first). Chip uses
- *  Tailwind palette classes (like the amber Beta chip in AdminMembers). */
+ *  Tailwind palette classes. */
 export const URGENCY_META: Record<WorkItemUrgency, { label: string; emoji: string; rank: number; chip: string }> = {
   asap:         { label: "ASAP",         emoji: "🔴", rank: 0, chip: "bg-red-500/15 text-red-700 ring-red-500/30" },
   this_year:    { label: "This year",    emoji: "🟡", rank: 1, chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
