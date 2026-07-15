@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 
 // Shared bottom-sheet scaffolding: the dimmed scrim, the slide-up panel (desktop
 // pop variant), the grab handle, the round close button, and the safe-area-aware
@@ -12,6 +14,17 @@ import type { ReactNode } from "react";
 //          header={<h2 id="my-title">…</h2>} footer={<button>…</button>}>
 //     …scrollable body…
 //   </Sheet>
+//
+// Portaled to <body> (same fix as PullToRefresh's `.ptr`, see globals.css's
+// note by it): the page content every sheet would otherwise render inside
+// carries `.page-enter`'s translate3d slide-in animation (app/template.tsx),
+// and on iOS Safari an element that's ever been animated/transformed keeps
+// acting as a containing block for `position: fixed` descendants even after
+// the animation finishes — so an un-portaled sheet gets trapped inside that
+// page's box instead of covering the real viewport (visibly smaller, can't
+// scroll to content above/below the trapped area). Portaling escapes that
+// entirely, matching how every other full-viewport overlay in this app is
+// handled.
 
 /** Shared field styling for inputs/selects/textareas inside sheet forms. */
 export const FIELD =
@@ -46,14 +59,29 @@ export function Sheet({
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  return (
+  // Server/first-client-tick render nothing (no `document` yet, and matches
+  // every other portal in this app — see PullToRefresh) — a sheet only ever
+  // mounts in response to a client interaction, so this never affects the
+  // static-export HTML.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // Portaling exits the `.ff-section` subtree (see the note above), which
+  // would otherwise silently drop a Family Fest sheet back to the resort's
+  // forest-green theme — re-apply the scoped class here by route instead of
+  // threading a prop through every FF caller (same pathname-based pattern
+  // AppHeader uses for its own Home-only styling). Called unconditionally,
+  // before the `mounted` early return, to keep hook order stable.
+  const ffSection = usePathname()?.startsWith("/family-fest") ?? false;
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       // pointer-events-none once closing starts: the panel is only fading/sliding
       // out at that point (the CSS scrim/panel animations are 200ms — well short
       // of the ~440ms useSheetDismiss waits before actually unmounting), so
       // without this the invisible-but-still-mounted overlay silently eats any
       // click aimed at the page underneath for that whole gap.
-      className={`fixed inset-0 z-[60] flex items-end justify-center sm:items-center ${closing ? "pointer-events-none" : ""}`}
+      className={`fixed inset-0 z-[60] flex items-end justify-center sm:items-center ${ffSection ? "ff-section" : ""} ${closing ? "pointer-events-none" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
@@ -97,6 +125,7 @@ export function Sheet({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
