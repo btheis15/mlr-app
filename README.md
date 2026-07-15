@@ -1,10 +1,8 @@
 # Muskellunge Lake Resort (MLR)
 
 The year-round resort app — Home, an embedded Family Fest hub, a resort Feed
-(posts + committee/house chat), events & RSVP, polls, and a signed-in
-**"Ask MLR" AI assistant** (answers from your resort info — never private
-chats; see [`docs/ai-assistant.md`](docs/ai-assistant.md)) —
-installable to your phone's home screen. **Light mode only**, built
+(posts + committee/house chat), events & RSVP, and polls — installable to your
+phone's home screen. **Light mode only**, built
 around the official **forest-green** Muskellunge Lake Resort logo (cabin in the
 pines, EST 1987) with vintage heritage from the original resort (Leo & Dorothy
 Theis · Fishing · Hunting · Boating · Tomahawk, WI).
@@ -50,7 +48,7 @@ public/         manifest.webmanifest, icon.svg
 supabase/       migrations/ (numbered, run in order) — see supabase/README.md
 media-server/   Mac-mini side: uploads, transcode, push + APNs senders, fm-service
 ios/            Native SwiftUI app (see "iOS app" below) — shares this Supabase backend
-docs/           ios-swiftui-strategy.md, ai-assistant.md, content-moderation.md
+docs/           ios-swiftui-strategy.md, content-moderation.md
 ```
 
 ## iOS app (native SwiftUI) — additive, and synced with the web

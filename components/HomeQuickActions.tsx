@@ -16,7 +16,7 @@ import { Icon, type IconName } from "@/components/Icon";
  *
  * The Ask for Help tile deliberately mirrors how the old "Ask for Help" row
  * behaved: always visible, plain link — /help-requests itself handles the
- * beta/sign-in state (HelpRequestsView), so nothing is gated at the tile.
+ * sign-in state (HelpRequestsView), so nothing is gated at the tile.
  */
 
 // Each tile's icon-square keeps its color-token tint (`bg-*/12`) and the line

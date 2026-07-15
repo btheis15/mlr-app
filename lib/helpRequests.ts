@@ -1,4 +1,4 @@
-// Client helpers for "Ask for Help" (BETA, migration 0037). A member who's at
+// Client helpers for "Ask for Help" (migration 0037). A member who's at
 // the resort posts a short request; willing members who are ALSO at the resort
 // get notified. Reads go through the Supabase client (members-read tables);
 // writes go through SECURITY DEFINER RPCs (request/respond/resolve). Everything

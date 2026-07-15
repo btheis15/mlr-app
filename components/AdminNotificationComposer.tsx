@@ -9,11 +9,10 @@ import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPic
 import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
 import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
 
-type Audience = "everyone" | "beta" | "admins";
+type Audience = "everyone" | "admins";
 
 const AUDIENCES: { value: Audience; label: string; desc: string }[] = [
   { value: "everyone", label: "Everyone", desc: "Every signed-in member" },
-  { value: "beta", label: "Beta testers", desc: "Just the Beta Tester group — for trying things out" },
   { value: "admins", label: "Admins only", desc: "Just App Admins" },
 ];
 
@@ -30,17 +29,15 @@ const EXPIRY_OPTIONS: { label: string; hours: number | null }[] = [
 /**
  * Send an in-app notification to a chosen audience (App Admins only). It lands in
  * recipients' Activity tab + bumps their badge, bypassing personal prefs (the
- * audience is the gate). Targeting "Beta testers" is the way to dry-run a
- * notification without pinging the whole resort. For an "Everyone" send you can
- * also mirror it as the top-of-app banner. Backed by send_broadcast_notification
- * (migration 0030).
+ * audience is the gate). For an "Everyone" send you can also mirror it as the
+ * top-of-app banner. Backed by send_broadcast_notification (migration 0030).
  */
 export function AdminNotificationComposer() {
   const { isAdmin } = useIdentity();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
-  const [audience, setAudience] = useState<Audience>("beta");
+  const [audience, setAudience] = useState<Audience>("everyone");
   const [expiryHours, setExpiryHours] = useState<number | null>(null);
   const [alsoBanner, setAlsoBanner] = useState(false);
   const [eventTarget, setEventTarget] = useState<EventTarget>({ eventId: null, excludeNotAttending: true });
@@ -140,7 +137,7 @@ export function AdminNotificationComposer() {
         }
       }
 
-      const who = audience === "everyone" ? "everyone" : audience === "beta" ? "beta testers" : "admins";
+      const who = audience === "everyone" ? "everyone" : "admins";
       setTitle(""); setBody(""); setUrl(""); setExpiryHours(null); setAlsoBanner(false);
       setEventTarget({ eventId: null, excludeNotAttending: true });
       return `Sent to ${count} ${who === "everyone" ? "members" : who} ✓`;
@@ -151,8 +148,7 @@ export function AdminNotificationComposer() {
     <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <h2 className="text-sm font-semibold">🔔 Send a notification</h2>
       <p className="text-xs text-foreground/60">
-        Lands in recipients&rsquo; <strong>Activity</strong> tab (and bumps their badge). Send to{" "}
-        <strong>Beta testers</strong> to try one out before sending it to everyone.
+        Lands in recipients&rsquo; <strong>Activity</strong> tab (and bumps their badge).
       </p>
 
       <input

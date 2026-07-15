@@ -182,7 +182,7 @@ export interface User {
    *  (migration 0034). False = show "Turn on notifications?" the next time they
    *  open the app; set true once they accept or dismiss it. */
   pushPrompted: boolean;
-  /** BETA opt-in (default off): when at the resort, get an "Ask for Help" ping
+  /** Opt-in (default off): when at the resort, get an "Ask for Help" ping
    *  when another member nearby needs a hand. The real switch for receiving help
    *  requests — separate from notif_types/push_types, which only mute/route it.
    *  See migration 0037 + lib/helpRequests.ts. */
@@ -578,7 +578,7 @@ export interface AttendanceSummary {
   counts: { going: number; maybe: number; notGoing: number };
 }
 
-/* ── Ask for Help (BETA) ─────────────────────────────────────────────────────
+/* ── Ask for Help ────────────────────────────────────────────────────────────
    A member at the resort posts a short request; willing members who are also at
    the resort right now get notified, can respond, and see open requests in a
    shared log. "At the resort" is derived from event attendance (±2 days) /
