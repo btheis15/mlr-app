@@ -27,10 +27,17 @@ export interface BroadcastPayload {
    *  "Reminders" section (see ReminderScheduler) rather than composed directly
    *  in the Alerts screen — lets the event/callout editor list "reminders for
    *  this item" and the admin queue show what a reminder is attached to.
-   *  Opaque to run_scheduled_broadcasts(); purely a client-side label. */
+   *  Mostly a client-side label, EXCEPT for excludeCalloutDone below, which
+   *  run_scheduled_broadcasts() reads directly. */
   sourceType?: "event" | "callout" | null;
   sourceId?: string | null;
   sourceLabel?: string | null;
+  /** Callout reminders only: skip anyone who's already marked that callout
+   *  "done" (home_callout_completions, migration 0098). Defaults to true
+   *  (missing on older rows created before this flag existed) — set false to
+   *  send to everyone regardless of completion, e.g. a callout you want
+   *  everyone reminded of even if they already acted. See migration 0103. */
+  excludeCalloutDone?: boolean;
 }
 
 export interface ScheduledBroadcast {
