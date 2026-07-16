@@ -993,7 +993,7 @@ function ActivityEditor({ items, onChanged }: { items: ActivityDraft[]; onChange
   );
 }
 
-function ActivitySheet({
+export function ActivitySheet({
   draft,
   nextPosition,
   onClose,

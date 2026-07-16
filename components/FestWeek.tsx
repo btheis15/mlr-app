@@ -8,7 +8,7 @@ import { eventDays } from "@/lib/events";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
-import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
+import { DinnerSheet, ScheduleSheet, ActivitySheet } from "@/components/FestPlanner";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import {
@@ -16,9 +16,11 @@ import {
   fetchMemberOptions,
   fetchDinnerDrafts,
   fetchScheduleDrafts,
+  fetchActivityDrafts,
   type FestMemberOption,
   type DinnerDraft,
   type ScheduleDraft,
+  type ActivityDraft,
 } from "@/lib/festContent";
 import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 
@@ -62,6 +64,7 @@ export function FestWeek({
   const [members, setMembers] = useState<FestMemberOption[]>([]);
   const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
   const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
+  const [activityDrafts, setActivityDrafts] = useState<ActivityDraft[]>([]);
   // The full fest date range, for the day picker inside DinnerSheet/
   // ScheduleSheet — distinct from `days` below (only the days that actually
   // have content, used to render the accordion sections).
@@ -71,6 +74,7 @@ export function FestWeek({
     fetchMemberOptions().then(setMembers);
     fetchDinnerDrafts().then(setDinnerDrafts);
     fetchScheduleDrafts().then(setScheduleDrafts);
+    fetchActivityDrafts().then(setActivityDrafts);
   }, []);
 
   useEffect(() => {
@@ -106,24 +110,14 @@ export function FestWeek({
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-accent">🗺️ Anytime all week</h2>
           {things.map((a, i) => (
-            <div
+            <ActivityCard
               key={a.id}
-              style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
-              className="rise rounded-2xl bg-card p-4 ring-1 ring-border"
-            >
-              <p className="text-sm font-semibold">
-                {a.emoji} {a.title}
-              </p>
-              <p className="mt-0.5 text-xs text-foreground/70">{a.blurb}</p>
-              {a.details && (
-                <p className="mt-1 text-xs leading-relaxed text-foreground/60">{a.details}</p>
-              )}
-              {a.location && (
-                <p className="mt-1 text-xs text-foreground/50">
-                  📍 <Protected label="Sign in for location">{a.location}</Protected>
-                </p>
-              )}
-            </div>
+              activity={a}
+              index={i}
+              canEditAll={canEditAll}
+              draft={activityDrafts.find((d) => d.id === a.id) ?? null}
+              onSaved={onSaved}
+            />
           ))}
         </div>
       )}
@@ -201,6 +195,61 @@ function Expander({ open, children }: { open: boolean; children: ReactNode }) {
           {children}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ActivityCard({
+  activity,
+  index,
+  canEditAll,
+  draft,
+  onSaved,
+}: {
+  activity: FestActivity;
+  index: number;
+  canEditAll: boolean;
+  draft: ActivityDraft | null;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <div
+      style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
+      className="rise rounded-2xl bg-card p-4 ring-1 ring-border"
+    >
+      <p className="text-sm font-semibold">
+        {activity.emoji} {activity.title}
+      </p>
+      <p className="mt-0.5 text-xs text-foreground/70">{activity.blurb}</p>
+      {activity.details && (
+        <p className="mt-1 text-xs leading-relaxed text-foreground/60">{activity.details}</p>
+      )}
+      {activity.location && (
+        <p className="mt-1 text-xs text-foreground/50">
+          📍 <Protected label="Sign in for location">{activity.location}</Protected>
+        </p>
+      )}
+      {canEditAll && draft && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="press mt-2 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
+        >
+          ✏️ Edit
+        </button>
+      )}
+      {editing && draft && (
+        <ActivitySheet
+          draft={draft}
+          nextPosition={draft.position}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
     </div>
   );
 }
