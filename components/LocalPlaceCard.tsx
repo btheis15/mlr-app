@@ -58,6 +58,7 @@ function PlaceActions({ place }: { place: LocalPlace }) {
   const hasAny = Boolean(
     place.internalHref ||
       place.bookingUrl ||
+      place.ratesUrl ||
       place.menuUrl ||
       place.orderUrl ||
       place.phoneTel ||
@@ -86,6 +87,16 @@ function PlaceActions({ place }: { place: LocalPlace }) {
           ariaLabel={`${place.bookingCta ?? "Book Tee Time"} at ${place.name} (opens in a new tab)`}
           iconClass="text-white"
           icon={<FlagIcon />}
+        />
+      )}
+      {place.ratesUrl && (
+        <ActionPill
+          href={place.ratesUrl}
+          external
+          label={place.ratesCta ?? "See Rates"}
+          ariaLabel={`${place.ratesCta ?? "See Rates"} at ${place.name} (opens in a new tab)`}
+          iconClass="text-accent"
+          icon={<TagIcon />}
         />
       )}
       {place.menuUrl && (
@@ -127,8 +138,29 @@ function PlaceActions({ place }: { place: LocalPlace }) {
           icon={<GlobeIcon />}
         />
       )}
+      <ActionPill
+        href={mapsHref(place)}
+        external
+        label="Directions"
+        ariaLabel={`Get directions to ${place.name} (opens your maps app)`}
+        iconClass="text-dusk"
+        icon={<PinIcon />}
+      />
     </div>
   );
+}
+
+/**
+ * A "get directions" link that opens the phone's maps app to the place. Uses
+ * Google Maps' universal directions URL (destination = the place's name +
+ * locality); on a phone it hands off to the installed Google Maps app, and
+ * falls back to the web map otherwise. No street addresses live in the data,
+ * so the name + town query is what resolves the pin.
+ */
+function mapsHref(place: LocalPlace): string {
+  const locality = place.locality.replace(/\s*·\s*/g, ", ");
+  const query = `${place.name}, ${locality}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
 }
 
 function ActionPill({
@@ -198,6 +230,34 @@ function FlagIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
+      <path
+        d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="10" r="2.5" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function TagIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
+      <path
+        d="M4 4h7l9 9-7 7-9-9V4z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
     </svg>
   );
 }
