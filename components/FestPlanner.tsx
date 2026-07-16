@@ -216,7 +216,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
           <PayeeEditor items={payees} onChanged={reloadDrafts} />
         </PageSection>
         <PageSection icon="🗺️" title="Anytime activities">
-          <ActivityEditor items={activities} onChanged={reloadDrafts} />
+          <ActivityEditor items={activities} members={members} onChanged={reloadDrafts} />
         </PageSection>
         <PageSection icon="🖼️" title="Images">
           <ImagesEditor />
@@ -254,7 +254,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       )}
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
-      {section === "activities" && <ActivityEditor items={activities} onChanged={reloadDrafts} />}
+      {section === "activities" && <ActivityEditor items={activities} members={members} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>
@@ -467,7 +467,9 @@ export function ScheduleSheet({
   const [leadUserId, setLeadUserId] = useState<string | null>(draft?.leadUserId ?? null);
   const [leadName, setLeadName] = useState(draft?.leadName ?? "");
   const [leadPhone, setLeadPhone] = useState(draft?.leadPhone ?? "");
+  const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
   const [picking, setPicking] = useState(false);
+  const [pickingCrew, setPickingCrew] = useState(false);
 
   const canSave = title.trim().length > 0 && day.length > 0 && !save.pending;
 
@@ -487,6 +489,7 @@ export function ScheduleSheet({
         leadUserId,
         leadName: orNull(leadName),
         leadPhone: orNull(leadPhone),
+        crewUserIds,
         position: draft?.position ?? nextPosition,
       });
       if (error) return error;
@@ -546,6 +549,37 @@ export function ScheduleSheet({
         onPhone={setLeadPhone}
       />
 
+      <Field label="Crew members (also get editing rights for this event)">
+        {crewUserIds.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {crewUserIds.map((id) => {
+              const m = members.find((x) => x.id === id);
+              return (
+                <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                  {m?.name ?? "Member"}
+                  <button
+                    type="button"
+                    onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
+                    aria-label={`Remove ${m?.name ?? "member"} from crew`}
+                    className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setPickingCrew(true)}
+          disabled={members.length === 0}
+          className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
+        >
+          + Add a crew member…
+        </button>
+      </Field>
+
       <Field label="Details">
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="What it is, when to arrive…" className={`${FIELD} w-full resize-none`} />
       </Field>
@@ -567,6 +601,14 @@ export function ScheduleSheet({
           members={members}
           onPick={(m) => { setLeadUserId(m.id); setLeadName(m.name); setPicking(false); }}
           onClose={() => setPicking(false)}
+        />
+      )}
+      {pickingCrew && (
+        <CrewPickerSheet
+          members={members}
+          selected={new Set(crewUserIds)}
+          onToggle={(id) => setCrewUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
+          onClose={() => setPickingCrew(false)}
         />
       )}
     </Sheet>
@@ -967,7 +1009,15 @@ function PayeeSheet({
 
 // ── Activities ────────────────────────────────────────────────────────────────
 
-function ActivityEditor({ items, onChanged }: { items: ActivityDraft[]; onChanged: () => void }) {
+function ActivityEditor({
+  items,
+  members,
+  onChanged,
+}: {
+  items: ActivityDraft[];
+  members: FestMemberOption[];
+  onChanged: () => void;
+}) {
   const [editing, setEditing] = useState<ActivityDraft | "new" | null>(null);
   return (
     <div className="space-y-3">
@@ -984,6 +1034,7 @@ function ActivityEditor({ items, onChanged }: { items: ActivityDraft[]; onChange
       {editing && (
         <ActivitySheet
           draft={editing === "new" ? null : editing}
+          members={members}
           nextPosition={items.length}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); onChanged(); }}
@@ -995,11 +1046,13 @@ function ActivityEditor({ items, onChanged }: { items: ActivityDraft[]; onChange
 
 export function ActivitySheet({
   draft,
+  members,
   nextPosition,
   onClose,
   onSaved,
 }: {
   draft: ActivityDraft | null;
+  members: FestMemberOption[];
   nextPosition: number;
   onClose: () => void;
   onSaved: () => void;
@@ -1011,6 +1064,12 @@ export function ActivitySheet({
   const [blurb, setBlurb] = useState(draft?.blurb ?? "");
   const [details, setDetails] = useState(draft?.details ?? "");
   const [location, setLocation] = useState(draft?.location ?? "");
+  const [leadUserId, setLeadUserId] = useState<string | null>(draft?.leadUserId ?? null);
+  const [leadName, setLeadName] = useState(draft?.leadName ?? "");
+  const [leadPhone, setLeadPhone] = useState(draft?.leadPhone ?? "");
+  const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
+  const [picking, setPicking] = useState(false);
+  const [pickingCrew, setPickingCrew] = useState(false);
 
   const canSave = title.trim().length > 0 && !save.pending;
   const submit = () =>
@@ -1022,6 +1081,10 @@ export function ActivitySheet({
         blurb: orNull(blurb),
         details: orNull(details),
         location: orNull(location),
+        leadUserId,
+        leadName: orNull(leadName),
+        leadPhone: orNull(leadPhone),
+        crewUserIds,
         position: draft?.position ?? nextPosition,
       });
       if (error) return error;
@@ -1046,6 +1109,65 @@ export function ActivitySheet({
       <Field label="Blurb (one-liner)"><input value={blurb} onChange={(e) => setBlurb(e.target.value)} className={`${FIELD} w-full`} /></Field>
       <Field label="Details (optional)"><textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} /></Field>
       <Field label="Where to start (optional)"><input value={location} onChange={(e) => setLocation(e.target.value)} className={`${FIELD} w-full`} /></Field>
+
+      <LeadPicker
+        title="Who's in charge"
+        members={members}
+        userId={leadUserId}
+        name={leadName}
+        phone={leadPhone}
+        onPick={() => setPicking(true)}
+        onClear={() => { setLeadUserId(null); setLeadName(""); }}
+        onName={setLeadName}
+        onPhone={setLeadPhone}
+      />
+
+      <Field label="Crew members (also get editing rights for this activity)">
+        {crewUserIds.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {crewUserIds.map((id) => {
+              const m = members.find((x) => x.id === id);
+              return (
+                <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                  {m?.name ?? "Member"}
+                  <button
+                    type="button"
+                    onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
+                    aria-label={`Remove ${m?.name ?? "member"} from crew`}
+                    className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setPickingCrew(true)}
+          disabled={members.length === 0}
+          className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
+        >
+          + Add a crew member…
+        </button>
+      </Field>
+
+      {picking && (
+        <MemberPickerSheet
+          members={members}
+          onPick={(m) => { setLeadUserId(m.id); setLeadName(m.name); setPicking(false); }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+      {pickingCrew && (
+        <CrewPickerSheet
+          members={members}
+          selected={new Set(crewUserIds)}
+          onToggle={(id) => setCrewUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
+          onClose={() => setPickingCrew(false)}
+        />
+      )}
     </Sheet>
   );
 }

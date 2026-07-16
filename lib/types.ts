@@ -321,6 +321,14 @@ export interface ScheduleEvent {
   description: string;
   /** Who's running this event — point of contact, tap-to-call/text. */
   lead?: Chef;
+  /** Set when the lead is linked to a real account (migration 0053) — lets
+   *  the client tell "is the signed-in viewer this event's lead?" without a
+   *  name-match. Null for a free-text lead (not in the app). */
+  leadUserId?: string | null;
+  /** Other members assigned to help run this event (migration 0110) — both
+   *  the lead and anyone in this list can edit the event's details directly.
+   *  Omitted (treat as empty) on the in-code seed. */
+  crewUserIds?: string[];
   /** Optional "what to bring" note. */
   bring?: string;
 }
@@ -337,6 +345,14 @@ export interface FestActivity {
   details?: string;
   /** Optional where to start / pick up materials. */
   location?: string;
+  /** Who's running this activity — point of contact, tap-to-call/text
+   *  (migration 0110, same shape as ScheduleEvent's lead). */
+  lead?: Chef;
+  leadUserId?: string | null;
+  /** Other members assigned to help run this activity — both the lead and
+   *  anyone in this list can edit the activity's details directly. Omitted
+   *  (treat as empty) on the in-code seed. */
+  crewUserIds?: string[];
 }
 
 /** One night's dinner: the head chef of the day, the houses on crew, what's

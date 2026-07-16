@@ -598,6 +598,30 @@ are always fully shown), and [`FestDinnerDetail`](components/FestDinnerDetail.ts
   meant losing today's entry from the list entirely, plus its edit affordance
   had no equivalent up top until `FestStatus` gained its own here.
 
+**Extended to schedule events + anytime activities (migration 0110).** The
+same chef/crew shape now applies to `fest_schedule_items` (which already had
+a `lead_user_id`/`lead_name`/`lead_phone` FK from day one, migration 0053,
+but no crew — day/title/private stay admin/committee-managed, same as
+dinner's day/title/houses) and to `fest_activities` ("Anytime all week" on
+the Overview page — which had **no** lead/crew concept at all before this,
+so `lead_user_id`/`lead_name`/`lead_phone`/`crew_user_ids` were all added
+fresh). Same narrower self-edit RLS policy shape
+(`lead_user_id = auth.uid() or auth.uid() = any(crew_user_ids)`), same
+narrower detail-only update functions (`updateScheduleDetails()` — location/
+description/bring; `updateActivityDetails()` — blurb/details/location), same
+narrower edit sheets ([`ScheduleDetailsEditSheet`](components/ScheduleDetailsEditSheet.tsx),
+[`ActivityDetailsEditSheet`](components/ActivityDetailsEditSheet.tsx)), and
+the Planner's `ScheduleSheet`/`ActivitySheet` both grew a "Crew members"
+`CrewPickerSheet` picker (identical to `DinnerSheet`'s); `ActivitySheet` also
+grew a `LeadPicker` (activities had never had one). `FestWeek`'s `EventRow`/
+`ActivityCard` and `FestStatus`'s `TodayEvent` all now compute
+`canEditThis = canEditAll || lead/crew match` the same way `DinnerRow`/
+`TodayDinner` do, so a self-editor without full `can_edit_fest()` access gets
+the narrower sheet while a full editor still gets the Planner's own full
+sheet in place. Not extended: the standalone `schedule/[id]` detail page
+(`FestDinnerDetail` has full edit; the schedule equivalent has none at all,
+pre-existing gap, not touched here).
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

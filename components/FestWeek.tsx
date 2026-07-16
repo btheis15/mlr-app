@@ -8,6 +8,8 @@ import { eventDays } from "@/lib/events";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
+import { ActivityDetailsEditSheet } from "@/components/ActivityDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet, ActivitySheet } from "@/components/FestPlanner";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
@@ -114,8 +116,10 @@ export function FestWeek({
               key={a.id}
               activity={a}
               index={i}
+              uid={uid}
               canEditAll={canEditAll}
               draft={activityDrafts.find((d) => d.id === a.id) ?? null}
+              members={members}
               onSaved={onSaved}
             />
           ))}
@@ -146,6 +150,7 @@ export function FestWeek({
                   <EventRow
                     key={e.id}
                     event={e}
+                    uid={uid}
                     canEditAll={canEditAll}
                     draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
                     days={festDayOptions}
@@ -202,17 +207,27 @@ function Expander({ open, children }: { open: boolean; children: ReactNode }) {
 function ActivityCard({
   activity,
   index,
+  uid,
   canEditAll,
   draft,
+  members,
   onSaved,
 }: {
   activity: FestActivity;
   index: number;
+  uid: string | null;
   canEditAll: boolean;
   draft: ActivityDraft | null;
+  members: FestMemberOption[];
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const canEditThis =
+    canEditAll || Boolean(uid && (activity.leadUserId === uid || (activity.crewUserIds ?? []).includes(uid)));
+  // Full-access editors get the Planner's own full ActivitySheet in place
+  // (title/lead/crew/details); a lead/crew self-editor gets the narrower
+  // ActivityDetailsEditSheet (blurb/details/location only) instead.
+  const fullEdit = canEditAll && Boolean(draft);
   return (
     <div
       style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
@@ -230,7 +245,18 @@ function ActivityCard({
           📍 <Protected label="Sign in for location">{activity.location}</Protected>
         </p>
       )}
-      {canEditAll && draft && (
+      {activity.lead && (
+        <div className="mt-2">
+          <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>
+          <p className="mt-0.5 text-sm font-semibold">
+            <PrivateName name={activity.lead.name} />
+          </p>
+          <div className="mt-2">
+            <CallTextButtons phone={activity.lead.phone} />
+          </div>
+        </div>
+      )}
+      {canEditThis && (
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -239,15 +265,23 @@ function ActivityCard({
           ✏️ Edit
         </button>
       )}
-      {editing && draft && (
+      {editing && fullEdit && draft && (
         <ActivitySheet
           draft={draft}
+          members={members}
           nextPosition={draft.position}
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
             onSaved();
           }}
+        />
+      )}
+      {editing && !fullEdit && (
+        <ActivityDetailsEditSheet
+          activity={activity}
+          onClose={() => setEditing(false)}
+          onSaved={onSaved}
         />
       )}
     </div>
@@ -271,6 +305,7 @@ function RowChevron({ open }: { open: boolean }) {
 
 function EventRow({
   event,
+  uid,
   canEditAll,
   draft,
   days,
@@ -278,6 +313,7 @@ function EventRow({
   onSaved,
 }: {
   event: ScheduleEvent;
+  uid: string | null;
   canEditAll: boolean;
   draft: ScheduleDraft | null;
   days: string[];
@@ -286,6 +322,12 @@ function EventRow({
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const canEditThis =
+    canEditAll || Boolean(uid && (event.leadUserId === uid || (event.crewUserIds ?? []).includes(uid)));
+  // Full-access editors get the Planner's own full ScheduleSheet in place
+  // (day/title/time/lead/crew/details); a lead/crew self-editor gets the
+  // narrower ScheduleDetailsEditSheet (location/details/bring only) instead.
+  const fullEdit = canEditAll && Boolean(draft);
   return (
     <li className="border-b border-border/50 last:border-0">
       <button
@@ -309,7 +351,7 @@ function EventRow({
             off. Every other row here starts with plain text/no ring, so this
             never showed up until an edit button became the first child. */}
         <div className="space-y-3 px-4 pb-4 pt-1">
-          {canEditAll && draft && (
+          {canEditThis && (
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -345,7 +387,7 @@ function EventRow({
           )}
         </div>
       </Expander>
-      {editing && draft && (
+      {editing && fullEdit && draft && (
         <ScheduleSheet
           draft={draft}
           days={days}
@@ -356,6 +398,13 @@ function EventRow({
             setEditing(false);
             onSaved();
           }}
+        />
+      )}
+      {editing && !fullEdit && (
+        <ScheduleDetailsEditSheet
+          event={event}
+          onClose={() => setEditing(false)}
+          onSaved={onSaved}
         />
       )}
     </li>

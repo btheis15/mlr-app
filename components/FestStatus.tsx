@@ -14,6 +14,7 @@ import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
+import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
 import {
   canEditFest,
@@ -144,6 +145,7 @@ export function FestStatus({
           <TodayEvent
             key={e.id}
             e={e}
+            uid={uid}
             canEditAll={canEditAll}
             draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
             days={festDayOptions}
@@ -212,6 +214,7 @@ export function FestStatus({
  *  without the tap-to-expand step (this card is already fully shown). */
 function TodayEvent({
   e,
+  uid,
   canEditAll,
   draft,
   days,
@@ -219,6 +222,7 @@ function TodayEvent({
   onSaved,
 }: {
   e: ScheduleEvent;
+  uid: string | null;
   canEditAll: boolean;
   draft: ScheduleDraft | null;
   days: string[];
@@ -226,6 +230,9 @@ function TodayEvent({
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const canEditThis =
+    canEditAll || Boolean(uid && (e.leadUserId === uid || (e.crewUserIds ?? []).includes(uid)));
+  const fullEdit = canEditAll && Boolean(draft);
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex gap-3">
@@ -248,7 +255,7 @@ function TodayEvent({
         </div>
       </div>
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
-      {canEditAll && draft && (
+      {canEditThis && (
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -257,7 +264,7 @@ function TodayEvent({
           ✏️ Edit this event
         </button>
       )}
-      {editing && draft && (
+      {editing && fullEdit && draft && (
         <ScheduleSheet
           draft={draft}
           days={days}
@@ -268,6 +275,13 @@ function TodayEvent({
             setEditing(false);
             onSaved();
           }}
+        />
+      )}
+      {editing && !fullEdit && (
+        <ScheduleDetailsEditSheet
+          event={e}
+          onClose={() => setEditing(false)}
+          onSaved={onSaved}
         />
       )}
     </div>

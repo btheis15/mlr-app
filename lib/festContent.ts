@@ -148,6 +148,7 @@ interface ScheduleRow {
   lead_user_id: string | null;
   lead_name: string | null;
   lead_phone: string | null;
+  crew_user_ids: string[] | null;
 }
 interface DinnerRow {
   id: string;
@@ -182,6 +183,10 @@ interface ActivityRow {
   blurb: string | null;
   details: string | null;
   location: string | null;
+  lead_user_id: string | null;
+  lead_name: string | null;
+  lead_phone: string | null;
+  crew_user_ids: string[] | null;
 }
 interface CalloutRow {
   id: string;
@@ -224,6 +229,8 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     // We carry name + phone for the public card (tap-to-call/text); lead_user_id
     // is the link of record but the display fields stand on their own.
     lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
+    leadUserId: r.lead_user_id,
+    crewUserIds: r.crew_user_ids ?? [],
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -263,6 +270,9 @@ function mapActivity(r: ActivityRow): FestActivity {
     blurb: r.blurb ?? "",
     details: r.details ?? undefined,
     location: r.location ?? undefined,
+    lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
+    leadUserId: r.lead_user_id,
+    crewUserIds: r.crew_user_ids ?? [],
   };
 }
 function mapCallout(r: CalloutRow): HomeCallout {
@@ -295,7 +305,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -309,7 +319,11 @@ export async function fetchFestContent(): Promise<FestContent> {
         .order("day")
         .order("position"),
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
-      sb.from("fest_activities").select("id, title, emoji, blurb, details, location").eq("fest_year", FEST_YEAR).order("position"),
+      sb
+        .from("fest_activities")
+        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids")
+        .eq("fest_year", FEST_YEAR)
+        .order("position"),
       sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
     ]);
 
@@ -410,6 +424,7 @@ export interface ScheduleInput {
   leadUserId: string | null;
   leadName: string | null;
   leadPhone: string | null;
+  crewUserIds: string[];
   position: number;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
@@ -426,9 +441,38 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     lead_user_id: i.leadUserId,
     lead_name: i.leadName,
     lead_phone: i.leadPhone,
+    crew_user_ids: i.crewUserIds,
     position: i.position,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
+
+/** The subset of a schedule event a lead/crew member (not necessarily a fest
+ *  admin/committee member) can self-edit — see migration 0110, mirroring
+ *  DinnerDetailsInput/updateDinnerDetails. Deliberately narrower than
+ *  ScheduleInput: day/title/time/private/lead/crew stay admin/committee-
+ *  managed; this is just the on-the-ground details for the event you're
+ *  running. RLS (lead_user_id / crew_user_ids match) is what actually
+ *  authorizes it. */
+export interface ScheduleDetailsInput {
+  location: string | null;
+  description: string | null;
+  bring: string | null;
+}
+export async function updateScheduleDetails(id: string, i: ScheduleDetailsInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("fest_schedule_items")
+    .update({
+      location: i.location,
+      description: i.description,
+      bring: i.bring,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
 
 export interface DinnerInput {
   id?: string;
@@ -548,6 +592,10 @@ export interface ActivityInput {
   blurb: string | null;
   details: string | null;
   location: string | null;
+  leadUserId: string | null;
+  leadName: string | null;
+  leadPhone: string | null;
+  crewUserIds: string[];
   position: number;
 }
 export const saveActivity = (i: ActivityInput) =>
@@ -557,9 +605,39 @@ export const saveActivity = (i: ActivityInput) =>
     blurb: i.blurb,
     details: i.details,
     location: i.location,
+    lead_user_id: i.leadUserId,
+    lead_name: i.leadName,
+    lead_phone: i.leadPhone,
+    crew_user_ids: i.crewUserIds,
     position: i.position,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
+
+/** The subset of an activity a lead/crew member (not necessarily a fest
+ *  admin/committee member) can self-edit — mirrors ScheduleDetailsInput.
+ *  Deliberately narrower than ActivityInput: title/lead/crew stay
+ *  admin/committee-managed. RLS (lead_user_id / crew_user_ids match) is what
+ *  actually authorizes it. */
+export interface ActivityDetailsInput {
+  blurb: string | null;
+  details: string | null;
+  location: string | null;
+}
+export async function updateActivityDetails(id: string, i: ActivityDetailsInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("fest_activities")
+    .update({
+      blurb: i.blurb,
+      details: i.details,
+      location: i.location,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
 
 // Home call-outs (migration 0083) — not year-keyed like the fest tables, so
 // these write directly instead of through writeRow (which stamps fest_year).
@@ -675,7 +753,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, position",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -694,6 +772,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     leadUserId: r.lead_user_id,
     leadName: r.lead_name,
     leadPhone: r.lead_phone,
+    crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
   }));
 }
@@ -772,7 +851,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_activities")
-    .select("id, title, emoji, blurb, details, location, position")
+    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
@@ -782,6 +861,10 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
     blurb: r.blurb,
     details: r.details,
     location: r.location,
+    leadUserId: r.lead_user_id,
+    leadName: r.lead_name,
+    leadPhone: r.lead_phone,
+    crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
   }));
 }
