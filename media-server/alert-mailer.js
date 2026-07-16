@@ -268,46 +268,123 @@ ${roomPickNote}
     }
   }
 
-  // Sweep recent unsent alerts (one may have been posted while we were down).
-  const { data: pending } = await sb
-    .from("announcements")
-    .select("id, title, body, severity, notify_email, email_sent_at, created_at, email_audience")
-    .is("email_sent_at", null)
-    .eq("notify_email", true)
-    .order("created_at", { ascending: false })
-    .limit(10);
-  for (const row of pending || []) await handle(row);
+  // Email the requester when their cabin stay is cancelled — only when
+  // someone else (an admin) cancelled it; cancel_cabin_stay pre-stamps
+  // cancel_email_sent_at itself when the requester cancels their own booking
+  // or p_notify was false, so this only ever fires for the "admin cancelled
+  // it for them" case (migration 0109).
+  async function handleCabinCancel(row) {
+    if (!row || row.status !== "cancelled" || row.cancel_email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("cabin_bookings")
+      .update({ cancel_email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("cancel_email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
 
-  // Sweep recent decided-but-unemailed cabin stays (decided while we were down).
-  const { data: cabinPending } = await sb
-    .from("cabin_bookings")
-    .select("id, status, decision_email_sent_at, reviewed_at")
-    .in("status", ["approved", "denied"])
-    .is("decision_email_sent_at", null)
-    .order("reviewed_at", { ascending: false })
-    .limit(10);
-  for (const row of cabinPending || []) await handleCabinDecision(row);
+    const { data: info, error } = await sb.rpc("cabin_booking_notification", { p_booking: row.id });
+    const d = (info || [])[0];
+    if (error || !d || !d.requester_email) {
+      console.log(`[mailer] cabin cancel ${row.id}: no recipient (${error ? error.message : "no email"})`);
+      return;
+    }
 
-  // Sweep recent requested-but-unemailed edit notices (requested while down).
-  const { data: editPending } = await sb
-    .from("cabin_bookings")
-    .select("id, edit_notify_requested_at, edit_email_sent_at")
-    .not("edit_notify_requested_at", "is", null)
-    .order("edit_notify_requested_at", { ascending: false })
-    .limit(10);
-  for (const row of editPending || []) await handleCabinEdit(row);
+    const stay = `${fmtFull(d.check_in)} → ${fmtFull(d.check_out)}`;
+    const subject = `Your cabin stay was cancelled — ${d.cabin_name}`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:18px;margin:0 0 2px"><strong>Your cabin stay was cancelled</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
+<p style="margin:0 0 12px;font-size:15px">Hi ${escapeHtml(d.requester_name)}, your ${escapeHtml(d.cabin_name)} stay (${stay}) has been cancelled.</p>
+<p style="margin:16px 0 0;font-size:14px">Questions, or want to request different dates? Reply to this email or reach out to an admin in the app.</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">Muskellunge Lake Resort · Tomahawk, WI</p>
+</div>`;
+    const text = `Your cabin stay was cancelled.\n\nCabin: ${d.cabin_name}\nDates: ${stay}\n\nQuestions or want different dates? Reply to this email or reach out to an admin.\n\n— Muskellunge Lake Resort`;
 
-  // Live: email on each new alert + each cabin stay decision/edit.
-  sb.channel("alert-mailer")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (payload) => {
-      handle(payload.new).catch((e) => console.error("[mailer] handle error:", e && e.message));
-    })
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cabin_bookings" }, (payload) => {
-      handleCabinDecision(payload.new).catch((e) => console.error("[mailer] cabin handle error:", e && e.message));
-      handleCabinEdit(payload.new).catch((e) => console.error("[mailer] cabin edit handle error:", e && e.message));
-    })
-    .subscribe((status) => console.log("[mailer] realtime:", status));
-  console.log("[mailer] watching for alerts + cabin stay decisions/edits to email");
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: d.requester_email, subject, text, html });
+      console.log(`[mailer] cabin cancel emailed to ${d.requester_email} (stay: ${stay})`);
+    } catch (e) {
+      console.error("[mailer] cabin cancel send failed:", e && e.message);
+      await sb.from("cabin_bookings").update({ cancel_email_sent_at: null }).eq("id", row.id); // let a retry pick it up
+    }
+  }
+
+  // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
+  // Runs on startup AND on a recurring timer (see below), since realtime can
+  // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
+  // own; the sweep is what actually guarantees a missed event still sends,
+  // instead of sitting stuck until someone notices and restarts the mini.
+  async function sweep() {
+    const { data: pending } = await sb
+      .from("announcements")
+      .select("id, title, body, severity, notify_email, email_sent_at, created_at, email_audience")
+      .is("email_sent_at", null)
+      .eq("notify_email", true)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of pending || []) await handle(row);
+
+    const { data: cabinPending } = await sb
+      .from("cabin_bookings")
+      .select("id, status, decision_email_sent_at, reviewed_at")
+      .in("status", ["approved", "denied"])
+      .is("decision_email_sent_at", null)
+      .order("reviewed_at", { ascending: false })
+      .limit(10);
+    for (const row of cabinPending || []) await handleCabinDecision(row);
+
+    const { data: editPending } = await sb
+      .from("cabin_bookings")
+      .select("id, edit_notify_requested_at, edit_email_sent_at")
+      .not("edit_notify_requested_at", "is", null)
+      .order("edit_notify_requested_at", { ascending: false })
+      .limit(10);
+    for (const row of editPending || []) await handleCabinEdit(row);
+
+    const { data: cancelPending } = await sb
+      .from("cabin_bookings")
+      .select("id, status, cancel_email_sent_at")
+      .eq("status", "cancelled")
+      .is("cancel_email_sent_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(10);
+    for (const row of cancelPending || []) await handleCabinCancel(row);
+  }
+  await sweep();
+  setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
+
+  // Live: email on each new alert + each cabin stay decision/edit/cancel.
+  // Resubscribes on drop (CHANNEL_ERROR/TIMED_OUT/CLOSED) instead of leaving
+  // the connection dead — the periodic sweep above is the real safety net,
+  // but reconnecting keeps the common case near-instant instead of waiting
+  // up to 3 minutes for the next sweep.
+  let realtimeChannel = null;
+  let reconnecting = false;
+  function subscribeRealtime() {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb.channel("alert-mailer")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (payload) => {
+        handle(payload.new).catch((e) => console.error("[mailer] handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cabin_bookings" }, (payload) => {
+        handleCabinDecision(payload.new).catch((e) => console.error("[mailer] cabin handle error:", e && e.message));
+        handleCabinEdit(payload.new).catch((e) => console.error("[mailer] cabin edit handle error:", e && e.message));
+        handleCabinCancel(payload.new).catch((e) => console.error("[mailer] cabin cancel handle error:", e && e.message));
+      })
+      .subscribe((status) => {
+        console.log("[mailer] realtime:", status);
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!reconnecting) {
+            reconnecting = true;
+            setTimeout(() => { reconnecting = false; subscribeRealtime(); }, 5000);
+          }
+        }
+      });
+  }
+  subscribeRealtime();
+  console.log("[mailer] watching for alerts + cabin stay decisions/edits/cancellations to email");
 }
 
 module.exports = { start, enabled };

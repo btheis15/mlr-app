@@ -323,11 +323,15 @@ export async function reviewStay(
   return error ? { error: error.message } : {};
 }
 
-/** Cancel a request (requester's own, or admin). */
-export async function cancelStay(id: string): Promise<{ error?: string }> {
+/**
+ * Cancel a request (requester's own, or admin). `notify` (default true) only
+ * has an effect when an admin cancels someone ELSE's booking — the RPC never
+ * emails a requester who cancelled their own stay.
+ */
+export async function cancelStay(id: string, notify = true): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.rpc("cancel_cabin_stay", { p_booking: id });
+  const { error } = await sb.rpc("cancel_cabin_stay", { p_booking: id, p_notify: notify });
   return error ? { error: error.message } : {};
 }
 

@@ -1031,6 +1031,26 @@ through SECURITY DEFINER RPCs. Data model: migration
     (there's no "don't notify admins" checkbox in `CabinRequestSheet`); it's a
     plumbing-only escape hatch for testing the booking flow (e.g. a real SQL/
     RPC test booking) without spamming every admin.
+  - **Cancellation email** (migration
+    [`0109`](supabase/migrations/0109_cabin_cancel_notify.sql)) —
+    `cancel_cabin_stay` grew `p_notify` (default true) + `cancelled_by`/
+    `cancel_email_sent_at` columns, same claim-a-row shape as the decision/edit
+    emails: cancelling pre-stamps `cancel_email_sent_at` (skipping the mailer)
+    whenever the **requester cancels their own** booking or `p_notify` is
+    false — an admin cancelling someone else's stay is the only case that
+    leaves it null for the mailer's new `handleCabinCancel` to pick up.
+    `cancelStay()` in [`lib/cabins.ts`](lib/cabins.ts) takes an optional
+    `notify` (default true); no UI checkbox wired yet (both call sites —
+    `AdminCabinBookings`, `request-stay`'s `BookingRow` — just use the
+    default).
+  - **Mailer reliability.** The mini's Supabase Realtime channel can silently
+    drop (`CHANNEL_ERROR`/`TIMED_OUT`) with no built-in recovery, which
+    previously meant a decision/edit/cancel could sit unsent until someone
+    noticed and restarted the mini. `alert-mailer.js` now (1) resubscribes
+    5s after a dropped channel instead of staying dead, and (2) re-runs its
+    startup sweep (alerts + cabin decisions/edits/cancellations) on a
+    recurring 3-minute timer, not just once at boot — so a missed realtime
+    event self-heals within a few minutes either way.
   - **Self-service room pick.** `set_booking_rooms` was admin-only; it now
     also allows the booking's own requester (`user_id = auth.uid()`), so
     someone booked without a room (by themselves or by an admin on their
