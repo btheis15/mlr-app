@@ -15,6 +15,7 @@ export const metadata = {
 export default function LocalPlacesPage() {
   const golf = PLACES.filter((p) => p.group === "golf");
   const food = PLACES.filter((p) => p.group === "food");
+  const coffee = PLACES.filter((p) => p.group === "coffee");
 
   return (
     <div className="space-y-6 pt-2">
@@ -41,6 +42,21 @@ export default function LocalPlacesPage() {
         <section className="space-y-2">
           <SectionLabel>Food &amp; Drink</SectionLabel>
           {food.map((place, i) => (
+            <div
+              key={place.slug}
+              className="rise"
+              style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+            >
+              <LocalPlaceCard place={place} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {coffee.length > 0 && (
+        <section className="space-y-2">
+          <SectionLabel>Coffee &amp; Cafés</SectionLabel>
+          {coffee.map((place, i) => (
             <div
               key={place.slug}
               className="rise"
