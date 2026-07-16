@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { SkeletonList } from "@/components/Skeleton";
@@ -13,6 +14,13 @@ import { isApple } from "@/lib/push";
 // bottom over a backdrop that dims as it rises, and can be flicked or dragged
 // DOWN (by the grab handle / header) to dismiss — the handle is real. Shows
 // their photo + name, then Contact and Pay with their preferred choice first.
+//
+// Portaled to <body> (like Sheet.tsx): most callers render this from inside
+// `#app-scroll`, whose `-webkit-overflow-scrolling: touch` makes it a stacking
+// context on iOS — so an un-portaled sheet's `z-[60]` is trapped BELOW the
+// fixed TabBar (a root-level `z-40` sibling of `#app-scroll`), and the bottom
+// tab bar paints over the card's lower half (Pay buttons unreachable). The
+// portal lifts it back to the real viewport, above the TabBar.
 const SHEET_MS = 440; // keep in sync with --dur-sheet in globals.css
 
 export function MemberSheet({
@@ -31,6 +39,12 @@ export function MemberSheet({
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [showDir, setShowDir] = useState(false);
+
+  // Server / first-client-tick render nothing (no `document` to portal into).
+  // This sheet only ever mounts in response to a client interaction, so it
+  // never affects the static-export HTML.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [y, setY] = useState(0); // current translateY (px); 0 = resting
@@ -68,7 +82,10 @@ export function MemberSheet({
   }, [id, guest]);
 
   // Measure, place just off-screen (no transition), then slide up next frame.
+  // Gated on `mounted` so it runs against the real (portaled) panel node, not
+  // the null first render.
   useLayoutEffect(() => {
+    if (!mounted) return;
     const ph = panelRef.current?.offsetHeight ?? 0;
     setH(ph);
     if (reduce) {
@@ -82,7 +99,7 @@ export function MemberSheet({
       setY(0);
     });
     return () => cancelAnimationFrame(raf);
-  }, [reduce]);
+  }, [reduce, mounted]);
 
   // Keep the measured height in sync as the body loads/changes — the mount-time
   // measure is the short "Loading…" height. Without this, the drag threshold,
@@ -94,7 +111,7 @@ export function MemberSheet({
     const ro = new ResizeObserver(() => setH(el.offsetHeight));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [mounted]);
 
   const close = () => {
     if (closed.current) return;
@@ -173,7 +190,9 @@ export function MemberSheet({
   const progress = h > 0 ? Math.max(0, Math.min(1, 1 - y / h)) : entered ? 1 : 0;
   const noTrans = dragging || !entered || reduce;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center"
       role="dialog"
@@ -312,7 +331,8 @@ export function MemberSheet({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
