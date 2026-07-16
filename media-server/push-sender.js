@@ -408,10 +408,10 @@ async function start() {
     if (!once(`cbreq:${id}`)) return;
     const { data: b } = await sb
       .from("cabin_bookings")
-      .select("id, cabin_id, user_id, check_in, check_out, status")
+      .select("id, cabin_id, user_id, check_in, check_out, status, request_notify")
       .eq("id", id)
       .maybeSingle();
-    if (!b || b.status !== "pending") return;
+    if (!b || b.status !== "pending" || b.request_notify === false) return;
 
     const [cabinRes, reqRes, adminRes] = await Promise.all([
       sb.from("cabins").select("name").eq("id", b.cabin_id).maybeSingle(),

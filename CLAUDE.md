@@ -1021,6 +1021,16 @@ through SECURITY DEFINER RPCs. Data model: migration
     `edit_notify_requested_at`; the mailer claims by advancing the sibling
     `edit_email_sent_at` column to match, so each edit can independently
     trigger (or skip) its own notice.
+  - **`request_cabin_stay`** grew `p_notify` (default true, migration
+    [`0108`](supabase/migrations/0108_cabin_request_notify_toggle.sql)) —
+    stamped onto a new `request_notify` column (unlike the claim-a-row tricks
+    above, `notif_on_cabin_request` fires synchronously in the same INSERT, so
+    there's no later row to claim). When false, admins get **no** in-app
+    notification and **no** phone push for that request — `push-sender.js`'s
+    `handleCabinRequest` checks the same column. No UI wired to this yet
+    (there's no "don't notify admins" checkbox in `CabinRequestSheet`); it's a
+    plumbing-only escape hatch for testing the booking flow (e.g. a real SQL/
+    RPC test booking) without spamming every admin.
   - **Self-service room pick.** `set_booking_rooms` was admin-only; it now
     also allows the booking's own requester (`user_id = auth.uid()`), so
     someone booked without a room (by themselves or by an admin on their
