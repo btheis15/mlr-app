@@ -1035,6 +1035,15 @@ through SECURITY DEFINER RPCs. Data model: migration
     fetcher) now also returns `room_names` + `cabin_has_rooms`, so the
     approval-confirmation and edit-notice emails can nudge an unassigned
     requester: "No room picked yet — open the app… and tap Choose your room."
+  - **An unassigned approved booking still counts against availability**
+    (migration [`0108`](supabase/migrations/0108_cabin_availability_unassigned_bookings.sql)) —
+    `cabin_availability()`'s room-based branch previously only subtracted
+    rooms reserved via `cabin_booking_rooms`, so an approved "Not sure yet"
+    booking was invisible to the "X of Y rooms left" card (a cabin could
+    read 4/4 free with a real guest already coming). It now also subtracts
+    one slot per approved, room-less booking overlapping the range —
+    mirroring the cabin-wide capacity math `review_cabin_stay()` already
+    used for a room-less booking's own approval check.
 
 ## Content safeguards (feed moderation)
 
