@@ -58,6 +58,12 @@ export interface LocalPlace {
   bookingUrl?: string;
   /** Label for the booking pill; defaults to "Book Tee Time". */
   bookingCta?: string;
+  /** A rates/greens-fee page for a course that has no online tee-time booking.
+   *  Renders as a distinct "See Rates" pill (accent-tinted icon, not the green
+   *  Book pill). Use instead of `bookingUrl` for a rates-only course. */
+  ratesUrl?: string;
+  /** Label for the rates pill; defaults to "See Rates". */
+  ratesCta?: string;
 }
 
 export const PLACES: LocalPlace[] = [
@@ -87,7 +93,9 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "lake",
     group: "golf",
-    bookingUrl: "https://www.chronogolf.com/club/edgewater-country-club-wisconsin",
+    // Rates-only: Edgewater publishes greens fees but has no online tee-time
+    // booking, so this is a "See Rates" pill rather than a green Book one.
+    ratesUrl: "https://edgewaterccgolf.com/rates",
     website: "https://edgewaterccgolf.com",
     phoneDisplay: "(715) 453-3320",
     phoneTel: "+17154533320",
@@ -101,8 +109,9 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "primary",
     group: "golf",
-    bookingUrl: "https://www.golfnow.com/tee-times/facility/3143-pinewood-country-club/search",
-    website: "https://www.pinewoodcc.com",
+    // Rates-only: "See Rates" points at Pinewood's site (where their own rates
+    // live); it doubles as the site link, so no separate website pill here.
+    ratesUrl: "https://www.pinewoodcc.com",
     phoneDisplay: "(715) 282-5500",
     phoneTel: "+17152825500",
   },
@@ -115,7 +124,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "sun",
     group: "golf",
-    bookingUrl: "https://www.chronogolf.com/club/merrill-golf-club",
+    bookingUrl: "https://merrill-golf-club.book.teeitup.com/?course=17053",
     website: "https://www.merrillgolfclub.com",
     phoneDisplay: "(715) 536-2529",
     phoneTel: "+17155362529",
@@ -129,7 +138,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "campfire",
     group: "golf",
-    bookingUrl: "https://www.timberridgegolfclub.com/teetimes/",
+    bookingUrl: "https://www.chronogolf.com/club/19672/widget?medium=widget&source=club",
     website: "https://timberridgegolfclub.com",
     phoneDisplay: "(715) 356-9502",
     phoneTel: "+17153569502",
@@ -143,11 +152,8 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "dusk",
     group: "golf",
-    // Ambiguous Chronogolf slug ("north-wood") + an unrelated northwoodgolf.com,
-    // so Book points at the official site's own booking link instead of a
-    // third-party deep link. That doubles as the site link, so no separate
-    // website pill here.
-    bookingUrl: "https://northwoodgolfclub.com",
+    bookingUrl: "https://foreupsoftware.com/index.php/booking/22872/12171#/teetimes",
+    website: "https://northwoodgolfclub.com",
     phoneDisplay: "(715) 282-6565",
     phoneTel: "+17152826565",
   },
@@ -160,7 +166,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "lake",
     group: "golf",
-    bookingUrl: "https://www.chronogolf.com/club/trout-lake-golf-country-club",
+    bookingUrl: "https://foreupsoftware.com/index.php/booking/19524/1784#/teetimes",
     website: "https://troutlakegolf.com",
     phoneDisplay: "(715) 385-2189",
     phoneTel: "+17153852189",
