@@ -57,6 +57,7 @@ export function LocalPlaceCard({ place }: { place: LocalPlace }) {
 function PlaceActions({ place }: { place: LocalPlace }) {
   const hasAny = Boolean(
     place.internalHref ||
+      place.bookingUrl ||
       place.menuUrl ||
       place.orderUrl ||
       place.phoneTel ||
@@ -72,6 +73,17 @@ function PlaceActions({ place }: { place: LocalPlace }) {
           primary
           label={place.internalCta ?? "Open"}
           ariaLabel={`${place.internalCta ?? "Open"} at ${place.name}`}
+          iconClass="text-white"
+          icon={<FlagIcon />}
+        />
+      )}
+      {place.bookingUrl && (
+        <ActionPill
+          href={place.bookingUrl}
+          external
+          primary
+          label={place.bookingCta ?? "Book Tee Time"}
+          ariaLabel={`${place.bookingCta ?? "Book Tee Time"} at ${place.name} (opens in a new tab)`}
           iconClass="text-white"
           icon={<FlagIcon />}
         />

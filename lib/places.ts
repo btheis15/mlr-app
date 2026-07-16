@@ -15,7 +15,7 @@
  * everywhere. Add new spots to PLACES; the page renders them automatically.
  */
 
-export type PlaceGroup = "golf" | "food";
+export type PlaceGroup = "golf" | "food" | "coffee";
 
 /** One of the Northwoods palette tokens (see globals.css @theme). Picks the
  *  card's icon-chip tint + action-icon color. Kept as a key (not raw classes)
@@ -49,6 +49,15 @@ export interface LocalPlace {
   // ── In-app hand-off (e.g. Inshalla → our /tee-times screen) ──
   internalHref?: string;
   internalCta?: string;
+
+  // ── External booking hand-off (golf courses we don't run in-app) ──
+  /** Direct online tee-time booking link on the course's own booking platform
+   *  (foreUP / Chronogolf / GolfNow / etc.). Renders as the primary green
+   *  "Book Tee Time" pill — the external sibling of the in-app `internalHref`
+   *  hand-off. Omit for a course that only takes tee times by phone. */
+  bookingUrl?: string;
+  /** Label for the booking pill; defaults to "Book Tee Time". */
+  bookingCta?: string;
 }
 
 export const PLACES: LocalPlace[] = [
@@ -68,6 +77,93 @@ export const PLACES: LocalPlace[] = [
     website: "https://inshallacc.com",
     phoneDisplay: "(715) 453-3130",
     phoneTel: "+17154533130",
+  },
+  {
+    slug: "edgewater",
+    name: "Edgewater Country Club",
+    category: "Golf · Public 9-Hole",
+    locality: "Tomahawk, WI",
+    blurb: "Family-friendly public 9-hole course tucked along the shores of Lake Alice, just outside town.",
+    emoji: "⛳",
+    accent: "lake",
+    group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/edgewater-country-club-wisconsin",
+    website: "https://edgewaterccgolf.com",
+    phoneDisplay: "(715) 453-3320",
+    phoneTel: "+17154533320",
+  },
+  {
+    slug: "pinewood",
+    name: "Pinewood Country Club",
+    category: "Golf · Public 18-Hole",
+    locality: "Harshaw, WI",
+    blurb: "Public 18-hole course open April through October, with a pro shop and online tee-time booking.",
+    emoji: "⛳",
+    accent: "primary",
+    group: "golf",
+    bookingUrl: "https://www.golfnow.com/tee-times/facility/3143-pinewood-country-club/search",
+    website: "https://www.pinewoodcc.com",
+    phoneDisplay: "(715) 282-5500",
+    phoneTel: "+17152825500",
+  },
+  {
+    slug: "merrill-golf",
+    name: "Merrill Golf Club",
+    category: "Golf · Public 18-Hole",
+    locality: "Merrill, WI",
+    blurb: "18-hole championship public course with a pro shop, lessons, and a bar & grill.",
+    emoji: "⛳",
+    accent: "sun",
+    group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/merrill-golf-club",
+    website: "https://www.merrillgolfclub.com",
+    phoneDisplay: "(715) 536-2529",
+    phoneTel: "+17155362529",
+  },
+  {
+    slug: "timber-ridge",
+    name: "Timber Ridge Golf Club",
+    category: "Golf · Public 18-Hole",
+    locality: "Minocqua, WI",
+    blurb: "Scenic 18-hole, par-72 Northwoods course with rolling elevation changes, a short drive south of Minocqua.",
+    emoji: "⛳",
+    accent: "campfire",
+    group: "golf",
+    bookingUrl: "https://www.timberridgegolfclub.com/teetimes/",
+    website: "https://timberridgegolfclub.com",
+    phoneDisplay: "(715) 356-9502",
+    phoneTel: "+17153569502",
+  },
+  {
+    slug: "northwood-golf",
+    name: "Northwood Golf Club",
+    category: "Golf · Public 18-Hole",
+    locality: "Rhinelander, WI",
+    blurb: "18-hole public course carved out of ancient rock and timber, with a full clubhouse, restaurant, and bar.",
+    emoji: "⛳",
+    accent: "dusk",
+    group: "golf",
+    // Ambiguous Chronogolf slug ("north-wood") + an unrelated northwoodgolf.com,
+    // so Book points at the official site's own booking link instead of a
+    // third-party deep link. That doubles as the site link, so no separate
+    // website pill here.
+    bookingUrl: "https://northwoodgolfclub.com",
+    phoneDisplay: "(715) 282-6565",
+    phoneTel: "+17152826565",
+  },
+  {
+    slug: "trout-lake",
+    name: "Trout Lake Golf Club",
+    category: "Golf · Public 18-Hole",
+    locality: "Arbor Vitae, WI",
+    blurb: "The Northwoods' oldest 18-hole course (est. 1924), freshly renovated, with a driving range and a historic clubhouse.",
+    emoji: "⛳",
+    accent: "lake",
+    group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/trout-lake-golf-country-club",
+    website: "https://troutlakegolf.com",
+    phoneDisplay: "(715) 385-2189",
+    phoneTel: "+17153852189",
   },
   {
     slug: "billy-bobs",
@@ -125,5 +221,44 @@ export const PLACES: LocalPlace[] = [
     menuUrl: "https://www.sidewayswineandcraftbeer.com/menu",
     phoneDisplay: "(715) 493-0826",
     phoneTel: "+17154930826",
+  },
+  {
+    slug: "northwoods-cafe",
+    name: "Northwoods Cafe & Coffeehouse",
+    category: "Cafe & Coffeehouse",
+    locality: "Tomahawk, WI",
+    blurb: "A cozy, family-run downtown cafe serving breakfast, lunch, and specialty coffee drinks.",
+    emoji: "☕",
+    accent: "campfire",
+    group: "coffee",
+    website: "https://northwoods-cafe.square.site",
+    phoneDisplay: "(715) 453-6280",
+    phoneTel: "+17154536280",
+  },
+  {
+    slug: "whats-brewin",
+    name: "What's Brewin' Coffee Shop",
+    category: "Coffee House & Cafe",
+    locality: "Downtown Tomahawk, WI",
+    blurb: "Downtown coffee shop pairing gourmet coffee and cold brew with homemade soups, sandwiches, baked goods, and fudge.",
+    emoji: "☕",
+    accent: "dusk",
+    group: "coffee",
+    website: "https://www.facebook.com/whatsbrewintomahawk/",
+    phoneDisplay: "(715) 453-3555",
+    phoneTel: "+17154533555",
+  },
+  {
+    slug: "rise-coffee",
+    name: "Rise Coffee Co.",
+    category: "Coffee & Espresso",
+    locality: "Tomahawk, WI",
+    blurb: "A friendly mother-daughter drive-thru serving fresh espresso and coffee on the go.",
+    emoji: "☕",
+    accent: "sun",
+    group: "coffee",
+    website: "https://risecoffeetomahawk.com",
+    phoneDisplay: "(715) 966-1311",
+    phoneTel: "+17159661311",
   },
 ];
