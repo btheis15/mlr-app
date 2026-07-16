@@ -49,6 +49,15 @@ export interface LocalPlace {
   // ── In-app hand-off (e.g. Inshalla → our /tee-times screen) ──
   internalHref?: string;
   internalCta?: string;
+
+  // ── External booking hand-off (golf courses we don't run in-app) ──
+  /** Direct online tee-time booking link on the course's own booking platform
+   *  (foreUP / Chronogolf / GolfNow / etc.). Renders as the primary green
+   *  "Book Tee Time" pill — the external sibling of the in-app `internalHref`
+   *  hand-off. Omit for a course that only takes tee times by phone. */
+  bookingUrl?: string;
+  /** Label for the booking pill; defaults to "Book Tee Time". */
+  bookingCta?: string;
 }
 
 export const PLACES: LocalPlace[] = [
@@ -78,6 +87,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "lake",
     group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/edgewater-country-club-wisconsin",
     website: "https://edgewaterccgolf.com",
     phoneDisplay: "(715) 453-3320",
     phoneTel: "+17154533320",
@@ -91,6 +101,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "primary",
     group: "golf",
+    bookingUrl: "https://www.golfnow.com/tee-times/facility/3143-pinewood-country-club/search",
     website: "https://www.pinewoodcc.com",
     phoneDisplay: "(715) 282-5500",
     phoneTel: "+17152825500",
@@ -104,6 +115,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "sun",
     group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/merrill-golf-club",
     website: "https://www.merrillgolfclub.com",
     phoneDisplay: "(715) 536-2529",
     phoneTel: "+17155362529",
@@ -117,6 +129,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "campfire",
     group: "golf",
+    bookingUrl: "https://www.timberridgegolfclub.com/teetimes/",
     website: "https://timberridgegolfclub.com",
     phoneDisplay: "(715) 356-9502",
     phoneTel: "+17153569502",
@@ -130,7 +143,11 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "dusk",
     group: "golf",
-    website: "https://northwoodgolfclub.com",
+    // Ambiguous Chronogolf slug ("north-wood") + an unrelated northwoodgolf.com,
+    // so Book points at the official site's own booking link instead of a
+    // third-party deep link. That doubles as the site link, so no separate
+    // website pill here.
+    bookingUrl: "https://northwoodgolfclub.com",
     phoneDisplay: "(715) 282-6565",
     phoneTel: "+17152826565",
   },
@@ -143,6 +160,7 @@ export const PLACES: LocalPlace[] = [
     emoji: "⛳",
     accent: "lake",
     group: "golf",
+    bookingUrl: "https://www.chronogolf.com/club/trout-lake-golf-country-club",
     website: "https://troutlakegolf.com",
     phoneDisplay: "(715) 385-2189",
     phoneTel: "+17153852189",
@@ -242,16 +260,5 @@ export const PLACES: LocalPlace[] = [
     website: "https://risecoffeetomahawk.com",
     phoneDisplay: "(715) 966-1311",
     phoneTel: "+17159661311",
-  },
-  {
-    slug: "lakeside-bistro",
-    name: "Lakeside Bistro & Boutique",
-    category: "Coffee Bar & Bakery",
-    locality: "Lake Nokomis · Tomahawk, WI",
-    blurb: "A lakeside bistro on Lake Nokomis with a full coffee bar, daily fresh bakery, and light lunch.",
-    emoji: "🥐",
-    accent: "lake",
-    group: "coffee",
-    website: "https://lakeside-bistro-boutique.square.site",
   },
 ];
