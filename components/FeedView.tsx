@@ -73,6 +73,9 @@ interface FeedSnapshot {
   channels: Channel[];
   houseChannel: HouseChannel | null;
   summaries: Record<string, Summary>;
+  /** Read-only chats from committees/roles that were "deleted" (archived,
+   *  migration 0112) — you were in them, so their history stays reachable. */
+  archivedChannels?: Channel[];
 }
 const feedCache = new Map<string, FeedSnapshot>();
 
@@ -81,6 +84,7 @@ export function FeedView() {
   const cacheKey = previewAsId ? `preview.${previewAsId}` : (userId ?? "");
   const cached = feedCache.get(cacheKey);
   const [channels, setChannels] = useState<Channel[]>(cached?.channels ?? []);
+  const [archivedChannels, setArchivedChannels] = useState<Channel[]>(cached?.archivedChannels ?? []);
   const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(cached?.houseChannel ?? null);
   const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key | house key
   const [summaries, setSummaries] = useState<Record<string, Summary>>(cached?.summaries ?? {});
@@ -98,6 +102,9 @@ export function FeedView() {
   // Holds the latest computeSummaries so the "returning to list" effect below
   // (which lives outside the load effect's closure) can trigger a refresh.
   const computeSummariesRef = useRef<() => Promise<void>>(async () => {});
+  // Latest archived channel list, so the load effect's closing snapshot write
+  // (outside loadChannels' scope) keeps it instead of dropping it.
+  const archivedRef = useRef<Channel[]>(cached?.archivedChannels ?? []);
 
   // Messages-style push/pop for the full-screen room containers: the room
   // slides in from the right on open (chat-push, plays on mount) and Back
@@ -135,6 +142,7 @@ export function FeedView() {
       if (snap) {
         feedCache.set(cacheKey, snap);
         setChannels(snap.channels);
+        setArchivedChannels(snap.archivedChannels ?? []);
         setHouseChannel(snap.houseChannel);
         setSummaries(snap.summaries);
       }
@@ -280,36 +288,54 @@ export function FeedView() {
       const rosterRows = (ros ?? []) as { committee_slug: string; roles: string[] | null }[];
       const slugs = Array.from(new Set(rosterRows.map((r) => r.committee_slug)));
       const built: Channel[] = [];
+      const archived: Channel[] = [];
       if (slugs.length) {
-        const { data: cs } = await sb.from("committees").select("id, slug, name, emoji").in("slug", slugs).order("position", { ascending: true });
-        const committees = (cs ?? []) as { id: string; slug: string; name: string; emoji: string }[];
+        // Committees, with their archived state (migration 0112). Retry without
+        // archived_at pre-migration so a pre-0112 DB still lists live channels.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let cRes: any = await sb.from("committees").select("id, slug, name, emoji, archived_at").in("slug", slugs).order("position", { ascending: true });
+        if (cRes.error) cRes = await sb.from("committees").select("id, slug, name, emoji").in("slug", slugs).order("position", { ascending: true });
+        const committees = (cRes.data ?? []) as { id: string; slug: string; name: string; emoji: string; archived_at?: string | null }[];
+
+        // Which roles are archived, per committee slug (same graceful fallback).
+        const archivedAreas = new Map<string, Set<string>>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let aRes: any = await sb.from("committee_areas").select("committee_slug, area, archived_at").in("committee_slug", slugs);
+        if (aRes.error) aRes = await sb.from("committee_areas").select("committee_slug, area").in("committee_slug", slugs);
+        for (const r of (aRes.data ?? []) as { committee_slug: string; area: string; archived_at?: string | null }[]) {
+          if (!r.archived_at) continue;
+          if (!archivedAreas.has(r.committee_slug)) archivedAreas.set(r.committee_slug, new Set());
+          archivedAreas.get(r.committee_slug)!.add(r.area);
+        }
+
         for (const c of committees) {
+          const committeeArchived = Boolean(c.archived_at);
+          const areaArchived = archivedAreas.get(c.slug) ?? new Set<string>();
           const myAreas = Array.from(
             new Set(
               rosterRows.filter((r) => r.committee_slug === c.slug).flatMap((r) => (r.roles ?? []).map(stripLead)).filter(Boolean),
             ),
           );
-          if (myAreas.length === 0) {
-            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: c.name, subtitle: null });
-          } else {
-            // The committee-wide channel: title carries the committee name (e.g.
-            // "Family Fest General") so it's clear which committee's General this
-            // is once real messages replace the subtitle fallback.
-            built.push({ key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: `${c.name} General`, subtitle: null });
-            for (const a of myAreas) {
-              built.push({ key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, title: a, subtitle: c.name });
-            }
+          const general: Channel = { key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: myAreas.length ? `${c.name} General` : c.name, subtitle: null };
+          (committeeArchived ? archived : built).push(general);
+          for (const a of myAreas) {
+            const ch: Channel = { key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, title: a, subtitle: c.name };
+            // A role goes to Archived if its committee is archived OR that role
+            // itself was archived (deleted out from under a still-live committee).
+            (committeeArchived || areaArchived.has(a) ? archived : built).push(ch);
           }
         }
       }
       if (cancelled) return;
       mine = built;
       setChannels(built);
+      setArchivedChannels(archived);
+      archivedRef.current = archived;
       // Structural write: keep the cache's channels/houseChannel current. Also
       // runs on realtime roster/profile changes (this fn re-runs), so a removed
       // committee/house is reflected in the cache and can't stick on revisit.
       const prevSnap = feedCache.get(cacheKey);
-      saveSnap({ channels: built, houseChannel: houseCh, summaries: prevSnap?.summaries ?? {} });
+      saveSnap({ channels: built, houseChannel: houseCh, summaries: prevSnap?.summaries ?? {}, archivedChannels: archived });
       const hasAny = built.length > 0 || houseCh !== null;
       setActive((prev) =>
         !hasAny
@@ -345,7 +371,7 @@ export function FeedView() {
       }
       // Snapshot the resolved structure so the next remount paints the list
       // instantly instead of flashing the Main Feed guard.
-      saveSnap({ channels: mine, houseChannel: houseCh, summaries: feedCache.get(cacheKey)?.summaries ?? {} });
+      saveSnap({ channels: mine, houseChannel: houseCh, summaries: feedCache.get(cacheKey)?.summaries ?? {}, archivedChannels: archivedRef.current });
       if (!cancelled) setLoaded(true);
       channel = sb
         .channel("feed-conversations")
@@ -447,8 +473,9 @@ export function FeedView() {
     );
   }
 
-  // No house and no committees → straight to the Family Feed, no list.
-  if (channels.length === 0 && !houseChannel) {
+  // No house and no committees → straight to the Family Feed, no list. (But if
+  // you have archived chats to browse, keep the list so they stay reachable.)
+  if (channels.length === 0 && !houseChannel && archivedChannels.length === 0) {
     return (
       <div className="space-y-3 pt-1">
         <PostsView seed={POSTS} showHeading />
@@ -511,6 +538,26 @@ export function FeedView() {
     );
   }
 
+  // An archived chat opened from the "Archived chats" section — read-only.
+  const archivedActive = archivedChannels.find((c) => c.key === active);
+  if (archivedActive) {
+    return (
+      <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <BackButton label="Feed" onClick={() => closeChat(() => setActive("list"))} />
+          <div className="min-w-0 flex-1 text-center">
+            <p className="truncate text-sm font-bold">🗄️ {archivedActive.title}</p>
+            <p className="truncate text-[11px] text-foreground/45">{archivedActive.subtitle ?? archivedActive.name} · archived</p>
+          </div>
+          <span className="h-9 w-9" aria-hidden />
+        </div>
+        <div className="min-h-0 flex-1">
+          <CommitteeChat key={archivedActive.key} slug={archivedActive.slug} name={archivedActive.title} emoji={archivedActive.emoji} area={archivedActive.area} embedded knownMember readOnly />
+        </div>
+      </div>
+    );
+  }
+
   // Family Feed opened from the list.
   if (active === "posts") {
     return (
@@ -562,6 +609,45 @@ export function FeedView() {
             </div>
           ))}
         </ChatSection>
+      )}
+
+      {/* Archived chats — a quiet, unobtrusive line at the very bottom. Opens a
+          read-only view of a committee/role you were in that's since been
+          "deleted" (archived, migration 0112). Kept out of the way; admins
+          restore from Admin → Committees. */}
+      {archivedChannels.length > 0 && <ArchivedChatsLine channels={archivedChannels} onOpen={setActive} />}
+    </div>
+  );
+}
+
+/** Collapsible "Archived chats" disclosure at the foot of the Feed list. */
+function ArchivedChatsLine({ channels, onOpen }: { channels: Channel[]; onOpen: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="press flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-foreground/40"
+      >
+        🗄️ Archived chats ({channels.length})
+        <span className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>›</span>
+      </button>
+      {open && (
+        <ChatCard>
+          {channels.map((ch, i) => (
+            <div key={ch.key}>
+              {i > 0 && <div className="ml-[68px] border-t border-border" aria-hidden />}
+              <ConversationRow
+                emoji="🗄️"
+                title={ch.title}
+                subtitle={ch.subtitle ?? ch.name}
+                summary={undefined}
+                onOpen={() => onOpen(ch.key)}
+              />
+            </div>
+          ))}
+        </ChatCard>
       )}
     </div>
   );

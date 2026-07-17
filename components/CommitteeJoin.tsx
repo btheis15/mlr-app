@@ -8,6 +8,7 @@ import { Protected } from "@/components/Guard";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { fetchCommitteeId, fetchJoinState, fetchMyAreas } from "@/lib/roles";
+import { fetchLiveAreaNames } from "@/lib/committeeAdmin";
 import type { Committee } from "@/lib/types";
 
 /**
@@ -70,11 +71,22 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const smsto = lead?.phone ? `sms:${lead.phone}?&body=${encodeURIComponent(message)}` : null;
   const canContactLead = Boolean(mailto || smsto);
 
-  // Derive available areas from the committee roster's role data.
-  // Non-empty only for role-based committees (e.g. Family Fest).
-  const areaOptions = Array.from(
-    new Set(committee.members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, "")))),
+  // The joinable areas come from the DB allow-list (admin-managed, migration
+  // 0112), so a brand-new role is immediately joinable even before anyone holds
+  // it. Non-empty only for role-based committees (e.g. Family Fest). Seeds from
+  // the roster's current role data so it isn't empty for the first paint.
+  const [areaOptions, setAreaOptions] = useState<string[]>(() =>
+    Array.from(new Set(committee.members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, ""))))),
   );
+  useEffect(() => {
+    let alive = true;
+    fetchLiveAreaNames(committee.slug).then((a) => {
+      if (alive && a.length) setAreaOptions(a);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [committee.slug]);
 
   useEffect(() => {
     if (!configured || !supabase || !user) {
@@ -164,7 +176,9 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
     }
   };
 
-  if (!lead) return null;
+  // No seeded lead is fine — the in-app request flow doesn't need one (only the
+  // optional "email/text the lead" shortcut does, which self-hides). DB-created
+  // committees have an empty seed roster, so we must NOT bail here.
 
   return (
     <section className="space-y-3 rounded-2xl bg-primary/5 p-4 ring-1 ring-primary/20">

@@ -1,19 +1,16 @@
-import { notFound } from "next/navigation";
-import { COMMITTEES } from "@/lib/data";
-import { CommitteeChat } from "@/components/CommitteeChat";
+import { CommitteeChatRoute } from "@/components/CommitteeChatRoute";
+import { committeeSlugParams } from "@/lib/committeeParams";
 
-// Static export (GitHub Pages) needs every dynamic route enumerated up front —
-// same as the committee detail page. The committee's name/emoji come from the
-// seed so the screen has them without a round-trip; membership + messages load
-// client-side from Supabase inside CommitteeChat.
-export function generateStaticParams() {
-  return COMMITTEES.map((c) => ({ slug: c.slug }));
+// Static export needs every dynamic route enumerated — seed ∪ live DB
+// committees (migration 0112). dynamicParams serves brand-new slugs at runtime
+// on Vercel; the screen's name/emoji are DB-resolved client-side, and
+// membership + messages load from Supabase inside CommitteeChat.
+export const dynamicParams = true;
+export async function generateStaticParams() {
+  return committeeSlugParams();
 }
-export const dynamicParams = false;
 
 export default async function CommitteeChatPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const committee = COMMITTEES.find((c) => c.slug === slug);
-  if (!committee) notFound();
-  return <CommitteeChat slug={committee.slug} name={committee.name} emoji={committee.emoji} />;
+  return <CommitteeChatRoute slug={slug} />;
 }

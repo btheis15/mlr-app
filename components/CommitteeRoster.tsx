@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
-import { FAMILY_FEST_AREAS } from "@/lib/data";
+import { fetchLiveAreaNames } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
 import type { Committee } from "@/lib/types";
 
@@ -73,7 +73,27 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     };
   }, [committee.slug]);
 
-  const isRoleBased = committee.slug === "family-fest" || members.some((m) => m.roles && m.roles.length > 0);
+  // The committee's roles ("areas") come from the DB allow-list (admin-managed,
+  // migration 0112) so a newly-added role shows up here and its group renders
+  // even before anyone holds it. Falls back to whatever roles people already
+  // carry until the fetch lands (and pre-migration).
+  const [areas, setAreas] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchLiveAreaNames(committee.slug).then((a) => alive && setAreas(a));
+    return () => {
+      alive = false;
+    };
+  }, [committee.slug]);
+
+  const isRoleBased = areas.length > 0 || members.some((m) => m.roles && m.roles.length > 0);
+  // The set of areas to lay the roster out by: the DB allow-list, plus any area
+  // someone still holds that isn't in it (e.g. a role archived out from under
+  // them) so nobody silently drops off the roster.
+  const layoutAreas = useMemo(() => {
+    const held = members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, "")));
+    return Array.from(new Set([...areas, ...held]));
+  }, [areas, members]);
 
   const rosterEmails = useMemo(
     () => Array.from(new Set(members.map((m) => m.email?.toLowerCase()).filter((e): e is string => !!e))),
@@ -256,7 +276,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Roles &amp; who&rsquo;s on them</h2>
           {adminBar}
-          {FAMILY_FEST_AREAS.map((area) => {
+          {layoutAreas.map((area) => {
             const inArea = members
               .map((m) => ({ m, lead: m.roles?.includes(`${area} · Lead`) ?? false }))
               .filter(({ m }) => m.roles?.some((r) => r === area || r === `${area} · Lead`))
@@ -322,6 +342,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           committee={committee}
           entry={editing === "new" ? null : editing}
           roleBased={isRoleBased}
+          areas={layoutAreas}
           profiles={allProfiles}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -340,6 +361,7 @@ function RosterEditor({
   committee,
   entry,
   roleBased,
+  areas,
   profiles,
   onClose,
   onSaved,
@@ -347,6 +369,7 @@ function RosterEditor({
   committee: Committee;
   entry: RosterEntry | null;
   roleBased: boolean;
+  areas: string[];
   profiles: ProfileLite[];
   onClose: () => void;
   onSaved: () => void;
@@ -368,7 +391,7 @@ function RosterEditor({
   const [error, setError] = useState<string | null>(null);
 
   const roles = () =>
-    FAMILY_FEST_AREAS.filter((a) => selected.has(a)).map((a) => (leads.has(a) ? `${a} · Lead` : a));
+    areas.filter((a) => selected.has(a)).map((a) => (leads.has(a) ? `${a} · Lead` : a));
 
   /** Link an existing account — and auto-fill their phone + email from their
    *  profile so the roster row carries their contact info (mirrors iOS). */
@@ -486,7 +509,7 @@ function RosterEditor({
         {roleBased && (
           <div className="space-y-1.5">
             <p className="text-xs font-bold uppercase tracking-wide text-faint">Roles</p>
-            {FAMILY_FEST_AREAS.map((area) => {
+            {areas.map((area) => {
               const on = selected.has(area);
               const lead = leads.has(area);
               return (

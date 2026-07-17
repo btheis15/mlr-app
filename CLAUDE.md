@@ -176,6 +176,40 @@ shows a misleading "no members" next to the account-membership card). Most peopl
 `CommitteeJoin`, dinner/schedule leads) self-hide when there's no number, and
 `formatTime()` renders **"TBD"** for a missing time.
 
+**Admin-managed taxonomy (migration [`0112`](supabase/migrations/0112_admin_committee_taxonomy.sql)).**
+App admins **create / rename / "delete" committees and the roles inside them**
+from **Admin → Committees** ([`AdminCommittees`](components/AdminCommittees.tsx)):
+create a committee (`create_committee` auto-slugs it), edit its
+name/emoji/description (`update_committee` — **the slug never changes**, since
+`committee_roster`/`committee_areas` key off it), and add/rename/archive its
+**roles** (= areas; each role is its own chat channel, 0063). The committee +
+role lists are now **DB-driven everywhere** ([`lib/committeeAdmin.ts`](lib/committeeAdmin.ts)
+`fetchCommittees`/`fetchCommitteeAreas`) — `committee_areas` is the single
+source of truth for "what roles exist" (the old hardcoded `FAMILY_FEST_AREAS`
+reads in `CommitteeRoster`/`CommitteeJoin`/`CommitteeMembers` are gone; the
+seed lives on only as an offline/first-paint fallback). Renaming a role
+(`rename_committee_area`) cascades the text through **all six places** it's
+denormalized (allow-list, `committee_roster.roles[]`, `committee_members.areas[]`,
+`committee_messages.area`, `committee_area_reads.area`,
+`committee_join_requests.requested_areas[]`) in one transaction, so the chat
+history + memberships follow the new name.
+
+**"Delete" is an archive, not a destroy.** Archiving a committee or role
+(`archive_committee`/`archive_committee_area`) sets `archived_at`: it drops out
+of the live lists and its chat goes **read-only** (an insert guard in RLS via
+`is_committee_area_archived`; reads still work for who was in it), but the roster
+is untouched so `restore_*` brings it fully back. Archived chats surface under a
+quiet **"Archived chats"** disclosure at the foot of the Feed tab
+([`FeedView`](components/FeedView.tsx) `ArchivedChatsLine` → `CommitteeChat readOnly`).
+Committee **routes are static-export-safe + DB-aware**: `/committees/[slug]` +
+`/committees/[slug]/chat` render client components
+([`CommitteeDetail`](components/CommitteeDetail.tsx) /
+[`CommitteeChatRoute`](components/CommitteeChatRoute.tsx)) and their
+`generateStaticParams` unions the seed with live DB slugs at build
+([`lib/committeeParams.ts`](lib/committeeParams.ts), `dynamicParams = true`), so
+an admin-created committee gets a real page (and works live on Vercel
+immediately; the chat is also always reachable from the Feed tab regardless).
+
 **Two distinct rosters — don't confuse them.** (1) The **static display roster**
 above (`COMMITTEES`, public, includes account-less people). (2) The Supabase
 **`committee_members`** table — account-only membership that gates **chat**,
