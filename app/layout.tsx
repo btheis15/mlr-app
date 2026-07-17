@@ -9,6 +9,7 @@ import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
 import { SplashIntro } from "@/components/SplashIntro";
+import { FestThemeSync } from "@/components/FestThemeSync";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { AppHeader } from "@/components/AppHeader";
@@ -86,6 +87,7 @@ export default async function RootLayout({
                 into the header — inside IdentityProvider so it can wait on
                 `authReady` and avoid a post-splash member/guest shift. */}
             <SplashIntro />
+            <FestThemeSync />
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />

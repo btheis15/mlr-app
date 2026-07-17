@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
+import { isFamilyFestPath } from "@/lib/festPath";
 
 // Shared bottom-sheet scaffolding: the dimmed scrim, the slide-up panel (desktop
 // pop variant), the grab handle, the round close button, and the safe-area-aware
@@ -69,7 +70,7 @@ export function Sheet({
   // threading a prop through every FF caller (same pathname-based pattern
   // AppHeader uses for its own Home-only styling). Called unconditionally,
   // before the `mounted` early return, to keep hook order stable.
-  const ffSection = usePathname()?.startsWith("/family-fest") ?? false;
+  const ffSection = isFamilyFestPath(usePathname());
   if (!mounted) return null;
 
   return createPortal(

@@ -129,6 +129,18 @@ body {
   font-family: var(--font-script);
 }
 
+/* Shared parchment ambient-backdrop literals — defined once at :root so both
+   `.ff-section` (the content box) and `html[data-ff]` (the outer page canvas,
+   toggled by FestThemeSync — see below) paint the identical wash without
+   duplicating the gradient. */
+:root {
+  --ff-ambient-bg: #f4ecd8;
+  --ff-ambient-image:
+    radial-gradient(120% 80% at 50% 0%, rgba(139, 46, 46, 0.05), transparent 55%),
+    radial-gradient(125% 90% at 50% 100%, rgba(58, 42, 24, 0.11), transparent 55%),
+    linear-gradient(180deg, #f7efdb 0%, #ece0c2 100%);
+}
+
 /* ── Family Fest section — Renaissance / parchment theme, SCOPED ──────────────
    Family Fest lives inside the resort app at /family-fest/*, but keeps its own
    look. These re-declare the SAME CSS variables Tailwind's utilities read, so
@@ -137,7 +149,7 @@ body {
    (--font-cinzel) is loaded by app/family-fest/layout.tsx and feeds
    --font-display here. Still LIGHT MODE ONLY (parchment is a light surface). */
 .ff-section {
-  --color-background: #f4ecd8; /* aged parchment */
+  --color-background: var(--ff-ambient-bg); /* aged parchment */
   --color-foreground: #3a2a18; /* sepia ink */
   --color-card: #fdfaf1; /* light vellum surfaces */
   --color-border: #d8c7a3; /* tan / vellum hairline */
@@ -148,11 +160,19 @@ body {
      vignette at the bottom over a warm parchment wash — moodier than flat
      parchment, still light so the vellum cards pop. */
   background-color: var(--color-background);
-  background-image:
-    radial-gradient(120% 80% at 50% 0%, rgba(139, 46, 46, 0.05), transparent 55%),
-    radial-gradient(125% 90% at 50% 100%, rgba(58, 42, 24, 0.11), transparent 55%),
-    linear-gradient(180deg, #f7efdb 0%, #ece0c2 100%);
+  background-image: var(--ff-ambient-image);
   color: var(--color-foreground);
+}
+
+/* `.ff-section` only paints its own content box, sized to its content — it
+   never reaches the viewport-level canvas <html> paints behind everything
+   (visible during rubber-band bounce at the top/bottom, and anywhere content
+   is shorter than the screen). FestThemeSync toggles this attribute by route
+   so the two stay in sync instead of showing the resort's forest-green
+   ambient wash peeking around/behind the parchment content. */
+html[data-ff] {
+  background-color: var(--ff-ambient-bg);
+  background-image: var(--ff-ambient-image);
 }
 
 /* In the Family Fest section, titles get the Roman-inscription display serif. */
