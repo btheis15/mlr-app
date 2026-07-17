@@ -5,6 +5,8 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Protected } from "@/components/Guard";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { fetchCommitteeId, fetchJoinState, fetchMyAreas } from "@/lib/roles";
 import type { Committee } from "@/lib/types";
 
@@ -15,8 +17,10 @@ import type { Committee } from "@/lib/types";
  *    (Supabase, migration 0012). Approval lets you into the committee's private
  *    chat. With no backend wired, this degrades to a "coming soon" affordance.
  *
- * For role-based committees (Family Fest) an optional area picker appears so the
- * requester can signal which area they'd like to help with (migration 0051).
+ * For role-based committees (Family Fest), tapping "Request to join" opens
+ * `RoleRequiredSheet` — the requester must pick at least one area there before
+ * the request can actually be sent (migration 0051); there's no way to send
+ * the request with zero areas assigned.
  */
 type JoinState = "loading" | "none" | "pending" | "member";
 
@@ -52,6 +56,10 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [myAreas, setMyAreas] = useState<string[]>(cached?.myAreas ?? []);
   const [editingMyAreas, setEditingMyAreas] = useState(false);
   const [myAreaSelection, setMyAreaSelection] = useState<string[]>([]);
+  // Role-based committees (Family Fest) require at least one area before the
+  // request can go out — this sheet is the "pick one before you can join"
+  // gate so nobody lands on the committee with zero areas assigned.
+  const [showRoleRequired, setShowRoleRequired] = useState(false);
 
   // The Lead is the contact for join requests; fall back to the first member.
   const lead = committee.members.find((m) => m.role === "Lead") ?? committee.members[0];
@@ -266,37 +274,8 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
         </p>
       ) : (
         <div className="space-y-3">
-          {/* Area picker for role-based committees */}
-          {areaOptions.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-foreground/60">Which areas are you interested in? (optional — pick any)</p>
-              <div className="flex flex-wrap gap-1.5">
-                {areaOptions.map((area) => {
-                  const on = selectedAreas.includes(area);
-                  return (
-                    <button
-                      key={area}
-                      type="button"
-                      onClick={() =>
-                        setSelectedAreas((prev) =>
-                          on ? prev.filter((a) => a !== area) : [...prev, area],
-                        )
-                      }
-                      className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
-                        on
-                          ? "bg-primary text-white ring-primary"
-                          : "bg-background ring-border text-foreground/60"
-                      }`}
-                    >
-                      {area}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           <button
-            onClick={requestToJoin}
+            onClick={() => (areaOptions.length > 0 ? setShowRoleRequired(true) : requestToJoin())}
             disabled={busy || state === "loading"}
             className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
@@ -305,6 +284,91 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           {errMsg && <p className="text-center text-xs font-medium text-accent">{errMsg}</p>}
         </div>
       )}
+
+      {showRoleRequired && (
+        <RoleRequiredSheet
+          committeeName={committee.name}
+          areaOptions={areaOptions}
+          selectedAreas={selectedAreas}
+          onToggleArea={(area) =>
+            setSelectedAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]))
+          }
+          busy={busy}
+          onClose={() => setShowRoleRequired(false)}
+          onConfirm={async () => {
+            await requestToJoin();
+            setShowRoleRequired(false);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+/** The only way to send a join request for a role-based committee (Family
+ * Fest): picking an area happens here, in this sheet, not on the card behind
+ * it — so there's one single path in, and it can't be skipped. */
+function RoleRequiredSheet({
+  committeeName,
+  areaOptions,
+  selectedAreas,
+  onToggleArea,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  committeeName: string;
+  areaOptions: string[];
+  selectedAreas: string[];
+  onToggleArea: (area: string) => void;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const canConfirm = selectedAreas.length > 0 && !busy;
+
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="role-required-title"
+      header={
+        <h2 id="role-required-title" className="text-lg font-bold text-foreground">
+          Pick at least one area
+        </h2>
+      }
+      footer={
+        <button
+          onClick={onConfirm}
+          disabled={!canConfirm}
+          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send request"}
+        </button>
+      }
+    >
+      <p className="text-sm text-foreground/70">
+        {committeeName} is organized by area, so pick at least one thing you&rsquo;d like to help
+        with before we send your request — the lead will know right away where you fit in.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {areaOptions.map((area) => {
+          const on = selectedAreas.includes(area);
+          return (
+            <button
+              key={area}
+              type="button"
+              onClick={() => onToggleArea(area)}
+              className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+                on ? "bg-primary text-white ring-primary" : "bg-background ring-border text-foreground/60"
+              }`}
+            >
+              {area}
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
