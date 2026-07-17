@@ -5,6 +5,24 @@ from your Mac mini, so we're not capped by cloud storage. **Login and all data
 stay on cloud Supabase** — this only holds the media *files*, and the app saves
 a link to each file here.
 
+> ### ⚠️ This mini's ports & Funnel (read before touching networking)
+> Port **8787 on this mini is permanently owned by an unrelated Innjoy dashboard**
+> process (it's that Python tool's hardcoded default, referenced across
+> `pricelabs_api`'s docs/launchers — not safe to move). So this media server
+> runs on **`PORT=8790`**, and the public Tailscale Funnel is mapped as:
+>
+> | Public URL | → local | serves |
+> |---|---|---|
+> | `https://brians-mac-mini.tail49943c.ts.net` (443) | `127.0.0.1:8790` | **this media server** |
+> | `https://brians-mac-mini.tail49943c.ts.net:8443` | `127.0.0.1:8787` | Innjoy dashboard |
+>
+> **Do NOT set `PORT=8787` on this host**, and don't point 443's Funnel at 8787
+> — that serves the dashboard, so every `…/f/<file>` 404s and the iOS/web apps
+> show endless spinners (this exact outage happened once already). If a setup
+> step or `.env.example` suggests `8787`, check for the collision first:
+> `lsof -i :8787`. The `PUBLIC_URL` (the `…ts.net` name at 443) must stay
+> constant — the app stores it verbatim in the database.
+
 ## Storage layout
 
 New uploads are filed by feature + month so the folder never becomes one giant
@@ -115,8 +133,11 @@ no domain — **Tailscale Funnel**:
 ```bash
 # install Tailscale, then:
 tailscale up
-tailscale funnel 8787       # exposes it publicly over HTTPS
+tailscale funnel "$PORT"    # public 443 → this server; use YOUR PORT, not 8787
 ```
+⚠️ On this mini `$PORT` is **8790**, NOT 8787 — see the ports warning at the top
+of this file before running Funnel (8787 serves a different app). Verify after:
+`tailscale funnel status` should show `443 → 127.0.0.1:8790`.
 That prints a stable URL like `https://your-mini.your-tailnet.ts.net`.
 Put that in `.env` as `PUBLIC_URL`, then restart (`pm2 restart mlr-media`).
 *(Alternative: a **named** Cloudflare Tunnel if you own a domain — avoid the
