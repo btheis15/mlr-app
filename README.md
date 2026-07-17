@@ -132,6 +132,13 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   nested accordions that used to live in Profile → Admin (Profile itself is now
   flattened to just identity/settings + a link here for admins). Also links to
   the Family Fest Planner. See CLAUDE.md → **Admin dashboard**.
+- **Committees & roles are admin-managed** — admins create/rename/"delete"
+  committees and the roles (chat channels) inside them from Admin → Committees
+  ([`AdminCommittees`](components/AdminCommittees.tsx)); "delete" archives (chat
+  goes read-only, restorable — archived chats live under a quiet section on the
+  Feed tab), and renaming a role carries its whole chat history. Migration
+  [`0112_admin_committee_taxonomy.sql`](supabase/migrations/0112_admin_committee_taxonomy.sql).
+  See CLAUDE.md → **Committees & account linking**.
 - **Help contact** — the Help page's human contact (name/phone/email) is
   admin-editable in-app (`/admin/help-contact` →
   [`components/AdminHelpContact.tsx`](components/AdminHelpContact.tsx)) instead

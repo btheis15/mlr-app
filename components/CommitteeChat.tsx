@@ -85,7 +85,7 @@ interface Pending {
   name: string; // original filename
 }
 
-export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean }) {
+export function CommitteeChat({ slug, name, emoji, area = null, embedded = false, knownMember = false, readOnly = false }: { slug: string; name: string; emoji: string; area?: string | null; embedded?: boolean; knownMember?: boolean; readOnly?: boolean }) {
   const { user, userId, isAdmin, promptSignIn, previewAsId, previewMode } = useIdentity();
   const configured = isSupabaseConfigured;
   const userIdRef = useRef(userId);
@@ -730,7 +730,14 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer */}
+      {/* Composer — hidden for an archived (read-only) chat: the history stays
+          readable, but a "deleted" committee/role can't take new messages
+          (also enforced in RLS, migration 0112). */}
+      {readOnly ? (
+        <div className="shrink-0 border-t border-border bg-card px-4 py-3 text-center text-xs font-medium text-muted" style={embedded ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}>
+          🗄️ This chat is archived — you can read the history, but it&rsquo;s closed to new messages.
+        </div>
+      ) : (
       <div className="shrink-0 border-t border-border bg-card" style={embedded ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}>
         {status && <p className="px-4 pt-2 text-center text-xs font-medium text-accent">{status}</p>}
 
@@ -817,6 +824,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           </button>
         </div>
       </div>
+      )}
 
       {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} z="z-[55]" />}
       {memberSheet && (

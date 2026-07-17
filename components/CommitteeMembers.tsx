@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { getCurrentUserId, fetchProfiles, profileMap } from "@/lib/roles";
 import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
-import { COMMITTEES } from "@/lib/data";
+import { fetchLiveAreaNames } from "@/lib/committeeAdmin";
 
 /**
  * "X members" panel — the people with app/chat access to this committee.
@@ -36,13 +36,15 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
   const [editingAreas, setEditingAreas] = useState<string | null>(null);
   const [areaSelection, setAreaSelection] = useState<string[]>([]);
 
-  // Derive the canonical area list from the committee's static roster.
-  // Non-empty only for role-based committees (Family Fest).
-  const areaOptions = useMemo(() => {
-    const committee = COMMITTEES.find((c) => c.slug === slug);
-    if (!committee) return [];
-    const raw = committee.members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, "")));
-    return [...new Set(raw)];
+  // The canonical role/area list comes from the DB allow-list (admin-managed,
+  // migration 0112). Non-empty only for role-based committees (Family Fest).
+  const [areaOptions, setAreaOptions] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchLiveAreaNames(slug).then((a) => alive && setAreaOptions(a));
+    return () => {
+      alive = false;
+    };
   }, [slug]);
 
   const load = async (cid: string) => {
