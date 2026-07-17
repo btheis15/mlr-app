@@ -17,8 +17,10 @@ import type { Committee } from "@/lib/types";
  *    (Supabase, migration 0012). Approval lets you into the committee's private
  *    chat. With no backend wired, this degrades to a "coming soon" affordance.
  *
- * For role-based committees (Family Fest) an optional area picker appears so the
- * requester can signal which area they'd like to help with (migration 0051).
+ * For role-based committees (Family Fest), tapping "Request to join" opens
+ * `RoleRequiredSheet` — the requester must pick at least one area there before
+ * the request can actually be sent (migration 0051); there's no way to send
+ * the request with zero areas assigned.
  */
 type JoinState = "loading" | "none" | "pending" | "member";
 
@@ -272,37 +274,8 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
         </p>
       ) : (
         <div className="space-y-3">
-          {/* Area picker for role-based committees */}
-          {areaOptions.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-foreground/60">Which area(s) do you want to help with? (pick at least one)</p>
-              <div className="flex flex-wrap gap-1.5">
-                {areaOptions.map((area) => {
-                  const on = selectedAreas.includes(area);
-                  return (
-                    <button
-                      key={area}
-                      type="button"
-                      onClick={() =>
-                        setSelectedAreas((prev) =>
-                          on ? prev.filter((a) => a !== area) : [...prev, area],
-                        )
-                      }
-                      className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
-                        on
-                          ? "bg-primary text-white ring-primary"
-                          : "bg-background ring-border text-foreground/60"
-                      }`}
-                    >
-                      {area}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           <button
-            onClick={() => (areaOptions.length > 0 && selectedAreas.length === 0 ? setShowRoleRequired(true) : requestToJoin())}
+            onClick={() => (areaOptions.length > 0 ? setShowRoleRequired(true) : requestToJoin())}
             disabled={busy || state === "loading"}
             className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
@@ -332,9 +305,9 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   );
 }
 
-/** Blocking sheet: a role-based committee (Family Fest) can't be joined with
- * zero areas picked, so this is the one place that enforces "pick at least
- * one" before the request actually goes out. */
+/** The only way to send a join request for a role-based committee (Family
+ * Fest): picking an area happens here, in this sheet, not on the card behind
+ * it — so there's one single path in, and it can't be skipped. */
 function RoleRequiredSheet({
   committeeName,
   areaOptions,
