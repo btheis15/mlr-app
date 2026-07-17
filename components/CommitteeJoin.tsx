@@ -5,6 +5,8 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Protected } from "@/components/Guard";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { fetchCommitteeId, fetchJoinState, fetchMyAreas } from "@/lib/roles";
 import type { Committee } from "@/lib/types";
 
@@ -52,6 +54,10 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
   const [myAreas, setMyAreas] = useState<string[]>(cached?.myAreas ?? []);
   const [editingMyAreas, setEditingMyAreas] = useState(false);
   const [myAreaSelection, setMyAreaSelection] = useState<string[]>([]);
+  // Role-based committees (Family Fest) require at least one area before the
+  // request can go out — this sheet is the "pick one before you can join"
+  // gate so nobody lands on the committee with zero areas assigned.
+  const [showRoleRequired, setShowRoleRequired] = useState(false);
 
   // The Lead is the contact for join requests; fall back to the first member.
   const lead = committee.members.find((m) => m.role === "Lead") ?? committee.members[0];
@@ -269,7 +275,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           {/* Area picker for role-based committees */}
           {areaOptions.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-foreground/60">Which areas are you interested in? (optional — pick any)</p>
+              <p className="text-xs font-medium text-foreground/60">Which area(s) do you want to help with? (pick at least one)</p>
               <div className="flex flex-wrap gap-1.5">
                 {areaOptions.map((area) => {
                   const on = selectedAreas.includes(area);
@@ -296,7 +302,7 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
             </div>
           )}
           <button
-            onClick={requestToJoin}
+            onClick={() => (areaOptions.length > 0 && selectedAreas.length === 0 ? setShowRoleRequired(true) : requestToJoin())}
             disabled={busy || state === "loading"}
             className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
@@ -305,6 +311,91 @@ export function CommitteeJoin({ committee }: { committee: Committee }) {
           {errMsg && <p className="text-center text-xs font-medium text-accent">{errMsg}</p>}
         </div>
       )}
+
+      {showRoleRequired && (
+        <RoleRequiredSheet
+          committeeName={committee.name}
+          areaOptions={areaOptions}
+          selectedAreas={selectedAreas}
+          onToggleArea={(area) =>
+            setSelectedAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]))
+          }
+          busy={busy}
+          onClose={() => setShowRoleRequired(false)}
+          onConfirm={async () => {
+            await requestToJoin();
+            setShowRoleRequired(false);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+/** Blocking sheet: a role-based committee (Family Fest) can't be joined with
+ * zero areas picked, so this is the one place that enforces "pick at least
+ * one" before the request actually goes out. */
+function RoleRequiredSheet({
+  committeeName,
+  areaOptions,
+  selectedAreas,
+  onToggleArea,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  committeeName: string;
+  areaOptions: string[];
+  selectedAreas: string[];
+  onToggleArea: (area: string) => void;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const canConfirm = selectedAreas.length > 0 && !busy;
+
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="role-required-title"
+      header={
+        <h2 id="role-required-title" className="text-lg font-bold text-foreground">
+          Pick at least one area
+        </h2>
+      }
+      footer={
+        <button
+          onClick={onConfirm}
+          disabled={!canConfirm}
+          className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send request"}
+        </button>
+      }
+    >
+      <p className="text-sm text-foreground/70">
+        {committeeName} is organized by area, so pick at least one thing you&rsquo;d like to help
+        with before we send your request — the lead will know right away where you fit in.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {areaOptions.map((area) => {
+          const on = selectedAreas.includes(area);
+          return (
+            <button
+              key={area}
+              type="button"
+              onClick={() => onToggleArea(area)}
+              className={`press rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+                on ? "bg-primary text-white ring-primary" : "bg-background ring-border text-foreground/60"
+              }`}
+            >
+              {area}
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }

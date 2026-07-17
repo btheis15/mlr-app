@@ -184,6 +184,16 @@ and readable only by that committee's members (RLS, [`0012`](supabase/migrations
 They count different things, so an admin can see e.g. "[2] members" (DB chat
 membership) alongside a different static roster — that's expected, not a bug.
 
+**Joining Family Fest requires at least one area.** `CommitteeJoin`'s area
+picker used to be optional ("pick any"); for a role-based committee
+(`areaOptions.length > 0` — only Family Fest today) tapping "Request to join"
+with zero areas selected no longer sends the request — it instead pops a
+blocking `RoleRequiredSheet` that makes the requester pick at least one area
+before "Send request" is enabled. This is UI-only (`request_to_join` itself
+still accepts an empty `requested_areas` array server-side), so nobody lands
+"on the committee" with nothing assigned via this surface, without adding a
+DB-level constraint that could break other callers.
+
 **Area validation + self-service (migration [`0073`](supabase/migrations/0073_committee_area_validation.sql)).**
 Every area value that gets persisted (`request_to_join`, `review_join_request`,
 `set_committee_areas`) is checked against a real allow-list
