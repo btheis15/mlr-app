@@ -99,6 +99,10 @@ export function WorkItemSheet({
       }
     >
       {item.notes && <p className="whitespace-pre-wrap text-sm text-foreground/70">{item.notes}</p>}
+      <p className="text-xs text-faint">
+        Added by {members.find((m) => m.id === item.createdBy)?.name ?? "someone"}
+        {item.createdAt ? ` · ${formatWhen(item.createdAt)}` : ""}
+      </p>
       <span className="flex flex-wrap items-center gap-1.5">
         {item.urgency && (
           <span className={`inline-block rounded-md px-1.5 py-0.5 text-xs font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
