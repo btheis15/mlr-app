@@ -481,6 +481,10 @@ export interface CabinAvailability {
   name: string;
   roomCount: number;
   available: number;
+  // Real bed counts, only for a cabin broken into named rooms (0092) —
+  // null for a plain room-count cabin (migration 0111).
+  bedsTotal: number | null;
+  bedsAvailable: number | null;
 }
 
 /** A named room/area within a cabin (migration 0092) — e.g. "Upstairs South

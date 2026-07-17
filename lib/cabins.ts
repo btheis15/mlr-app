@@ -231,9 +231,25 @@ export async function fetchAvailability(checkIn: string, checkOut: string): Prom
   if (!isSupabaseConfigured || !sb) return [];
   const { data, error } = await sb.rpc("cabin_availability", { p_check_in: checkIn, p_check_out: checkOut });
   if (error) return [];
-  return ((data ?? []) as { cabin_id: string; slug: string; name: string; room_count: number; available: number }[]).map(
-    (r) => ({ cabinId: r.cabin_id, slug: r.slug, name: r.name, roomCount: r.room_count, available: r.available }),
-  );
+  return (
+    (data ?? []) as {
+      cabin_id: string;
+      slug: string;
+      name: string;
+      room_count: number;
+      available: number;
+      beds_total: number | null;
+      beds_available: number | null;
+    }[]
+  ).map((r) => ({
+    cabinId: r.cabin_id,
+    slug: r.slug,
+    name: r.name,
+    roomCount: r.room_count,
+    available: r.available,
+    bedsTotal: r.beds_total,
+    bedsAvailable: r.beds_available,
+  }));
 }
 
 /** Submit a request (pending, unless auto-approved by the caller afterward).

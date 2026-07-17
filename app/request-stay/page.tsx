@@ -20,7 +20,6 @@ import {
   fetchCabinRooms,
   fetchCabins,
   fetchMyBookings,
-  fetchRoomAvailability,
   formatStay,
 } from "@/lib/cabins";
 import type { Cabin, CabinAvailability, CabinBooking } from "@/lib/types";
@@ -55,10 +54,6 @@ export default function RequestStayPage() {
   const { user, isAdmin, previewAsId, promptSignIn } = useIdentity();
   const [cabins, setCabins] = useState<Cabin[]>([]);
   const [avail, setAvail] = useState<CabinAvailability[]>([]);
-  // Beds left, derived from the specific rooms still available (only for cabins
-  // broken into named rooms — see fetchRoomAvailability). null = no room
-  // breakdown for that cabin, so the card falls back to the static bed total.
-  const [bedsAvail, setBedsAvail] = useState<Record<string, { available: number; total: number }>>({});
   const [myBookings, setMyBookings] = useState<CabinBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [sheetCabin, setSheetCabin] = useState<Cabin | null>(null);
@@ -76,20 +71,6 @@ export default function RequestStayPage() {
     setCabins(c);
     setAvail(a);
     setMyBookings(b);
-
-    // Beds left per cabin, for whichever cabins use named rooms — empty for a
-    // plain room-count cabin (fetchRoomAvailability returns []).
-    const bedsEntries = await Promise.all(
-      c.map(async (cabin) => {
-        const rooms = await fetchRoomAvailability(cabin.id, FF_CHECK_IN, FF_CHECK_OUT);
-        if (rooms.length === 0) return null;
-        const total = rooms.filter((r) => r.active).reduce((sum, r) => sum + r.beds, 0);
-        const available = rooms.filter((r) => r.available).reduce((sum, r) => sum + r.beds, 0);
-        return [cabin.id, { available, total }] as const;
-      }),
-    );
-    setBedsAvail(Object.fromEntries(bedsEntries.filter((e): e is readonly [string, { available: number; total: number }] => e !== null)));
-
     setLoading(false);
   }, [previewAsId]);
 
@@ -123,7 +104,7 @@ export default function RequestStayPage() {
     };
   }, [load, user?.email, previewAsId]);
 
-  const availFor = (cabinId: string) => avail.find((a) => a.cabinId === cabinId)?.available ?? null;
+  const availFor = (cabinId: string) => avail.find((a) => a.cabinId === cabinId) ?? null;
 
   const cancel = async (b: CabinBooking) => {
     if (!window.confirm(`Cancel your ${b.cabinName ?? "cabin"} request for ${formatStay(b.checkIn, b.checkOut)}?`)) {
@@ -223,13 +204,7 @@ export default function RequestStayPage() {
               <span className="text-xs text-muted">{formatStay(FF_CHECK_IN, FF_CHECK_OUT)}</span>
             </div>
             {cabins.map((c) => (
-              <CabinCard
-                key={c.id}
-                cabin={c}
-                available={availFor(c.id)}
-                bedsLeft={bedsAvail[c.id] ?? null}
-                onRequest={() => setSheetCabin(c)}
-              />
+              <CabinCard key={c.id} cabin={c} avail={availFor(c.id)} onRequest={() => setSheetCabin(c)} />
             ))}
             <p className="px-1 pt-1 text-xs text-faint">
               Need different dates? Tap <span className="font-medium text-foreground/70">Request a room</span> and pick
@@ -341,17 +316,18 @@ function MemberPickerSheet({
 
 function CabinCard({
   cabin,
-  available,
-  bedsLeft,
+  avail,
   onRequest,
 }: {
   cabin: Cabin;
-  available: number | null;
-  bedsLeft: { available: number; total: number } | null;
+  avail: CabinAvailability | null;
   onRequest: () => void;
 }) {
+  const available = avail?.available ?? null;
   const left = available ?? cabin.roomCount;
   const full = available !== null && available <= 0;
+  const bedsTotal = avail?.bedsTotal ?? null;
+  const bedsAvailable = avail?.bedsAvailable ?? null;
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-start justify-between gap-3">
@@ -367,11 +343,11 @@ function CabinCard({
                   : `${left} of ${cabin.roomCount} room${cabin.roomCount === 1 ? "" : "s"} left`}
             </span>
           </div>
-          {bedsLeft ? (
-            <p className={`mt-0.5 text-xs font-medium ${bedsLeft.available <= 0 ? "text-accent" : "text-muted"}`}>
-              🛏️ {bedsLeft.available <= 0
+          {bedsTotal != null && bedsAvailable != null ? (
+            <p className={`mt-0.5 text-xs font-medium ${bedsAvailable <= 0 ? "text-accent" : "text-muted"}`}>
+              🛏️ {bedsAvailable <= 0
                 ? "No beds left"
-                : `${bedsLeft.available} of ${bedsLeft.total} bed${bedsLeft.total === 1 ? "" : "s"} left`}
+                : `${bedsAvailable} of ${bedsTotal} bed${bedsTotal === 1 ? "" : "s"} left`}
             </p>
           ) : (
             cabin.bedCount != null && (
