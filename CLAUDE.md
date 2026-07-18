@@ -1083,6 +1083,17 @@ family member's own house with spare bedrooms. Each place carries:
 - `create_cabin()` (admin-only RPC, mirrors `create_committee`'s auto-slug
   pattern) is the one write path for adding a place — client seam
   `createCabin()` in `lib/cabins.ts`.
+- **`request_cabin_stay()` overload cleanup (migration 0115).** Migrations
+  0092 and 0108 had each independently grown a 7-arg version of this function
+  (ending in `p_room_ids uuid[]` vs. `p_notify boolean`, respectively) —
+  0108 only dropped the older 6-arg signature, not 0092's, so both 7-arg
+  overloads silently coexisted. Since the client always sends `p_room_ids`
+  and never `p_notify`, every call resolved to 0092's overload — meaning any
+  `request_notify = false` intent had never actually taken effect (that
+  overload's INSERT doesn't mention the column, so it always fell back to the
+  column default of `true`). 0115 merges both feature sets into one canonical
+  8-arg function and drops the two superseded 7-arg ones; no client change
+  was needed since the existing call now just resolves unambiguously.
 
 - **Admin-editable cabin details** (migration
   [`0089`](supabase/migrations/0089_cabin_editable_details.sql)): name, room
