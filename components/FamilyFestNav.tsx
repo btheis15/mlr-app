@@ -6,12 +6,17 @@ import { usePathname } from "next/navigation";
 /**
  * The Family Fest section's in-section sub-nav: parchment pill links to each
  * fest surface, sticky at the top of the content so it's always one tap to hop
- * between Overview / Schedule / Dinners / Pay. (Photos deliberately live only
- * on the Feed tab — no fest photos page.) Rendered by
- * app/family-fest/layout.tsx so every fest page gets it, INCLUDING the
- * schedule/dinner drill-in detail pages (their parent pill stays lit, so the
- * nav doubles as a "you are here"). Hidden on the editor surfaces
- * (planner/master) — those are full-window admin tools with their own chrome.
+ * between Overview / Dinners / Pay. (Photos deliberately live only on the Feed
+ * tab — no fest photos page.) There's deliberately no "Schedule" pill — the
+ * Overview page already renders the full week via FestWeek, so a separate
+ * Schedule tab was showing the exact same accordion a second time; the
+ * standalone `/family-fest/schedule` index + `schedule/[id]` detail routes are
+ * left in place (harmless, reachable by direct link) but nothing in the nav
+ * points at them anymore. Rendered by app/family-fest/layout.tsx so every fest
+ * page gets it, INCLUDING the dinner drill-in detail page (its parent pill
+ * stays lit, so the nav doubles as a "you are here"). Hidden on the editor
+ * surfaces (planner/master) — those are full-window admin tools with their
+ * own chrome.
  *
  * Styling leans on the `.ff-section` re-declared tokens (bg-card, text-primary,
  * ring-border…), so the pills render parchment + heraldic wine here and would
@@ -21,7 +26,6 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/family-fest", label: "Overview" },
-  { href: "/family-fest/schedule", label: "Schedule" },
   { href: "/family-fest/dinners", label: "Dinners" },
   { href: "/family-fest/pay", label: "Pay" },
 ] as const;

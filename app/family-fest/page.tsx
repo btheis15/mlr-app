@@ -17,8 +17,9 @@ import { formatDateLong } from "@/lib/format";
 /**
  * Family Fest — one integrated view. The focal point up top is what's happening
  * *today* (events + dinner in full, via FestStatus); below is the look-ahead
- * week as an expandable accordion (FestWeek), with dinners clicking through
- * inside each day. No sub-nav, no separate Schedule/Dinners/Crew pages.
+ * week as an expandable accordion (FestWeek), each row expanding in place.
+ * This is also why there's no "Schedule" pill in FamilyFestNav — it would
+ * just show this same accordion a second time.
  *
  * The schedule, dinners, dates and name come from the shared DB (migration 0053)
  * via useFestContent, so admin/committee edits in the Planner show up here and on
