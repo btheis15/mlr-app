@@ -7,13 +7,6 @@ import { committeeSlugParams } from "@/lib/committeeParams";
 // (non-export) `dynamicParams` also serves any brand-new slug at runtime. The
 // page content itself is DB-driven (CommitteeDetail), so it's correct for any
 // committee that resolves.
-//
-// NOTE: `dynamicParams: true` is incompatible with `output: export`, so the
-// GitHub Pages build flips this to `false` before building (see the
-// "static-export-safe" step in .github/workflows/pages.yml, alongside the
-// existing `rm -rf app/api`). Keep it a *static* boolean here (Next can't parse
-// a computed value) and `true` so Vercel resolves admin-created slugs at
-// runtime.
 export const dynamicParams = true;
 export async function generateStaticParams() {
   return committeeSlugParams();
