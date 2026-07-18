@@ -411,7 +411,7 @@ function EventRow({
   );
 }
 
-function DinnerRow({
+export function DinnerRow({
   dinner,
   uid,
   canEditAll,
