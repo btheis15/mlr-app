@@ -11,7 +11,7 @@ EST 1987) with vintage heritage from the original resort (Leo & Dorothy Theis ·
 Fishing · Hunting · Boating · light-housekeeping cabins · Tomahawk, WI). Same
 conventions as the author's other apps (`stock-game`, `innjoy-mobile`): App
 Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint. Live on
-**Vercel** (mlr-app-omega.vercel.app) + GitHub Pages; currently **read-only**
+**Vercel** (mlr-app-omega.vercel.app); currently **read-only**
 (see `lib/features.ts` `READ_ONLY`).
 
 MLR is the **umbrella app**, and **Family Fest** (the one-week annual gathering)
@@ -201,7 +201,7 @@ of the live lists and its chat goes **read-only** (an insert guard in RLS via
 is untouched so `restore_*` brings it fully back. Archived chats surface under a
 quiet **"Archived chats"** disclosure at the foot of the Feed tab
 ([`FeedView`](components/FeedView.tsx) `ArchivedChatsLine` → `CommitteeChat readOnly`).
-Committee **routes are static-export-safe + DB-aware**: `/committees/[slug]` +
+Committee **routes are prerendered + DB-aware**: `/committees/[slug]` +
 `/committees/[slug]/chat` render client components
 ([`CommitteeDetail`](components/CommitteeDetail.tsx) /
 [`CommitteeChatRoute`](components/CommitteeChatRoute.tsx)) and their
@@ -389,7 +389,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   [`HouseCalendarScreen`](components/HouseCalendarScreen.tsx)) with
   [`HouseStayComposer`](components/HouseStayComposer.tsx) /
   [`HouseStaySheet`](components/HouseStaySheet.tsx). Both routes are **non-dynamic**
-  (static-export safe) and resolve the viewer's own house, or a `?house=<slug>`
+  and resolve the viewer's own house, or a `?house=<slug>`
   deep-link (admins can view any) via `useResolvedHouse` +
   [`useHouseCalendar`](lib/hooks.ts); client seam [`lib/houseCalendar.ts`](lib/houseCalendar.ts).
 - Client seam: [`lib/houses.ts`](lib/houses.ts) (`fetchHouses`, `fetchMyHouse`,
@@ -550,9 +550,8 @@ not a separate app — no backend needed:
   `WRAP_TAIL_DAYS` (14) window constants. **Mirrored byte-for-byte in the
   `family-fest` repo** (like the EVENT/FAMILY_FEST seed data) — edit both.
 - [`lib/useFestSeason.ts`](lib/useFestSeason.ts) — client hook; computes the
-  phase **on the client** (returns `null` until mounted → no hydration mismatch)
-  so the live week is correct on the static Pages build *and* Vercel. A
-  build-time `new Date()` would freeze the phase at deploy.
+  phase **on the client** (returns `null` until mounted → no hydration mismatch).
+  A build-time `new Date()` would freeze the phase at deploy.
 - Consumers: [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) (home —
   quiet banner → planning partial-takeover → live takeover hero → wrap "post
   your photos"), [`FestStatus`](components/FestStatus.tsx) (hub — countdown →
@@ -1407,32 +1406,18 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
 - **`npm install`** relies on `.npmrc` (`legacy-peer-deps=true`).
 - **`npm run typecheck`** (`tsc --noEmit`) is the static check — there's no
   ESLint setup (`next lint` was removed in Next 16).
-- **`dynamicParams: true` vs. the GitHub Pages static export** —
-  `app/committees/[slug]/page.tsx` and `.../chat/page.tsx` set
-  `dynamicParams = true` in source (so Vercel serves a brand-new committee
-  slug immediately, not just after the next deploy), but Next.js hard-errors
-  on `dynamicParams: true` together with `output: "export"`, and the
-  route-segment-config export must be a literal boolean — it can't just read
-  an env var in the file. [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
-  sed-patches both files to `dynamicParams = false` right before the static
-  build (same pattern as its `rm -rf app/api` step above it); Vercel's build
-  never runs that patch, so its behavior is untouched. If you touch either
-  file's `dynamicParams` line, keep the sed pattern
-  (`^export const dynamicParams = true;$`) in sync or the Pages build breaks
-  again.
 - Client components (`TabBar`, `InstallHint`) carry `"use client"`.
 - **App version / update nudge** — each build stamps `NEXT_PUBLIC_BUILD_ID`
-  (commit SHA on Vercel/Pages via `VERCEL_GIT_COMMIT_SHA`/`GITHUB_SHA`, a
-  timestamp locally) into the bundle **and** writes `public/version.json` — both
-  from one source in [`next.config.ts`](next.config.ts) so they can't disagree
-  (`version.json` is gitignored — it's a build artifact). [`UpdateBanner`](components/UpdateBanner.tsx)
+  (commit SHA via `VERCEL_GIT_COMMIT_SHA`/`GITHUB_SHA`, a timestamp locally)
+  into the bundle **and** writes `public/version.json` — both from one source
+  in [`next.config.ts`](next.config.ts) so they can't disagree (`version.json`
+  is gitignored — it's a build artifact). [`UpdateBanner`](components/UpdateBanner.tsx)
   (mounted in [`layout.tsx`](app/layout.tsx)) polls `version.json` (on focus +
   every 5 min, `no-store`) and shows a one-tap **Refresh** bar when it differs
   from the running id — so a Home-Screen PWA stuck on an old build gets nudged
   instead of going silently stale, without a manual close/reopen. Refresh clears
   Cache Storage then reloads (the shell is served `must-revalidate`; `sw.js`
-  doesn't cache). `NEXT_PUBLIC_BASE_PATH` is exposed so the fetch resolves under
-  the Pages subpath.
+  doesn't cache).
 
 ## Keep this current
 

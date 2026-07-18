@@ -11,8 +11,7 @@ import type { LocalPlace, PlaceAccent } from "@/lib/places";
  *  - External business: a cluster of equal icon+label pills — Menu, Order, Call,
  *    Website — showing only the ones that place actually has.
  *
- * Presentational + link-only (no state), so it stays a Server Component and ships
- * fine in the static export.
+ * Presentational + link-only (no state), so it stays a Server Component.
  */
 
 // Literal class strings (not interpolated) so Tailwind's scanner emits them.

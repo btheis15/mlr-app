@@ -17,14 +17,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  */
 
 const CURRENT = process.env.NEXT_PUBLIC_BUILD_ID ?? "";
-const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const POLL_MS = 5 * 60 * 1000; // gentle background check
 
 async function fetchLatest(): Promise<string | null> {
   try {
     // no-store + unique query so neither the browser nor a CDN serves a cached
     // copy — we always want the truly-latest version.json.
-    const res = await fetch(`${BASE}/version.json?ts=${Date.now()}`, { cache: "no-store" });
+    const res = await fetch(`/version.json?ts=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as { version?: unknown };
     return typeof data.version === "string" ? data.version : null;

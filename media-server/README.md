@@ -70,9 +70,9 @@ can view the photos).
 
 - **CORS fails closed.** `ALLOWED_ORIGINS` unset/empty no longer means "allow
   any origin" — the server logs a startup warning and falls back to just the
-  known production origins (`https://mlr-app-omega.vercel.app`,
-  `https://btheis15.github.io`). Set `ALLOWED_ORIGINS` explicitly in `.env` if
-  you need another origin (e.g. `http://localhost:3000` for local dev).
+  known production origin (`https://mlr-app-omega.vercel.app`). Set
+  `ALLOWED_ORIGINS` explicitly in `.env` if you need another origin (e.g.
+  `http://localhost:3000` for local dev).
 - **Rate limiting** (`express-rate-limit`, per-IP): a modest global floor
   (600 req / 15 min) plus tighter limits on the routes worth abusing —
   `/upload` (30/hour), `/moderate/text` (60/min), `/geocode` (30/min). Sized to

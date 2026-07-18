@@ -1,7 +1,7 @@
 // The built-in MLR sticker pack. These are inline vector art (not files), so
-// they render crisp at any size, work offline, and don't care about the hosting
-// origin or GitHub-Pages basePath. A chat sticker is stored as media_type
-// 'sticker' with storage_path = the sticker id; <StickerArt> draws it from here.
+// they render crisp at any size and work offline. A chat sticker is stored as
+// media_type 'sticker' with storage_path = the sticker id; <StickerArt> draws
+// it from here.
 //
 // To add a sticker: add an entry to STICKERS and a case to <StickerArt>.
 

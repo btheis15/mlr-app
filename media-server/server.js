@@ -41,10 +41,10 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ""; // ⚠️ powerful — admin endpoints only
 
 // Known-good production origins for the app, used ONLY as a fallback when
-// ALLOWED_ORIGINS isn't set. Keep this list current with lib/festSeason.ts-style
-// deploy URLs (Vercel + GitHub Pages) so a blank/misconfigured .env still fails
-// CLOSED (a fixed, real allow-list) instead of reflecting every origin.
-const DEFAULT_ALLOWED_ORIGINS = ["https://mlr-app-omega.vercel.app", "https://btheis15.github.io"];
+// ALLOWED_ORIGINS isn't set. Keep this list current with the app's deploy
+// URLs so a blank/misconfigured .env still fails CLOSED (a fixed, real
+// allow-list) instead of reflecting every origin.
+const DEFAULT_ALLOWED_ORIGINS = ["https://mlr-app-omega.vercel.app"];
 const ALLOWED = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
 if (!ALLOWED.length) {
   console.warn(

@@ -10,9 +10,9 @@ import type { ScheduleEvent } from "@/lib/types";
 /**
  * One schedule event, drilled in. Reads the live event from the shared content
  * (so Planner edits show here) and falls back to the seed event the static page
- * passed in — which is also what makes pre-rendered seed routes work offline /
- * on the GitHub Pages mirror. A brand-new (DB-only) event resolves at request
- * time on Vercel; if it can't be found at all we say so rather than 404 hard.
+ * passed in — which is also what makes pre-rendered seed routes work offline.
+ * A brand-new (DB-only) event resolves at request time; if it can't be found
+ * at all we say so rather than 404 hard.
  */
 export function FestScheduleDetail({ id, fallback }: { id: string; fallback: ScheduleEvent | null }) {
   const { schedule } = useFestContent({ realtime: true });
