@@ -7,6 +7,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
 import { useAppImages } from "@/lib/useAppImages";
 import { siteImageSrc } from "@/lib/appImages";
+import { useIdentity } from "@/components/IdentityProvider";
 import { Icon, type IconName } from "@/components/Icon";
 
 /**
@@ -39,6 +40,19 @@ const SECONDARY: { href: string; label: string; icon: IconName }[] = [
   { href: "/local-places", label: "Local Places", icon: "pin" },
   { href: "/help-requests", label: "Ask for Help", icon: "hand" },
   { href: "/request-stay", label: "Cabin Stay", icon: "cabin" },
+];
+
+// Admin-only quick links — the commonly-reached admin broadcast tools, shown
+// only to admins (and never during a preview-as, since useIdentity's isAdmin is
+// false then). These three all live on the /admin/alerts page as distinct
+// sections, so they deep-link to it by hash anchor (see the ids on that page +
+// HashScrollIntoView, which scrolls the target into #app-scroll on arrival).
+// Desktop-only by construction — the whole rail is `hidden lg:flex`.
+const ADMIN: { href: string; label: string; icon: IconName }[] = [
+  { href: "/admin", label: "Admin dashboard", icon: "gear" },
+  { href: "/admin/alerts#post-alert", label: "Post an alert", icon: "bell" },
+  { href: "/admin/alerts#send-notification", label: "Send a notification", icon: "feed" },
+  { href: "/admin/alerts#home-callouts", label: "Home callouts", icon: "sparkle" },
 ];
 
 const PROFILE = { href: "/profile", label: "Profile", icon: "person" as IconName };
@@ -111,6 +125,7 @@ export function SideNav() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   const unread = useUnreadNotifications();
   const images = useAppImages();
+  const { isAdmin } = useIdentity();
 
   return (
     <nav
@@ -159,6 +174,26 @@ export function SideNav() {
             active={isActive(pathname, item.href)}
           />
         ))}
+
+        {isAdmin && (
+          <>
+            <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wide text-faint">
+              Admin
+            </p>
+            {ADMIN.map((item) => (
+              <SideLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                // The dashboard highlights when you're on it; the hash
+                // shortcuts (all /admin/alerts) don't self-highlight, since
+                // they'd all light up together on that one page.
+                active={item.href === "/admin" && pathname === "/admin"}
+              />
+            ))}
+          </>
+        )}
       </div>
 
       {/* Profile pinned to the foot, like a desktop account row. */}

@@ -107,7 +107,16 @@ can't drift, and it reuses the same live-dot (`useFestSeason`) + unread-badge
 destinations that are only reachable from Home tiles on mobile (Events, People,
 Committees, Polls, Local Places, Ask for Help, Cabin Stay). Page bodies are
 unchanged — they just breathe wider. (Proposals B "bento dashboard" + C
-"split-pane master/detail" are deferred follow-ups.)
+"split-pane master/detail" are deferred follow-ups.) **Admins** additionally get
+an "Admin" group in the rail (gated on `useIdentity().isAdmin`, so it's hidden
+during preview-as) with quick links to the Admin dashboard and the three most-
+used broadcast tools — Post an alert · Send a notification · Home callouts.
+Those three live as sections on one page (`/admin/alerts`), so the links
+**deep-link by hash** (`#post-alert` / `#send-notification` / `#home-callouts`);
+because the app's only scroll container is `#app-scroll` and `ScrollReset` snaps
+it to top per-nav, a bare `#hash` won't land on its own —
+[`HashScrollIntoView`](components/HashScrollIntoView.tsx) (mounted on the alerts
+page, past `AdminGuard`) scrolls the hash target into view within `#app-scroll`.
 
 Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
 **Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —
