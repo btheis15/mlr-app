@@ -32,17 +32,6 @@ jobs:
         # The real assistant route ships on Vercel; Pages keeps the in-browser
         # grounded-stub assistant via lib/assistant/client.ts's fallback.
         run: rm -rf app/api
-      - name: Make dynamic routes static-export-safe
-        # `dynamicParams: true` is incompatible with `output: export` (it's how
-        # Vercel serves admin-created committee slugs at runtime). For Pages we
-        # flip it to false so the export builds; Pages then serves exactly the
-        # seed ∪ live-DB slugs enumerated by generateStaticParams at build time.
-        # Kept here (not in source) so the source stays correct for Vercel; the
-        # bracketed paths are quoted so the shell doesn't glob "[slug]".
-        run: |
-          sed -i 's/^export const dynamicParams = true;/export const dynamicParams = false;/' \
-            'app/committees/[slug]/page.tsx' \
-            'app/committees/[slug]/chat/page.tsx'
       - name: Build static export
         env:
           # Serves the project site at https://<user>.github.io/mlr-app/
