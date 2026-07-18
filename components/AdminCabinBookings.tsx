@@ -6,7 +6,7 @@ import { Avatar } from "@/components/Avatar";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useBusyAction } from "@/lib/hooks";
 import { fetchProfiles, profileMap, type ProfileLite } from "@/lib/roles";
-import { fetchBookings, formatStay, reviewStay, cancelStay } from "@/lib/cabins";
+import { fetchBookings, fetchMyApproverCabinIds, formatStay, reviewStay, cancelStay } from "@/lib/cabins";
 import { EditBookingSheet } from "@/components/EditBookingSheet";
 import type { CabinBooking } from "@/lib/types";
 
@@ -37,7 +37,12 @@ let adminCabinCache: {
  * AdminJoinRequests — load → act via RPC → reload, kept live via Realtime.
  */
 export function AdminCabinBookings() {
-  const { isAdmin } = useIdentity();
+  const { isAdmin, userId } = useIdentity();
+  // App admins always manage every place; a non-admin can also manage the
+  // specific place(s) they're the designated approver for (migration 0114) —
+  // e.g. a family member whose own house is bookable through the app but who
+  // isn't an app admin otherwise.
+  const [canManage, setCanManage] = useState(isAdmin);
   const [pending, setPending] = useState<CabinBooking[]>(adminCabinCache?.pending ?? []);
   const [approved, setApproved] = useState<CabinBooking[]>(adminCabinCache?.approved ?? []);
   const [people, setPeople] = useState<Map<string, ProfileLite>>(adminCabinCache?.people ?? new Map());
@@ -79,7 +84,25 @@ export function AdminCabinBookings() {
   }, [pending]);
 
   useEffect(() => {
-    if (!isAdmin || !isSupabaseConfigured) return;
+    if (isAdmin) {
+      setCanManage(true);
+      return;
+    }
+    if (!userId || !isSupabaseConfigured) {
+      setCanManage(false);
+      return;
+    }
+    let cancelled = false;
+    fetchMyApproverCabinIds(userId).then((ids) => {
+      if (!cancelled) setCanManage(ids.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, userId]);
+
+  useEffect(() => {
+    if (!canManage || !isSupabaseConfigured) return;
     const sb = supabase;
     if (!sb) return;
     let cancelled = false;
@@ -94,7 +117,7 @@ export function AdminCabinBookings() {
       cancelled = true;
       sb.removeChannel(channel);
     };
-  }, [isAdmin, load]);
+  }, [canManage, load]);
 
   const review = (b: CabinBooking, approve: boolean) =>
     run(b.id, async () => {
@@ -129,7 +152,7 @@ export function AdminCabinBookings() {
     });
   };
 
-  if (!isAdmin || !isSupabaseConfigured) return null;
+  if (!canManage || !isSupabaseConfigured) return null;
 
   return (
     <div className="space-y-4">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { CabinRequestSheet } from "@/components/CabinRequestSheet";
+import { AdminCabinBookings } from "@/components/AdminCabinBookings";
 import { PickMyRoomSheet } from "@/components/PickMyRoomSheet";
 import { SkeletonList } from "@/components/Skeleton";
 import { Avatar } from "@/components/Avatar";
@@ -120,8 +121,8 @@ export default function RequestStayPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">🏡 Request a Cabin Stay</h1>
         <p className="text-sm text-foreground/60">
-          Reserve a room in one of the resort&rsquo;s two houses — defaulting to Family Fest week. An admin reviews
-          each request.
+          Reserve a room in one of the resort&rsquo;s cabins or houses — defaulting to Family Fest week. Whoever
+          reviews that place gets your request.
         </p>
       </header>
 
@@ -221,6 +222,13 @@ export default function RequestStayPage() {
               ))}
             </section>
           )}
+
+          {/* ── Requests to approve — self-hides unless the viewer is a
+              non-admin who's the specific designated approver of at least
+              one place (migration 0114); its own "Pending"/"Upcoming stays"
+              headers provide context, so no extra wrapper heading here. App
+              admins already have the full queue at Admin → Cabin requests. */}
+          {!isAdmin && <AdminCabinBookings />}
         </>
       )}
 
@@ -332,7 +340,12 @@ function CabinCard({
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold">{cabin.name}</p>
+          <p className="flex items-center gap-1.5 text-sm font-semibold">
+            {cabin.name}
+            {cabin.kind === "house" && (
+              <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">🏠 Private house</span>
+            )}
+          </p>
           <div className="mt-1.5 flex items-center gap-2">
             <CapacityDots total={cabin.roomCount} open={left} />
             <span className={`text-xs font-medium ${full ? "text-accent" : "text-foreground/60"}`}>
