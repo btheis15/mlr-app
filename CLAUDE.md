@@ -1024,16 +1024,66 @@ creator or an admin closes it, or when its optional `closes_on` date has passed
 ## Cabin stays
 
 "Request a Cabin Stay" (`/request-stay`) — members request a room in one of
-the two houses (`cabins`: Cabin 1, Red & White House) for any date range,
-defaulting to Family Fest week; admins approve/deny from Admin → Cabin
-requests. Same shape as events/attendance: public-read tables, all writes
-through SECURITY DEFINER RPCs. Data model: migration
+the resort's bookable **places to stay** (`cabins` — started as just Cabin 1 +
+Red & White House, now an open-ended admin-managed roster, see **Places to
+stay: kind + a per-place approver** below) for any date range, defaulting to
+Family Fest week; admins (or that place's designated approver) approve/deny
+from Admin → Cabin requests. Same shape as events/attendance: public-read
+tables, all writes through SECURITY DEFINER RPCs. Data model: migration
 [`0032`](supabase/migrations/0032_cabin_bookings.sql) (`cabins`,
 `cabin_bookings`, `request_cabin_stay`/`review_cabin_stay`/`cancel_cabin_stay`/
 `cabin_availability`). Client seam [`lib/cabins.ts`](lib/cabins.ts); surfaces
 [`app/request-stay/page.tsx`](app/request-stay/page.tsx),
 [`CabinRequestSheet`](components/CabinRequestSheet.tsx),
 [`AdminCabinBookings`](components/AdminCabinBookings.tsx).
+
+### Places to stay: kind + a per-place approver (migration 0114)
+
+Admins can now **add new places** from Admin → Cabin requests → Places to
+stay ([`AdminCabinDetails`](components/AdminCabinDetails.tsx), "＋ Add a
+place") instead of the roster being fixed at the original two houses — e.g. a
+family member's own house with spare bedrooms. Each place carries:
+
+- **`kind`** (`'cabin' | 'house'`, default `'cabin'`) — a label only (a
+  shared resort structure vs. someone's private house); no booking/capacity
+  behavior differs by kind. Shown as a badge on the member-facing card
+  (`CabinCard` in `app/request-stay/page.tsx`) when `kind = 'house'`.
+- **Bedrooms + beds-per-bedroom** — unchanged, this is just the existing
+  named-room model (`cabin_rooms`, migration 0092) an admin fills in via
+  `CabinRoomsEditor`. "Extra beds outside bedrooms" (a fold-out couch,
+  sleeping bags, etc.) reuses the existing informational `cabins.bed_count`
+  (0089) rather than a new column — the label in `AdminCabinDetails` and the
+  copy in `CabinRequestSheet` just switch to "extra beds" once the place has
+  named bedrooms, since at that point `bed_count` no longer means "beds
+  overall" (the room-based beds_total/beds_available from `cabin_availability`
+  cover that).
+- **`approver_user_id`** — null (the default) means "all app admins review
+  this place's requests," unchanged from before. Set it to a specific member
+  via the new `ApproverPicker`/`ApproverPickerSheet` in `AdminCabinDetails` to
+  make **that one person** the reviewer instead — critically, they do **not**
+  need to be an app admin (e.g. the owner of a private house that's bookable
+  through the app but who otherwise has no admin access). A new
+  `is_cabin_approver(cabin_id)` SQL helper (admin OR that specific person) is
+  the widened gate on `review_cabin_stay`/`cancel_cabin_stay`/
+  `admin_update_cabin_booking`/`set_booking_rooms` and on `cabin_bookings`'/
+  `cabin_booking_rooms`' read RLS, so a non-admin approver can see and act on
+  requests for their own place(s) only — nothing else in the app opens up for
+  them. `notif_on_cabin_request` also notifies that approver (in addition to
+  admins, if they aren't one already) so they actually learn a request came
+  in; the mini's `push-sender.js` `handleCabinRequest` mirrors the same
+  widened recipient list for the phone push.
+- **Where a non-admin approver reviews requests** — `/admin/cabins` stays
+  admin-only (unchanged `AdminGuard`), so a non-admin approver instead sees a
+  self-hiding **"Requests to approve"** section right on `/request-stay`
+  itself (`app/request-stay/page.tsx` mounts `AdminCabinBookings` for
+  non-admins; the component now computes its own `canManage` — app admin OR
+  approver of at least one place, via `fetchMyApproverCabinIds()` — instead of
+  gating on `isAdmin` alone, and renders nothing for anyone else). An app
+  admin still only sees the queue at Admin → Cabin requests (all places, not
+  just ones they're the named approver for).
+- `create_cabin()` (admin-only RPC, mirrors `create_committee`'s auto-slug
+  pattern) is the one write path for adding a place — client seam
+  `createCabin()` in `lib/cabins.ts`.
 
 - **Admin-editable cabin details** (migration
   [`0089`](supabase/migrations/0089_cabin_editable_details.sql)): name, room

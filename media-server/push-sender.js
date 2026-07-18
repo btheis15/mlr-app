@@ -414,13 +414,26 @@ async function start() {
     if (!b || b.status !== "pending" || b.request_notify === false) return;
 
     const [cabinRes, reqRes, adminRes] = await Promise.all([
-      sb.from("cabins").select("name").eq("id", b.cabin_id).maybeSingle(),
+      sb.from("cabins").select("name, approver_user_id").eq("id", b.cabin_id).maybeSingle(),
       sb.from("profiles").select("display_name").eq("id", b.user_id).maybeSingle(),
       sb.from("profiles").select("id, notif_types").eq("is_admin", true),
     ]);
     const cabin = cabinRes.data ? cabinRes.data.name : "a cabin";
     const name = ((reqRes.data && reqRes.data.display_name) || "").trim() || "A member";
-    const targets = (adminRes.data || [])
+    const recipients = [...(adminRes.data || [])];
+    // A place's designated, non-admin approver (migration 0114) — e.g. a
+    // family member whose own house is bookable but who isn't an app admin —
+    // also needs the push, since they won't see the admin queue at all.
+    const approverId = cabinRes.data ? cabinRes.data.approver_user_id : null;
+    if (approverId && !recipients.some((a) => a.id === approverId)) {
+      const { data: approverRow } = await sb
+        .from("profiles")
+        .select("id, notif_types")
+        .eq("id", approverId)
+        .maybeSingle();
+      if (approverRow) recipients.push(approverRow);
+    }
+    const targets = recipients
       .filter((a) => a.id !== b.user_id && (a.notif_types || []).includes("cabin_request"))
       .map((a) => a.id);
     if (!targets.length) return;

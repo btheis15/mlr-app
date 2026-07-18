@@ -454,24 +454,34 @@ export interface FestConfigContent {
 }
 
 /* ── Cabin stays (lodging requests) ──────────────────────────────────────────
-   "Request a Cabin Stay": members request a room in one of the resort's two
-   houses for a date range; admins approve/deny. Capacity is counted per house
-   (room_count) — one room per request. Backed by Supabase (migration 0032). */
+   "Request a Cabin Stay": members request a room in one of the resort's
+   bookable places (an open-ended admin-managed roster — migration 0114) for a
+   date range; admins, or that place's designated approver, approve/deny.
+   Capacity is counted per place (room_count) — one room per request. Backed
+   by Supabase (migration 0032). */
 
-/** A bookable house. Capacity is just a room count for now; individual rooms
+/** A bookable place. Capacity is just a room count for now; individual rooms
  *  can be named later without reworking this shape. `bedCount` and `notes` are
  *  admin-editable (migration 0089) so members can see sleeping capacity and any
  *  heads-up about current conditions (e.g. "water not hooked up yet"). `active`
- *  false takes the cabin out of the bookable list without deleting its history. */
+ *  false takes the cabin out of the bookable list without deleting its history.
+ *  `kind` (migration 0114) just labels what it is — a shared resort cabin vs.
+ *  someone's private house — no behavior differs by kind. `approverUserId`
+ *  null means "all app admins review this place's requests" (the original,
+ *  unchanged default); set it to a specific member so a private house's owner
+ *  — who may not be an app admin at all — can approve/deny their own place's
+ *  requests without granting them anything else admin-shaped. */
 export interface Cabin {
   id: string;
   slug: string;
   name: string;
+  kind: "cabin" | "house";
   roomCount: number;
   bedCount: number | null;
   notes: string | null;
   active: boolean;
   sortOrder: number;
+  approverUserId: string | null;
 }
 
 /** Rooms still bookable for the WHOLE requested range, per cabin. */

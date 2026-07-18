@@ -58,60 +58,95 @@ interface CabinRow {
   id: string;
   slug: string;
   name: string;
+  kind: string;
   room_count: number;
   bed_count: number | null;
   notes: string | null;
   active: boolean;
   sort_order: number;
+  approver_user_id: string | null;
 }
+
+const CABIN_COLUMNS = "id, slug, name, kind, room_count, bed_count, notes, active, sort_order, approver_user_id";
 
 function mapCabinRow(c: CabinRow): Cabin {
   return {
     id: c.id,
     slug: c.slug,
     name: c.name,
+    kind: c.kind === "house" ? "house" : "cabin",
     roomCount: c.room_count,
     bedCount: c.bed_count ?? null,
     notes: c.notes ?? null,
     active: c.active,
     sortOrder: c.sort_order,
+    approverUserId: c.approver_user_id ?? null,
   };
 }
 
-/** The two houses, ordered. Empty when there's no backend. Only the active ones
- *  — for the admin editor (which also needs to see/reopen a closed cabin), use
- *  fetchCabinsAdmin(). */
+/** The bookable places, ordered. Empty when there's no backend. Only the
+ *  active ones — for the admin editor (which also needs to see/reopen a
+ *  closed place), use fetchCabinsAdmin(). */
 export async function fetchCabins(): Promise<Cabin[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabins")
-    .select("id, slug, name, room_count, bed_count, notes, active, sort_order")
+    .select(CABIN_COLUMNS)
     .eq("active", true)
     .order("sort_order", { ascending: true });
   return ((data ?? []) as CabinRow[]).map(mapCabinRow);
 }
 
-/** Every cabin regardless of active state (admin editor only — RLS still lets
+/** Every place regardless of active state (admin editor only — RLS still lets
  *  anyone read cabins, but there's no reason a member needs the inactive ones). */
 export async function fetchCabinsAdmin(): Promise<Cabin[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("cabins")
-    .select("id, slug, name, room_count, bed_count, notes, active, sort_order")
+    .select(CABIN_COLUMNS)
     .order("sort_order", { ascending: true });
   return ((data ?? []) as CabinRow[]).map(mapCabinRow);
 }
 
-/** Edit a cabin's editable fields (admin-gated by RLS, migration 0089). */
+/** Add a new place to stay — a shared resort cabin or someone's private house
+ *  (migration 0114, admin-only). Auto-slugs server-side via create_cabin() so
+ *  the client never has to guess a unique slug. Pass `approverUserId` to make
+ *  a specific member (not necessarily an app admin) the one who reviews this
+ *  place's requests; omit/null it to keep the default "all app admins" gate. */
+export async function createCabin(input: {
+  name: string;
+  kind: "cabin" | "house";
+  roomCount: number;
+  bedCount: number | null;
+  notes: string | null;
+  approverUserId: string | null;
+}): Promise<{ cabin?: Cabin; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("create_cabin", {
+    p_name: input.name,
+    p_kind: input.kind,
+    p_room_count: input.roomCount,
+    p_bed_count: input.bedCount,
+    p_notes: input.notes,
+    p_approver_user_id: input.approverUserId,
+  });
+  if (error) return { error: error.message };
+  return { cabin: mapCabinRow(data as CabinRow) };
+}
+
+/** Edit a place's editable fields (admin-gated by RLS, migrations 0089/0114). */
 export async function saveCabin(input: {
   id: string;
   name: string;
+  kind: "cabin" | "house";
   roomCount: number;
   bedCount: number | null;
   notes: string | null;
   active: boolean;
+  approverUserId: string | null;
 }): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -119,13 +154,26 @@ export async function saveCabin(input: {
     .from("cabins")
     .update({
       name: input.name,
+      kind: input.kind,
       room_count: input.roomCount,
       bed_count: input.bedCount,
       notes: input.notes,
       active: input.active,
+      approver_user_id: input.approverUserId,
     })
     .eq("id", input.id);
   return error ? { error: error.message } : {};
+}
+
+/** Every place a given member is the designated approver for (migration
+ *  0114) — used to decide whether to show a non-admin member the "Requests to
+ *  approve" section on /request-stay. Empty for an app admin (they already
+ *  see everything via Admin → Cabin requests) or anyone with no assignment. */
+export async function fetchMyApproverCabinIds(userId: string): Promise<string[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb || !userId) return [];
+  const { data } = await sb.from("cabins").select("id").eq("approver_user_id", userId);
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
 }
 
 interface CabinRoomRow {
