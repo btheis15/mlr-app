@@ -1407,6 +1407,19 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
 - **`npm install`** relies on `.npmrc` (`legacy-peer-deps=true`).
 - **`npm run typecheck`** (`tsc --noEmit`) is the static check — there's no
   ESLint setup (`next lint` was removed in Next 16).
+- **`dynamicParams: true` vs. the GitHub Pages static export** —
+  `app/committees/[slug]/page.tsx` and `.../chat/page.tsx` set
+  `dynamicParams = true` in source (so Vercel serves a brand-new committee
+  slug immediately, not just after the next deploy), but Next.js hard-errors
+  on `dynamicParams: true` together with `output: "export"`, and the
+  route-segment-config export must be a literal boolean — it can't just read
+  an env var in the file. [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
+  sed-patches both files to `dynamicParams = false` right before the static
+  build (same pattern as its `rm -rf app/api` step above it); Vercel's build
+  never runs that patch, so its behavior is untouched. If you touch either
+  file's `dynamicParams` line, keep the sed pattern
+  (`^export const dynamicParams = true;$`) in sync or the Pages build breaks
+  again.
 - Client components (`TabBar`, `InstallHint`) carry `"use client"`.
 - **App version / update nudge** — each build stamps `NEXT_PUBLIC_BUILD_ID`
   (commit SHA on Vercel/Pages via `VERCEL_GIT_COMMIT_SHA`/`GITHUB_SHA`, a
