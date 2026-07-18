@@ -111,7 +111,10 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
 - **Colors / theme** — the `@theme` block in [`app/globals.css`](app/globals.css).
   Editing a token (e.g. `--color-primary`) flows through every `bg-*`/`text-*`
   utility automatically.
-- **Navigation** — the `TABS` array in [`components/TabBar.tsx`](components/TabBar.tsx).
+- **Navigation** — the `TABS` array in [`components/TabBar.tsx`](components/TabBar.tsx)
+  (mobile bottom bar). On wide screens (≥1024px) a persistent left rail
+  ([`components/SideNav.tsx`](components/SideNav.tsx)) takes over instead —
+  purely `lg:`-gated, so the phone layout is unchanged below that width.
 - **A tab's content** — its `app/<tab>/page.tsx`.
 - **Local Places** — the nearby-businesses list at `/local-places` (linked from
   Home); add or edit spots in [`lib/places.ts`](lib/places.ts) and the page

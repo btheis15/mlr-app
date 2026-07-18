@@ -91,6 +91,24 @@ Family Fest · Activity · **Profile**. Icons are the hand-rolled SVG set in
 fest color are unchanged). (Profile moved back to a tab from the old header
 avatar; People moved off the bar to a Home tile.)
 
+**Desktop nav (≥`lg`/1024px):** the app is mobile-first and phone-width by
+default (one centered `max-w-md` column in [`app/layout.tsx`](app/layout.tsx)),
+but on wide screens a persistent left **[`SideNav`](components/SideNav.tsx)**
+rail takes over ("Lodge Sidebar", proposal A — the first of three desktop
+layout drafts). It's purely **additive/`lg:`-gated** so **nothing below 1024px
+changes**: the bottom `TabBar` is `lg:hidden`, the Home-only `AppHeader` logo is
+`lg:hidden` (the logo moves into the rail), and `#app-scroll` gets `lg:pl-64` +
+the content column widens to `lg:max-w-3xl`. The rail is a **sibling of
+`#app-scroll`** (like `TabBar`), fixed to the viewport, so the single-scroll
+invariant is untouched. Its PRIMARY group mirrors the mobile `TABS`
+routes/labels (minus Profile, pinned to the rail foot) so the two nav surfaces
+can't drift, and it reuses the same live-dot (`useFestSeason`) + unread-badge
+(`useUnreadNotifications`) hooks; a SECONDARY "More" group surfaces the
+destinations that are only reachable from Home tiles on mobile (Events, People,
+Committees, Polls, Local Places, Ask for Help, Cabin Stay). Page bodies are
+unchanged — they just breathe wider. (Proposals B "bento dashboard" + C
+"split-pane master/detail" are deferred follow-ups.)
+
 Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
 **Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —
 the same mark as the opening splash, *not* the stylized wordmark) linking Home.
