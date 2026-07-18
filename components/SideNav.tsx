@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
 import { useAppImages } from "@/lib/useAppImages";
 import { siteImageSrc } from "@/lib/appImages";
+import { useIdentity } from "@/components/IdentityProvider";
+import { AdminComposeSheet, type AdminTool } from "@/components/AdminComposeSheet";
 import { Icon, type IconName } from "@/components/Icon";
 
 /**
@@ -41,6 +44,18 @@ const SECONDARY: { href: string; label: string; icon: IconName }[] = [
   { href: "/request-stay", label: "Cabin Stay", icon: "cabin" },
 ];
 
+// Admin-only quick access — shown only to admins (and never during a
+// preview-as, since useIdentity's isAdmin is false then). Desktop-only by
+// construction — the whole rail is `hidden lg:flex`. The three broadcast tools
+// open right in the rail as a pop-up (AdminComposeSheet) so an admin never
+// leaves the page they're on; only the full dashboard is a real navigation.
+const ADMIN_DASHBOARD = { href: "/admin", label: "Admin dashboard", icon: "gear" as IconName };
+const ADMIN_TOOLS: { tool: AdminTool; label: string; icon: IconName }[] = [
+  { tool: "alert", label: "Post an alert", icon: "bell" },
+  { tool: "notification", label: "Send a notification", icon: "feed" },
+  { tool: "callouts", label: "Home callouts", icon: "sparkle" },
+];
+
 const PROFILE = { href: "/profile", label: "Profile", icon: "person" as IconName };
 
 function isActive(pathname: string, href: string) {
@@ -67,15 +82,20 @@ function Badge({ count }: { count: number }) {
   );
 }
 
+// One row of the rail — a navigation `<Link>` when given `href`, or a plain
+// action `<button>` when given `onClick` (used by the admin tools, which open a
+// pop-up instead of navigating).
 function SideLink({
   href,
+  onClick,
   label,
   icon,
   active,
   fest,
   children,
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   label: string;
   icon: IconName;
   active: boolean;
@@ -91,18 +111,27 @@ function SideLink({
     : active
       ? "bg-primary/10 font-semibold text-primary"
       : "text-foreground/70 hover:bg-primary/5";
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${color}`}
-    >
+  const cls = `press flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${color}`;
+  const inner = (
+    <>
       <span className="relative shrink-0">
         <Icon name={icon} size={22} strokeWidth={active ? 2.4 : 1.8} className="block" />
         {children}
       </span>
       <span className="truncate">{label}</span>
-    </Link>
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} aria-current={active ? "page" : undefined} className={cls}>
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={cls}>
+      {inner}
+    </button>
   );
 }
 
@@ -111,6 +140,9 @@ export function SideNav() {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   const unread = useUnreadNotifications();
   const images = useAppImages();
+  const { isAdmin } = useIdentity();
+  // Which admin broadcast tool is popped open (null = none).
+  const [openTool, setOpenTool] = useState<AdminTool | null>(null);
 
   return (
     <nav
@@ -159,7 +191,34 @@ export function SideNav() {
             active={isActive(pathname, item.href)}
           />
         ))}
+
+        {isAdmin && (
+          <>
+            <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wide text-faint">
+              Admin
+            </p>
+            {ADMIN_TOOLS.map((item) => (
+              <SideLink
+                key={item.tool}
+                onClick={() => setOpenTool(item.tool)}
+                label={item.label}
+                icon={item.icon}
+                active={false}
+              />
+            ))}
+            <SideLink
+              href={ADMIN_DASHBOARD.href}
+              label={ADMIN_DASHBOARD.label}
+              icon={ADMIN_DASHBOARD.icon}
+              active={pathname === "/admin"}
+            />
+          </>
+        )}
       </div>
+
+      {openTool && (
+        <AdminComposeSheet tool={openTool} onClose={() => setOpenTool(null)} />
+      )}
 
       {/* Profile pinned to the foot, like a desktop account row. */}
       <div

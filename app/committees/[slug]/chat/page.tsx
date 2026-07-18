@@ -5,6 +5,10 @@ import { committeeSlugParams } from "@/lib/committeeParams";
 // committees (migration 0112). dynamicParams serves brand-new slugs at runtime
 // on Vercel; the screen's name/emoji are DB-resolved client-side, and
 // membership + messages load from Supabase inside CommitteeChat.
+//
+// NOTE: incompatible with `output: export`, so the GitHub Pages build flips
+// this to `false` before building (see .github/workflows/pages.yml). Keep it a
+// static `true` here for Vercel's runtime-slug resolution.
 export const dynamicParams = true;
 export async function generateStaticParams() {
   return committeeSlugParams();

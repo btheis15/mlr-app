@@ -107,7 +107,16 @@ can't drift, and it reuses the same live-dot (`useFestSeason`) + unread-badge
 destinations that are only reachable from Home tiles on mobile (Events, People,
 Committees, Polls, Local Places, Ask for Help, Cabin Stay). Page bodies are
 unchanged — they just breathe wider. (Proposals B "bento dashboard" + C
-"split-pane master/detail" are deferred follow-ups.)
+"split-pane master/detail" are deferred follow-ups.) **Admins** additionally get
+an "Admin" group in the rail (gated on `useIdentity().isAdmin`, so it's hidden
+for non-admins and during preview-as) with the three most-used broadcast tools —
+Post an alert · Send a notification · Home callouts — plus an Admin dashboard
+link. The three tools **open as a pop-up right in place**
+([`AdminComposeSheet`](components/AdminComposeSheet.tsx) — the same
+`AdminAlertComposer`/`AdminNotificationComposer`/`AdminCallouts` the
+`/admin/alerts` page mounts, hosted in a [`Sheet`](components/Sheet.tsx), which
+is a centered modal on desktop), so an admin composes without navigating away;
+only the dashboard link is a real navigation.
 
 Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
 **Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —
