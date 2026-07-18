@@ -18,7 +18,7 @@ export function AppHeader() {
   if (!onHome) return null;
 
   return (
-    <header className="flex justify-center pb-1 pt-1 lg:hidden">
+    <header className="flex justify-center pb-1 pt-1">
       <Link href="/" aria-label="Muskellunge Lake Resort — Home" className="press min-w-0">
         {/* The green cabin-in-the-pines brand logo (same mark as the opening
             splash), not the stylized wordmark. Its height is responsive — a CSS
