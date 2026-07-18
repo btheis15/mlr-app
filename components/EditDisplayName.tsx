@@ -41,7 +41,12 @@ function EditDisplayNameSheet({ onClose }: { onClose: () => void }) {
 
   const save = () =>
     run(async () => {
-      updateUser({ name: trimmed });
+      // Await the write and only close/confirm if it actually persisted. A
+      // failed save used to be swallowed (fire-and-forget) while still telling
+      // the user "Name updated." — so a name with an emoji that didn't land
+      // would silently revert to the email-prefix default on the next open.
+      const { error } = await updateUser({ name: trimmed });
+      if (error) return error; // keep the sheet open, show why
       close();
       return "Name updated.";
     });

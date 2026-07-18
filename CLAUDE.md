@@ -668,6 +668,22 @@ sheet in place. Not extended: the standalone `schedule/[id]` detail page
 (`FestDinnerDetail` has full edit; the schedule equivalent has none at all,
 pre-existing gap, not touched here).
 
+**Denormalized lead/chef names stay in sync with the profile (migration
+[`0113`](supabase/migrations/0113_sync_fest_lead_names.sql)).** Each fest row
+stores a display-name *snapshot* next to the real link —
+`fest_schedule_items.lead_name` / `fest_activities.lead_name` (← `lead_user_id`)
+and `fest_dinners.chef_name` (← `chef_user_id`) — stamped from the person's
+`display_name` when they're assigned, and it's that stored copy the public cards
+render (`FestWeek` "IN CHARGE", `FestStatus`, dinner detail). So a member who
+renamed *after* being assigned (e.g. a new member assigned while their name was
+still the email prefix `motu42`, then set to `Mikey 😀`) kept showing the old
+snapshot on the card even though "Edit event" resolved the live profile via
+`*_user_id`. An `after update of display_name` trigger on `profiles`
+(`sync_fest_lead_names`) now rewrites the stored name on every fest row that
+person leads/cooks — matched by `*_user_id`, never the free-text name, so an
+account-less lead is untouched — plus a one-time backfill for names that already
+drifted. Fixes web + iOS at once (both read the same columns); no client change.
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

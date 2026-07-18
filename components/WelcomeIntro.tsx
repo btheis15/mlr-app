@@ -86,7 +86,10 @@ export function WelcomeIntro() {
       await sb.from("profiles").update(row).eq("id", id);
     }
     const trimmed = name.trim();
-    if (trimmed && trimmed !== user?.name) updateUser({ name: trimmed });
+    // Await so the name write finishes before onboarding navigates Home — an
+    // unawaited write could be cut off mid-flight (and roll back), landing the
+    // new member back on the email-prefix default.
+    if (trimmed && trimmed !== user?.name) await updateUser({ name: trimmed });
   };
 
   // Last step (basics): save whatever they entered, then finish + go Home.
