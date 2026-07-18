@@ -57,8 +57,12 @@ interface IdentityValue {
   setPreviewMode: (mode: PreviewMode) => void;
   /** Preview as a specific member (admin-only); pass null to clear. */
   setPreviewMember: (m: PreviewMember | null) => void;
-  /** Patch the current user (display name / email-alerts) → writes `profiles`. */
-  updateUser: (patch: Partial<User>) => void;
+  /** Patch the current user (display name / email-alerts) → writes `profiles`.
+   *  Resolves `{ error }` (null on success). On a failed write the optimistic
+   *  change is rolled back so the UI never shows a value that didn't persist
+   *  (which would silently revert to the DB value — e.g. the email-prefix
+   *  default — on the next cold load). Callers that don't care can ignore it. */
+  updateUser: (patch: Partial<User>) => Promise<{ error: string | null }>;
   /** Start a self-serve email change: Supabase emails a confirmation code to the
    *  new address (and a heads-up to the old one — "Secure email change" stays on).
    *  Resolves `{ error }` (null on success); finish with `confirmEmailChange`. */
@@ -98,7 +102,7 @@ const IdentityContext = createContext<IdentityValue>({
   previewAsId: null,
   setPreviewMode: () => {},
   setPreviewMember: () => {},
-  updateUser: () => {},
+  updateUser: async () => ({ error: null }),
   startEmailChange: async () => ({ error: "Sign-in isn't available." }),
   confirmEmailChange: async () => ({ error: "Sign-in isn't available." }),
   promptSignIn: () => {},
@@ -299,20 +303,20 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const updateUser = async (patch: Partial<User>) => {
+  const updateUser = async (
+    patch: Partial<User>,
+  ): Promise<{ error: string | null }> => {
     const sb = supabase;
-    if (!sb || !user) return;
+    if (!sb || !user) return { error: "You're not signed in." };
+    const prev = user;
     const patched = { ...user, ...patch };
     setUser(patched); // optimistic
     const { data: sess } = await sb.auth.getSession();
     const id = sess.session?.user.id;
-    if (!id) return;
-    // Keep the on-device snapshot current so a rename/avatar change doesn't
-    // flash the old value on the next cold open.
-    writePersisted<IdentitySnapshot>(`identity.${id}`, {
-      user: patched,
-      isAdmin: adminFlag,
-    });
+    if (!id) {
+      setUser(prev); // roll back — no session to write to
+      return { error: "You're not signed in." };
+    }
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.display_name = patch.name;
     if (patch.emailAlerts !== undefined) row.email_alerts = patch.emailAlerts;
@@ -324,8 +328,29 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     if (patch.willingToHelp !== undefined) row.willing_to_help = patch.willingToHelp;
     if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
     if (Object.keys(row).length) {
-      await sb.from("profiles").update(row).eq("id", id);
+      const { error } = await sb.from("profiles").update(row).eq("id", id);
+      if (error) {
+        // The write didn't land. Roll the optimistic change back (and re-pin the
+        // snapshot to the last-good value) so the UI doesn't show a name/setting
+        // that only lives on this device — which would otherwise vanish on the
+        // next cold load when the profile refetch overwrites it with the DB value
+        // (for a brand-new member, the email-prefix default). Surface it so the
+        // caller can tell the user instead of silently reverting.
+        setUser(prev);
+        writePersisted<IdentitySnapshot>(`identity.${id}`, {
+          user: prev,
+          isAdmin: adminFlag,
+        });
+        return { error: "Couldn't save that. Check your connection and try again." };
+      }
     }
+    // Keep the on-device snapshot current so a rename/avatar change doesn't flash
+    // the old value on the next cold open — but only after the write is confirmed.
+    writePersisted<IdentitySnapshot>(`identity.${id}`, {
+      user: patched,
+      isAdmin: adminFlag,
+    });
+    return { error: null };
   };
 
   // Self-serve email change. Supabase's secure flow emails a code to the new
