@@ -51,7 +51,7 @@ seams**.
 | Route | File | Status |
 |---|---|---|
 | `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: `WelcomeCard`/`HomeSignInCTA`, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), the collapsed-by-default [`WorkChecklist`](components/WorkChecklist.tsx), the always-visible **quick actions grid** ([`HomeQuickActions`](components/HomeQuickActions.tsx) — Events · Committees · People · Ask for Help · Local Places · Cabin Stay), self-hiding **garnish cards** ([`WeatherCard`](components/WeatherCard.tsx) · [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) · [`ActivePollCard`](components/ActivePollCard.tsx) · [`BirthdaysCard`](components/BirthdaysCard.tsx) — see **Home delight cards**), [`HouseHubCard`](components/HouseHubCard.tsx), [`OnThisDayCard`](components/OnThisDayCard.tsx), an "App & help" group, one-line heritage |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion) · `schedule` (index page + anytime [`THINGS_TO_DO`](lib/data.ts) & `schedule/[id]` detail) · `dinners` (index page renders every night's full details — menu, served/prep time+location, houses on crew, head chef — all at once on one scrollable list, no tap-to-expand and no click-through; edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion — the full week, including anytime [`THINGS_TO_DO`](lib/data.ts)) · `dinners` (index page reads like a weekly menu — day, serving time, the menu, head chef, and houses on crew, one scrollable list, no tap-to-expand and no click-through; deliberately omits the crew-prep time/location, which only the crew needs — still editable, just not shown to every reader. Edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link, and still shows the full logistics) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
 | `/posts` | [`app/posts/page.tsx`](app/posts/page.tsx) | **Feed** tab — the resort-wide Posts feed plus a live chat for each committee/house you're in, switchable by pills, no overlay ([`FeedView`](components/FeedView.tsx) wrapping [`PostsView`](components/PostsView.tsx)/[`CommitteeChat`](components/CommitteeChat.tsx)/[`HouseChat`](components/HouseChat.tsx)). Members-only (`SignInWall`) |
 | `/polls` | [`app/polls/page.tsx`](app/polls/page.tsx) | **Polls** — the family's voting booth ([`PollsView`](components/PollsView.tsx) + [`PollComposer`](components/PollComposer.tsx)); any signed-in member can ask a question, one changeable vote each. Members-only (`SignInWall`). Not a tab — reached from the Home [`ActivePollCard`](components/ActivePollCard.tsx) when a poll is open, or `/polls` directly. See **Family polls** |
 | `/admin` | [`app/admin/page.tsx`](app/admin/page.tsx) | **Admin dashboard** — the front door for admin tools (9 cards + a Family Fest Planner link), gated by [`AdminGuard`](app/admin/AdminGuard.tsx). Not a tab — reached from Profile. See **Admin dashboard** |
@@ -592,9 +592,11 @@ through the full [`FestPlanner`](components/FestPlanner.tsx) at
 where the schedule/dinner already show up — [`FestWeek`](components/FestWeek.tsx)'s
 `EventRow`/`DinnerRow` (the Overview/Schedule accordion, tap-to-expand), the
 **Dinners tab** index ([`app/family-fest/dinners/page.tsx`](app/family-fest/dinners/page.tsx)'s
-`DinnerCard` — every night's full details shown at once, no tap-to-expand and
-no separate detail page to visit; reuses `DinnerTile` from `FestWeek.tsx` and
-the same edit-sheet logic rather than duplicating it), [`FestStatus`](components/FestStatus.tsx)'s
+`DinnerCard` — reads like a weekly menu: day, serving time, the menu, head
+chef, and houses on crew, shown at once with no tap-to-expand and no
+separate detail page to visit. Deliberately omits the crew-prep time/
+location (only the crew needs that logistics; still editable via the same
+edit sheet, just not part of this reader-facing card)), [`FestStatus`](components/FestStatus.tsx)'s
 `TodayEvent`/`TodayDinner` (the "Happening today" cards during the live week —
 same edit affordance, just without the tap-to-expand step since those cards
 are always fully shown), and [`FestDinnerDetail`](components/FestDinnerDetail.tsx)
@@ -1377,8 +1379,11 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
     Translucent layers stack LIGHT; `bg-black/NN` is OK only as a modal scrim.
 - **Cross-nav** — the **Family Fest** bottom tab → `/family-fest` overview, then
   the in-section [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav switches
-  between Schedule / Dinners / Pay (photos live only on the Feed tab). All
-  internal routes — no
+  between Dinners / Pay (photos live only on the Feed tab). There's no
+  "Schedule" pill — the Overview already renders the full week via `FestWeek`,
+  so a separate Schedule tab was just showing that same accordion a second
+  time; the standalone `/family-fest/schedule` route is still there for any
+  direct link but nothing points at it anymore. All internal routes — no
   external hop. (The §0b merge is now done; identity stays per-app localStorage
   until the Supabase phase.)
 - **Family Fest theme scoping** — the FF section's parchment/Renaissance palette

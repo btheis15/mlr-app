@@ -549,7 +549,7 @@ export function DinnerRow({
   );
 }
 
-export function DinnerTile({
+function DinnerTile({
   emoji,
   label,
   value,

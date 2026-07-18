@@ -9,7 +9,6 @@ import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { DinnerSheet } from "@/components/FestPlanner";
-import { DinnerTile } from "@/components/FestWeek";
 import { useIdentity } from "@/components/IdentityProvider";
 import { getCurrentUserId } from "@/lib/roles";
 import {
@@ -22,16 +21,18 @@ import {
 import type { Dinner } from "@/lib/types";
 
 /**
- * Dinners — the index the sub-nav's Dinners pill lands on. Every night's
- * full details (menu, served/prep time+location, houses on crew, head chef)
- * are shown right on the card, all at once — no tap-to-expand step and no
- * click-through to a separate page, so scrolling the list is the only
- * gesture needed to see everything. Editing still works in place (the same
+ * Dinners — the index the sub-nav's Dinners pill lands on. Reads like a
+ * weekly menu: day, serving time, the menu itself, the head chef, and the
+ * houses on crew — the family-facing essentials, all shown at once with no
+ * tap-to-expand and no click-through. Deliberately leaves out the
+ * crew-prep time/location (only the crew needs that logistics — it's still
+ * editable here, just not displayed to every reader; the full detail
+ * remains in FestWeek's accordion and the standalone dinners/[id] page for
+ * anyone who does need it). Editing still works in place (the same
  * chef/crew self-edit + full admin-edit-in-place affordance as FestWeek's
  * DinnerRow, migration 0099) — it just opens from an always-visible Edit
- * button instead of behind a reveal. Content comes from the shared DB via
- * useFestContent (seed fallback offline) — static-export safe, all
- * client-side.
+ * button. Content comes from the shared DB via useFestContent (seed
+ * fallback offline) — static-export safe, all client-side.
  */
 export default function FestDinnersPage() {
   const { dinners, reload } = useFestContent({ realtime: true });
@@ -76,9 +77,7 @@ export default function FestDinnersPage() {
     <div className="space-y-4 pt-1">
       <header className="space-y-1">
         <h1 className="text-xl font-bold tracking-tight">Dinners</h1>
-        <p className="text-sm text-foreground/60">
-          Every night, menu, and crew — scroll to see it all.
-        </p>
+        <p className="text-sm text-foreground/60">This week&apos;s dinner menu, night by night.</p>
       </header>
 
       {sorted.length === 0 ? (
@@ -133,14 +132,16 @@ function DinnerCard({
       style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
       className="rise space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border"
     >
-      <div className="flex items-center gap-3">
-        <span className="text-lg" aria-hidden>
-          {dinner.emoji}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{formatDateLong(dinner.day)}</p>
-          <p className="truncate text-xs text-foreground/50">Dinner · {dinner.title}</p>
+      <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="min-w-0">
+          <p className="font-display text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
+            {formatDateLong(dinner.day)}
+          </p>
+          <p className="mt-0.5 truncate text-lg font-semibold">
+            {dinner.emoji} {dinner.title}
+          </p>
         </div>
+        <p className="shrink-0 text-sm font-semibold text-accent">{formatTime(dinner.time)}</p>
       </div>
 
       {canEditThis && (
@@ -153,56 +154,29 @@ function DinnerCard({
         </button>
       )}
 
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">On the menu</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-foreground/80">{dinner.menu}</p>
-      </div>
+      <p className="text-base leading-relaxed text-foreground/85">{dinner.menu}</p>
 
-      <div className="grid grid-cols-2 gap-3">
-        <DinnerTile
-          emoji="🍽️"
-          label="Served"
-          value={formatTime(dinner.time)}
-          sub={<Protected label="Sign in for location">{dinner.location}</Protected>}
-        />
-        <DinnerTile
-          emoji="⏱️"
-          label="Crew preps"
-          value={formatTime(dinner.prepTime)}
-          sub={
-            <Protected label="Sign in for location">{dinner.prepLocation ?? dinner.location}</Protected>
-          }
-        />
-      </div>
-
-      {dinner.houses.length > 0 && (
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3 border-t border-border/60 pt-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Houses on crew</p>
-          <div className="mt-1">
-            <Protected label="Sign in to see which families are cooking">
-              <div className="flex flex-wrap gap-1.5">
-                {dinner.houses.map((house) => (
-                  <span
-                    key={house}
-                    className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
-                  >
-                    {house}
-                  </span>
-                ))}
-              </div>
-            </Protected>
+          <p className="text-[11px] uppercase tracking-wide text-foreground/40">Head chef</p>
+          <p className="mt-0.5 text-sm font-semibold">
+            <PrivateName name={dinner.chef.name} />
+          </p>
+          <div className="mt-1.5">
+            <CallTextButtons phone={dinner.chef.phone} />
           </div>
         </div>
-      )}
 
-      <div>
-        <p className="text-[11px] uppercase tracking-wide text-foreground/40">Head chef of the day</p>
-        <p className="mt-0.5 text-sm font-semibold">
-          <PrivateName name={dinner.chef.name} />
-        </p>
-        <div className="mt-2">
-          <CallTextButtons phone={dinner.chef.phone} />
-        </div>
+        {dinner.houses.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-foreground/40">Crew</p>
+            <div className="mt-1">
+              <Protected label="Sign in to see who's cooking">
+                <p className="text-sm font-medium text-accent">{dinner.houses.join(" · ")}</p>
+              </Protected>
+            </div>
+          </div>
+        )}
       </div>
 
       {editing && fullEdit && draft && (
