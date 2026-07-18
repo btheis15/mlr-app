@@ -210,7 +210,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   // Deep-link from the Notifications tab (/posts?post=<id>): once the feed has
   // loaded, scroll that post into view and flash a ring around it. Reads the
   // query off window.location in-effect (client-only) to avoid pulling in
-  // useSearchParams, which would force a Suspense boundary under static export.
+  // useSearchParams, which would force a Suspense boundary around this page.
   const [flashId, setFlashId] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);

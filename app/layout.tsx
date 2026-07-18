@@ -18,8 +18,8 @@ import { getAnnouncements } from "@/lib/announcements";
 import { Analytics } from "@vercel/analytics/next";
 
 // Elegant connected script for the resort wordmark — chosen to echo the vintage
-// "Muskellunge Lake Resort" business card. Self-hosted by next/font (works in
-// static export + PWA); feeds --font-script in globals.css via .font-script.
+// "Muskellunge Lake Resort" business card. Self-hosted by next/font (works
+// offline as a PWA); feeds --font-script in globals.css via .font-script.
 const wordmark = Allura({
   subsets: ["latin"],
   weight: "400",

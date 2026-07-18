@@ -6,8 +6,8 @@ import { ScrollReset } from "@/components/ScrollReset";
 // (see globals.css: a full fade here reads as a flash now that cached pages
 // paint instantly). It stays a Server
 // Component (no state, no hooks) so the markup is byte-identical server/client
-// (no hydration mismatch) and it's safe under the static export. The shell
-// (TabBar, providers) lives in layout.tsx and does not re-animate.
+// (no hydration mismatch). The shell (TabBar, providers) lives in layout.tsx
+// and does not re-animate.
 // ScrollReset renders nothing (a pure effect), so the markup stays
 // byte-identical here too.
 export default function Template({ children }: { children: React.ReactNode }) {

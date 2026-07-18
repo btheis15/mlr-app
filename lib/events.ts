@@ -289,8 +289,8 @@ export async function deleteEvent(id: string): Promise<{ error?: string }> {
 /**
  * GOOGLE CALENDAR SEAM (deferred — see CLAUDE.md "Backend seams").
  * The clean path is a PUBLISHED Google Calendar exported as an ICS feed
- * (…/public/basic.ics) set via NEXT_PUBLIC_GOOGLE_CALENDAR_ICS_URL — no OAuth,
- * works on Vercel and static export. To turn it on: fetch + parse the VEVENTs
+ * (…/public/basic.ics) set via NEXT_PUBLIC_GOOGLE_CALENDAR_ICS_URL — no OAuth
+ * needed. To turn it on: fetch + parse the VEVENTs
  * into ResortEvent[] here (source: "gcal", a stable id from each event UID), then
  * merge them in fetchEvents() deduped like the seed. Returns [] today, so nothing
  * depends on it yet.

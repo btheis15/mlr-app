@@ -6,9 +6,8 @@
  * way the EVENT / FAMILY_FEST seed data is mirrored) and reads each repo's own
  * event dates.
  *
- * Compute it on the CLIENT (it depends on "now") via `useFestSeason` so the
- * live-week takeover is correct on the static GitHub Pages build as well as on
- * Vercel — a build-time `new Date()` would freeze the phase at deploy time.
+ * Compute it on the CLIENT (it depends on "now") via `useFestSeason` — a
+ * build-time `new Date()` would freeze the phase at deploy time.
  */
 
 export type FestPhase = "off-season" | "planning" | "live" | "wrap";

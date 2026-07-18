@@ -3,17 +3,6 @@ import { writeFileSync } from "fs";
 import { join } from "path";
 
 /**
- * Two build modes:
- *  - Default (e.g. Vercel): served at the root, with cache headers.
- *  - GitHub Pages: the deploy workflow sets PAGES_BASE_PATH="/mlr-app", which
- *    switches Next.js to a static export under that subpath. (Custom headers
- *    aren't supported by `output: export`, so they're dropped in that mode —
- *    they don't apply to static hosting anyway.)
- */
-const basePath = process.env.PAGES_BASE_PATH ?? "";
-const isPages = basePath !== "";
-
-/**
  * One version string per build — used both as the id baked into the client
  * bundle (`NEXT_PUBLIC_BUILD_ID`) and as the contents of the published
  * `public/version.json` the running app polls to notice a newer deploy (see
@@ -39,35 +28,21 @@ try {
   /* ignore — non-fatal */
 }
 
-// Inlined into the bundle (client + server). BASE_PATH lets the client fetch
-// version.json at the right path under the Pages subpath.
-const env = {
-  NEXT_PUBLIC_BUILD_ID: BUILD_ID,
-  NEXT_PUBLIC_BASE_PATH: basePath,
-};
-
-const nextConfig: NextConfig = isPages
-  ? {
-      output: "export",
-      basePath,
-      assetPrefix: basePath,
-      trailingSlash: true,
-      images: { unoptimized: true },
-      env,
-    }
-  : {
-      env,
-      // Always revalidate so a fresh deploy is picked up immediately on the PWA.
-      async headers() {
-        return [
-          {
-            source: "/(.*)",
-            headers: [
-              { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
-            ],
-          },
-        ];
+const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_BUILD_ID: BUILD_ID,
+  },
+  // Always revalidate so a fresh deploy is picked up immediately on the PWA.
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+        ],
       },
-    };
+    ];
+  },
+};
 
 export default nextConfig;

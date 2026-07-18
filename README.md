@@ -7,7 +7,7 @@ around the official **forest-green** Muskellunge Lake Resort logo (cabin in the
 pines, EST 1987) with vintage heritage from the original resort (Leo & Dorothy
 Theis · Fishing · Hunting · Boating · Tomahawk, WI).
 
-> **Live:** https://mlr-app-omega.vercel.app (Vercel) · https://btheis15.github.io/mlr-app/ (Pages)
+> **Live:** https://mlr-app-omega.vercel.app (Vercel)
 >
 > **Status:** Supabase is wired in for most of the app now (auth, posts/chat,
 > events/RSVP, committees, houses, polls, admin tools — see the migrations in
@@ -28,8 +28,7 @@ Theis · Fishing · Hunting · Boating · Tomahawk, WI).
   wordmark (Yellowtail) via `next/font`
 - **Framer Motion** for interactions
 - **PWA** — standalone manifest, "Add to Home Screen" hint on iOS
-- **Hosting** — live on **Vercel** + **GitHub Pages** (Pages auto-deploys on
-  push to `main`; Vercel is currently manual via `vercel --prod`)
+- **Hosting** — live on **Vercel** (currently manual via `vercel --prod`)
 
 ## Quick start
 
@@ -66,7 +65,7 @@ iPhone shows on the web instantly, and a photo posted on the web flows into the 
 feed's realtime subscription. Android + desktop keep using the web; iOS users get a
 native app; everyone sees the same data.
 
-- **Web (Android / desktop / not-yet-installed):** Next.js PWA on Vercel + Pages — unchanged.
+- **Web (Android / desktop / not-yet-installed):** Next.js PWA on Vercel — unchanged.
 - **iOS:** native SwiftUI via [`supabase-swift`](https://github.com/supabase/supabase-swift),
   pointed at the identical project URL + anon key.
 - **Only backend *addition*:** APNs push for iOS — a new `apns_subscriptions` table

@@ -2,8 +2,8 @@ import { Cinzel } from "next/font/google";
 import { FamilyFestNav } from "@/components/FamilyFestNav";
 
 // Roman-inscription serif for the Renaissance titles in this section. Self-hosted
-// by next/font (works in static export + offline PWA); feeds --font-display
-// inside `.ff-section` (see globals.css).
+// by next/font (works offline as a PWA); feeds --font-display inside
+// `.ff-section` (see globals.css).
 const cinzel = Cinzel({
   subsets: ["latin"],
   weight: ["500", "600", "700"],

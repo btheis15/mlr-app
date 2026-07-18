@@ -1,4 +1,4 @@
-// Build-time list of committee slugs for the static-export dynamic routes
+// Build-time list of committee slugs for the prerendered dynamic routes
 // (`/committees/[slug]` + `/committees/[slug]/chat`). Unions the in-code seed
 // with the live DB committees so admin-created committees (migration 0112) get a
 // prerendered page too. Runs in Node during `next build`; a plain REST fetch (no
