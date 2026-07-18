@@ -32,6 +32,18 @@ jobs:
         # The real assistant route ships on Vercel; Pages keeps the in-browser
         # grounded-stub assistant via lib/assistant/client.ts's fallback.
         run: rm -rf app/api
+      - name: Force dynamicParams=false for the static export
+        # `dynamicParams: true` (needed on Vercel so a brand-new committee slug
+        # renders immediately, not just after the next deploy) is a hard build
+        # error under `output: export` — the route-segment-config export must
+        # be a literal boolean, so it can't just read an env var in the source
+        # file. Patch it to `false` here, right before the static build, so
+        # the Pages export only serves committees generateStaticParams already
+        # enumerated at build time — Vercel's source file (and behavior) is
+        # untouched since this only runs in this workflow.
+        run: |
+          sed -i 's/^export const dynamicParams = true;$/export const dynamicParams = false;/' \
+            "app/committees/[slug]/page.tsx" "app/committees/[slug]/chat/page.tsx"
       - name: Build static export
         env:
           # Serves the project site at https://<user>.github.io/mlr-app/
