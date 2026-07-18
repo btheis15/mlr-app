@@ -109,14 +109,14 @@ Committees, Polls, Local Places, Ask for Help, Cabin Stay). Page bodies are
 unchanged — they just breathe wider. (Proposals B "bento dashboard" + C
 "split-pane master/detail" are deferred follow-ups.) **Admins** additionally get
 an "Admin" group in the rail (gated on `useIdentity().isAdmin`, so it's hidden
-during preview-as) with quick links to the Admin dashboard and the three most-
-used broadcast tools — Post an alert · Send a notification · Home callouts.
-Those three live as sections on one page (`/admin/alerts`), so the links
-**deep-link by hash** (`#post-alert` / `#send-notification` / `#home-callouts`);
-because the app's only scroll container is `#app-scroll` and `ScrollReset` snaps
-it to top per-nav, a bare `#hash` won't land on its own —
-[`HashScrollIntoView`](components/HashScrollIntoView.tsx) (mounted on the alerts
-page, past `AdminGuard`) scrolls the hash target into view within `#app-scroll`.
+for non-admins and during preview-as) with the three most-used broadcast tools —
+Post an alert · Send a notification · Home callouts — plus an Admin dashboard
+link. The three tools **open as a pop-up right in place**
+([`AdminComposeSheet`](components/AdminComposeSheet.tsx) — the same
+`AdminAlertComposer`/`AdminNotificationComposer`/`AdminCallouts` the
+`/admin/alerts` page mounts, hosted in a [`Sheet`](components/Sheet.tsx), which
+is a centered modal on desktop), so an admin composes without navigating away;
+only the dashboard link is a real navigation.
 
 Top app chrome: [`components/AppHeader.tsx`](components/AppHeader.tsx) — on
 **Home only**, the **green MLR cabin logo centered** (`/brand-logo-green.png` —

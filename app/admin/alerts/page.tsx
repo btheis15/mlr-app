@@ -4,14 +4,10 @@ import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
 import { AdminCallouts } from "@/components/AdminCallouts";
 import { AdminScheduledBroadcasts } from "@/components/AdminScheduledBroadcasts";
-import { HashScrollIntoView } from "@/components/HashScrollIntoView";
 
 export default function AdminAlertsPage() {
   return (
     <AdminGuard>
-      {/* Lets the desktop SideNav's admin shortcuts deep-link straight to a
-          section by hash (#post-alert / #send-notification / #home-callouts). */}
-      <HashScrollIntoView />
       <div className="space-y-4 pt-6">
         <BackLink href="/admin" label="Admin" />
         <header className="space-y-1">
@@ -31,7 +27,7 @@ export default function AdminAlertsPage() {
           <AdminScheduledBroadcasts />
         </div>
 
-        <div id="post-alert" className="scroll-mt-6 space-y-2">
+        <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Post an alert
           </p>
@@ -41,7 +37,7 @@ export default function AdminAlertsPage() {
           <AdminAlertComposer />
         </div>
 
-        <div id="send-notification" className="scroll-mt-6 space-y-2">
+        <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Send a notification
           </p>
@@ -51,7 +47,7 @@ export default function AdminAlertsPage() {
           <AdminNotificationComposer />
         </div>
 
-        <div id="home-callouts" className="scroll-mt-6 space-y-2">
+        <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
             Home callouts
           </p>
