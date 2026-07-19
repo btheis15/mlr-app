@@ -1053,6 +1053,17 @@ Meet** link — which posts a join-link message into the room and notifies every
   optimistic transform; `createMeeting`/`setMyAvailability`/`finalizeMeeting`/
   `cancelMeeting`/`deleteMeeting`; `fetchCanOrganize`; and the **Google Meet**
   helpers `googleCalendarCreateUrl` + `looksLikeMeetLink`.
+- **Two ways to create (a toggle in [`MeetingComposer`](components/MeetingComposer.tsx)).**
+  **"Find a time"** = propose slots → vote (the default, above). **"Set a time
+  now"** = one known time, no voting: `create_scheduled_meeting` (migration
+  [`0119`](supabase/migrations/0119_create_scheduled_meeting.sql)) inserts the
+  meeting + a single slot and immediately `perform`s `finalize_meeting`, so it
+  lands `scheduled` with the exact same downstream behavior as picking a winning
+  slot — posts the room message, fans out `meeting_scheduled`, and (with a Meet
+  link) sends the confirmation email off the status→scheduled UPDATE. The
+  composer's set-a-time mode has the same guided "Create Google Meet" button +
+  paste field, or you can set the time and add the link later (via the response
+  bar's "Add the Meet link"). No `meeting_proposed`/voting happens.
 - **Google Meet is guided in-app, one paste (no OAuth).** Finalizing opens a
   step panel *inside the scheduler sheet*: a "Create Google Meet" button opens a
   **fully prefilled** Google Calendar event (chosen time/title/details already

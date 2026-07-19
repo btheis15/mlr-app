@@ -272,6 +272,30 @@ export async function createMeeting(input: MeetingInput): Promise<{ id?: string;
   return { id: data as string };
 }
 
+/** Create a meeting at a single known time — no voting. Lands as scheduled with
+ *  the (optional) Meet link, posting to the room + notifying everyone + (with a
+ *  link) sending the confirmation email, exactly like finalizing a vote. */
+export async function createScheduledMeeting(
+  scope: MeetingScope,
+  input: { title: string; description?: string | null; startsAt: string; durationMin?: number; meetUrl?: string | null },
+): Promise<{ id?: string; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("create_scheduled_meeting", {
+    p_scope: scope.type,
+    p_committee_id: scope.type === "committee" ? scope.committeeId : null,
+    p_area: scope.type === "committee" ? scope.area : null,
+    p_house_id: scope.type === "house" ? scope.houseId : null,
+    p_title: input.title,
+    p_description: input.description ?? null,
+    p_starts_at: input.startsAt,
+    p_duration_min: input.durationMin ?? 60,
+    p_meet_url: input.meetUrl?.trim() || null,
+  });
+  if (error) return { error: error.message };
+  return { id: data as string };
+}
+
 /** Set (or change) my availability — bulk upsert of my own rows. `answers` is a
  *  {slotId: status} map; the server rejects a closed meeting. */
 export async function setMyAvailability(
