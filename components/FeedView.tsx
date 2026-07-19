@@ -8,6 +8,8 @@ import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
 import { Sheet } from "@/components/Sheet";
+import { MeetingComposer } from "@/components/MeetingComposer";
+import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
 import { useSheetDismiss } from "@/lib/hooks";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { useRouter } from "next/navigation";
@@ -90,6 +92,14 @@ export function FeedView() {
   const [summaries, setSummaries] = useState<Record<string, Summary>>(cached?.summaries ?? {});
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
+  // Meeting scheduling lives in the ⋯ menu (rare-but-important action, kept out
+  // of the way): the open room's scope + whether the viewer can organize, and
+  // the composer toggle. The active-meeting RESPONSE bar is separate (in the
+  // chat body via MeetingSection); creating a meeting here surfaces there live.
+  const [meetingScope, setMeetingScope] = useState<MeetingScope | null>(null);
+  const [meetingLabel, setMeetingLabel] = useState("");
+  const [canOrganizeMeeting, setCanOrganizeMeeting] = useState(false);
+  const [composeMeeting, setComposeMeeting] = useState(false);
   const chatBoxRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   // Opened from the House hub (/posts?house=slug): back should return to /house,
@@ -451,6 +461,33 @@ export function FeedView() {
         })
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
+    // Wire up "Schedule a meeting" for this room's ⋯ menu (organizers only —
+    // admin, or a Lead of this committee/area; asked server-side).
+    const scope: MeetingScope = { type: "committee", committeeId: ch.committeeId, slug: ch.slug, area: ch.area };
+    setMeetingScope(scope);
+    setMeetingLabel(ch.area ?? ch.name);
+    setCanOrganizeMeeting(false);
+    void fetchCanOrganize(scope).then(setCanOrganizeMeeting);
+    setShowMembers(true);
+  };
+
+  // Same "who's in this chat" + Schedule-a-meeting menu for a house (houses are
+  // admin-only for meetings; can_organize_meeting enforces it server-side).
+  const openHouseMembers = async (hc: HouseChannel) => {
+    const sb = supabase;
+    if (!sb) return;
+    const { data } = await sb.from("profiles").select("display_name").eq("house_id", hc.houseId);
+    const rows = (data ?? []) as { display_name: string | null }[];
+    setMembers(
+      rows
+        .map((r) => ({ name: r.display_name || "Member", lead: false }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    const scope: MeetingScope = { type: "house", houseId: hc.houseId, slug: hc.slug };
+    setMeetingScope(scope);
+    setMeetingLabel(hc.name);
+    setCanOrganizeMeeting(false);
+    void fetchCanOrganize(scope).then(setCanOrganizeMeeting);
     setShowMembers(true);
   };
 
@@ -486,21 +523,37 @@ export function FeedView() {
   // The house chat opened from the list.
   if (houseChannel && active === houseChannel.key) {
     return (
-      <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <BackButton
-            label={openedFromHouseRef.current ? "House" : "Feed"}
-            onClick={() => closeChat(() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); })}
-          />
-          <div className="min-w-0 flex-1 text-center">
-            <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
+      <>
+        <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+          <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+            <BackButton
+              label={openedFromHouseRef.current ? "House" : "Feed"}
+              onClick={() => closeChat(() => { if (openedFromHouseRef.current) router.push("/house"); else setActive("list"); })}
+            />
+            <div className="min-w-0 flex-1 text-center">
+              <p className="truncate text-sm font-bold">{houseChannel.emoji} {houseChannel.name}</p>
+            </div>
+            <button type="button" onClick={() => openHouseMembers(houseChannel)} aria-label="Members" className="press flex h-9 w-9 items-center justify-center rounded-full text-foreground/50">
+              ⋯
+            </button>
           </div>
-          <span className="h-9 w-9" aria-hidden />
+          <div className="min-h-0 flex-1">
+            <HouseChat key={houseChannel.key} slug={houseChannel.slug} name={houseChannel.name} emoji={houseChannel.emoji} houseId={houseChannel.houseId} embedded knownMember />
+          </div>
         </div>
-        <div className="min-h-0 flex-1">
-          <HouseChat key={houseChannel.key} slug={houseChannel.slug} name={houseChannel.name} emoji={houseChannel.emoji} houseId={houseChannel.houseId} embedded knownMember />
-        </div>
-      </div>
+        {showMembers && (
+          <ChatMembersSheet
+            title={houseChannel.name}
+            members={members}
+            canSchedule={canOrganizeMeeting}
+            onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
+            onClose={() => setShowMembers(false)}
+          />
+        )}
+        {composeMeeting && meetingScope && (
+          <MeetingComposer scope={meetingScope} roomLabel={meetingLabel} onClose={() => setComposeMeeting(false)} onCreated={() => {}} />
+        )}
+      </>
     );
   }
 
@@ -531,8 +584,13 @@ export function FeedView() {
           <ChatMembersSheet
             title={activeChannel.title}
             members={members}
+            canSchedule={canOrganizeMeeting}
+            onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
             onClose={() => setShowMembers(false)}
           />
+        )}
+        {composeMeeting && meetingScope && (
+          <MeetingComposer scope={meetingScope} roomLabel={meetingLabel} onClose={() => setComposeMeeting(false)} onCreated={() => {}} />
         )}
       </>
     );
@@ -683,10 +741,15 @@ function BackButton({ label, onClick }: { label: string; onClick: () => void }) 
 function ChatMembersSheet({
   title,
   members,
+  canSchedule = false,
+  onSchedule,
   onClose,
 }: {
   title: string;
   members: { name: string; lead: boolean }[];
+  /** Show the "Schedule a meeting" action (organizers only). */
+  canSchedule?: boolean;
+  onSchedule?: () => void;
   onClose: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
@@ -701,6 +764,16 @@ function ChatMembersSheet({
         </h2>
       }
     >
+      {canSchedule && onSchedule && (
+        <button
+          type="button"
+          onClick={onSchedule}
+          className="press mb-3 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+        >
+          <span aria-hidden className="text-base">📅</span>
+          Schedule a meeting
+        </button>
+      )}
       <ul className="space-y-1">
         {members.map((m) => (
           <li key={m.name} className="flex items-center justify-between rounded-xl bg-card px-3 py-2 ring-1 ring-border">

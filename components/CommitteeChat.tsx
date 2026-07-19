@@ -686,11 +686,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           open proposal; organizers (admin/lead) can start one. Only for a live
           (non-archived) room with a resolved committee id. */}
       {committeeId && !readOnly && (
-        <MeetingSection
-          scope={{ type: "committee", committeeId, slug, area }}
-          members={members}
-          label={area ?? name}
-        />
+        <MeetingSection scope={{ type: "committee", committeeId, slug, area }} members={members} />
       )}
       <div
         ref={scrollRef}

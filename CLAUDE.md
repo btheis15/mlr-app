@@ -1060,17 +1060,25 @@ Meet** link — which posts a join-link message into the room and notifies every
   "Create a Google Form" card, `app/admin/page.tsx`), the organizer taps "Add
   Google Meet" → Save, then pastes the link into a field right there. A "Set the
   meeting" with a blank link is allowed (lock the time now, add the link later).
-- **Surfaces:** [`MeetingSection`](components/MeetingSection.tsx) is a
-  self-contained bar pinned at the **top of each chat room** (owns the room's
-  meetings fetch + realtime + SWR cache `meetings.<uid>.<roomKey>`, the organizer
-  gate, and the `?meeting=<id>` deep-link). It shows the active (open, else
-  upcoming scheduled) meeting to **every** member so they can respond, plus a
-  "Schedule a meeting" affordance for organizers. It hosts
-  [`MeetingComposer`](components/MeetingComposer.tsx) (propose slots) and
+- **Surfaces (two, split by frequency):** Scheduling a *new* meeting is rare but
+  important, so it lives **out of the way in the room's ⋯ menu** — the
+  `ChatMembersSheet` in [`FeedView`](components/FeedView.tsx) (the sheet that lists
+  who's in the chat) grew a **"📅 Schedule a meeting"** button, shown only to
+  organizers (`fetchCanOrganize` gate) and hosting
+  [`MeetingComposer`](components/MeetingComposer.tsx). Houses previously had no ⋯
+  header button — one was added for parity (`openHouseMembers`). *Creating needs no
+  member ids* (just title + slots), so it lives fine in FeedView.
+  [`MeetingSection`](components/MeetingSection.tsx) is now **only the active-meeting
+  response bar**, pinned at the top of the chat body (via
+  [`CommitteeChat`](components/CommitteeChat.tsx) live rooms only /
+  [`HouseChat`](components/HouseChat.tsx), one line each) — it renders **nothing
+  unless a meeting is live** (open, else upcoming scheduled), owns the room's
+  meetings fetch + realtime + SWR cache `meetings.<uid>.<roomKey>` + the
+  `?meeting=<id>` deep-link, and hosts
   [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx) (availability +
-  tallies + "who's free" + the guided finalize). Wired into
-  [`CommitteeChat`](components/CommitteeChat.tsx) (live rooms only, not archived)
-  and [`HouseChat`](components/HouseChat.tsx) with one line each.
+  tallies + "who's free" + the guided finalize; needs the room roster's ids for
+  name resolution, hence it stays in the chat body). A meeting created from the ⋯
+  menu shows up in the bar on the next realtime tick — no cross-component wiring.
 - **Activity + push:** two notification kinds `meeting_proposed` (→ every room
   member: "mark when you're free") and `meeting_scheduled` (→ every room member:
   "meeting set", with the join link), fanned out by `_notify_meeting_room` over
