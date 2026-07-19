@@ -1060,17 +1060,25 @@ Meet** link — which posts a join-link message into the room and notifies every
   "Create a Google Form" card, `app/admin/page.tsx`), the organizer taps "Add
   Google Meet" → Save, then pastes the link into a field right there. A "Set the
   meeting" with a blank link is allowed (lock the time now, add the link later).
-- **Surfaces:** [`MeetingSection`](components/MeetingSection.tsx) is a
-  self-contained bar pinned at the **top of each chat room** (owns the room's
-  meetings fetch + realtime + SWR cache `meetings.<uid>.<roomKey>`, the organizer
-  gate, and the `?meeting=<id>` deep-link). It shows the active (open, else
-  upcoming scheduled) meeting to **every** member so they can respond, plus a
-  "Schedule a meeting" affordance for organizers. It hosts
-  [`MeetingComposer`](components/MeetingComposer.tsx) (propose slots) and
+- **Surfaces (two, split by frequency):** Scheduling a *new* meeting is rare but
+  important, so it lives **out of the way in the room's ⋯ menu** — the
+  `ChatMembersSheet` in [`FeedView`](components/FeedView.tsx) (the sheet that lists
+  who's in the chat) grew a **"📅 Schedule a meeting"** button, shown only to
+  organizers (`fetchCanOrganize` gate) and hosting
+  [`MeetingComposer`](components/MeetingComposer.tsx). Houses previously had no ⋯
+  header button — one was added for parity (`openHouseMembers`). *Creating needs no
+  member ids* (just title + slots), so it lives fine in FeedView.
+  [`MeetingSection`](components/MeetingSection.tsx) is now **only the active-meeting
+  response bar**, pinned at the top of the chat body (via
+  [`CommitteeChat`](components/CommitteeChat.tsx) live rooms only /
+  [`HouseChat`](components/HouseChat.tsx), one line each) — it renders **nothing
+  unless a meeting is live** (open, else upcoming scheduled), owns the room's
+  meetings fetch + realtime + SWR cache `meetings.<uid>.<roomKey>` + the
+  `?meeting=<id>` deep-link, and hosts
   [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx) (availability +
-  tallies + "who's free" + the guided finalize). Wired into
-  [`CommitteeChat`](components/CommitteeChat.tsx) (live rooms only, not archived)
-  and [`HouseChat`](components/HouseChat.tsx) with one line each.
+  tallies + "who's free" + the guided finalize; needs the room roster's ids for
+  name resolution, hence it stays in the chat body). A meeting created from the ⋯
+  menu shows up in the bar on the next realtime tick — no cross-component wiring.
 - **Activity + push:** two notification kinds `meeting_proposed` (→ every room
   member: "mark when you're free") and `meeting_scheduled` (→ every room member:
   "meeting set", with the join link), fanned out by `_notify_meeting_room` over
@@ -1078,6 +1086,29 @@ Meet** link — which posts a join-link message into the room and notifies every
   [`NotifPrefs`](components/NotifPrefs.tsx) (a "Meetings" section, not admin-gated).
   Both are in `PUSHABLE_FEED_TYPES` (push-sender.js + apns-sender.js) + a
   [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
+- **Two optional/automatic emails via the mac-mini
+  [`alert-mailer.js`](media-server/alert-mailer.js)** — both the exact claim-a-row
+  pattern as admin alerts and both gated by each member's existing
+  `profiles.email_alerts` opt-in (nobody who turned email off gets one). Like all
+  mini email/push, they need the mini running + restarted.
+  - **Proposal email (opt-in, migration
+    [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
+    has an **"Also email everyone a link to vote"** checkbox, **default OFF** — the
+    organizer opts in per meeting. When set, `create_meeting`'s `p_email` stamps
+    `meetings.notify_email`; the mailer's `handleMeeting` emails the room a
+    heads-up with a button deep-linking into the voting UI (`notify_email` +
+    `proposal_email_sent_at`, service-role `meeting_proposal_email(meeting)` RPC,
+    excludes the organizer).
+  - **Confirmation email (automatic, migration
+    [`0118`](supabase/migrations/0118_meeting_confirmed_email.sql)).** When a
+    meeting is finalized to a time **with a Meet link**, the mailer's
+    `handleMeetingConfirmed` sends the whole group (INCLUDING the organizer) a
+    polished email — what it's for, when (Central), and a big "Join the Google
+    Meet" button. Always fires on confirmation (it's the payoff), claimed via
+    `meetings.confirm_email_sent_at` and **gated on `meet_url`** so a linkless
+    finalize waits until the link is added, then fires with it. Service-role
+    `meeting_confirmed_email(meeting)` RPC. No change to `finalize_meeting` — the
+    mailer watches a `meetings` UPDATE to `status='scheduled'`.
 - 📱 **iOS parity is a planned follow-up** — the schema/RPCs are shared, so the
   native app can add the same scheduler against `meetings`/`meeting_slots`/
   `meeting_availability` without a backend change.

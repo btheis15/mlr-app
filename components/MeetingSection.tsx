@@ -2,19 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
-import { MeetingComposer } from "@/components/MeetingComposer";
 import { MeetingSchedulerSheet } from "@/components/MeetingSchedulerSheet";
 import { useDebouncedCallback } from "@/lib/hooks";
-import { fetchCanOrganize, fetchMeetingsForRoom, type Meeting, type MeetingScope } from "@/lib/meetings";
+import { fetchMeetingsForRoom, type Meeting, type MeetingScope } from "@/lib/meetings";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useCachedResource } from "@/lib/swrCache";
 
-// The meeting bar pinned at the top of a committee/house chat room (migration
-// 0116). Self-contained: owns the room's meetings (fetch + realtime + SWR
-// cache), the organizer gate, the ?meeting= deep-link, and both sheets. Shows
-// the active (open, else upcoming scheduled) meeting to EVERY member so they can
-// respond, plus a "Schedule a meeting" affordance for organizers. Renders
-// nothing when there's nothing to show and the viewer can't organize.
+// The active-meeting bar pinned at the top of a committee/house chat room
+// (migration 0116). Scheduling a NEW meeting is a rare-but-important action and
+// lives out of the way in the room's ⋯ menu (FeedView's ChatMembersSheet); this
+// component is only the RESPONSE surface — it shows the currently active (open,
+// else upcoming scheduled) meeting to every member so they can mark availability
+// and, for the organizer, finalize it. It renders nothing when there's no live
+// meeting, so the chat stays clean the rest of the time. A meeting created from
+// the ⋯ menu shows up here on the next realtime tick.
 
 interface RoomMember {
   id: string;
@@ -35,13 +36,10 @@ function chosenInFuture(m: Meeting): boolean {
 export function MeetingSection({
   scope,
   members,
-  label,
 }: {
   scope: MeetingScope;
   /** Room roster — for name resolution + the "everyone can make it" count. */
   members: RoomMember[];
-  /** Human room name for the composer header (e.g. "Meals" or "MJT House"). */
-  label: string;
 }) {
   const { userId, isAdmin, previewAsId } = useIdentity();
   const roomKey = roomKeyOf(scope);
@@ -50,34 +48,15 @@ export function MeetingSection({
   // memory-only key (persist off) so an admin viewing-as never writes another
   // account's snapshot to disk.
   const uidForKey = previewAsId ?? userId;
-  const { data: meetings, reload, mutate } = useCachedResource<Meeting[]>(
+  const { data: meetings, reload } = useCachedResource<Meeting[]>(
     uidForKey ? `meetings.${uidForKey}.${roomKey}` : null,
     [],
     () => fetchMeetingsForRoom(scope),
     { persist: previewAsId ? undefined : "local" },
   );
 
-  const [canOrganize, setCanOrganize] = useState(false);
-  const [composing, setComposing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [schedule] = useDebouncedCallback(250);
-
-  // Can the viewer propose here? Ask the server so it can't drift from the RLS
-  // gate. Guests/non-organizers just don't see the button.
-  useEffect(() => {
-    let cancelled = false;
-    if (!userId) {
-      setCanOrganize(false);
-      return;
-    }
-    void fetchCanOrganize(scope).then((ok) => {
-      if (!cancelled) setCanOrganize(ok);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, roomKey]);
 
   // Live: refetch (debounced) when any meeting/slot/availability row changes.
   // Wrapped so a pre-migration publication degrades to load-on-open.
@@ -120,20 +99,21 @@ export function MeetingSection({
 
   if (!isSupabaseConfigured) return null;
 
-  // What to surface in the bar: an open meeting wins; else an upcoming scheduled
-  // one; else nothing.
+  // The live meeting to surface: an open one wins; else an upcoming scheduled one.
   const featured =
     meetings.find((m) => m.status === "open") ??
     meetings.find((m) => m.status === "scheduled" && chosenInFuture(m)) ??
     null;
 
-  if (!featured && !canOrganize) return null;
-
   const openMeeting = openId ? meetings.find((m) => m.id === openId) ?? null : null;
+
+  // Nothing live → render nothing (creation is in the ⋯ menu). Still mount the
+  // scheduler if a deep-link opened a specific (e.g. just-cancelled) meeting.
+  if (!featured && !openMeeting) return null;
 
   return (
     <div className="shrink-0 border-b border-border bg-card px-3 py-2">
-      {featured ? (
+      {featured && (
         <button
           type="button"
           onClick={() => setOpenId(featured.id)}
@@ -154,37 +134,6 @@ export function MeetingSection({
             ›
           </span>
         </button>
-      ) : (
-        canOrganize && (
-          <button
-            type="button"
-            onClick={() => setComposing(true)}
-            className="press flex w-full items-center justify-center gap-2 rounded-xl bg-primary/10 py-2 text-sm font-semibold text-primary ring-1 ring-primary/20"
-          >
-            📅 Schedule a meeting
-          </button>
-        )
-      )}
-
-      {/* When a meeting is already featured, organizers still get a quiet way to
-          start another. */}
-      {featured && canOrganize && (
-        <button
-          type="button"
-          onClick={() => setComposing(true)}
-          className="press mt-1.5 w-full text-center text-xs font-semibold text-primary"
-        >
-          + Schedule another meeting
-        </button>
-      )}
-
-      {composing && (
-        <MeetingComposer
-          scope={scope}
-          roomLabel={label}
-          onClose={() => setComposing(false)}
-          onCreated={onChanged}
-        />
       )}
 
       {openMeeting && (

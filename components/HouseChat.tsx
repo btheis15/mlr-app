@@ -569,11 +569,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
       {/* Meeting scheduler — pinned above the messages so every house member
           sees an open proposal; admins can start one (houses have no leads). */}
       {houseId && (
-        <MeetingSection
-          scope={{ type: "house", houseId, slug }}
-          members={members}
-          label={name}
-        />
+        <MeetingSection scope={{ type: "house", houseId, slug }} members={members} />
       )}
       <div
         ref={scrollRef}

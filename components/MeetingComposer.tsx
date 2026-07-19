@@ -40,6 +40,7 @@ export function MeetingComposer({
   const [description, setDescription] = useState("");
   const [slots, setSlots] = useState<SlotRow[]>([emptyRow()]);
   const [respondBy, setRespondBy] = useState("");
+  const [emailEveryone, setEmailEveryone] = useState(false);
   const { pending, status, run } = useSaveStatus();
 
   const setSlot = (i: number, patch: Partial<SlotRow>) =>
@@ -65,6 +66,7 @@ export function MeetingComposer({
         description: description.trim() || null,
         slots: isoSlots,
         respondBy: respondBy || null,
+        emailEveryone,
       });
       if (res.error) return res.error;
       onCreated();
@@ -194,6 +196,22 @@ export function MeetingComposer({
           className={`${FIELD} w-full`}
         />
       </div>
+
+      <label className="flex items-start gap-2.5 rounded-xl bg-background p-3 ring-1 ring-border">
+        <input
+          type="checkbox"
+          checked={emailEveryone}
+          onChange={(e) => setEmailEveryone(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">📧 Also email everyone a link to vote</span>
+          <span className="block text-xs text-muted">
+            Sends a heads-up email with a button that opens this right here. Only reaches members who
+            have email alerts on.
+          </span>
+        </span>
+      </label>
     </Sheet>
   );
 }
