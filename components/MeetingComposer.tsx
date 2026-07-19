@@ -40,7 +40,7 @@ export function MeetingComposer({
   const [description, setDescription] = useState("");
   const [slots, setSlots] = useState<SlotRow[]>([emptyRow()]);
   const [respondBy, setRespondBy] = useState("");
-  const [emailEveryone, setEmailEveryone] = useState(true);
+  const [emailEveryone, setEmailEveryone] = useState(false);
   const { pending, status, run } = useSaveStatus();
 
   const setSlot = (i: number, patch: Partial<SlotRow>) =>

@@ -359,6 +359,60 @@ ${roomPickNote}
     }
   }
 
+  // Email the whole group when a meeting is confirmed to a time WITH a Meet link
+  // (migration 0118). Always sends on confirmation (respecting email_alerts) —
+  // it's the payoff — a polished email describing the meeting + a big "Join the
+  // Google Meet" button. Claims confirm_email_sent_at; gated on meet_url so a
+  // linkless finalize waits until the link is added, then fires with it.
+  async function handleMeetingConfirmed(row) {
+    if (!row || row.status !== "scheduled" || !row.meet_url || row.confirm_email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("meetings")
+      .update({ confirm_email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("confirm_email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("meeting_confirmed_email", { p_meeting: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] meeting_confirmed_email error:", error ? error.message : "no data");
+      await sb.from("meetings").update({ confirm_email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (d.emails || []).filter(Boolean);
+    if (emails.length === 0) {
+      console.log(`[mailer] meeting ${row.id} confirmed: no opted-in recipients`);
+      return;
+    }
+    const meet = d.meet_url;
+    const appLink = `${APP_URL}${d.url || ""}`;
+    const subject = `✅ Meeting confirmed — ${d.title}`;
+    const text = `Meeting confirmed: ${d.title}\n\nWhen: ${d.when_label}\n${d.description ? `\nWhat it's about: ${d.description}\n` : ""}\nJoin the Google Meet: ${meet}\n\n(Or open it in the app: ${appLink})\n\n— Muskellunge Lake Resort`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:19px;margin:0 0 2px"><strong>✅ Your meeting is confirmed</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">Muskellunge Lake Resort</p>
+<p style="margin:0 0 14px;font-size:15px">A time has been set for <strong>${escapeHtml(d.title)}</strong>. Here are the details:</p>
+<table style="border-collapse:collapse;font-size:14px;margin:0 0 4px">
+<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:nowrap;vertical-align:top">When</td><td style="padding:4px 0"><strong>${escapeHtml(d.when_label)}</strong></td></tr>
+${d.description ? `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:nowrap;vertical-align:top">About</td><td style="padding:4px 0">${escapeHtml(d.description)}</td></tr>` : ""}
+</table>
+<p style="margin:20px 0 6px"><a href="${meet}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-size:15px;font-weight:600">Join the Google Meet →</a></p>
+<p style="margin:0 0 0;font-size:13px;color:#888">Link: <a href="${meet}" style="color:#15503a">${escapeHtml(meet)}</a></p>
+<p style="margin:16px 0 0;font-size:13px"><a href="${appLink}" style="color:#15503a">Open it in the app →</a></p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">You're getting this because email alerts are on in your MLR profile.</p>
+</div>`;
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: emails, subject, text, html });
+      console.log(`[mailer] meeting ${row.id} confirmation emailed to ${emails.length} member(s)`);
+    } catch (e) {
+      console.error("[mailer] meeting confirm send failed:", e && e.message);
+      await sb.from("meetings").update({ confirm_email_sent_at: null }).eq("id", row.id); // retry
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -408,6 +462,16 @@ ${roomPickNote}
       .order("created_at", { ascending: false })
       .limit(10);
     for (const row of meetingPending || []) await handleMeeting(row);
+
+    const { data: confirmPending } = await sb
+      .from("meetings")
+      .select("id, status, meet_url, confirm_email_sent_at, finalized_at")
+      .eq("status", "scheduled")
+      .not("meet_url", "is", null)
+      .is("confirm_email_sent_at", null)
+      .order("finalized_at", { ascending: false })
+      .limit(10);
+    for (const row of confirmPending || []) await handleMeetingConfirmed(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -432,6 +496,9 @@ ${roomPickNote}
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "meetings" }, (payload) => {
         handleMeeting(payload.new).catch((e) => console.error("[mailer] meeting handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "meetings" }, (payload) => {
+        handleMeetingConfirmed(payload.new).catch((e) => console.error("[mailer] meeting confirm handle error:", e && e.message));
       })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);

@@ -1086,16 +1086,29 @@ Meet** link — which posts a join-link message into the room and notifies every
   [`NotifPrefs`](components/NotifPrefs.tsx) (a "Meetings" section, not admin-gated).
   Both are in `PUSHABLE_FEED_TYPES` (push-sender.js + apns-sender.js) + a
   [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
-- **Optional email on a proposal (migration
-  [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
-  has an **"Also email everyone a link to vote"** checkbox (default on). When set,
-  `create_meeting`'s `p_email` stamps `meetings.notify_email`, and the mac-mini
-  [`alert-mailer.js`](media-server/alert-mailer.js) emails the room's members a
-  heads-up with a button that deep-links straight into the voting UI — the exact
-  claim-a-row pattern as admin alerts (`notify_email` + `proposal_email_sent_at`),
-  gated by the service-role `meeting_proposal_email(meeting)` RPC and each
-  member's existing `profiles.email_alerts` opt-in (nobody who turned email off
-  gets one). Like all mini email/push, it needs the mini running + restarted.
+- **Two optional/automatic emails via the mac-mini
+  [`alert-mailer.js`](media-server/alert-mailer.js)** — both the exact claim-a-row
+  pattern as admin alerts and both gated by each member's existing
+  `profiles.email_alerts` opt-in (nobody who turned email off gets one). Like all
+  mini email/push, they need the mini running + restarted.
+  - **Proposal email (opt-in, migration
+    [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
+    has an **"Also email everyone a link to vote"** checkbox, **default OFF** — the
+    organizer opts in per meeting. When set, `create_meeting`'s `p_email` stamps
+    `meetings.notify_email`; the mailer's `handleMeeting` emails the room a
+    heads-up with a button deep-linking into the voting UI (`notify_email` +
+    `proposal_email_sent_at`, service-role `meeting_proposal_email(meeting)` RPC,
+    excludes the organizer).
+  - **Confirmation email (automatic, migration
+    [`0118`](supabase/migrations/0118_meeting_confirmed_email.sql)).** When a
+    meeting is finalized to a time **with a Meet link**, the mailer's
+    `handleMeetingConfirmed` sends the whole group (INCLUDING the organizer) a
+    polished email — what it's for, when (Central), and a big "Join the Google
+    Meet" button. Always fires on confirmation (it's the payoff), claimed via
+    `meetings.confirm_email_sent_at` and **gated on `meet_url`** so a linkless
+    finalize waits until the link is added, then fires with it. Service-role
+    `meeting_confirmed_email(meeting)` RPC. No change to `finalize_meeting` — the
+    mailer watches a `meetings` UPDATE to `status='scheduled'`.
 - 📱 **iOS parity is a planned follow-up** — the schema/RPCs are shared, so the
   native app can add the same scheduler against `meetings`/`meeting_slots`/
   `meeting_availability` without a backend change.
