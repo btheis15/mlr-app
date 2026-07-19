@@ -311,6 +311,54 @@ ${roomPickNote}
     }
   }
 
+  // Email room members when a meeting is proposed with "Also email everyone" on
+  // (migration 0117) — mirrors the announcements claim/retry pattern. The
+  // meeting_proposal_email RPC (service-role) returns the title, an in-app
+  // deep-link, and the emails of room members with email_alerts on (minus the
+  // organizer). BCC keeps addresses private; the button opens the app straight
+  // into the voting UI.
+  async function handleMeeting(row) {
+    if (!row || !row.notify_email || row.proposal_email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("meetings")
+      .update({ proposal_email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("proposal_email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("meeting_proposal_email", { p_meeting: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] meeting_proposal_email error:", error ? error.message : "no data");
+      await sb.from("meetings").update({ proposal_email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (d.emails || []).filter(Boolean);
+    if (emails.length === 0) {
+      console.log(`[mailer] meeting ${row.id}: no opted-in recipients`);
+      return; // leave it claimed — nobody to email
+    }
+    const link = `${APP_URL}${d.url || ""}`;
+    const subject = `📅 A meeting is being planned — ${d.title}`;
+    const text = `A meeting is being planned: ${d.title}\n\nMark which times work for you so we can pick the best one:\n${link}\n\n— Muskellunge Lake Resort\n(You're getting this because email alerts are on in your profile.)`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:19px;margin:0 0 2px"><strong>📅 A meeting is being planned</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">${escapeHtml(d.title)}</p>
+<p style="margin:0 0 16px;font-size:15px">Mark which times work for you, right in the app, so we can lock in the one that works for the most people.</p>
+<p style="margin:0 0 4px"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Mark when you're free →</a></p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">You're getting this because email alerts are on in your MLR profile.</p>
+</div>`;
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: emails, subject, text, html });
+      console.log(`[mailer] meeting ${row.id} emailed to ${emails.length} member(s)`);
+    } catch (e) {
+      console.error("[mailer] meeting send failed:", e && e.message);
+      await sb.from("meetings").update({ proposal_email_sent_at: null }).eq("id", row.id); // retry
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -351,6 +399,15 @@ ${roomPickNote}
       .order("updated_at", { ascending: false })
       .limit(10);
     for (const row of cancelPending || []) await handleCabinCancel(row);
+
+    const { data: meetingPending } = await sb
+      .from("meetings")
+      .select("id, notify_email, proposal_email_sent_at, created_at")
+      .eq("notify_email", true)
+      .is("proposal_email_sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of meetingPending || []) await handleMeeting(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -373,6 +430,9 @@ ${roomPickNote}
         handleCabinEdit(payload.new).catch((e) => console.error("[mailer] cabin edit handle error:", e && e.message));
         handleCabinCancel(payload.new).catch((e) => console.error("[mailer] cabin cancel handle error:", e && e.message));
       })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "meetings" }, (payload) => {
+        handleMeeting(payload.new).catch((e) => console.error("[mailer] meeting handle error:", e && e.message));
+      })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -384,7 +444,7 @@ ${roomPickNote}
       });
   }
   subscribeRealtime();
-  console.log("[mailer] watching for alerts + cabin stay decisions/edits/cancellations to email");
+  console.log("[mailer] watching for alerts + cabin stay decisions/edits/cancellations + meeting proposals to email");
 }
 
 module.exports = { start, enabled };

@@ -1086,6 +1086,16 @@ Meet** link — which posts a join-link message into the room and notifies every
   [`NotifPrefs`](components/NotifPrefs.tsx) (a "Meetings" section, not admin-gated).
   Both are in `PUSHABLE_FEED_TYPES` (push-sender.js + apns-sender.js) + a
   [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
+- **Optional email on a proposal (migration
+  [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
+  has an **"Also email everyone a link to vote"** checkbox (default on). When set,
+  `create_meeting`'s `p_email` stamps `meetings.notify_email`, and the mac-mini
+  [`alert-mailer.js`](media-server/alert-mailer.js) emails the room's members a
+  heads-up with a button that deep-links straight into the voting UI — the exact
+  claim-a-row pattern as admin alerts (`notify_email` + `proposal_email_sent_at`),
+  gated by the service-role `meeting_proposal_email(meeting)` RPC and each
+  member's existing `profiles.email_alerts` opt-in (nobody who turned email off
+  gets one). Like all mini email/push, it needs the mini running + restarted.
 - 📱 **iOS parity is a planned follow-up** — the schema/RPCs are shared, so the
   native app can add the same scheduler against `meetings`/`meeting_slots`/
   `meeting_availability` without a backend change.

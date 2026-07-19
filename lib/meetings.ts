@@ -71,6 +71,8 @@ export interface MeetingInput {
   description?: string | null;
   slots: MeetingSlotInput[];
   respondBy?: string | null;
+  /** Also email every room member (with email_alerts on) a link to vote. */
+  emailEveryone?: boolean;
 }
 
 type PgError = { code?: string; message?: string } | null;
@@ -264,6 +266,7 @@ export async function createMeeting(input: MeetingInput): Promise<{ id?: string;
     p_description: input.description ?? null,
     p_slots: input.slots.map((s) => ({ starts_at: s.startsAt, duration_min: s.durationMin ?? 60 })),
     p_respond_by: input.respondBy ?? null,
+    p_email: input.emailEveryone ?? false,
   });
   if (error) return { error: error.message };
   return { id: data as string };
