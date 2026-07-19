@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
+import { MeetingSection } from "@/components/MeetingSection";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { fetchJoinState } from "@/lib/roles";
@@ -681,6 +682,16 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
 
   return wrap(`${members.length} ${plural(members.length, "member")}`, (
     <>
+      {/* Meeting scheduler — pinned above the messages so every member sees an
+          open proposal; organizers (admin/lead) can start one. Only for a live
+          (non-archived) room with a resolved committee id. */}
+      {committeeId && !readOnly && (
+        <MeetingSection
+          scope={{ type: "committee", committeeId, slug, area }}
+          members={members}
+          label={area ?? name}
+        />
+      )}
       <div
         ref={scrollRef}
         onScroll={(e) => {

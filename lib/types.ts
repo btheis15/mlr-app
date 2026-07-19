@@ -60,7 +60,9 @@ export type PushType =
   | "help_request"
   | "help_response"
   | "work_item_created"
-  | "house_stay_created";
+  | "house_stay_created"
+  | "meeting_proposed"
+  | "meeting_scheduled";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -102,6 +104,8 @@ export type NotifType =
   | "work_item_mention"
   | "work_item_created"
   | "house_stay_created"
+  | "meeting_proposed"
+  | "meeting_scheduled"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -131,6 +135,8 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "work_item_mention",
   "work_item_created",
   "house_stay_created",
+  "meeting_proposed",
+  "meeting_scheduled",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized

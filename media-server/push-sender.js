@@ -301,6 +301,11 @@ async function start() {
     // row out to that house's members + every app admin; relay to a phone push,
     // gated on push_types (off by default — opt in via Profile → Notifications).
     "house_stay_created",
+    // Meeting scheduling (migration 0116): a proposal fans out to every member of
+    // the committee/house room ("mark when you're free"), and finalizing fans out
+    // "meeting set" with the join link. Both relay to a phone push, gated on
+    // push_types (off by default — opt in via Profile → Notifications).
+    "meeting_proposed", "meeting_scheduled",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

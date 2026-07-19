@@ -156,6 +156,18 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`lib/polls.ts`](lib/polls.ts) + [`components/PollsView.tsx`](components/PollsView.tsx) /
   [`components/PollComposer.tsx`](components/PollComposer.tsx). See CLAUDE.md →
   **Family polls**.
+- **Meeting scheduling** — a Doodle-style scheduler pinned to any committee/house
+  chat: an organizer (admin, or a committee/area Lead — houses are admin-only)
+  proposes candidate times, every member marks Yes / If-need-be / No, and the
+  organizer picks the winning slot and captures a **Google Meet** link (guided
+  in-app, prefilled Google Calendar event → paste the link back, no OAuth). Posts
+  the join link into the room + notifies everyone (Activity + optional push).
+  Migration [`0116_meetings.sql`](supabase/migrations/0116_meetings.sql);
+  [`lib/meetings.ts`](lib/meetings.ts) +
+  [`components/MeetingSection.tsx`](components/MeetingSection.tsx) /
+  [`MeetingComposer`](components/MeetingComposer.tsx) /
+  [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx). See CLAUDE.md →
+  **Meeting scheduling**.
 - **Native scroll bounce** — `#app-scroll` (the `<main>` in `app/layout.tsx`) is
   the one scroll container; `html`/`body` never scroll, so the fixed TabBar
   never gets dragged during a rubber-band bounce (see CLAUDE.md → **Scrolling

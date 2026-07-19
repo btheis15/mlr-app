@@ -34,6 +34,8 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   work_item_mention: "🗣️",
   work_item_created: "🔧",
   house_stay_created: "🏡",
+  meeting_proposed: "📅",
+  meeting_scheduled: "✅",
   broadcast: "📣",
 };
 

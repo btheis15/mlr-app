@@ -22,6 +22,8 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "event_rsvp", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
   { value: "work_item_created", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },
   { value: "house_stay_created", label: "New stays at your house", desc: "When someone in your house adds a stay to the house calendar" },
+  { value: "meeting_proposed", label: "New meeting to schedule", desc: "When a meeting is proposed in a committee or house you're in" },
+  { value: "meeting_scheduled", label: "Meeting set", desc: "When a proposed meeting is locked to a time" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 

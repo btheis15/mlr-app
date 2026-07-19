@@ -69,6 +69,13 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
+    title: "Meetings",
+    rows: [
+      { value: "meeting_proposed", icon: "📅", label: "New meeting to schedule", desc: "When someone proposes a meeting in a committee or house you’re in — pick when you’re free" },
+      { value: "meeting_scheduled", icon: "✅", label: "Meeting set", desc: "When a proposed meeting is locked to a time (with the join link)" },
+    ],
+  },
+  {
     title: "Help requests",
     rows: [
       { value: "help_request", icon: "🙌", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },

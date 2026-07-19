@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
+import { MeetingSection } from "@/components/MeetingSection";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { useDebouncedCallback } from "@/lib/hooks";
@@ -565,6 +566,15 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
 
   return wrap(`${members.length} ${plural(members.length, "member")}`, (
     <>
+      {/* Meeting scheduler — pinned above the messages so every house member
+          sees an open proposal; admins can start one (houses have no leads). */}
+      {houseId && (
+        <MeetingSection
+          scope={{ type: "house", houseId, slug }}
+          members={members}
+          label={name}
+        />
+      )}
       <div
         ref={scrollRef}
         onScroll={(e) => {

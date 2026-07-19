@@ -283,6 +283,8 @@ async function start() {
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp", "committee_join_request", "help_request", "help_response", "help_urgent",
     "work_item_created", "house_stay_created",
+    // Meeting scheduling (migration 0116) — proposal + finalized, same gating.
+    "meeting_proposed", "meeting_scheduled",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;
