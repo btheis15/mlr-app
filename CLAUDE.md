@@ -1020,6 +1020,68 @@ creator or an admin closes it, or when its optional `closes_on` date has passed
   (question + options form). Home's [`ActivePollCard`](components/ActivePollCard.tsx)
   spotlights the newest open poll (see **Home delight cards**).
 
+## Meeting scheduling (committee/house → Google Meet)
+
+A built-in Doodle/when2meet-style scheduler pinned to any **committee/house chat
+room** (everything except the resort-wide Main Feed), so a group stops asking the
+group chat over and over. An **organizer** proposes candidate time slots; every
+member of that room marks **Yes / If-need-be / No** per slot; the organizer sees
+live tallies + the best slot, picks the winning time, and captures a **Google
+Meet** link — which posts a join-link message into the room and notifies everyone.
+
+- **Who can propose:** app admins (any room) **and**, for a committee, a **Lead**
+  of that committee/area (a `committee_roster` role ending in `· Lead`). Houses
+  have no lead concept, so house meetings are **admin-only**. Enforced server-side
+  by `can_organize_meeting(scope, committee_id, area, house_id)`; the UI asks the
+  same RPC (`fetchCanOrganize`) so the button can't drift from the gate.
+- **Data model:** migration [`0116`](supabase/migrations/0116_meetings.sql) —
+  `meetings` (scope + committee_id/committee_slug/area **or** house_id, title,
+  status `open|scheduled|cancelled`, chosen_slot_id, meet_url), `meeting_slots`
+  (candidate times, like `poll_options`), and `meeting_availability`
+  (**PK (slot_id, user_id)** — one Yes/If-need-be/No per member per slot, like
+  `event_attendance`). All **members-only reads scoped to the room** via the
+  existing `can_access_committee_area` (0063) / `is_house_member` (0064) gates; all
+  writes through SECURITY DEFINER RPCs: `create_meeting` (fans out
+  `meeting_proposed`), `set_my_availability(meeting, {slotId:status})` (bulk upsert
+  of the caller's own rows), `finalize_meeting(meeting, slot, meet_url)`
+  (organizer-or-admin — marks it scheduled, posts a chat message into the room,
+  fans out `meeting_scheduled`), `cancel_meeting`, `delete_meeting`. Realtime on
+  all three tables so tallies move live.
+- **Client:** [`lib/meetings.ts`](lib/meetings.ts) mirrors `lib/polls.ts`
+  (42P01/no-config degradation, never throws): `fetchMeetingsForRoom(scope)`
+  computes per-slot buckets + best-slot client-side; `applyMyAvailability`
+  optimistic transform; `createMeeting`/`setMyAvailability`/`finalizeMeeting`/
+  `cancelMeeting`/`deleteMeeting`; `fetchCanOrganize`; and the **Google Meet**
+  helpers `googleCalendarCreateUrl` + `looksLikeMeetLink`.
+- **Google Meet is guided in-app, one paste (no OAuth).** Finalizing opens a
+  step panel *inside the scheduler sheet*: a "Create Google Meet" button opens a
+  **fully prefilled** Google Calendar event (chosen time/title/details already
+  filled — the same "create externally, paste link back" convention as the admin
+  "Create a Google Form" card, `app/admin/page.tsx`), the organizer taps "Add
+  Google Meet" → Save, then pastes the link into a field right there. A "Set the
+  meeting" with a blank link is allowed (lock the time now, add the link later).
+- **Surfaces:** [`MeetingSection`](components/MeetingSection.tsx) is a
+  self-contained bar pinned at the **top of each chat room** (owns the room's
+  meetings fetch + realtime + SWR cache `meetings.<uid>.<roomKey>`, the organizer
+  gate, and the `?meeting=<id>` deep-link). It shows the active (open, else
+  upcoming scheduled) meeting to **every** member so they can respond, plus a
+  "Schedule a meeting" affordance for organizers. It hosts
+  [`MeetingComposer`](components/MeetingComposer.tsx) (propose slots) and
+  [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx) (availability +
+  tallies + "who's free" + the guided finalize). Wired into
+  [`CommitteeChat`](components/CommitteeChat.tsx) (live rooms only, not archived)
+  and [`HouseChat`](components/HouseChat.tsx) with one line each.
+- **Activity + push:** two notification kinds `meeting_proposed` (→ every room
+  member: "mark when you're free") and `meeting_scheduled` (→ every room member:
+  "meeting set", with the join link), fanned out by `_notify_meeting_room` over
+  the same recipient predicate as the read gate. Default **on** in
+  [`NotifPrefs`](components/NotifPrefs.tsx) (a "Meetings" section, not admin-gated).
+  Both are in `PUSHABLE_FEED_TYPES` (push-sender.js + apns-sender.js) + a
+  [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
+- 📱 **iOS parity is a planned follow-up** — the schema/RPCs are shared, so the
+  native app can add the same scheduler against `meetings`/`meeting_slots`/
+  `meeting_availability` without a backend change.
+
 ## Cabin stays
 
 "Request a Cabin Stay" (`/request-stay`) — members request a room in one of
@@ -1385,6 +1447,7 @@ cross-account bleed):
    `postsFeed.<uid>` (a TRIMMED top-of-feed snapshot — see PostsView),
    `resolvedHouse.<uid>.…`, `chatEntry.<uid>.<slug>`,
    `managedCommittee.<uid>.<slug>.<admin>`,
+   `meetings.<uid>.<roomKey>` (roomKey = `c:<slug>|<area>` or `h:<houseId>`),
    `houseCalendar.<houseId>`; day-fresh data also embeds the local date —
    `whosUpNorth.<uid>.<date>`, `birthdays.<uid>.<date>`,
    `onThisDay.<uid>.<date>`). Pass `key = null` while the uid is unresolved —
