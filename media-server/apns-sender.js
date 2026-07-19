@@ -285,6 +285,8 @@ async function start() {
     "work_item_created", "house_stay_created",
     // Meeting scheduling (migration 0116) — proposal + finalized, same gating.
     "meeting_proposed", "meeting_scheduled",
+    // Cabin guest message (migration 0120).
+    "cabin_message",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;

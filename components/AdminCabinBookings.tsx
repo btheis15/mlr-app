@@ -8,6 +8,7 @@ import { useBusyAction } from "@/lib/hooks";
 import { fetchProfiles, profileMap, type ProfileLite } from "@/lib/roles";
 import { fetchBookings, fetchMyApproverCabinIds, formatStay, reviewStay, cancelStay } from "@/lib/cabins";
 import { EditBookingSheet } from "@/components/EditBookingSheet";
+import { CabinMessageSheet } from "@/components/CabinMessageSheet";
 import type { CabinBooking } from "@/lib/types";
 
 /**
@@ -57,6 +58,7 @@ export function AdminCabinBookings() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const deepLinked = useRef(false);
   const [editing, setEditing] = useState<CabinBooking | null>(null);
+  const [messaging, setMessaging] = useState(false);
 
   const load = useCallback(async () => {
     const [p, a] = await Promise.all([fetchBookings(["pending"]), fetchBookings(["approved"])]);
@@ -156,6 +158,14 @@ export function AdminCabinBookings() {
 
   return (
     <div className="space-y-4">
+      {/* Reach the people staying at a place you run (migration 0120). */}
+      <button
+        onClick={() => setMessaging(true)}
+        className="press w-full rounded-xl bg-primary/10 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+      >
+        📣 Message guests staying at a place
+      </button>
+
       {/* Pending queue */}
       <section className="space-y-2">
         <h3 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
@@ -291,6 +301,8 @@ export function AdminCabinBookings() {
           onSaved={load}
         />
       )}
+
+      {messaging && <CabinMessageSheet onClose={() => setMessaging(false)} />}
     </div>
   );
 }

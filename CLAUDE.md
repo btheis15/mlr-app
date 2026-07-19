@@ -1199,6 +1199,33 @@ family member's own house with spare bedrooms. Each place carries:
   8-arg function and drops the two superseded 7-arg ones; no client change
   was needed since the existing call now just resolves unambiguously.
 
+### Message the guests staying at a place (migration 0120)
+
+Whoever runs a bookable place — its designated **approver**, or an app admin
+(the same `is_cabin_approver(cabin)` gate from 0114) — can send a note to
+**everyone currently or soon staying there** ("water's off this weekend", "gate
+code changed"). Recipients are the **distinct members with an approved booking
+whose stay hasn't ended** (`check_out >= today`). Surfaced as a **"📣 Message
+guests"** button at the top of [`AdminCabinBookings`](components/AdminCabinBookings.tsx)
+(so both admins at `/admin/cabins` and non-admin approvers on `/request-stay`
+get it) → [`CabinMessageSheet`](components/CabinMessageSheet.tsx) (pick the place —
+auto-selected if you run only one — subject + body + an optional "Also email
+them"). Client seam `sendCabinMessage()` / `fetchManageableCabins()` in
+[`lib/cabins.ts`](lib/cabins.ts).
+
+- **Data model:** `cabin_messages` (log row: cabin, sender, subject, body,
+  `notify_email` + claimed `email_sent_at`), members-only read for the place's
+  approver. `send_cabin_message(cabin, subject, body, email)` RPC — approver/
+  admin gated — inserts the row and fans out a new **`cabin_message`**
+  notification kind (default on, deep-links `/request-stay`) to the guests via
+  `_notify` (so it honors each member's pref + skips the sender), returning the
+  recipient count. It's a `PushType` (in `DEFAULT_PUSH_TYPES` + `PushToggle` +
+  both mini senders' `PUSHABLE_FEED_TYPES`) so it also rides a phone push.
+- **Optional email:** the mailer's `handleCabinMessage` (claim-a-row like the
+  rest) uses the service-role `cabin_message_recipients(message)` RPC (approved
+  not-yet-ended guests with `email_alerts` on, minus the sender) and BCCs them.
+  Needs the mini restarted, like all mini email/push.
+
 - **Admin-editable cabin details** (migration
   [`0089`](supabase/migrations/0089_cabin_editable_details.sql)): name, room
   count, an overall `bed_count`, a free-form `notes` line shown to members

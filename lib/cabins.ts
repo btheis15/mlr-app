@@ -399,6 +399,41 @@ export async function cancelStay(id: string, notify = true): Promise<{ error?: s
   return error ? { error: error.message } : {};
 }
 
+/** Places the viewer can message the guests of: every cabin for an admin, or
+ *  just the ones they're the designated approver of (migration 0114/0120). */
+export async function fetchManageableCabins(
+  userId: string,
+  isAdmin: boolean,
+): Promise<{ id: string; name: string }[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  let q = sb.from("cabins").select("id, name").order("name");
+  if (!isAdmin) {
+    if (!userId) return [];
+    q = q.eq("approver_user_id", userId);
+  }
+  const { data } = await q;
+  return ((data ?? []) as { id: string; name: string }[]).map((r) => ({ id: r.id, name: r.name }));
+}
+
+/** Message the current + upcoming approved guests of a place (migration 0120) —
+ *  approver/admin only. Returns how many members were notified. */
+export async function sendCabinMessage(
+  cabinId: string,
+  input: { subject?: string | null; body: string; email?: boolean },
+): Promise<{ count?: number; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("send_cabin_message", {
+    p_cabin: cabinId,
+    p_subject: input.subject ?? null,
+    p_body: input.body,
+    p_email: input.email ?? false,
+  });
+  if (error) return { error: error.message };
+  return { count: (data as number) ?? 0 };
+}
+
 /** The specific room(s) an existing booking has attached, if any. */
 export async function fetchBookingRooms(bookingId: string): Promise<{ id: string; name: string }[]> {
   const sb = supabase;
