@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Allura } from "next/font/google";
 import "./globals.css";
 import { TabBar } from "@/components/TabBar";
-import { SideNav } from "@/components/SideNav";
 import { InstallHint } from "@/components/InstallHint";
 import { PushPrompt } from "@/components/PushPrompt";
 import { PushKeepAlive } from "@/components/PushKeepAlive";
@@ -92,32 +91,22 @@ export default async function RootLayout({
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />
-          {/* Desktop-only left nav rail (proposal A, "Lodge Sidebar"). Hidden
-              below lg; a sibling of #app-scroll like TabBar, so the
-              single-scroll-container invariant is untouched. #app-scroll clears
-              it with lg:pl-64. */}
-          <SideNav />
           {/* The one and only scroll container (see globals.css's #app-scroll
               note) — html/body never scroll, so the fixed TabBar below never
               gets dragged during a rubber-band bounce, and real native bounce
-              can be re-enabled here safely. On lg+, pad left to clear the fixed
-              SideNav (w-64). */}
+              can be re-enabled here safely. */}
           <main
             id="app-scroll"
-            className="h-full w-full overflow-y-auto lg:pl-64"
+            className="h-full w-full overflow-y-auto"
             style={{
               paddingTop: "env(safe-area-inset-top)",
               // Clear the fixed TabBar, which grows by the home-indicator inset
               // on notched iPhones — without the inset the last card hides
-              // behind the bar. (On lg+ there's no TabBar; the extra bottom
-              // space is harmless.)
+              // behind the bar.
               paddingBottom: "calc(6rem + env(safe-area-inset-bottom))",
             }}
           >
-            {/* max-w-md keeps the phone column on mobile; on lg+ it widens to a
-                comfortable desktop reading width, centered in the space beside
-                the rail. */}
-            <div className="mx-auto w-full max-w-md px-4 pt-2 lg:max-w-3xl lg:px-8">
+            <div className="mx-auto w-full max-w-md px-4 pt-2">
               <AppHeader />
               <div className="pt-1">
                 <UpdateBanner />
