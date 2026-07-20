@@ -29,11 +29,16 @@ interface SlotRow {
   date: string;
   time: string;
   durationMin: number;
+  /** Only used when slotKind === "range". */
+  endDate: string;
 }
 
-const emptyRow = (): SlotRow => ({ date: "", time: "", durationMin: 60 });
+const emptyRow = (): SlotRow => ({ date: "", time: "", durationMin: 60, endDate: "" });
 
 type Mode = "vote" | "now";
+/** "time" = a point-in-time call slot (existing behavior); "range" = a date
+ *  range (e.g. a weekend) — for polling "which weekend", not "which hour". */
+type SlotKind = "time" | "range";
 
 export function MeetingComposer({
   scope,
@@ -68,7 +73,9 @@ export function MeetingComposer({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  // "Find a time" (vote) state
+  // "Find a time" (vote) state — a family-wide poll is almost always "which
+  // weekend", so default it straight to date ranges.
+  const [slotKind, setSlotKind] = useState<SlotKind>(scope.type === "family" ? "range" : "time");
   const [slots, setSlots] = useState<SlotRow[]>([emptyRow()]);
   const [respondBy, setRespondBy] = useState("");
   const [emailEveryone, setEmailEveryone] = useState(false);
@@ -106,13 +113,28 @@ export function MeetingComposer({
       if (!t) return "Add a title first.";
 
       if (mode === "vote") {
-        const filled = slots.filter((s) => s.date && s.time);
-        if (filled.length === 0) return "Add at least one date & time.";
-        const isoSlots = filled.map((s) => ({
-          // date + time are local; toISOString normalizes to UTC for storage.
-          startsAt: new Date(`${s.date}T${s.time}`).toISOString(),
-          durationMin: s.durationMin,
-        }));
+        const filled =
+          slotKind === "range"
+            ? slots.filter((s) => s.date && s.endDate)
+            : slots.filter((s) => s.date && s.time);
+        if (filled.length === 0) {
+          return slotKind === "range" ? "Add at least one date range." : "Add at least one date & time.";
+        }
+        if (slotKind === "range" && filled.some((s) => s.endDate < s.date)) {
+          return "An end date can't be before its start date.";
+        }
+        const isoSlots =
+          slotKind === "range"
+            ? filled.map((s) => ({
+                // Local midnight; toISOString normalizes to UTC for storage.
+                startsAt: new Date(`${s.date}T00:00`).toISOString(),
+                endsAt: new Date(`${s.endDate}T00:00`).toISOString(),
+              }))
+            : filled.map((s) => ({
+                // date + time are local; toISOString normalizes to UTC for storage.
+                startsAt: new Date(`${s.date}T${s.time}`).toISOString(),
+                durationMin: s.durationMin,
+              }));
         const res = await createMeeting({
           scope: effectiveScope,
           title: t,
@@ -235,53 +257,109 @@ export function MeetingComposer({
 
       {mode === "vote" ? (
         <>
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-background p-1 ring-1 ring-border">
+            {(
+              [
+                { k: "time" as SlotKind, label: "Times", sub: "Which hour works" },
+                { k: "range" as SlotKind, label: "Dates", sub: "Which weekend works" },
+              ]
+            ).map(({ k, label, sub }) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setSlotKind(k)}
+                aria-pressed={slotKind === k}
+                className={`press rounded-lg px-2 py-1.5 text-center ${slotKind === k ? "bg-primary text-white" : "text-foreground/60"}`}
+              >
+                <span className="block text-xs font-semibold">{label}</span>
+                <span className={`block text-[10px] ${slotKind === k ? "text-white/80" : "text-muted"}`}>{sub}</span>
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-1.5">
-            <SectionLabel>Time options (up to {MAX_SLOTS})</SectionLabel>
+            <SectionLabel>
+              {slotKind === "range" ? `Date options (up to ${MAX_SLOTS})` : `Time options (up to ${MAX_SLOTS})`}
+            </SectionLabel>
             <div className="space-y-2">
               {slots.map((s, i) => (
                 <div key={i} className="rounded-xl bg-background p-2 ring-1 ring-border">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={s.date}
-                      min={toISODate(new Date())}
-                      onChange={(e) => setSlot(i, { date: e.target.value })}
-                      className={`${FIELD} min-w-0 flex-1`}
-                      aria-label={`Option ${i + 1} date`}
-                    />
-                    <input
-                      type="time"
-                      value={s.time}
-                      onChange={(e) => setSlot(i, { time: e.target.value })}
-                      className={`${FIELD} min-w-0 flex-1`}
-                      aria-label={`Option ${i + 1} time`}
-                    />
-                    {slots.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeSlot(i)}
-                        aria-label={`Remove option ${i + 1}`}
-                        className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2 px-0.5">
-                    <span className="text-xs text-muted">Length</span>
-                    <select
-                      value={s.durationMin}
-                      onChange={(e) => setSlot(i, { durationMin: Number(e.target.value) })}
-                      className="rounded-lg bg-card px-2 py-1 text-xs ring-1 ring-border"
-                      aria-label={`Option ${i + 1} length`}
-                    >
-                      {DURATIONS.map((d) => (
-                        <option key={d} value={d}>
-                          {durationLabel(d)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {slotKind === "range" ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={s.date}
+                        min={toISODate(new Date())}
+                        onChange={(e) => setSlot(i, { date: e.target.value })}
+                        className={`${FIELD} min-w-0 flex-1`}
+                        aria-label={`Option ${i + 1} start date`}
+                      />
+                      <span className="text-xs text-muted">to</span>
+                      <input
+                        type="date"
+                        value={s.endDate}
+                        min={s.date || toISODate(new Date())}
+                        onChange={(e) => setSlot(i, { endDate: e.target.value })}
+                        className={`${FIELD} min-w-0 flex-1`}
+                        aria-label={`Option ${i + 1} end date`}
+                      />
+                      {slots.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSlot(i)}
+                          aria-label={`Remove option ${i + 1}`}
+                          className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={s.date}
+                          min={toISODate(new Date())}
+                          onChange={(e) => setSlot(i, { date: e.target.value })}
+                          className={`${FIELD} min-w-0 flex-1`}
+                          aria-label={`Option ${i + 1} date`}
+                        />
+                        <input
+                          type="time"
+                          value={s.time}
+                          onChange={(e) => setSlot(i, { time: e.target.value })}
+                          className={`${FIELD} min-w-0 flex-1`}
+                          aria-label={`Option ${i + 1} time`}
+                        />
+                        {slots.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSlot(i)}
+                            aria-label={`Remove option ${i + 1}`}
+                            className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground/45 hover:bg-foreground/5 hover:text-foreground"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2 px-0.5">
+                        <span className="text-xs text-muted">Length</span>
+                        <select
+                          value={s.durationMin}
+                          onChange={(e) => setSlot(i, { durationMin: Number(e.target.value) })}
+                          className="rounded-lg bg-card px-2 py-1 text-xs ring-1 ring-border"
+                          aria-label={`Option ${i + 1} length`}
+                        >
+                          {DURATIONS.map((d) => (
+                            <option key={d} value={d}>
+                              {durationLabel(d)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -291,7 +369,7 @@ export function MeetingComposer({
                 onClick={addSlot}
                 className="press px-0.5 py-1 text-sm font-semibold text-primary"
               >
-                + Add another time
+                {slotKind === "range" ? "+ Add another date range" : "+ Add another time"}
               </button>
             )}
           </div>

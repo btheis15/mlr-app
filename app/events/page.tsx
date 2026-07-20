@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ComingSoonCTA } from "@/components/ComingSoonCTA";
 import { SkeletonList } from "@/components/Skeleton";
 import { EventCard } from "@/components/EventCard";
 import { EventSheet } from "@/components/EventSheet";
 import { EventComposer } from "@/components/EventComposer";
+import { MeetingSection } from "@/components/MeetingSection";
+import { MeetingComposer } from "@/components/MeetingComposer";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useEvents } from "@/lib/hooks";
 import { EMPTY_SUMMARY, effectiveStatus, pastEvents, upcomingEvents } from "@/lib/events";
+import { fetchCanOrganize } from "@/lib/meetings";
 import type { AttendanceStatus, ResortEvent } from "@/lib/types";
 
 // The full resort calendar: every upcoming gathering with a Going/Maybe/Can't-make
@@ -30,6 +33,44 @@ export default function EventsPage() {
   const [composer, setComposer] = useState<Composer>(null);
   const [showPast, setShowPast] = useState(false);
   const [showDeclined, setShowDeclined] = useState(false);
+
+  // Family-wide date polling (migration 0122) — admin-only to organize, open to
+  // every signed-in member to vote. Mirrors CommitteeDetail's canOrganize/
+  // members wiring, just with the plain member directory instead of a room
+  // roster (there's no room here — it's everyone).
+  const [canOrganizePoll, setCanOrganizePoll] = useState(false);
+  const [composePoll, setComposePoll] = useState(false);
+  const [members, setMembers] = useState<{ id: string; name: string; avatarUrl?: string | null }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchCanOrganize({ type: "family" }).then((v) => {
+      if (!cancelled) setCanOrganizePoll(v);
+    });
+    const sb = supabase;
+    if (sb) {
+      void sb
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .then(({ data }) => {
+          if (cancelled) return;
+          setMembers(
+            (data ?? []).map((p) => ({ id: p.id, name: p.display_name || "Member", avatarUrl: p.avatar_url })),
+          );
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ?open=<id> deep-links straight into an event's sheet (e.g. from a
+  // finalized meeting poll's "View the event" link).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("open");
+    if (id) setOpenId(id);
+  }, []);
 
   const openEvent = events.find((e) => e.id === openId) ?? null;
   const myStatus = (e: ResortEvent): AttendanceStatus | null => {
@@ -63,13 +104,27 @@ export default function EventsPage() {
         />
       )}
 
+      {isSupabaseConfigured && (
+        <MeetingSection surface="card" scope={{ type: "family" }} members={members} />
+      )}
+
       {isAdmin && isSupabaseConfigured && (
-        <button
-          onClick={() => setComposer({ mode: "new" })}
-          className="press w-full rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
-        >
-          + New event
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setComposer({ mode: "new" })}
+            className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
+          >
+            + New event
+          </button>
+          {canOrganizePoll && (
+            <button
+              onClick={() => setComposePoll(true)}
+              className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
+            >
+              📅 Propose dates
+            </button>
+          )}
+        </div>
       )}
 
       {loading ? (
@@ -175,6 +230,15 @@ export default function EventsPage() {
           event={composer.mode === "edit" ? composer.event : null}
           onClose={() => setComposer(null)}
           onSaved={reload}
+        />
+      )}
+
+      {composePoll && (
+        <MeetingComposer
+          scope={{ type: "family" }}
+          roomLabel="everyone at MLR"
+          onClose={() => setComposePoll(false)}
+          onCreated={() => {}}
         />
       )}
     </div>

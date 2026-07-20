@@ -415,9 +415,11 @@ function RosterGroup({
             <span
               key={p.userId}
               className="inline-flex items-center gap-1.5 rounded-full bg-card py-1 pl-1 pr-2.5 ring-1 ring-border"
+              title={p.confirmed ? undefined : "Said available in a poll — hasn't confirmed for this event yet"}
             >
               <Avatar name={p.name} url={p.avatarUrl} size={20} />
               <PrivateName name={p.name} className="text-xs font-medium" />
+              {!p.confirmed && <span className="text-[10px] text-muted">(hasn&rsquo;t confirmed)</span>}
             </span>
           ))}
         </div>

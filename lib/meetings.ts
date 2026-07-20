@@ -16,14 +16,20 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 export type AvailabilityStatus = "yes" | "if_need_be" | "no";
 export type MeetingStatus = "open" | "scheduled" | "cancelled";
 
-/** Which room a meeting lives in — drives both the fetch filter and create args. */
+/** Which room a meeting lives in — drives both the fetch filter and create args.
+ *  'family' has no room at all — every signed-in member (organizing one is
+ *  admin-only, enforced server-side by can_organize_meeting). */
 export type MeetingScope =
   | { type: "committee"; committeeId: string; slug: string; area: string | null }
-  | { type: "house"; houseId: string; slug: string };
+  | { type: "house"; houseId: string; slug: string }
+  | { type: "family" };
 
 export interface MeetingSlot {
   id: string;
   startsAt: string;
+  /** Set ⇒ this slot is a DATE RANGE (e.g. a weekend), not a point-in-time
+   *  call; durationMin is meaningless when this is set. */
+  endsAt: string | null;
   durationMin: number;
   position: number;
   /** Member ids in each bucket (resolve names against the room roster). */
@@ -36,7 +42,7 @@ export interface MeetingSlot {
 
 export interface Meeting {
   id: string;
-  scopeType: "committee" | "house";
+  scopeType: "committee" | "house" | "family";
   committeeSlug: string | null;
   area: string | null;
   houseId: string | null;
@@ -50,6 +56,8 @@ export interface Meeting {
   status: MeetingStatus;
   chosenSlotId: string | null;
   meetUrl: string | null;
+  /** Set once finalized as an Event instead of (or alongside) a Meet link. */
+  createdEventId: string | null;
   slots: MeetingSlot[];
   /** The viewer's own answer per slot id. */
   myAnswers: Record<string, AvailabilityStatus>;
@@ -63,6 +71,9 @@ export interface MeetingSlotInput {
   /** ISO timestamp (with offset) for the slot start. */
   startsAt: string;
   durationMin?: number;
+  /** ISO timestamp — set for a date-range slot (e.g. a weekend) instead of a
+   *  point-in-time call. */
+  endsAt?: string | null;
 }
 
 export interface MeetingInput {
@@ -86,7 +97,7 @@ function isMissingTable(error: PgError): boolean {
 
 interface MeetingRow {
   id: string;
-  scope_type: "committee" | "house";
+  scope_type: "committee" | "house" | "family";
   committee_slug: string | null;
   area: string | null;
   house_id: string | null;
@@ -98,7 +109,8 @@ interface MeetingRow {
   status: MeetingStatus;
   chosen_slot_id: string | null;
   meet_url: string | null;
-  meeting_slots: { id: string; starts_at: string; duration_min: number; position: number }[] | null;
+  created_event_id: string | null;
+  meeting_slots: { id: string; starts_at: string; ends_at: string | null; duration_min: number; position: number }[] | null;
 }
 
 interface AvailabilityRow {
@@ -122,15 +134,17 @@ export async function fetchMeetingsForRoom(scope: MeetingScope): Promise<Meeting
     let q = sb
       .from("meetings")
       .select(
-        "id, scope_type, committee_slug, area, house_id, title, description, created_by, created_at, respond_by, status, chosen_slot_id, meet_url, meeting_slots(id, starts_at, duration_min, position)"
+        "id, scope_type, committee_slug, area, house_id, title, description, created_by, created_at, respond_by, status, chosen_slot_id, meet_url, created_event_id, meeting_slots(id, starts_at, ends_at, duration_min, position)"
       )
       .order("created_at", { ascending: false });
 
     if (scope.type === "committee") {
       q = q.eq("scope_type", "committee").eq("committee_slug", scope.slug);
       q = scope.area == null ? q.is("area", null) : q.eq("area", scope.area);
-    } else {
+    } else if (scope.type === "house") {
       q = q.eq("scope_type", "house").eq("house_id", scope.houseId);
+    } else {
+      q = q.eq("scope_type", "family");
     }
 
     const [meetingsRes, userRes] = await Promise.all([q, sb.auth.getUser()]);
@@ -174,6 +188,7 @@ export async function fetchMeetingsForRoom(scope: MeetingScope): Promise<Meeting
           return {
             id: s.id,
             startsAt: s.starts_at,
+            endsAt: s.ends_at,
             durationMin: s.duration_min,
             position: s.position,
             yes: b.yes,
@@ -206,6 +221,7 @@ export async function fetchMeetingsForRoom(scope: MeetingScope): Promise<Meeting
         status: r.status,
         chosenSlotId: r.chosen_slot_id,
         meetUrl: r.meet_url,
+        createdEventId: r.created_event_id,
         slots,
         myAnswers: mineByMeeting[r.id] ?? {},
         bestSlotId,
@@ -264,7 +280,11 @@ export async function createMeeting(input: MeetingInput): Promise<{ id?: string;
     p_house_id: scope.type === "house" ? scope.houseId : null,
     p_title: input.title,
     p_description: input.description ?? null,
-    p_slots: input.slots.map((s) => ({ starts_at: s.startsAt, duration_min: s.durationMin ?? 60 })),
+    p_slots: input.slots.map((s) => ({
+      starts_at: s.startsAt,
+      duration_min: s.durationMin ?? 60,
+      ends_at: s.endsAt ?? null,
+    })),
     p_respond_by: input.respondBy ?? null,
     p_email: input.emailEveryone ?? false,
   });
@@ -277,7 +297,14 @@ export async function createMeeting(input: MeetingInput): Promise<{ id?: string;
  *  link) sending the confirmation email, exactly like finalizing a vote. */
 export async function createScheduledMeeting(
   scope: MeetingScope,
-  input: { title: string; description?: string | null; startsAt: string; durationMin?: number; meetUrl?: string | null },
+  input: {
+    title: string;
+    description?: string | null;
+    startsAt: string;
+    durationMin?: number;
+    meetUrl?: string | null;
+    endsAt?: string | null;
+  },
 ): Promise<{ id?: string; error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -291,6 +318,7 @@ export async function createScheduledMeeting(
     p_starts_at: input.startsAt,
     p_duration_min: input.durationMin ?? 60,
     p_meet_url: input.meetUrl?.trim() || null,
+    p_ends_at: input.endsAt ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -322,6 +350,28 @@ export async function finalizeMeeting(
     p_meet_url: meetUrl,
   });
   return error ? { error: error.message } : {};
+}
+
+/** Finalize — pick the winning slot and create a real Event from it instead of
+ *  (or as well as) a Meet link — organizer or admin. Carries over yes/if-need-be
+ *  voters as unconfirmed Going/Maybe RSVPs on the new event. */
+export async function finalizeMeetingAsEvent(
+  meetingId: string,
+  slotId: string,
+  input: { kind?: string; title?: string | null; description?: string | null; location?: string | null },
+): Promise<{ eventId?: string; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("finalize_meeting_as_event", {
+    p_meeting: meetingId,
+    p_slot: slotId,
+    p_kind: input.kind ?? "work_weekend",
+    p_title: input.title ?? null,
+    p_description: input.description ?? null,
+    p_location: input.location ?? null,
+  });
+  if (error) return { error: error.message };
+  return { eventId: data as string };
 }
 
 /** Cancel a meeting (keep the record) — organizer or admin. */

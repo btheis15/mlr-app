@@ -14,7 +14,7 @@ import { ReminderScheduler } from "@/components/ReminderScheduler";
 // it's synthesized from FAMILY_FEST. New events default to today; multi-day
 // events can offer the per-day RSVP drill-down.
 
-const KINDS: { value: EventKind; label: string }[] = [
+export const KINDS: { value: EventKind; label: string }[] = [
   { value: "work_weekend", label: "Work Weekend" },
   { value: "holiday", label: "Holiday weekend" },
   { value: "custom", label: "Other event" },

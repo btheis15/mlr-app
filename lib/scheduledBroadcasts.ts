@@ -23,6 +23,11 @@ export interface BroadcastPayload {
   alsoBanner?: boolean;
   eventId?: string | null;
   excludeNotAttending?: boolean;
+  /** Restrict (not exclude) to profiles with no event_attendance row for
+   *  `eventId`, or one with `confirmed = false` — the "still coming?" nudge for
+   *  RSVPs carried over from a finalized meeting poll (see
+   *  finalize_meeting_as_event). No-op without an eventId. See migration 0122. */
+  onlyUnconfirmed?: boolean;
   /** Set when this queued item is a reminder generated from an event/callout's
    *  "Reminders" section (see ReminderScheduler) rather than composed directly
    *  in the Alerts screen — lets the event/callout editor list "reminders for

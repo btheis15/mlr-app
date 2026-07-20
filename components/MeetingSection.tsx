@@ -23,9 +23,11 @@ interface RoomMember {
   avatarUrl?: string | null;
 }
 
-/** Stable per-room cache/channel segment. */
+/** Stable per-room cache/channel segment. 'family' has no room — it's everyone. */
 function roomKeyOf(scope: MeetingScope): string {
-  return scope.type === "committee" ? `c:${scope.slug}|${scope.area ?? ""}` : `h:${scope.houseId}`;
+  if (scope.type === "committee") return `c:${scope.slug}|${scope.area ?? ""}`;
+  if (scope.type === "house") return `h:${scope.houseId}`;
+  return "family";
 }
 
 function chosenInFuture(m: Meeting): boolean {
