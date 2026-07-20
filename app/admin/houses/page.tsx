@@ -1,7 +1,6 @@
 import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
 import { AdminHouses } from "@/components/AdminHouses";
-import { AdminFamilyRoster } from "@/components/AdminFamilyRoster";
 
 export default function AdminHousesPage() {
   return (
@@ -11,11 +10,10 @@ export default function AdminHousesPage() {
         <header className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Houses</h1>
           <p className="text-sm text-foreground/60">
-            Create houses & assign members — plus the family roster of people not on the app yet.
+            Create houses & assign members.
           </p>
         </header>
         <AdminHouses />
-        <AdminFamilyRoster />
       </div>
     </AdminGuard>
   );

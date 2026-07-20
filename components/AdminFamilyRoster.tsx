@@ -46,6 +46,7 @@ export function AdminFamilyRoster() {
   const [phone, setPhone] = useState("");
   const [houseId, setHouseId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [allBusy, setAllBusy] = useState(false);
 
   const load = async () => {
     if (!isSupabaseConfigured) return;
@@ -108,6 +109,26 @@ export function AdminFamilyRoster() {
     });
   };
 
+  // Everyone added but not yet invited/signed up — the "Invite all" audience.
+  const uninvited = people.filter((p) => !p.linkedUserId && p.email);
+
+  const inviteAll = async () => {
+    if (!uninvited.length) return;
+    if (!window.confirm(`Send the welcome email to all ${uninvited.length} ${plural(uninvited.length, "person", "people")} not yet on the app?`)) return;
+    setAllBusy(true);
+    try {
+      const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+      if (!token) { invited.show("Sign in again to send invites.", 4000); return; }
+      const r = await inviteByEmailLink(uninvited.map((p) => ({ email: p.email!, name: p.name })), token);
+      const ok = r.filter((x) => x.ok).length;
+      invited.show(`Sent ${ok}/${r.length} invite${r.length === 1 ? "" : "s"}.`, 5000);
+    } catch (err) {
+      invited.show(err instanceof Error ? err.message : "Couldn't send invites.", 6000);
+    } finally {
+      setAllBusy(false);
+    }
+  };
+
   if (!isSupabaseConfigured) {
     return <p className="px-1 text-xs text-muted">The family roster turns on once the backend is connected.</p>;
   }
@@ -126,6 +147,16 @@ export function AdminFamilyRoster() {
         <span className="ml-auto text-xs text-faint">
           {people.length} {plural(people.length, "person", "people")}{onApp ? ` · ${onApp} on the app` : ""}
         </span>
+        {uninvited.length > 0 && (
+          <button
+            type="button"
+            onClick={inviteAll}
+            disabled={allBusy}
+            className="press shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {allBusy ? "Sending…" : `💌 Invite all (${uninvited.length})`}
+          </button>
+        )}
       </div>
 
       <p className="text-xs text-muted">
@@ -233,7 +264,7 @@ export function AdminFamilyRoster() {
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <button
                             onClick={() => invite(p)}
-                            disabled={!p.email || busyId === p.id}
+                            disabled={!p.email || busyId === p.id || allBusy}
                             title={p.email ? "Send the welcome email" : "Add an email first"}
                             className="press rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40"
                           >
@@ -248,8 +279,7 @@ export function AdminFamilyRoster() {
                     </div>
                     {p.linkedUserId ? (
                       <p className="text-xs text-faint">
-                        Signed up — now a real member{houseName(p.houseId) ? ` (pre-set to ${houseName(p.houseId)})` : ""}. Manage them in{" "}
-                        <span className="font-medium">Admin → Members</span>.
+                        Signed up — now a real member{houseName(p.houseId) ? ` (pre-set to ${houseName(p.houseId)})` : ""}. Manage them in the members list above.
                       </p>
                     ) : (
                       <div className="flex flex-wrap items-center gap-1.5">
