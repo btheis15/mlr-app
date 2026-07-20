@@ -7,6 +7,7 @@ import { fetchHouses } from "@/lib/houses";
 import {
   fetchFamilyRoster,
   familyRosterReady,
+  fetchRosterCommittees,
   saveFamilyRosterEntry,
   setFamilyRosterHouse,
   deleteFamilyRosterEntry,
@@ -34,6 +35,8 @@ const EMAIL_RE = /^\S+@\S+\.\S+$/;
 export function AdminFamilyRoster() {
   const [houses, setHouses] = useState<House[]>([]);
   const [people, setPeople] = useState<FamilyRosterEntry[]>([]);
+  // Account-less committee memberships ("manual add-ins"), keyed by email.
+  const [committeesByEmail, setCommitteesByEmail] = useState<Record<string, { slug: string; label: string }[]>>({});
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(true);
   const [query, setQuery] = useState("");
@@ -56,7 +59,10 @@ export function AdminFamilyRoster() {
     const ok = await familyRosterReady();
     setReady(ok);
     setHouses(await fetchHouses());
-    if (ok) setPeople(await fetchFamilyRoster());
+    if (ok) {
+      setPeople(await fetchFamilyRoster());
+      setCommitteesByEmail(await fetchRosterCommittees());
+    }
     setLoading(false);
   };
 
@@ -165,8 +171,11 @@ export function AdminFamilyRoster() {
 
       <p className="text-xs text-muted">
         Family who aren&rsquo;t on the app yet. Add a name + email so they still get house and resort emails, and assign
-        them to a house. When they sign up with that email, this links to their new account automatically — carrying their
-        house and this name onto it (they can rename after). Use <strong>Invite</strong> to email them a one-tap sign-in.
+        them to a house. Anyone added to a <strong>committee</strong> before they&rsquo;re on the app lands here
+        automatically too — their committee spot shows below as a manual add-in, and edits you make here (name, email,
+        phone) carry over to it. When they sign up with that email, everything links to their new account at once —
+        house, committees, and this name (they can rename after). Use <strong>Invite</strong> to email them a one-tap
+        sign-in.
       </p>
 
       {/* Add a person */}
@@ -296,18 +305,32 @@ export function AdminFamilyRoster() {
                         Signed up — now a real member{houseName(p.houseId) ? ` (pre-set to ${houseName(p.houseId)})` : ""}. Manage them in the members list above.
                       </p>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <HouseChip label="None" active={!p.houseId} disabled={busyId === p.id} onClick={() => assign(p, null)} />
-                        {houses.map((h) => (
-                          <HouseChip
-                            key={h.id}
-                            label={`${h.emoji} ${h.name}`}
-                            active={p.houseId === h.id}
-                            disabled={busyId === p.id}
-                            onClick={() => assign(p, h.id)}
-                          />
-                        ))}
-                      </div>
+                      <>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <HouseChip label="None" active={!p.houseId} disabled={busyId === p.id} onClick={() => assign(p, null)} />
+                          {houses.map((h) => (
+                            <HouseChip
+                              key={h.id}
+                              label={`${h.emoji} ${h.name}`}
+                              active={p.houseId === h.id}
+                              disabled={busyId === p.id}
+                              onClick={() => assign(p, h.id)}
+                            />
+                          ))}
+                        </div>
+                        {p.email && committeesByEmail[p.email.trim().toLowerCase()]?.length ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-faint" title="They hold these committee spots by email until they sign up — then the spots link to their account.">
+                              On committees (until they join):
+                            </span>
+                            {committeesByEmail[p.email.trim().toLowerCase()].map((c) => (
+                              <span key={c.slug} className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                {c.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   </li>
                 ),
