@@ -14,6 +14,7 @@ import {
 } from "@/lib/familyRoster";
 import { inviteByEmailLink } from "@/lib/admin";
 import { Avatar } from "@/components/Avatar";
+import { MemberSheet } from "@/components/MemberSheet";
 import { MigrationHint } from "@/components/MigrationHint";
 import { SkeletonList } from "@/components/Skeleton";
 import { plural } from "@/lib/format";
@@ -37,6 +38,8 @@ export function AdminFamilyRoster() {
   const [ready, setReady] = useState(true);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  // Once someone's signed up, tapping their name opens their profile sheet.
+  const [sheet, setSheet] = useState<{ id: string; name: string; avatarUrl: string | null } | null>(null);
   const { busy: busyId, run } = useBusyAction();
   const invited = useSaveStatus();
 
@@ -140,6 +143,7 @@ export function AdminFamilyRoster() {
   const onApp = people.filter((p) => p.linkedUserId).length;
 
   return (
+    <>
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
@@ -250,7 +254,17 @@ export function AdminFamilyRoster() {
                       <Avatar name={p.linkedName || p.name} url={p.linkedAvatarUrl} size={32} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {p.linkedName || p.name}
+                          {p.linkedUserId ? (
+                            <button
+                              type="button"
+                              onClick={() => setSheet({ id: p.linkedUserId!, name: p.linkedName || p.name, avatarUrl: p.linkedAvatarUrl })}
+                              className="press text-left underline-offset-2 hover:underline"
+                            >
+                              {p.linkedName || p.name}
+                            </button>
+                          ) : (
+                            p.linkedName || p.name
+                          )}
                           {p.linkedUserId && (
                             <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary align-middle">
                               ✓ On the app
@@ -303,6 +317,10 @@ export function AdminFamilyRoster() {
         </>
       )}
     </div>
+    {sheet && (
+      <MemberSheet id={sheet.id} name={sheet.name} avatarUrl={sheet.avatarUrl} onClose={() => setSheet(null)} />
+    )}
+    </>
   );
 }
 
