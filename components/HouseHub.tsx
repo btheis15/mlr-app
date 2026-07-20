@@ -11,6 +11,9 @@ import { BackLink } from "@/components/BackLink";
 import { SkeletonList } from "@/components/Skeleton";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import { MjtHouseDuesCard } from "@/components/MjtHouseDuesCard";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { EmailMembersComposer } from "@/components/EmailMembersComposer";
+import { fetchHouseRecipients } from "@/lib/emailBlast";
 
 /**
  * The House Hub — one place for everything about a member's house: its calendar
@@ -130,6 +133,21 @@ function HouseHubBody({
         title="House chat"
         subtitle="Talk with everyone in your house."
       />
+
+      {/* Email the whole house — account members PLUS the not-yet-on-the-app
+          people an admin added to this house on the family roster (0123). */}
+      <CollapsibleSection
+        title="Email the house"
+        icon="✉️"
+        subtitle="Everyone in the house — including folks not on the app yet"
+      >
+        <EmailMembersComposer
+          sourceKey={`house:${houseId}`}
+          load={() => fetchHouseRecipients(houseId)}
+          groupNoun={`the ${houseName}`}
+          migrationFile="0123_family_roster.sql"
+        />
+      </CollapsibleSection>
 
       {/* House rules — a shared, editable open-text doc (any member). */}
       <HouseRulesCard houseId={houseId} initialRules={rules} />
