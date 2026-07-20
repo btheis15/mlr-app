@@ -2,7 +2,7 @@ import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
-import { AdminRosterInvite } from "@/components/AdminRosterInvite";
+import { AdminFamilyRoster } from "@/components/AdminFamilyRoster";
 
 export default function AdminMembersPage() {
   return (
@@ -17,7 +17,15 @@ export default function AdminMembersPage() {
         </header>
         <AdminMembers />
 
-        <AdminRosterInvite />
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
+            Family not on the app yet
+          </p>
+          <p className="px-1 text-xs text-muted">
+            Set people up first — add them, assign a house — then invite when you&rsquo;re ready.
+          </p>
+          <AdminFamilyRoster />
+        </div>
 
         <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
