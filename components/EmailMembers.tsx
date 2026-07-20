@@ -4,7 +4,15 @@ import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
-import { fetchAllRecipients, fetchCommitteeRecipients, fetchDirectoryRecipients } from "@/lib/emailBlast";
+import {
+  fetchAdminRecipients,
+  fetchAllRecipients,
+  fetchCommitteeRecipients,
+  fetchDirectoryRecipients,
+  fetchHouseRecipients,
+} from "@/lib/emailBlast";
+import { fetchMyHouse } from "@/lib/houses";
+import type { House } from "@/lib/types";
 
 interface CommitteeOpt {
   id: string;
@@ -14,21 +22,32 @@ interface CommitteeOpt {
 }
 
 const PICK = "__pick"; // sentinel pool value for "Pick specific people"
+const ALL = "all";
+const ADMINS = "__admins"; // sentinel pool value for "App Admins"
+const HOUSE_PREFIX = "house:"; // pool value prefix for "your house"
 
 /**
  * "Email members" — open to every signed-in member (Profile). Pick a pool, then
  * the composer takes over (email the whole pool or pick people from it):
  *   • Pick specific people — anyone, hand-picked from the member directory.
- *   • A committee you're in — its roster (admins see every committee).
+ *   • A committee you're in — its roster (admins see every committee); once a
+ *     role-based committee (Family Fest) has members with assigned areas, the
+ *     composer's existing "By Role" picker lights up on its own (roles now ride
+ *     along on committee_member_recipients, migration 0124) — e.g. just Meals,
+ *     just Entertainment & Games, etc.
+ *   • Your house (e.g. "MJT House") — if you're assigned to one.
+ *   • App Admins — any signed-in member can reach the app's admins directly.
  *   • Everyone (all members) — only if you're an App Admin OR in any committee,
  *     so the one-tap "everyone" stays with people who've shown they're involved.
- * The matching RPCs (migration 0031) re-check each gate server-side. Nothing is
- * sent from the app — it builds a `mailto:` and hands off to your mail app.
+ * The matching RPCs (migrations 0031/0123/0124) re-check each gate server-side.
+ * Nothing is sent from the app — it builds a `mailto:` and hands off to your
+ * mail app.
  */
 export function EmailMembers() {
   const { user, isAdmin, previewAsId } = useIdentity();
   const [committees, setCommittees] = useState<CommitteeOpt[]>([]);
   const [canEveryone, setCanEveryone] = useState(false);
+  const [house, setHouse] = useState<House | null>(null);
   const [pool, setPool] = useState<string>(PICK);
   const [ready, setReady] = useState(false);
 
@@ -64,11 +83,13 @@ export function EmailMembers() {
           .sort((a, b) => a.position - b.position);
         everyone = opts.length > 0;
       }
+      const myHouse = await fetchMyHouse(scopeId);
       if (cancelled) return;
       setCommittees(opts);
       setCanEveryone(everyone);
+      setHouse(myHouse);
       // Default to the headline capability when available, else hand-pick.
-      setPool(everyone ? "all" : PICK);
+      setPool(everyone ? ALL : PICK);
       setReady(true);
     })();
     return () => {
@@ -80,15 +101,44 @@ export function EmailMembers() {
 
   const committee = committees.find((c) => c.id === pool);
   const isPick = pool === PICK;
-  const isAll = pool === "all";
+  const isAll = pool === ALL;
+  const isAdmins = pool === ADMINS;
+  const isHouse = house != null && pool === `${HOUSE_PREFIX}${house.id}`;
 
-  const sourceKey = isPick ? "directory" : isAll ? "all" : `committee:${pool}`;
+  const sourceKey = isPick
+    ? "directory"
+    : isAll
+      ? "all"
+      : isAdmins
+        ? "admins"
+        : isHouse
+          ? pool
+          : `committee:${pool}`;
   const load = isPick
     ? fetchDirectoryRecipients
     : isAll
       ? fetchAllRecipients
-      : () => fetchCommitteeRecipients(pool);
-  const groupNoun = isPick ? "the people you pick" : isAll ? "all members" : committee ? committee.name : "this committee";
+      : isAdmins
+        ? fetchAdminRecipients
+        : isHouse && house
+          ? () => fetchHouseRecipients(house.id)
+          : () => fetchCommitteeRecipients(pool);
+  const groupNoun = isPick
+    ? "the people you pick"
+    : isAll
+      ? "all members"
+      : isAdmins
+        ? "app admins"
+        : isHouse && house
+          ? `the ${house.name}`
+          : committee
+            ? committee.name
+            : "this committee";
+  const migrationFile = isHouse
+    ? "0123_family_roster.sql"
+    : isAdmins
+      ? "0124_email_roles_and_admins.sql"
+      : "0028_email_recipients.sql";
 
   return (
     <div className="space-y-3">
@@ -100,7 +150,13 @@ export function EmailMembers() {
           className="min-w-0 flex-1 rounded-lg bg-card px-2 py-1.5 text-right text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         >
           <option value={PICK}>Pick specific people</option>
-          {canEveryone && <option value="all">Everyone (all members)</option>}
+          {canEveryone && <option value={ALL}>Everyone (all members)</option>}
+          <option value={ADMINS}>🛡️ App Admins</option>
+          {house && (
+            <option value={`${HOUSE_PREFIX}${house.id}`}>
+              {house.emoji} {house.name}
+            </option>
+          )}
           {committees.map((c) => (
             <option key={c.id} value={c.id}>
               {c.emoji} {c.name}
@@ -109,7 +165,13 @@ export function EmailMembers() {
         </select>
       </label>
 
-      <EmailMembersComposer sourceKey={sourceKey} load={load} groupNoun={groupNoun} allowAll={!isPick} />
+      <EmailMembersComposer
+        sourceKey={sourceKey}
+        load={load}
+        groupNoun={groupNoun}
+        allowAll={!isPick}
+        migrationFile={migrationFile}
+      />
     </div>
   );
 }

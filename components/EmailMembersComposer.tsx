@@ -123,7 +123,7 @@ export function EmailMembersComposer({
   }
   if (needsMigration) {
     return (
-      <MigrationHint file="0028_email_recipients.sql">
+      <MigrationHint file={migrationFile}>
         To turn on emailing {groupNoun},
       </MigrationHint>
     );
