@@ -36,9 +36,14 @@ function toResult(data: unknown, error: { code?: string; message?: string } | nu
   if (error) {
     return { recipients: [], needsMigration: isMissingFunction(error), error: error.message ?? "Couldn't load recipients." };
   }
-  const recipients = ((data ?? []) as { id: string; name: string | null; email: string | null }[])
+  const recipients = ((data ?? []) as { id: string; name: string | null; email: string | null; roles?: string[] | null }[])
     .filter((r) => r.email)
-    .map((r) => ({ id: r.id, name: r.name?.trim() || "Member", email: r.email!.trim() }));
+    .map((r) => ({
+      id: r.id,
+      name: r.name?.trim() || "Member",
+      email: r.email!.trim(),
+      roles: r.roles?.length ? r.roles : undefined,
+    }));
   return { recipients, needsMigration: false, error: null };
 }
 
@@ -76,6 +81,14 @@ export async function fetchHouseRecipients(houseId: string): Promise<RecipientRe
   const sb = supabase;
   if (!sb) return { recipients: [], needsMigration: false, error: null };
   const { data, error } = await sb.rpc("house_member_recipients", { hid: houseId });
+  return toResult(data, error);
+}
+
+/** Every app admin — any signed-in member (migration 0124). */
+export async function fetchAdminRecipients(): Promise<RecipientResult> {
+  const sb = supabase;
+  if (!sb) return { recipients: [], needsMigration: false, error: null };
+  const { data, error } = await sb.rpc("admin_recipients");
   return toResult(data, error);
 }
 
