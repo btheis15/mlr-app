@@ -8,7 +8,8 @@ import { CommitteeRoster } from "@/components/CommitteeRoster";
 import { MeetingSection } from "@/components/MeetingSection";
 import { MeetingComposer } from "@/components/MeetingComposer";
 import { COMMITTEES } from "@/lib/data";
-import { fetchCommitteeBySlug, type CommitteeRow } from "@/lib/committeeAdmin";
+import { useIdentity } from "@/components/IdentityProvider";
+import { fetchCommitteeBySlug, fetchLiveAreaNames, type CommitteeRow } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster } from "@/lib/committeeRoster";
 import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
 import type { Committee } from "@/lib/types";
@@ -22,6 +23,7 @@ import type { Committee } from "@/lib/types";
  * live data.
  */
 export function CommitteeDetail({ slug }: { slug: string }) {
+  const { userId, isAdmin } = useIdentity();
   const seed = COMMITTEES.find((c) => c.slug === slug) ?? null;
   const [row, setRow] = useState<CommitteeRow | null>(
     seed ? { id: seed.slug, slug: seed.slug, name: seed.name, emoji: seed.emoji, description: seed.description, position: 0, archivedAt: null } : null,
@@ -33,6 +35,9 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   const [canOrganize, setCanOrganize] = useState(false);
   const [members, setMembers] = useState<{ id: string; name: string; avatarUrl?: string | null }[]>([]);
   const [composeMeeting, setComposeMeeting] = useState(false);
+  // "Who's this for?" options for the composer: the whole committee, plus the
+  // roles the viewer can aim a meeting at (admin → all roles; a lead → their own).
+  const [areaOptions, setAreaOptions] = useState<{ value: string | null; label: string }[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -51,22 +56,28 @@ export function CommitteeDetail({ slug }: { slug: string }) {
     const cid = row && row.id !== row.slug ? row.id : null;
     if (!cid) return;
     let cancelled = false;
+    const cname = row?.name ?? "the committee";
     const scope: MeetingScope = { type: "committee", committeeId: cid, slug, area: null };
     void fetchCanOrganize(scope).then((v) => {
       if (!cancelled) setCanOrganize(v);
     });
-    void fetchCommitteeRoster(slug).then((entries) => {
+    void Promise.all([fetchCommitteeRoster(slug), fetchLiveAreaNames(slug)]).then(([entries, areas]) => {
       if (cancelled) return;
       setMembers(
         entries
           .filter((e) => e.linkedUserId)
           .map((e) => ({ id: e.linkedUserId as string, name: e.linkedName || e.name, avatarUrl: e.linkedAvatarUrl })),
       );
+      // Roles the viewer may target: all of them for an admin, else the ones
+      // they lead ("<area> · Lead" in their roster roles). The server re-checks.
+      const myRoles = entries.find((e) => e.linkedUserId && e.linkedUserId === userId)?.roles ?? [];
+      const allowed = isAdmin ? areas : areas.filter((a) => myRoles.includes(`${a} · Lead`));
+      setAreaOptions([{ value: null, label: `Everyone on ${cname}` }, ...allowed.map((a) => ({ value: a, label: a }))]);
     });
     return () => {
       cancelled = true;
     };
-  }, [row, slug]);
+  }, [row, slug, userId, isAdmin]);
 
   if (!row) {
     // Nothing in the seed and nothing in the DB (once resolved) → not a committee.
@@ -141,6 +152,7 @@ export function CommitteeDetail({ slug }: { slug: string }) {
         <MeetingComposer
           scope={{ type: "committee", committeeId, slug: committee.slug, area: null }}
           roomLabel={committee.name}
+          areaOptions={areaOptions}
           onClose={() => setComposeMeeting(false)}
           onCreated={() => {}}
         />
