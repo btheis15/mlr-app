@@ -9,6 +9,7 @@ import { plural } from "@/lib/format";
 import { useBusyAction, useSaveStatus } from "@/lib/hooks";
 import { inviteMember } from "@/lib/admin";
 import { AdminEditMember } from "@/components/AdminEditMember";
+import { MemberSheet } from "@/components/MemberSheet";
 
 interface MemberRow {
   id: string;
@@ -66,6 +67,8 @@ export function AdminMembers() {
   const [inviteEmail, setInviteEmail] = useState("");
   const invite = useSaveStatus();
   const [editId, setEditId] = useState<string | null>(null);
+  // Tap a member's name/avatar → open the same profile sheet the People tab uses.
+  const [sheet, setSheet] = useState<{ id: string; name: string; avatarUrl: string | null } | null>(null);
 
   const getToken = async () =>
     (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
@@ -198,6 +201,7 @@ export function AdminMembers() {
   const adminCount = members.filter((m) => m.is_admin).length;
 
   return (
+    <>
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
@@ -269,9 +273,14 @@ export function AdminMembers() {
             const isMe = m.id === meId;
             return (
               <li key={m.id} className="flex flex-col gap-2 rounded-xl bg-background p-2.5 ring-1 ring-border">
-                {/* Row 1: avatar + full name/email (gets the whole width — no
-                    longer squeezed by the action buttons). */}
-                <div className="flex items-center gap-3">
+                {/* Row 1: avatar + full name/email — tap to open the member's
+                    profile (same sheet as the People tab). */}
+                <button
+                  type="button"
+                  onClick={() => setSheet({ id: m.id, name, avatarUrl: m.avatar_url })}
+                  className="press flex w-full items-center gap-3 text-left"
+                  aria-label={`View ${name}'s profile`}
+                >
                   <Avatar name={name} url={m.avatar_url} size={36} />
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
@@ -288,7 +297,8 @@ export function AdminMembers() {
                       <p className="break-words text-xs text-faint">{m.email || m.household}</p>
                     )}
                   </div>
-                </div>
+                  <span className="shrink-0 text-lg leading-none text-foreground/30" aria-hidden>›</span>
+                </button>
 
                 {/* Row 2: the actions, on their own full-width line so each label
                     is fully readable. */}
@@ -358,5 +368,9 @@ export function AdminMembers() {
         </ul>
       )}
     </div>
+    {sheet && (
+      <MemberSheet id={sheet.id} name={sheet.name} avatarUrl={sheet.avatarUrl} onClose={() => setSheet(null)} />
+    )}
+    </>
   );
 }
