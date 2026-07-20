@@ -14,6 +14,7 @@ import { DemoDateProvider } from "@/lib/DemoDateProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { ChunkErrorRecovery } from "@/components/ChunkErrorRecovery";
 import { getAnnouncements } from "@/lib/announcements";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -91,6 +92,7 @@ export default async function RootLayout({
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />
+            <ChunkErrorRecovery />
           {/* The one and only scroll container (see globals.css's #app-scroll
               note) — html/body never scroll, so the fixed TabBar below never
               gets dragged during a rubber-band bounce, and real native bounce
