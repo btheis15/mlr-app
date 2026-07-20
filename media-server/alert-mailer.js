@@ -413,6 +413,53 @@ ${d.description ? `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:
     }
   }
 
+  // Email the current/upcoming guests of a place when its approver/admin sends a
+  // note with "Also email them" on (migration 0120). Claims email_sent_at; the
+  // cabin_message_recipients RPC returns the subject/body/place + guest emails
+  // (approved, not-yet-ended stays, email_alerts on).
+  async function handleCabinMessage(row) {
+    if (!row || !row.notify_email || row.email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("cabin_messages")
+      .update({ email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("cabin_message_recipients", { p_message: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] cabin_message_recipients error:", error ? error.message : "no data");
+      await sb.from("cabin_messages").update({ email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (d.emails || []).filter(Boolean);
+    if (emails.length === 0) {
+      console.log(`[mailer] cabin_message ${row.id}: no opted-in guests`);
+      return;
+    }
+    const place = d.cabin_name || "your stay";
+    const subject = `🏡 ${place}${d.subject ? ` — ${d.subject}` : " — a note about your stay"}`;
+    const text = `${d.subject ? d.subject + "\n\n" : ""}${d.body}\n\n— ${place}, Muskellunge Lake Resort`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:18px;margin:0 0 2px"><strong>${escapeHtml(place)}</strong></p>
+<p style="margin:0 0 16px;color:#15503a;font-weight:600">A note about your stay</p>
+${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.subject)}</strong></p>` : ""}
+<p style="margin:0 0 16px;font-size:15px;white-space:pre-wrap">${escapeHtml(d.body)}</p>
+<p style="margin:16px 0 0"><a href="${APP_URL}/request-stay" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Open the app →</a></p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">You're getting this because you have an upcoming stay at ${escapeHtml(place)} and email alerts are on in your MLR profile.</p>
+</div>`;
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: emails, subject, text, html });
+      console.log(`[mailer] cabin_message ${row.id} emailed to ${emails.length} guest(s)`);
+    } catch (e) {
+      console.error("[mailer] cabin_message send failed:", e && e.message);
+      await sb.from("cabin_messages").update({ email_sent_at: null }).eq("id", row.id); // retry
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -472,6 +519,15 @@ ${d.description ? `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:
       .order("finalized_at", { ascending: false })
       .limit(10);
     for (const row of confirmPending || []) await handleMeetingConfirmed(row);
+
+    const { data: cabinMsgPending } = await sb
+      .from("cabin_messages")
+      .select("id, notify_email, email_sent_at, created_at")
+      .eq("notify_email", true)
+      .is("email_sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of cabinMsgPending || []) await handleCabinMessage(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -499,6 +555,9 @@ ${d.description ? `<tr><td style="padding:4px 16px 4px 0;color:#888;white-space:
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "meetings" }, (payload) => {
         handleMeetingConfirmed(payload.new).catch((e) => console.error("[mailer] meeting confirm handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_messages" }, (payload) => {
+        handleCabinMessage(payload.new).catch((e) => console.error("[mailer] cabin message handle error:", e && e.message));
       })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);

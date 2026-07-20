@@ -36,10 +36,14 @@ function chosenInFuture(m: Meeting): boolean {
 export function MeetingSection({
   scope,
   members,
+  surface = "chat",
 }: {
   scope: MeetingScope;
   /** Room roster — for name resolution + the "everyone can make it" count. */
   members: RoomMember[];
+  /** "chat" = a flush top-of-room bar; "card" = a rounded card for a page (e.g.
+   *  the committee detail page). */
+  surface?: "chat" | "card";
 }) {
   const { userId, isAdmin, previewAsId } = useIdentity();
   const roomKey = roomKeyOf(scope);
@@ -112,7 +116,13 @@ export function MeetingSection({
   if (!featured && !openMeeting) return null;
 
   return (
-    <div className="shrink-0 border-b border-border bg-card px-3 py-2">
+    <div
+      className={
+        surface === "card"
+          ? "rounded-2xl bg-card px-3 py-2 ring-1 ring-border"
+          : "shrink-0 border-b border-border bg-card px-3 py-2"
+      }
+    >
       {featured && (
         <button
           type="button"

@@ -46,6 +46,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     rows: [
       { value: "cabin_request", icon: "🏡", label: "New cabin stay requests", desc: "When a member requests a cabin stay", adminOnly: true },
       { value: "cabin_decision", icon: "🏡", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
+      { value: "cabin_message", icon: "📣", label: "Messages about my stay", desc: "When whoever runs a place you're booked at sends a note (e.g. water's off, gate code)" },
     ],
   },
   {

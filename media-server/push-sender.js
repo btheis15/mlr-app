@@ -306,6 +306,9 @@ async function start() {
     // "meeting set" with the join link. Both relay to a phone push, gated on
     // push_types (off by default — opt in via Profile → Notifications).
     "meeting_proposed", "meeting_scheduled",
+    // A note from whoever runs a place to its current/upcoming guests (migration
+    // 0120) — relay to a phone push, gated on push_types.
+    "cabin_message",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

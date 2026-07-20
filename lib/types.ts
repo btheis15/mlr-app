@@ -53,6 +53,7 @@ export type PushType =
   | "committee_join"
   | "committee_join_request"
   | "cabin_decision"
+  | "cabin_message"
   | "post_tag"
   | "post_mention"
   | "post_reply"
@@ -72,6 +73,7 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "birthdays",
   "committee_join",
   "cabin_decision",
+  "cabin_message",
   "post_tag",
   "post_mention",
   "post_reply",
@@ -96,6 +98,7 @@ export type NotifType =
   | "committee_join_request"
   | "cabin_request"
   | "cabin_decision"
+  | "cabin_message"
   | "event_rsvp"
   | "help_request"
   | "help_response"
@@ -127,6 +130,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "committee_join_request",
   "cabin_request",
   "cabin_decision",
+  "cabin_message",
   "event_rsvp",
   "help_request",
   "help_response",
