@@ -188,11 +188,13 @@ role lists are now **DB-driven everywhere** ([`lib/committeeAdmin.ts`](lib/commi
 source of truth for "what roles exist" (the old hardcoded `FAMILY_FEST_AREAS`
 reads in `CommitteeRoster`/`CommitteeJoin`/`CommitteeMembers` are gone; the
 seed lives on only as an offline/first-paint fallback). Renaming a role
-(`rename_committee_area`) cascades the text through **all six places** it's
+(`rename_committee_area`) cascades the text through **all seven places** it's
 denormalized (allow-list, `committee_roster.roles[]`, `committee_members.areas[]`,
 `committee_messages.area`, `committee_area_reads.area`,
-`committee_join_requests.requested_areas[]`) in one transaction, so the chat
-history + memberships follow the new name.
+`committee_join_requests.requested_areas[]`, and `meetings.area` — the last added
+in migration [`0121`](supabase/migrations/0121_rename_area_meetings.sql) so a
+role-scoped meeting isn't orphaned) in one transaction, so the chat history +
+memberships + scheduled meetings follow the new name.
 
 **"Delete" is an archive, not a destroy.** Archiving a committee or role
 (`archive_committee`/`archive_committee_area`) sets `archived_at`: it drops out
