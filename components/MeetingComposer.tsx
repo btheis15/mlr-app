@@ -38,17 +38,33 @@ type Mode = "vote" | "now";
 export function MeetingComposer({
   scope,
   roomLabel,
+  areaOptions,
   onClose,
   onCreated,
 }: {
   scope: MeetingScope;
   /** e.g. "Meals" or "MJT House" — shown in the header for context. */
   roomLabel: string;
+  /** For a committee: let the organizer aim the meeting at the whole committee
+   *  (value null) or a single role/subcommittee. Omit → use scope.area as-is
+   *  (e.g. when opened from a specific chat channel). */
+  areaOptions?: { value: string | null; label: string }[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const [mode, setMode] = useState<Mode>("vote");
+  // The chosen audience when a picker is offered (committee page). Defaults to the
+  // first option (Everyone). Ignored for houses / a fixed chat-channel scope.
+  const [area, setArea] = useState<string | null>(
+    areaOptions && areaOptions.length > 0
+      ? areaOptions[0].value
+      : scope.type === "committee"
+        ? scope.area
+        : null,
+  );
+  const effectiveScope: MeetingScope =
+    scope.type === "committee" && areaOptions && areaOptions.length > 0 ? { ...scope, area } : scope;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
@@ -98,7 +114,7 @@ export function MeetingComposer({
           durationMin: s.durationMin,
         }));
         const res = await createMeeting({
-          scope,
+          scope: effectiveScope,
           title: t,
           description: description.trim() || null,
           slots: isoSlots,
@@ -109,7 +125,7 @@ export function MeetingComposer({
       } else {
         if (!nowStartsAt) return "Pick a date & time.";
         if (!nowValidLink) return "That doesn’t look like a Google Meet link.";
-        const res = await createScheduledMeeting(scope, {
+        const res = await createScheduledMeeting(effectiveScope, {
           title: t,
           description: description.trim() || null,
           startsAt: nowStartsAt.toISOString(),
@@ -184,6 +200,26 @@ export function MeetingComposer({
           className={`${FIELD} w-full`}
         />
       </div>
+
+      {areaOptions && areaOptions.length > 1 && (
+        <div className="space-y-1.5">
+          <SectionLabel>Who’s this for?</SectionLabel>
+          <select
+            value={area ?? ""}
+            onChange={(e) => setArea(e.target.value || null)}
+            className={`${FIELD} w-full`}
+          >
+            {areaOptions.map((o) => (
+              <option key={o.value ?? "__all__"} value={o.value ?? ""}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="px-0.5 text-xs text-muted">
+            Pick a role to invite just that group, or the whole committee.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <SectionLabel>Note (optional)</SectionLabel>
