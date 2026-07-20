@@ -571,6 +571,8 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
           avatarUrl: m[eventId]?.avatarUrl ?? user.avatarUrl ?? null,
           status,
           days: days ?? null,
+          // A self-write always confirms (mirrors set_event_attendance's upsert).
+          confirmed: true,
         },
       }));
       if (prevBucket !== nextBucket) {

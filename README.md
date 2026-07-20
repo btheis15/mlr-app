@@ -157,17 +157,23 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`components/PollComposer.tsx`](components/PollComposer.tsx). See CLAUDE.md →
   **Family polls**.
 - **Meeting scheduling** — a Doodle-style scheduler pinned to any committee/house
-  chat: an organizer (admin, or a committee/area Lead — houses are admin-only)
-  proposes candidate times, every member marks Yes / If-need-be / No, and the
-  organizer picks the winning slot and captures a **Google Meet** link (guided
-  in-app, prefilled Google Calendar event → paste the link back, no OAuth). Posts
-  the join link into the room + notifies everyone (Activity + optional push).
-  Migration [`0116_meetings.sql`](supabase/migrations/0116_meetings.sql);
+  chat, or (migration `0122`) open to the **whole family** on `/events`: an
+  organizer (admin, or a committee/area Lead — houses and family-wide polls are
+  admin-only) proposes candidate times **or date ranges**, every member marks
+  Yes / If-need-be / No, and the organizer picks the winning slot and either
+  captures a **Google Meet** link (guided in-app, prefilled Google Calendar
+  event → paste the link back, no OAuth) or **creates a real Event** on the
+  resort calendar from it — attendee RSVPs carry over from the vote but land
+  **unconfirmed** until each member re-taps their own RSVP, nudged by an
+  auto-queued reminder. Posts the join link/event into the room + notifies
+  everyone (Activity + optional push). Migrations
+  [`0116_meetings.sql`](supabase/migrations/0116_meetings.sql) +
+  [`0122_family_meetings_to_events.sql`](supabase/migrations/0122_family_meetings_to_events.sql);
   [`lib/meetings.ts`](lib/meetings.ts) +
   [`components/MeetingSection.tsx`](components/MeetingSection.tsx) /
   [`MeetingComposer`](components/MeetingComposer.tsx) /
   [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx). See CLAUDE.md →
-  **Meeting scheduling**.
+  **Meeting scheduling** / **Family-wide polls + creating an Event**.
 - **Native scroll bounce** — `#app-scroll` (the `<main>` in `app/layout.tsx`) is
   the one scroll container; `html`/`body` never scroll, so the fixed TabBar
   never gets dragged during a rubber-band bounce (see CLAUDE.md → **Scrolling

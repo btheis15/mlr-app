@@ -1022,14 +1022,16 @@ creator or an admin closes it, or when its optional `closes_on` date has passed
   (question + options form). Home's [`ActivePollCard`](components/ActivePollCard.tsx)
   spotlights the newest open poll (see **Home delight cards**).
 
-## Meeting scheduling (committee/house → Google Meet)
+## Meeting scheduling (committee/house/family → Google Meet or a real Event)
 
 A built-in Doodle/when2meet-style scheduler pinned to any **committee/house chat
-room** (everything except the resort-wide Main Feed), so a group stops asking the
-group chat over and over. An **organizer** proposes candidate time slots; every
-member of that room marks **Yes / If-need-be / No** per slot; the organizer sees
-live tallies + the best slot, picks the winning time, and captures a **Google
-Meet** link — which posts a join-link message into the room and notifies everyone.
+room**, or — since migration 0122 — open to the **whole family** (see below), so
+a group stops asking the group chat over and over. An **organizer** proposes
+candidate time slots; every member marks **Yes / If-need-be / No** per slot; the
+organizer sees live tallies + the best slot, picks the winning option, and either
+captures a **Google Meet** link (posts a join-link message + notifies everyone)
+or **creates a real Event** on the resort calendar from it (see **Family-wide
+polls + creating an Event** below).
 
 - **Who can propose:** app admins (any room) **and**, for a committee, a **Lead**
   of that committee/area (a `committee_roster` role ending in `· Lead`). Houses
@@ -1125,6 +1127,56 @@ Meet** link — which posts a join-link message into the room and notifies every
 - 📱 **iOS parity is a planned follow-up** — the schema/RPCs are shared, so the
   native app can add the same scheduler against `meetings`/`meeting_slots`/
   `meeting_availability` without a backend change.
+
+### Family-wide polls + creating an Event (migration 0122)
+
+Two extensions on top of the above, for "which weekend can everyone make it for
+the Work Weekend?" — a poll open to every signed-in member, whose winning slot
+becomes a real row on the resort calendar rather than a Meet link.
+
+- **A third scope, `'family'`** — `committee_id`/`house_id` both null. Reads are
+  open to any signed-in member (RLS: `auth.uid() is not null`, same doctrine as
+  the generic **Family polls**). Organizing one is **admin-only** — this falls
+  straight out of `can_organize_meeting`'s existing "admin, unconditionally" check
+  with zero code change to that function. Entry point:
+  **Admin → `/events` → "📅 Propose dates"** (`app/events/page.tsx`, gated on
+  `fetchCanOrganize({type:"family"})`) opens
+  [`MeetingComposer`](components/MeetingComposer.tsx) with `scope={{type:"family"}}`;
+  the active poll (any signed-in member can vote) is a card-surface
+  [`MeetingSection`](components/MeetingSection.tsx) near the top of `/events`,
+  mirroring how `CommitteeDetail` embeds one on a committee page.
+- **Date-range slots.** `meeting_slots.ends_at` (nullable) — when set, a slot is
+  a **date range** ("Fri Jul 25 – Sun Jul 27"), not a point-in-time call.
+  `MeetingComposer` gets a **"Times" vs "Dates"** toggle (defaults to Dates for
+  a family scope) that swaps each slot row's time picker for a second date
+  picker. Existing call-style slots (`ends_at` null) are untouched.
+- **A second finalize outcome: create an Event.** In
+  [`MeetingSchedulerSheet`](components/MeetingSchedulerSheet.tsx), finalizing a
+  slot now offers **"Schedule a call"** (the existing Meet-link flow, unchanged)
+  or **"Create an event"** — title/kind/location, then
+  `finalize_meeting_as_event(meeting, slot, kind, title, description, location)`
+  inserts a row into `events` (`source = 'meeting'`, `source_meeting_id` back-link;
+  `meetings.created_event_id` points the other way) and marks the meeting
+  scheduled. Available regardless of scope — a committee/house meeting can
+  finalize into an Event too, not just a family one.
+- **RSVPs carry over — but UNCONFIRMED.** Every member who voted Yes/If-need-be
+  on the winning slot gets an `event_attendance` row (`going`/`maybe`) with the
+  new **`confirmed = false`** — carrying the poll vote over as a starting point,
+  not a final answer. `set_event_attendance`'s upsert now stamps `confirmed = true`
+  on any self-write, so **reconfirming is just tapping your existing Going/Maybe/
+  Can't-make control again** — no new button to learn. `EventSheet`'s roster tags
+  an unconfirmed name with a quiet "(hasn't confirmed)" — visible to whoever's
+  planning, invisible clutter for everyone else.
+- **The confirmation nudge reuses the existing reminder scheduler**, it isn't a
+  separate system. `finalize_meeting_as_event` auto-queues one
+  `scheduled_broadcasts` reminder 14 days before the event (skipped if that's
+  already past) with a new payload flag, **`onlyUnconfirmed`** —
+  `run_scheduled_broadcasts()` restricts (not excludes) that send to profiles
+  with no attendance row or one with `confirmed = false` for the linked event.
+  [`ReminderScheduler`](components/ReminderScheduler.tsx) exposes the same flag as
+  an "Only remind people who haven't confirmed yet" checkbox (shown whenever it
+  has an `eventId`), so an admin can retime, edit, or cancel the auto-queued one,
+  or add their own, exactly like any other event reminder.
 
 ## Cabin stays
 

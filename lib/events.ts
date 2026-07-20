@@ -113,7 +113,7 @@ export async function fetchAttendance(): Promise<EventAttendance[]> {
   try {
     const { data } = await sb
       .from("event_attendance")
-      .select("event_id, user_id, status, days, profiles(display_name, avatar_url)");
+      .select("event_id, user_id, status, days, confirmed, profiles(display_name, avatar_url)");
     return ((data ?? []) as AttendanceRow[]).map(mapAttendanceRow);
   } catch {
     return [];
@@ -131,7 +131,7 @@ export async function fetchMyAttendance(asUserId?: string): Promise<Record<strin
     if (!uid) return {};
     const { data } = await sb
       .from("event_attendance")
-      .select("event_id, user_id, status, days, profiles(display_name, avatar_url)")
+      .select("event_id, user_id, status, days, confirmed, profiles(display_name, avatar_url)")
       .eq("user_id", uid);
     for (const r of (data ?? []) as AttendanceRow[]) {
       const a = mapAttendanceRow(r);
@@ -338,6 +338,7 @@ interface AttendanceRow {
   user_id: string;
   status: string;
   days: Record<string, AttendanceStatus> | null;
+  confirmed: boolean;
   // Supabase returns an embedded relation as an object (or array depending on the
   // FK shape) — handle both defensively, like lib/cabins.ts.
   profiles?:
@@ -355,5 +356,6 @@ function mapAttendanceRow(r: AttendanceRow): EventAttendance {
     avatarUrl: p?.avatar_url ?? null,
     status: r.status as AttendanceStatus,
     days: r.days,
+    confirmed: r.confirmed,
   };
 }

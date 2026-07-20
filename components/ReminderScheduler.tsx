@@ -95,6 +95,7 @@ export function ReminderScheduler({
   const [title, setTitle] = useState(defaultTitle ?? `Reminder: ${sourceLabel}`);
   const [body, setBody] = useState(defaultBody ?? "");
   const [excludeDone, setExcludeDone] = useState(true);
+  const [onlyUnconfirmed, setOnlyUnconfirmed] = useState(false);
   const save = useSaveStatus();
   const { busy, run } = useBusyAction();
 
@@ -130,6 +131,7 @@ export function ReminderScheduler({
           sourceId,
           sourceLabel,
           excludeCalloutDone: sourceType === "callout" ? excludeDone : undefined,
+          onlyUnconfirmed: eventId ? onlyUnconfirmed : undefined,
         },
         computedAt.toISOString(),
       );
@@ -216,6 +218,17 @@ export function ReminderScheduler({
                 type="checkbox"
                 checked={excludeDone}
                 onChange={(e) => setExcludeDone(e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+              />
+            </label>
+          )}
+          {eventId && (
+            <label className="flex items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-2 text-xs text-foreground/70 ring-1 ring-border">
+              <span>Only remind people who haven&rsquo;t confirmed yet</span>
+              <input
+                type="checkbox"
+                checked={onlyUnconfirmed}
+                onChange={(e) => setOnlyUnconfirmed(e.target.checked)}
                 className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
               />
             </label>

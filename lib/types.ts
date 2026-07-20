@@ -594,8 +594,9 @@ export interface ResortEvent {
   /** Multi-day events can offer a per-day RSVP drill-down (Family Fest). */
   dayRsvp: boolean;
   /** "admin" = a native event (seed or DB row); "gcal" = a future Google-Calendar
-   *  feed (the deferred seam in lib/events.ts). */
-  source: "admin" | "gcal";
+   *  feed (the deferred seam in lib/events.ts); "meeting" = created by finalizing
+   *  a meeting poll (see lib/meetings.ts finalizeMeetingAsEvent). */
+  source: "admin" | "gcal" | "meeting";
   /** True when this is a real, editable DB row (vs a synthesized seed event). */
   persisted: boolean;
 }
@@ -604,7 +605,9 @@ export type AttendanceStatus = "going" | "maybe" | "not_going";
 
 /** One member's RSVP to one event. `days` is an optional per-day map for multi-day
  *  events with the drill-down on (keys are ISO dates). `name`/`avatarUrl` are
- *  joined from the member's profile when the roster loads. */
+ *  joined from the member's profile when the roster loads. `confirmed` is false
+ *  only for a status carried over from a meeting poll's winning slot (see
+ *  finalize_meeting_as_event) until the member re-taps their own RSVP. */
 export interface EventAttendance {
   eventId: string;
   userId: string;
@@ -612,6 +615,7 @@ export interface EventAttendance {
   avatarUrl: string | null;
   status: AttendanceStatus;
   days?: Record<string, AttendanceStatus> | null;
+  confirmed: boolean;
 }
 
 /** An event's roster, grouped by (effective) status, plus counts. */

@@ -4,10 +4,13 @@ import { useMemo, useState } from "react";
 import { FIELD, SectionLabel, Sheet } from "@/components/Sheet";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useSaveStatus, useSheetDismiss } from "@/lib/hooks";
+import { KINDS } from "@/components/EventComposer";
+import type { EventKind } from "@/lib/types";
 import {
   cancelMeeting,
   deleteMeeting,
   finalizeMeeting,
+  finalizeMeetingAsEvent,
   googleCalendarCreateUrl,
   looksLikeMeetLink,
   setMyAvailability,
@@ -35,7 +38,12 @@ const AVAIL_OPTIONS: { value: AvailabilityStatus; label: string; on: string }[] 
   { value: "no", label: "No", on: "bg-foreground text-white ring-foreground" },
 ];
 
-function formatSlot(startsAt: string, durationMin: number): string {
+function formatSlot(startsAt: string, durationMin: number, endsAt?: string | null): string {
+  if (endsAt) {
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    return `${fmt(startsAt)} – ${fmt(endsAt)}`;
+  }
   const d = new Date(startsAt);
   const when = d.toLocaleString(undefined, {
     weekday: "short",
@@ -81,6 +89,14 @@ export function MeetingSchedulerSheet({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [finalizing, setFinalizing] = useState<MeetingSlot | null>(null);
   const [meetUrl, setMeetUrl] = useState(meeting.meetUrl ?? "");
+  // Finalize outcome: a plain call (today's Meet-link flow) or a real Event on
+  // the resort calendar. A family-wide poll is almost always "which weekend",
+  // so default it to the event outcome; a committee/house call defaults to a
+  // call, same as before this feature existed.
+  const [outcome, setOutcome] = useState<"call" | "event">(meeting.scopeType === "family" ? "event" : "call");
+  const [eventKind, setEventKind] = useState<EventKind>("work_weekend");
+  const [eventTitle, setEventTitle] = useState(meeting.title);
+  const [eventLocation, setEventLocation] = useState("");
 
   const isOpen = meeting.status === "open";
   const dirty = useMemo(
@@ -116,6 +132,21 @@ export function MeetingSchedulerSheet({
     });
   };
 
+  const doFinalizeAsEvent = (slot: MeetingSlot) => {
+    if (previewAsId) return;
+    void run(async () => {
+      const { error } = await finalizeMeetingAsEvent(meeting.id, slot.id, {
+        kind: eventKind,
+        title: eventTitle.trim() || null,
+        location: eventLocation.trim() || null,
+      });
+      if (error) return error;
+      onChanged();
+      close();
+      return null;
+    });
+  };
+
   const onCancel = () => {
     if (!window.confirm(`Cancel "${meeting.title}"? Members will see it as cancelled.`)) return;
     void run(async () => {
@@ -138,7 +169,7 @@ export function MeetingSchedulerSheet({
     });
   };
 
-  // ── Guided in-app Google Meet step ─────────────────────────────────────────
+  // ── Guided finalize step — a call (Google Meet) or a real Event ───────────
   if (finalizing) {
     const gcalUrl = googleCalendarCreateUrl({
       title: meeting.title,
@@ -149,6 +180,7 @@ export function MeetingSchedulerSheet({
         "Scheduled from the MLR app — add Google Meet, then paste the link back in the app.",
     });
     const validLink = !meetUrl.trim() || looksLikeMeetLink(meetUrl);
+    const validEvent = eventTitle.trim().length > 0;
     return (
       <Sheet
         closing={closing}
@@ -157,21 +189,33 @@ export function MeetingSchedulerSheet({
         header={
           <div className="pr-10">
             <h2 id="meeting-finalize-title" className="text-lg font-bold">
-              Set the meeting
+              {outcome === "event" ? "Create the event" : "Set the meeting"}
             </h2>
-            <p className="mt-0.5 text-xs text-muted">{formatSlot(finalizing.startsAt, finalizing.durationMin)}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {formatSlot(finalizing.startsAt, finalizing.durationMin, finalizing.endsAt)}
+            </p>
           </div>
         }
         footer={
           <div className="space-y-2">
             {status && <p className="text-sm font-medium text-red-600">{status}</p>}
-            <button
-              onClick={() => doFinalize(finalizing, meetUrl)}
-              disabled={pending || !validLink}
-              className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Set the meeting"}
-            </button>
+            {outcome === "event" ? (
+              <button
+                onClick={() => doFinalizeAsEvent(finalizing)}
+                disabled={pending || !validEvent}
+                className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {pending ? "Saving…" : "Create the event"}
+              </button>
+            ) : (
+              <button
+                onClick={() => doFinalize(finalizing, meetUrl)}
+                disabled={pending || !validLink}
+                className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {pending ? "Saving…" : "Set the meeting"}
+              </button>
+            )}
             <button
               onClick={() => setFinalizing(null)}
               className="press w-full rounded-xl bg-background py-2.5 text-sm font-semibold text-foreground/70 ring-1 ring-border"
@@ -181,43 +225,106 @@ export function MeetingSchedulerSheet({
           </div>
         }
       >
-        <ol className="space-y-3">
-          <li className="rounded-xl bg-background p-3 ring-1 ring-border">
-            <p className="text-sm font-semibold">1. Create the Google Meet</p>
-            <p className="mt-0.5 text-xs text-muted">
-              Opens a Google Calendar event, already filled in with this time. Tap{" "}
-              <span className="font-medium">“Add Google Meet”</span>, then <span className="font-medium">Save</span> —
-              you’ll get a join link.
-            </p>
-            <a
-              href={gcalUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="press mt-2 flex items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white"
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-background p-1 ring-1 ring-border">
+          {(
+            [
+              { v: "call" as const, label: "Schedule a call", sub: "Google Meet" },
+              { v: "event" as const, label: "Create an event", sub: "On the calendar" },
+            ]
+          ).map(({ v, label, sub }) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setOutcome(v)}
+              aria-pressed={outcome === v}
+              className={`press rounded-lg px-2 py-1.5 text-center ${outcome === v ? "bg-primary text-white" : "text-foreground/60"}`}
             >
-              📅 Create Google Meet ↗
-            </a>
-          </li>
-          <li className="space-y-1.5">
-            <SectionLabel>2. Paste the Meet link here</SectionLabel>
-            <input
-              value={meetUrl}
-              onChange={(e) => setMeetUrl(e.target.value)}
-              placeholder="https://meet.google.com/…"
-              inputMode="url"
-              className={`${FIELD} w-full`}
-            />
-            {!validLink && (
-              <p className="px-0.5 text-xs font-medium text-accent">
-                That doesn’t look like a Google Meet link — double-check it, or skip for now.
-              </p>
-            )}
+              <span className="block text-xs font-semibold">{label}</span>
+              <span className={`block text-[10px] ${outcome === v ? "text-white/80" : "text-muted"}`}>{sub}</span>
+            </button>
+          ))}
+        </div>
+
+        {outcome === "event" ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <SectionLabel>Event title</SectionLabel>
+              <input
+                value={eventTitle}
+                onChange={(e) => setEventTitle(e.target.value)}
+                placeholder="e.g. Work Weekend"
+                maxLength={200}
+                className={`${FIELD} w-full`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <SectionLabel>Kind</SectionLabel>
+              <select
+                value={eventKind}
+                onChange={(e) => setEventKind(e.target.value as EventKind)}
+                className={`${FIELD} w-full`}
+              >
+                {KINDS.map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <SectionLabel>Location (optional)</SectionLabel>
+              <input
+                value={eventLocation}
+                onChange={(e) => setEventLocation(e.target.value)}
+                placeholder="e.g. Up North"
+                maxLength={200}
+                className={`${FIELD} w-full`}
+              />
+            </div>
             <p className="px-0.5 text-xs text-muted">
-              No link yet? Tap <span className="font-medium">Set the meeting</span> to lock the time now — you can add
-              the link later.
+              Everyone who said Yes or If-need-be for this option gets added to the event as Going/Maybe — they&rsquo;ll
+              be asked to confirm once it&rsquo;s official.
             </p>
-          </li>
-        </ol>
+          </div>
+        ) : (
+          <ol className="space-y-3">
+            <li className="rounded-xl bg-background p-3 ring-1 ring-border">
+              <p className="text-sm font-semibold">1. Create the Google Meet</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Opens a Google Calendar event, already filled in with this time. Tap{" "}
+                <span className="font-medium">“Add Google Meet”</span>, then <span className="font-medium">Save</span> —
+                you’ll get a join link.
+              </p>
+              <a
+                href={gcalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="press mt-2 flex items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white"
+              >
+                📅 Create Google Meet ↗
+              </a>
+            </li>
+            <li className="space-y-1.5">
+              <SectionLabel>2. Paste the Meet link here</SectionLabel>
+              <input
+                value={meetUrl}
+                onChange={(e) => setMeetUrl(e.target.value)}
+                placeholder="https://meet.google.com/…"
+                inputMode="url"
+                className={`${FIELD} w-full`}
+              />
+              {!validLink && (
+                <p className="px-0.5 text-xs font-medium text-accent">
+                  That doesn’t look like a Google Meet link — double-check it, or skip for now.
+                </p>
+              )}
+              <p className="px-0.5 text-xs text-muted">
+                No link yet? Tap <span className="font-medium">Set the meeting</span> to lock the time now — you can add
+                the link later.
+              </p>
+            </li>
+          </ol>
+        )}
       </Sheet>
     );
   }
@@ -259,11 +366,20 @@ export function MeetingSchedulerSheet({
     >
       {meeting.description && <p className="whitespace-pre-wrap text-sm text-foreground/75">{meeting.description}</p>}
 
-      {/* Scheduled: the outcome up top. */}
+      {/* Scheduled: the outcome up top — either a Meet link or a real Event. */}
       {meeting.status === "scheduled" && chosen && (
         <div className="space-y-2 rounded-2xl bg-primary/10 p-4 ring-1 ring-primary/20">
-          <p className="text-sm font-semibold text-primary">📅 {formatSlot(chosen.startsAt, chosen.durationMin)}</p>
-          {meeting.meetUrl ? (
+          <p className="text-sm font-semibold text-primary">
+            📅 {formatSlot(chosen.startsAt, chosen.durationMin, chosen.endsAt)}
+          </p>
+          {meeting.createdEventId ? (
+            <a
+              href={`/events?open=${meeting.createdEventId}`}
+              className="press flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
+            >
+              View the event ↗
+            </a>
+          ) : meeting.meetUrl ? (
             <a
               href={meeting.meetUrl}
               target="_blank"
@@ -275,10 +391,11 @@ export function MeetingSchedulerSheet({
           ) : (
             <p className="text-xs text-muted">No join link yet.</p>
           )}
-          {canManage && (
+          {canManage && !meeting.createdEventId && (
             <button
               onClick={() => {
                 setMeetUrl(meeting.meetUrl ?? "");
+                setOutcome("call");
                 setFinalizing(chosen);
               }}
               className="press w-full rounded-xl bg-background py-2 text-xs font-semibold text-foreground/70 ring-1 ring-border"
@@ -309,7 +426,7 @@ export function MeetingSchedulerSheet({
                 className={`rounded-xl p-3 ring-1 ${isBest ? "bg-primary/5 ring-primary/30" : "bg-background ring-border"}`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold">{formatSlot(s.startsAt, s.durationMin)}</p>
+                  <p className="text-sm font-semibold">{formatSlot(s.startsAt, s.durationMin, s.endsAt)}</p>
                   {isBest && (
                     <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
                       {everyone ? "✅ Everyone" : "Best so far"}
