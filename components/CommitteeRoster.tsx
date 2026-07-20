@@ -227,7 +227,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         {pending && (
           <span
             className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-muted"
-            title="Invited — hasn't signed in to claim their account yet"
+            title="Hasn't signed in to claim their account yet — manage their info on Admin → Members → Family roster; their spot here links up automatically when they join"
           >
             Pending verification
           </span>

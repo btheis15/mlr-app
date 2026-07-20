@@ -110,6 +110,32 @@ export async function setFamilyRosterHouse(id: string, houseId: string | null): 
   return error ? { error: error.message } : {};
 }
 
+/** Committee memberships held by account-less roster people, keyed by
+ *  lowercased email. These are the "manual add-in" committee slots (migration
+ *  0125 keeps them in sync with the family roster until the person signs up).
+ *  Safe empty map with no backend / pre-migration. */
+export async function fetchRosterCommittees(): Promise<Record<string, { slug: string; label: string }[]>> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return {};
+  try {
+    const [{ data: slots }, { data: committees }] = await Promise.all([
+      sb.from("committee_roster").select("email, committee_slug").is("linked_user_id", null).not("email", "is", null),
+      sb.from("committees").select("slug, name, emoji").is("archived_at", null),
+    ]);
+    const names = new Map((committees ?? []).map((c) => [c.slug as string, `${c.emoji ?? ""} ${c.name}`.trim()]));
+    const out: Record<string, { slug: string; label: string }[]> = {};
+    for (const s of slots ?? []) {
+      const key = (s.email as string).trim().toLowerCase();
+      if (!key) continue;
+      const slug = s.committee_slug as string;
+      (out[key] ??= []).push({ slug, label: names.get(slug) ?? slug });
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Remove a roster person (admin-gated by RLS). */
 export async function deleteFamilyRosterEntry(id: string): Promise<{ error?: string }> {
   const sb = supabase;
