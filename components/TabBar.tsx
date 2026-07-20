@@ -68,7 +68,7 @@ export function TabBar() {
       // with page content bleeding below it. An opaque bg removes the glitch.
       // `translate-y-0` (vs no transform) keeps it on a stable compositor layer
       // so its position tracks the viewport cleanly during scroll.
-      className={`fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card transition-transform duration-200 ${keyboardOpen ? "translate-y-full" : "translate-y-0"}`}
+      className={`fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-border bg-card transition-transform duration-200 lg:hidden ${keyboardOpen ? "translate-y-full" : "translate-y-0"}`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch justify-around">
