@@ -2,6 +2,7 @@ import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
 import { AdminMembers } from "@/components/AdminMembers";
 import { AdminProfileOverride } from "@/components/AdminProfileOverride";
+import { AdminRosterInvite } from "@/components/AdminRosterInvite";
 
 export default function AdminMembersPage() {
   return (
@@ -15,6 +16,8 @@ export default function AdminMembersPage() {
           </p>
         </header>
         <AdminMembers />
+
+        <AdminRosterInvite />
 
         <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">

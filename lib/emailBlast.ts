@@ -69,6 +69,16 @@ export async function fetchCommitteeRecipients(committeeId: string): Promise<Rec
   return toResult(data, error);
 }
 
+/** Everyone in a house — account members PLUS the not-yet-on-the-app people on
+ *  the house roster (migration 0123), each with their up-to-date email. Gated to
+ *  house members / admins by the RPC. `needsMigration` points at 0123. */
+export async function fetchHouseRecipients(houseId: string): Promise<RecipientResult> {
+  const sb = supabase;
+  if (!sb) return { recipients: [], needsMigration: false, error: null };
+  const { data, error } = await sb.rpc("house_member_recipients", { hid: houseId });
+  return toResult(data, error);
+}
+
 /**
  * Build a `mailto:` link that drops everyone into the **To** field (addresses
  * are already visible across the app, so no BCC — this also lets people

@@ -29,11 +29,16 @@ export function EmailMembersComposer({
   load,
   groupNoun,
   allowAll = true,
+  migrationFile = "0028_email_recipients.sql",
 }: {
   sourceKey: string;
   load: () => Promise<RecipientResult>;
   groupNoun: string;
   allowAll?: boolean;
+  /** Which migration turns this pool's recipient RPC on — shown in the
+   *  MigrationHint before it's been applied. Defaults to the members/committee
+   *  RPC (0028); the house pool passes 0123. */
+  migrationFile?: string;
 }) {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
