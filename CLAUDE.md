@@ -883,10 +883,17 @@ Admin → Alerts & Notifications → **Scheduled**
 ([`AdminScheduledBroadcasts`](components/AdminScheduledBroadcasts.tsx)) is the
 queue view: pending items with **Edit** (`update_scheduled_broadcast`, migration
 0101 — title/body/send-time, refuses once the row has already fired/cancelled)
-and **Cancel** (`cancel_scheduled_broadcast`, a no-op if it already fired), plus
-recently-sent/failed rows for visibility — a failure is recorded on the row
-(`error`) rather than silently dropped, and surfaces there. Kept live via
-Realtime, same shape as `AdminCabinBookings`.
+and **Cancel** (`cancel_scheduled_broadcast`, a no-op if it already fired). Kept
+live via Realtime, same shape as `AdminCabinBookings`. Already-fired rows never
+get purged server-side (a quiet audit trail) — `fetchScheduledBroadcasts()`
+(`lib/scheduledBroadcasts.ts`) fetches them as a separate, capped `history`
+slice (most-recent-first) rather than mixing them into the same
+ascending-by-scheduled-time query as `pending` (which would otherwise
+eventually fill its limit with old history before ever reaching a genuinely
+upcoming item). The UI keeps them out of the way in a collapsed **"🕘
+Previously sent"** disclosure below the pending list (a failure is recorded on
+the row (`error`) and surfaces there once expanded) — same "tucked below,
+expand to see" idiom as the Feed tab's "Archived chats" line.
 
 ### Event/callout reminders (migration 0101)
 

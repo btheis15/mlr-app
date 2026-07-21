@@ -107,20 +107,44 @@ export async function scheduleBroadcast(
   return { id: data as string };
 }
 
-/** The queue (admin-only, RLS-gated) — pending + recently sent/failed, newest
- *  scheduled-time first, so an admin can see what's about to fire and what
- *  just went out. Cancelled rows are omitted; nothing purges them server-side
- *  so they stay in the table as a quiet audit trail. */
-export async function fetchScheduledBroadcasts(): Promise<ScheduledBroadcast[]> {
+export interface ScheduledBroadcastsResult {
+  /** Not yet fired (and not cancelled) — soonest first. */
+  pending: ScheduledBroadcast[];
+  /** Already fired (sent or failed) — most recent first, capped, since
+   *  nothing purges these server-side (a quiet audit trail otherwise). Kept
+   *  separate from `pending` so the queue view can tuck history away instead
+   *  of it piling up and crowding out what's actually still upcoming — see
+   *  AdminScheduledBroadcasts' "Previously sent" disclosure. */
+  history: ScheduledBroadcast[];
+}
+
+/** The queue (admin-only, RLS-gated): still-pending items plus a capped
+ *  slice of recent history. Two separate queries rather than one big one
+ *  sorted by scheduled_at — with years of history accumulating (cancelled
+ *  rows are omitted, but sent/failed ones never get purged), a single
+ *  ascending-by-scheduled_at query would eventually fill its limit with old
+ *  history before ever reaching a genuinely upcoming item. */
+export async function fetchScheduledBroadcasts(): Promise<ScheduledBroadcastsResult> {
   const sb = supabase;
-  if (!sb) return [];
-  const { data } = await sb
-    .from("scheduled_broadcasts")
-    .select("id, kind, payload, scheduled_at, sent_at, cancelled_at, error, created_at")
-    .is("cancelled_at", null)
-    .order("scheduled_at", { ascending: true })
-    .limit(100);
-  return ((data ?? []) as ScheduledBroadcastRow[]).map(mapRow);
+  if (!sb) return { pending: [], history: [] };
+  const cols = "id, kind, payload, scheduled_at, sent_at, cancelled_at, error, created_at";
+  const [{ data: pendingRows }, { data: historyRows }] = await Promise.all([
+    sb.from("scheduled_broadcasts")
+      .select(cols)
+      .is("sent_at", null)
+      .is("cancelled_at", null)
+      .order("scheduled_at", { ascending: true })
+      .limit(50),
+    sb.from("scheduled_broadcasts")
+      .select(cols)
+      .not("sent_at", "is", null)
+      .order("sent_at", { ascending: false })
+      .limit(20),
+  ]);
+  return {
+    pending: ((pendingRows ?? []) as ScheduledBroadcastRow[]).map(mapRow),
+    history: ((historyRows ?? []) as ScheduledBroadcastRow[]).map(mapRow),
+  };
 }
 
 /** Pull one out of the queue before it fires — no-op (silently) if it already
