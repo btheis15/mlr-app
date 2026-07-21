@@ -1,8 +1,7 @@
 import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
-import { AdminAlertComposer } from "@/components/AdminAlertComposer";
-import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
+import { AdminBroadcastComposer } from "@/components/AdminBroadcastComposer";
 import { AdminCallouts } from "@/components/AdminCallouts";
 import { AdminScheduledBroadcasts } from "@/components/AdminScheduledBroadcasts";
 
@@ -28,23 +27,17 @@ export default function AdminAlertsPage() {
           <AdminScheduledBroadcasts />
         </div>
 
-        {/* Both composers are one-off "fill it out, send it" forms with nothing
-            to browse (unlike Home callouts below, a real list) — collapsed by
-            default keeps the page from opening on two full forms at once. */}
+        {/* One merged composer (banner / Activity tab / email are its three
+            channel checkboxes) — replaces the old separate "Post an alert" +
+            "Send a notification" forms. A one-off "fill it out, send it" form
+            with nothing to browse (unlike Home callouts below, a real list),
+            so it's collapsed by default. */}
         <CollapsibleSection
-          title="Post an alert"
+          title="Reach everyone"
           icon="📣"
-          subtitle="Banner notice to everyone (+ email)."
+          subtitle="Banner, Activity tab, and/or email — pick any combination."
         >
-          <AdminAlertComposer />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          title="Send a notification"
-          icon="🔔"
-          subtitle="To everyone or admins · lands in their Activity tab."
-        >
-          <AdminNotificationComposer />
+          <AdminBroadcastComposer />
         </CollapsibleSection>
 
         <div className="space-y-2">

@@ -2,9 +2,9 @@
 // for a future time (migration 0097). The actual send happens inside Postgres
 // via pg_cron, not this app or the mac mini — see run_scheduled_broadcasts()
 // in the migration — so this module is just queue CRUD: schedule, list,
-// cancel. `payload` intentionally mirrors what AdminAlertComposer /
-// AdminNotificationComposer already collect, so scheduling reuses the same
-// shape instead of inventing a second one.
+// cancel. `payload` intentionally mirrors what AdminBroadcastComposer already
+// collects, so scheduling reuses the same shape instead of inventing a second
+// one.
 
 import { supabase } from "@/lib/supabase";
 
@@ -20,6 +20,16 @@ export interface BroadcastPayload {
   expiryHours?: number | null;
   notifyEmail?: boolean;
   emailAudience?: "all" | "admins";
+  /** 'announcement' kind only (migration 0126) — show it in the top-of-app
+   *  banner. Defaults true when absent (older queued rows, pre-0126). Lets an
+   *  'announcement' fire email-only with the banner suppressed. */
+  showBanner?: boolean;
+  /** @deprecated 'notification' kind only — the old AdminNotificationComposer's
+   *  "Also show as a top-of-app banner" checkbox, mirrored by
+   *  run_scheduled_broadcasts() into a second announcements insert. The
+   *  current composer (AdminBroadcastComposer) schedules Banner as its own
+   *  'announcement' row instead and never sets this; kept only so any
+   *  already-queued rows from before that change still fire as queued. */
   alsoBanner?: boolean;
   eventId?: string | null;
   excludeNotAttending?: boolean;

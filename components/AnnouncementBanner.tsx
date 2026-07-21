@@ -19,6 +19,7 @@ interface AnnouncementRow {
   expires_at: string | null;
   event_id: string | null;
   exclude_not_attending: boolean;
+  show_banner: boolean;
 }
 
 /**
@@ -70,12 +71,16 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
     const loadDb = async () => {
       const { data } = await sb
         .from("announcements")
-        .select("id, title, body, severity, created_at, expires_at, event_id, exclude_not_attending")
+        .select("id, title, body, severity, created_at, expires_at, event_id, exclude_not_attending, show_banner")
         .order("created_at", { ascending: false })
         .limit(20);
       if (cancelled) return;
       setDb(
         ((data ?? []) as AnnouncementRow[])
+          // An "email only" send (migration 0126's show_banner:false — e.g. a
+          // Home callout's "Also email" side action) never paints the banner.
+          // Missing/undefined (pre-migration) reads as true, unchanged.
+          .filter((r) => r.show_banner !== false)
           .map((r) => ({
             id: r.id,
             severity: r.severity === "info" ? "info" : "alert",
