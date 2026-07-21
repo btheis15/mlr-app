@@ -255,13 +255,25 @@ async function start() {
 
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
-    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner").eq("id", alertId).maybeSingle();
+    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending").eq("id", alertId).maybeSingle();
     if (!a) return;
     // An "email only" send (migration 0126's show_banner:false) never shows a
     // banner, so it shouldn't buzz phones either — push rides with the banner.
     if (a.show_banner === false) return;
     // Everyone who opted into broadcast alerts (push_types contains 'alerts').
     const { data: profs } = await sb.from("profiles").select("id").contains("push_types", ["alerts"]);
+    // Same "not going" exclusion as the banner/Activity-tab/email channels
+    // (migration 0096/0127) — an alert linked to an event skips anyone who
+    // explicitly RSVP'd "Can't make it" to it.
+    let excluded = new Set();
+    if (a.exclude_not_attending && a.event_id) {
+      const { data: notGoing } = await sb
+        .from("event_attendance")
+        .select("user_id")
+        .eq("event_id", a.event_id)
+        .eq("status", "not_going");
+      excluded = new Set((notGoing || []).map((r) => r.user_id));
+    }
     const payload = {
       title: a.title ? `📣 ${a.title}` : "📣 Muskellunge Lake Resort",
       body: (a.body || "").slice(0, 180),
@@ -271,7 +283,11 @@ async function start() {
       url: `${APP_URL}/`,
     };
     let sent = 0;
-    for (const p of profs || []) { await sendToUser(p.id, payload); sent++; }
+    for (const p of profs || []) {
+      if (excluded.has(p.id)) continue;
+      await sendToUser(p.id, payload);
+      sent++;
+    }
     if (sent) console.log(`[push] alert: notified ${sent}`);
   };
 
