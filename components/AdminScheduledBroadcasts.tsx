@@ -18,17 +18,23 @@ import {
  * into this same table via scheduleBroadcast(); a pg_cron tick inside
  * Postgres (run_scheduled_broadcasts, every minute) fires each one at its
  * time and stamps sent_at/error, which this view reflects live via Realtime —
- * no polling needed here.
+ * no polling needed here. Already-fired items never get purged (a quiet audit
+ * trail), so they're tucked into a small "Previously sent" disclosure below
+ * the pending list instead of piling up and eating the page — see
+ * `PreviouslySentLine`.
  */
 export function AdminScheduledBroadcasts() {
   const { isAdmin } = useIdentity();
-  const [items, setItems] = useState<ScheduledBroadcast[]>([]);
+  const [pending, setPending] = useState<ScheduledBroadcast[]>([]);
+  const [history, setHistory] = useState<ScheduledBroadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ScheduledBroadcast | null>(null);
   const { busy, run } = useBusyAction();
 
   const load = useCallback(async () => {
-    setItems(await fetchScheduledBroadcasts());
+    const { pending, history } = await fetchScheduledBroadcasts();
+    setPending(pending);
+    setHistory(history);
     setLoading(false);
   }, []);
 
@@ -64,37 +70,31 @@ export function AdminScheduledBroadcasts() {
 
   if (!isAdmin || !isSupabaseConfigured) return null;
   if (loading) return null;
-  if (items.length === 0) {
+  if (pending.length === 0 && history.length === 0) {
     return <p className="rounded-xl bg-card p-3 text-center text-xs text-muted ring-1 ring-border">Nothing scheduled.</p>;
   }
 
   return (
-    <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
-      {items.map((item) => {
-        const sent = Boolean(item.sentAt);
-        const failed = sent && Boolean(item.error);
-        return (
-          <li key={item.id} className="flex items-start gap-3 p-3">
-            <span className="mt-0.5 text-base" aria-hidden>
-              {item.kind === "announcement" ? "📣" : "🔔"}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{item.payload.title}</p>
-              {item.payload.body && <p className="truncate text-xs text-muted">{item.payload.body}</p>}
-              {item.payload.sourceLabel && (
-                <p className="truncate text-xs text-primary/70">Reminder for: {item.payload.sourceLabel}</p>
-              )}
-              <p className="mt-0.5 text-xs text-faint">
-                {failed ? (
-                  <span className="font-medium text-accent">Failed: {item.error}</span>
-                ) : sent ? (
-                  <span className="font-medium text-primary">Sent {new Date(item.sentAt!).toLocaleString()}</span>
-                ) : (
-                  <>Scheduled for {new Date(item.scheduledAt).toLocaleString()}</>
+    <div className="space-y-1.5">
+      {pending.length === 0 ? (
+        <p className="rounded-xl bg-card p-3 text-center text-xs text-muted ring-1 ring-border">Nothing scheduled right now.</p>
+      ) : (
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+          {pending.map((item) => (
+            <li key={item.id} className="flex items-start gap-3 p-3">
+              <span className="mt-0.5 text-base" aria-hidden>
+                {item.kind === "announcement" ? "📣" : "🔔"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{item.payload.title}</p>
+                {item.payload.body && <p className="truncate text-xs text-muted">{item.payload.body}</p>}
+                {item.payload.sourceLabel && (
+                  <p className="truncate text-xs text-primary/70">Reminder for: {item.payload.sourceLabel}</p>
                 )}
-              </p>
-            </div>
-            {!sent && (
+                <p className="mt-0.5 text-xs text-faint">
+                  Scheduled for {new Date(item.scheduledAt).toLocaleString()}
+                </p>
+              </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   onClick={() => setEditing(item)}
@@ -110,10 +110,11 @@ export function AdminScheduledBroadcasts() {
                   Cancel
                 </button>
               </div>
-            )}
-          </li>
-        );
-      })}
+            </li>
+          ))}
+        </ul>
+      )}
+      {history.length > 0 && <PreviouslySentLine items={history} />}
       {editing && (
         <EditScheduledBroadcastSheet
           item={editing}
@@ -121,7 +122,53 @@ export function AdminScheduledBroadcasts() {
           onSaved={() => { setEditing(null); load(); }}
         />
       )}
-    </ul>
+    </div>
+  );
+}
+
+/** A quiet, collapsed-by-default disclosure for already-fired items — mirrors
+ *  the "Archived chats" line at the foot of the Feed tab (FeedView.tsx). Just
+ *  title + outcome, no Edit/Cancel (there's nothing left to change). */
+function PreviouslySentLine({ items }: { items: ScheduledBroadcast[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="press flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-foreground/40"
+      >
+        🕘 Previously sent ({items.length})
+        <span className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>›</span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+          {items.map((item) => {
+            const failed = Boolean(item.error);
+            return (
+              <li key={item.id} className="flex items-start gap-3 p-3">
+                <span className="mt-0.5 text-base" aria-hidden>
+                  {item.kind === "announcement" ? "📣" : "🔔"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.payload.title}</p>
+                  {item.payload.sourceLabel && (
+                    <p className="truncate text-xs text-primary/70">Reminder for: {item.payload.sourceLabel}</p>
+                  )}
+                  <p className="mt-0.5 text-xs text-faint">
+                    {failed ? (
+                      <span className="font-medium text-accent">Failed: {item.error}</span>
+                    ) : (
+                      <span className="font-medium text-primary">Sent {new Date(item.sentAt!).toLocaleString()}</span>
+                    )}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
