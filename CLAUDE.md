@@ -1094,6 +1094,17 @@ polls + creating an Event** below).
   tallies + "who's free" + the guided finalize; needs the room roster's ids for
   name resolution, hence it stays in the chat body). A meeting created from the ⋯
   menu shows up in the bar on the next realtime tick — no cross-component wiring.
+- **The same ⋯ menu also has an "✉️ Email members" button** — unlike scheduling,
+  open to **anyone** viewing the room (no organizer gate: everyone here can
+  already see everyone here). It hosts a `ChatEmailSheet` (also in `FeedView.tsx`)
+  that reuses the People page's [`EmailMembersComposer`](components/EmailMembersComposer.tsx)
+  (see **People** in the tabs table), pre-scoped instead of pool-picked: a
+  committee's General channel emails `fetchCommitteeRecipients` for the whole
+  roster (`lib/emailBlast.ts`); an area sub-channel (e.g. Family Fest's "Meals")
+  client-filters that same roster down to the area's members, mirroring exactly
+  who `openMembers()` lists in the roster sheet above it; a house channel calls
+  `fetchHouseRecipients`. Composing/sending is unchanged — still a `mailto:`
+  hand-off, nothing sent from the app.
 - **Activity + push:** two notification kinds `meeting_proposed` (→ every room
   member: "mark when you're free") and `meeting_scheduled` (→ every room member:
   "meeting set", with the join link), fanned out by `_notify_meeting_room` over
