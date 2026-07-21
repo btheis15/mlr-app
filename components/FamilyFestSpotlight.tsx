@@ -102,38 +102,44 @@ export function FamilyFestSpotlight({
         </p>
         {todays.length > 0 || dinner ? (
           <ul className="mt-2 space-y-2">
-            {todays.map((e) => (
-              <li key={e.id} className="rounded-xl bg-background/50 p-2.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-medium">
-                    {e.emoji} {e.title}
-                  </span>
-                  <span className="shrink-0 text-xs font-medium text-foreground/60">
-                    {formatTime(e.start)}
-                    {e.end ? `–${formatTime(e.end)}` : ""}
-                  </span>
-                </div>
-                <p className="mt-0.5 truncate text-xs text-foreground/55">
-                  📍 <Protected label="Sign in for location">{e.location}</Protected>
-                </p>
-              </li>
-            ))}
-            {dinner && (
-              <li className="rounded-xl bg-background/50 p-2.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-medium">
-                    {dinner.emoji} Dinner · {dinner.title}
-                  </span>
-                  <span className="shrink-0 text-xs font-medium text-foreground/60">
-                    {formatTime(dinner.time)}
-                  </span>
-                </div>
-                <p className="mt-0.5 truncate text-xs text-foreground/55">
-                  📍 <Protected label="Sign in for location">{dinner.location}</Protected>
-                </p>
-                <p className="mt-0.5 truncate text-xs text-foreground/55">{dinner.menu}</p>
-              </li>
-            )}
+            {[
+              ...todays.map((e) => ({ kind: "event" as const, time: e.start ?? "", event: e })),
+              ...(dinner ? [{ kind: "dinner" as const, time: dinner.time ?? "", dinner }] : []),
+            ]
+              .sort((a, b) => a.time.localeCompare(b.time))
+              .map((item) =>
+                item.kind === "event" ? (
+                  <li key={item.event.id} className="rounded-xl bg-background/50 p-2.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {item.event.emoji} {item.event.title}
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-foreground/60">
+                        {formatTime(item.event.start)}
+                        {item.event.end ? `–${formatTime(item.event.end)}` : ""}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-foreground/55">
+                      📍 <Protected label="Sign in for location">{item.event.location}</Protected>
+                    </p>
+                  </li>
+                ) : (
+                  <li key="dinner" className="rounded-xl bg-background/50 p-2.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {item.dinner.emoji} Dinner · {item.dinner.title}
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-foreground/60">
+                        {formatTime(item.dinner.time)}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-foreground/55">
+                      📍 <Protected label="Sign in for location">{item.dinner.location}</Protected>
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-foreground/55">{item.dinner.menu}</p>
+                  </li>
+                )
+              )}
           </ul>
         ) : (
           <p className="mt-1 text-sm text-foreground/70">{tagline}</p>
