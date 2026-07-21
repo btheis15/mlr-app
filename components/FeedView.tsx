@@ -9,7 +9,9 @@ import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
 import { Sheet } from "@/components/Sheet";
 import { MeetingComposer } from "@/components/MeetingComposer";
+import { EmailMembersComposer } from "@/components/EmailMembersComposer";
 import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
+import { fetchCommitteeRecipients, fetchHouseRecipients, type RecipientResult } from "@/lib/emailBlast";
 import { useSheetDismiss } from "@/lib/hooks";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { useRouter } from "next/navigation";
@@ -48,6 +50,11 @@ interface Summary {
   unread: number;
   muted: boolean;
 }
+/** Who the ⋯ menu's "Email members" button would email — mirrors the same
+ *  room the "who's in this chat" roster (`members`) is already showing. */
+type EmailTarget =
+  | { type: "committee"; committeeId: string; area: string | null; label: string }
+  | { type: "house"; houseId: string; label: string };
 
 const stripLead = (role: string) => (role.endsWith(" · Lead") ? role.slice(0, -" · Lead".length) : role);
 
@@ -100,6 +107,10 @@ export function FeedView() {
   const [meetingLabel, setMeetingLabel] = useState("");
   const [canOrganizeMeeting, setCanOrganizeMeeting] = useState(false);
   const [composeMeeting, setComposeMeeting] = useState(false);
+  // "Email members" lives in the same ⋯ menu, open to anyone viewing the
+  // room (no organizer gate — everyone here can already see everyone here).
+  const [emailTarget, setEmailTarget] = useState<EmailTarget | null>(null);
+  const [composeEmail, setComposeEmail] = useState(false);
   const chatBoxRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   // Opened from the House hub (/posts?house=slug): back should return to /house,
@@ -468,6 +479,7 @@ export function FeedView() {
     setMeetingLabel(ch.area ?? ch.name);
     setCanOrganizeMeeting(false);
     void fetchCanOrganize(scope).then(setCanOrganizeMeeting);
+    setEmailTarget({ type: "committee", committeeId: ch.committeeId, area: ch.area, label: ch.title });
     setShowMembers(true);
   };
 
@@ -488,6 +500,7 @@ export function FeedView() {
     setMeetingLabel(hc.name);
     setCanOrganizeMeeting(false);
     void fetchCanOrganize(scope).then(setCanOrganizeMeeting);
+    setEmailTarget({ type: "house", houseId: hc.houseId, label: hc.name });
     setShowMembers(true);
   };
 
@@ -547,11 +560,15 @@ export function FeedView() {
             members={members}
             canSchedule={canOrganizeMeeting}
             onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
+            onEmail={() => { setShowMembers(false); setComposeEmail(true); }}
             onClose={() => setShowMembers(false)}
           />
         )}
         {composeMeeting && meetingScope && (
           <MeetingComposer scope={meetingScope} roomLabel={meetingLabel} onClose={() => setComposeMeeting(false)} onCreated={() => {}} />
+        )}
+        {composeEmail && emailTarget && (
+          <ChatEmailSheet target={emailTarget} onClose={() => setComposeEmail(false)} />
         )}
       </>
     );
@@ -586,11 +603,15 @@ export function FeedView() {
             members={members}
             canSchedule={canOrganizeMeeting}
             onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
+            onEmail={() => { setShowMembers(false); setComposeEmail(true); }}
             onClose={() => setShowMembers(false)}
           />
         )}
         {composeMeeting && meetingScope && (
           <MeetingComposer scope={meetingScope} roomLabel={meetingLabel} onClose={() => setComposeMeeting(false)} onCreated={() => {}} />
+        )}
+        {composeEmail && emailTarget && (
+          <ChatEmailSheet target={emailTarget} onClose={() => setComposeEmail(false)} />
         )}
       </>
     );
@@ -743,6 +764,7 @@ function ChatMembersSheet({
   members,
   canSchedule = false,
   onSchedule,
+  onEmail,
   onClose,
 }: {
   title: string;
@@ -750,6 +772,8 @@ function ChatMembersSheet({
   /** Show the "Schedule a meeting" action (organizers only). */
   canSchedule?: boolean;
   onSchedule?: () => void;
+  /** Show the "Email members" action — open to anyone viewing the room. */
+  onEmail?: () => void;
   onClose: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
@@ -768,10 +792,20 @@ function ChatMembersSheet({
         <button
           type="button"
           onClick={onSchedule}
-          className="press mb-3 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+          className="press mb-2 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
         >
           <span aria-hidden className="text-base">📅</span>
           Schedule a meeting
+        </button>
+      )}
+      {onEmail && (
+        <button
+          type="button"
+          onClick={onEmail}
+          className="press mb-3 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+        >
+          <span aria-hidden className="text-base">✉️</span>
+          Email members
         </button>
       )}
       <ul className="space-y-1">
@@ -783,6 +817,38 @@ function ChatMembersSheet({
         ))}
         {members.length === 0 && <li className="px-1 py-2 text-sm text-foreground/50">No one here yet.</li>}
       </ul>
+    </Sheet>
+  );
+}
+
+/**
+ * "Email members" for the room behind the ⋯ menu — the same
+ * EmailMembersComposer used on the People page (lib/emailBlast.ts), just
+ * pre-scoped to whoever's in THIS chat instead of a picker. A committee's
+ * General channel emails the whole roster; an area sub-channel (e.g. Family
+ * Fest's "Meals") narrows the committee roster down to that area's members,
+ * mirroring exactly who `openMembers()` lists in the roster sheet above.
+ */
+function ChatEmailSheet({ target, onClose }: { target: EmailTarget; onClose: () => void }) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const load = (): Promise<RecipientResult> =>
+    target.type === "house"
+      ? fetchHouseRecipients(target.houseId)
+      : fetchCommitteeRecipients(target.committeeId).then((res) =>
+          target.area
+            ? { ...res, recipients: res.recipients.filter((r) => r.roles?.some((role) => role.replace(/ · Lead$/, "") === target.area)) }
+            : res,
+        );
+  const sourceKey = target.type === "house" ? `house:${target.houseId}` : `committee:${target.committeeId}|${target.area ?? ""}`;
+  const migrationFile = target.type === "house" ? "0123_family_roster.sql" : "0028_email_recipients.sql";
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="chat-email-title"
+      header={<h2 id="chat-email-title" className="text-lg font-bold">✉️ Email {target.label}</h2>}
+    >
+      <EmailMembersComposer sourceKey={sourceKey} load={load} groupNoun={target.label} migrationFile={migrationFile} />
     </Sheet>
   );
 }
