@@ -171,7 +171,7 @@ export function AdminFamilyRoster() {
 
       <p className="text-xs text-muted">
         Family who aren&rsquo;t on the app yet. Add a name + email so they still get house and resort emails, and assign
-        them to a house. Anyone added to a <strong>committee</strong> before they&rsquo;re on the app lands here
+        them to a house. Anyone added to a <strong>committee</strong>&nbsp;before they&rsquo;re on the app lands here
         automatically too — their committee spot shows below as a manual add-in, and edits you make here (name, email,
         phone) carry over to it. When they sign up with that email, everything links to their new account at once —
         house, committees, and this name (they can rename after). Use <strong>Invite</strong> to email them a one-tap
