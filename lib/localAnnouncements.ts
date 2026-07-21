@@ -21,7 +21,7 @@ export function loadLocalAnnouncements(): Announcement[] {
     const raw = localStorage.getItem(LOCAL_ANNOUNCEMENTS_KEY);
     const all = raw ? (JSON.parse(raw) as Announcement[]) : [];
     // Drop expired alerts so they don't linger in storage forever (default 6h,
-    // see AdminAlertComposer). Rewrite if we pruned anything to keep it tidy.
+    // see AdminBroadcastComposer). Rewrite if we pruned anything to keep it tidy.
     const now = Date.now();
     const live = all.filter((a) => !a.expiresAt || new Date(a.expiresAt).getTime() > now);
     if (live.length !== all.length) {

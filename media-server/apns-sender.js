@@ -269,8 +269,11 @@ async function start() {
   // alerts — broadcast announcements (gated on push_types 'alerts')
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
-    const { data: a } = await sb.from("announcements").select("id, title, body").eq("id", alertId).maybeSingle();
+    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner").eq("id", alertId).maybeSingle();
     if (!a) return;
+    // An "email only" send (migration 0126's show_banner:false) never shows a
+    // banner, so it shouldn't buzz phones either — push rides with the banner.
+    if (a.show_banner === false) return;
     const { data: profs } = await sb.from("profiles").select("id").contains("push_types", ["alerts"]);
     const payload = { title: a.title ? `📣 ${a.title}` : "📣 Muskellunge Lake Resort", body: (a.body || "").slice(0, 180), url: `${APP_URL}/`, type: "broadcast" };
     let sent = 0;

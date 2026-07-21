@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Shared "Send now" vs "Schedule for later" control for the two broadcast
- * composers (AdminAlertComposer, AdminNotificationComposer) — see migration
- * 0097. `value` is an ISO timestamp once a future send time is picked, or
- * null for "send now". The actual queuing/sending happens in the caller.
+ * Shared "Send now" vs "Schedule for later" control for the broadcast
+ * composer (AdminBroadcastComposer) — see migration 0097. `value` is an ISO
+ * timestamp once a future send time is picked, or null for "send now". The
+ * actual queuing/sending happens in the caller.
  */
 export function ScheduleSendPicker({ value, onChange }: { value: string | null; onChange: (iso: string | null) => void }) {
   // <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in LOCAL time, no

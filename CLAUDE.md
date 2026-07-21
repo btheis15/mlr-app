@@ -448,13 +448,16 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   shows notices at the top of the app (server-fed seed +
   admin-posted alerts), dismissible per-device. Admin alerts also **auto-expire**
   so they don't sit at the top forever: the composer
-  ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)) picks a window
-  (default **6h**, up to **30 days**) → stamped onto `Announcement.expiresAt` /
+  ([`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx)) picks a
+  window (default **6h**, up to **30 days**) → stamped onto `Announcement.expiresAt` /
   `announcements.expires_at`, and the banner hides any notice past its expiry
   (people can still dismiss sooner with ✕; expired local alerts are pruned from
   `localStorage` on load). Migration
   [`0022`](supabase/migrations/0022_announcement_default_expiry.sql) gives the
   column a server-side 6h default; seed/legacy rows with no expiry never auto-hide.
+  Since migration [`0126`](supabase/migrations/0126_unified_broadcast_composer.sql),
+  the banner only renders rows with `show_banner = true` (the flag that lets a
+  send email without ever painting the banner) — see **Reach everyone** below.
 - **Privacy wall (guests vs members)** — the app is still browsable, but sensitive
   info is gated behind sign-in via [`components/Guard.tsx`](components/Guard.tsx) +
   [`lib/privacy.ts`](lib/privacy.ts): `SignInWall` (whole-screen gate — wraps
@@ -500,7 +503,7 @@ nesting):
 | Card | Route | Component |
 |---|---|---|
 | Members | `/admin/members` | [`AdminMembers`](components/AdminMembers.tsx) + [`AdminProfileOverride`](components/AdminProfileOverride.tsx) |
-| Alerts & Notifications | `/admin/alerts` | [`AdminAlertComposer`](components/AdminAlertComposer.tsx) + [`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) + [`AdminCallouts`](components/AdminCallouts.tsx) (Home call-out cards — see **Home call-out stack**) |
+| Alerts & Notifications | `/admin/alerts` | [`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx) (the merged "reach everyone" composer — see **Reach everyone**) + [`AdminCallouts`](components/AdminCallouts.tsx) (Home call-out cards — see **Home call-out stack**) |
 | Content review | `/admin/content-review` | [`AdminModeration`](components/AdminModeration.tsx) |
 | Committees & join requests | `/admin/committees` | [`AdminCommittees`](components/AdminCommittees.tsx) (also mounts the per-committee join-request queue) |
 | Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
@@ -764,13 +767,58 @@ Checklist, the quick-actions grid) always in view without extra scrolling.
   not the mutable `dismiss_id`. Guests get the sign-in sheet instead (nothing
   to attach a completion to).
 
+### Reach everyone: the merged broadcast composer (migration 0126)
+
+Admin → Alerts & Notifications used to have two separate forms — "Post an
+alert" (a banner, + optional email) and "Send a notification" (an Activity-tab
+entry, + an optional banner mirror) — that collected almost the same
+title/body/event-target/schedule fields twice. **[`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx)**
+replaces both with one form and three independent channel checkboxes:
+
+- **📣 Banner** — the top-of-app notice, unchanged (auto-expires on the
+  window below; already pushes to phones for anyone with alert pushes on —
+  that's automatic per the recipient's own `push_types`, not a separate
+  admin-facing toggle here).
+- **🔔 Activity tab** — the unchanged `send_broadcast_notification` RPC:
+  Everyone or Admins-only, an optional tap-through link, its own badge-expiry.
+- **✉️ Email** — opted-in members, or admins only.
+
+Banner and Email both still write the same `announcements` row (Email alone
+needs one too, since the mailer only watches that table) — what's new is
+`announcements.show_banner` (default `true`), which lets a send **email
+without ever painting the banner**. `AnnouncementBanner` only renders rows
+where `show_banner = true`; `push-sender.js`'s `handleAlert` skips the phone
+push for the same reason (push rides with the banner, not with email alone).
+At least one channel must be checked. **Scheduling** (below) queues one
+`scheduled_broadcasts` row per channel-group needed (an `'announcement'` row
+for Banner and/or Email, a `'notification'` row for Activity tab) at the same
+send time, rather than inventing a combined kind.
+
+The two underlying primitives — insert-an-announcement and
+call-send_broadcast_notification — live in
+[`lib/broadcast.ts`](lib/broadcast.ts) (`postAnnouncement()` /
+`sendActivityNotification()`), so a second surface can trigger the exact same
+sends without duplicating the insert/RPC logic. **A Home callout is that
+second surface**: `AdminCallouts`' `CalloutSheet` has two one-time side-action
+toggles, reviewed right there before saving instead of a separate trip to
+Alerts & Notifications — **"🔔 Also send a notification"** (a short input that
+*is* the notification's title — deliberately no separate body field, since the
+whole point is "a smaller text") and **"✉️ Also email everyone who opted in"**
+(a textarea that defaults to the callout's own body/description until edited,
+same auto-suggest idiom as the dismiss-id field). Both default **off** every
+time the sheet opens — they're not a property of the saved callout, so editing
+an existing callout later never silently resends. Firing happens right after
+`saveCallout()` succeeds, using the callout's own `eventTarget` for the same
+exclude-not-attending targeting the main composer offers; a failure there
+surfaces as an error (blocking the sheet from closing) without undoing the
+already-saved callout, so the admin can just retry.
+
 ### Event-targeted broadcasts (migration 0096)
 
 All three admin broadcast tools under Admin → Alerts & Notifications — Home
-call-outs, the top-of-app banner ([`AdminAlertComposer`](components/AdminAlertComposer.tsx)),
-and the Activity-tab notification composer
-([`AdminNotificationComposer`](components/AdminNotificationComposer.tsx)) —
-share one **"link to an event"** control
+call-outs, and the merged banner/Activity-tab/email composer
+([`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx), see
+**Reach everyone** above) — share one **"link to an event"** control
 ([`EventTargetPicker`](components/EventTargetPicker.tsx)): pick an event, and
 an "only show to people attending" checkbox defaults **on**. The rule (see
 [`lib/eventTargeting.ts`](lib/eventTargeting.ts) `isHiddenForEventTarget()`) is
@@ -794,11 +842,11 @@ client's `effectiveStatus()`.
   row from the insert.
 - Every write path degrades gracefully pre-migration (retries without the new
   columns/params on a column/param-not-found error), matching the existing
-  `email_audience` fallback pattern in `AdminAlertComposer`.
+  `email_audience` fallback pattern in `lib/broadcast.ts`'s `postAnnouncement()`.
 
 ### Scheduled broadcasts (migration 0097)
 
-Both `AdminAlertComposer` and `AdminNotificationComposer` carry a shared
+`AdminBroadcastComposer` carries a shared
 **"Send now" / "Schedule for later"** toggle
 ([`ScheduleSendPicker`](components/ScheduleSendPicker.tsx)). Scheduling one
 writes a row to `scheduled_broadcasts` (`kind: 'announcement' | 'notification'`,
@@ -1520,9 +1568,10 @@ route → [`NotificationsView`](components/NotificationsView.tsx); the bell tab 
 live unread **badge** in [`TabBar`](components/TabBar.tsx) via
 [`useUnreadNotifications`](lib/hooks.ts); per-member kind prefs
 ([`NotifPrefs`](components/NotifPrefs.tsx) → `profiles.notif_types`); and an admin
-sender ([`AdminNotificationComposer`](components/AdminNotificationComposer.tsx) →
-`send_broadcast_notification`) that targets **Everyone / Admins**
-(with an optional banner mirror for Everyone). **Read model:** `seen_at` drives
+sender (the "🔔 Activity tab" channel of
+[`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx), see **Reach
+everyone** → `send_broadcast_notification`) that targets **Everyone / Admins**.
+**Read model:** `seen_at` drives
 the badge (opening the tab clears it), `read_at` drives per-item bold, `expires_at`
 drops an item from the badge while keeping it in the list.
 **Data model:** [`0029`](supabase/migrations/0029_beta_tester_and_notif_prefs.sql)

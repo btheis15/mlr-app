@@ -18,6 +18,7 @@ import { uploadSiteImage } from "@/lib/appImages";
 import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
 import { ReminderScheduler } from "@/components/ReminderScheduler";
 import { toDatetimeLocal } from "@/lib/format";
+import { postAnnouncement, sendActivityNotification } from "@/lib/broadcast";
 import {
   fetchCallouts,
   saveCallout,
@@ -227,6 +228,21 @@ function CalloutSheet({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Optional one-time side actions, fired right after this save succeeds —
+  // NOT persisted on the callout itself (so re-saving an edit never resends
+  // by accident; both default off every time this sheet opens). "Also send a
+  // notification" is its own short headline (this IS the notification's
+  // title, deliberately no separate body — see CLAUDE.md "Home call-out
+  // stack"); "Also email" defaults to the callout's own body/description
+  // until touched, editable before sending, same auto-suggest idiom as the
+  // dismiss id below.
+  const [alsoNotify, setAlsoNotify] = useState(false);
+  const [notifyText, setNotifyText] = useState("");
+  const [alsoEmail, setAlsoEmail] = useState(false);
+  const [emailText, setEmailText] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const effectiveEmailText = emailTouched ? emailText : body;
+
   // A swiped card stays dismissed by id (see CalloutStack) — so the id carries
   // a date suffix, and re-versioning it resurfaces the card for everyone.
   const suggestedId = () =>
@@ -283,7 +299,14 @@ function CalloutSheet({
 
   const hasContent = Boolean(title.trim() || body.trim() || imageUrl);
   const validRange = !startsOn || !endsOn || endsOn >= startsOn;
-  const canSave = hasContent && effectiveDismissId.trim().length > 0 && validRange && !save.pending && !uploading;
+  const canSave =
+    hasContent &&
+    effectiveDismissId.trim().length > 0 &&
+    validRange &&
+    (!alsoNotify || notifyText.trim().length > 0) &&
+    (!alsoEmail || effectiveEmailText.trim().length > 0) &&
+    !save.pending &&
+    !uploading;
   const submit = () =>
     save.run(async () => {
       const { error } = await saveCallout({
@@ -302,6 +325,35 @@ function CalloutSheet({
         deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
       });
       if (error) return error;
+
+      // One-time side actions — best-effort, AFTER the callout itself is
+      // safely saved. A failure here is surfaced (and blocks the sheet from
+      // closing) so the admin can retry just this part; the callout save
+      // itself has already gone through either way.
+      if (alsoNotify && notifyText.trim()) {
+        const { error: notifyErr } = await sendActivityNotification({
+          title: notifyText.trim(),
+          url: "/",
+          audience: "everyone",
+          eventId: eventTarget.eventId,
+          excludeNotAttending: eventTarget.excludeNotAttending,
+        });
+        if (notifyErr) return `Callout saved, but the notification failed: ${notifyErr}`;
+      }
+      if (alsoEmail && effectiveEmailText.trim()) {
+        const { error: emailErr } = await postAnnouncement({
+          title: title.trim() || "New at Muskellunge Lake Resort",
+          body: effectiveEmailText.trim(),
+          showBanner: false,
+          notifyEmail: true,
+          emailAudience: "all",
+          expiryHours: 24,
+          eventId: eventTarget.eventId,
+          excludeNotAttending: eventTarget.excludeNotAttending,
+        });
+        if (emailErr) return `Callout saved, but the email failed: ${emailErr}`;
+      }
+
       onSaved();
       return null;
     });
@@ -441,6 +493,40 @@ function CalloutSheet({
         <span className="text-sm">Active (shown on Home)</span>
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-5 w-5 accent-[var(--color-primary)]" />
       </label>
+
+      {/* One-time side actions, reviewed right here before saving — no
+          separate trip to Alerts & Notifications needed. Both default off
+          every time this sheet opens (not a property of the callout itself). */}
+      <div className="space-y-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={alsoNotify} onChange={(e) => setAlsoNotify(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+          <span className="font-medium">🔔 Also send a notification</span>
+        </label>
+        {alsoNotify && (
+          <input
+            value={notifyText}
+            onChange={(e) => setNotifyText(e.target.value)}
+            placeholder='Short headline, e.g. "T-shirt orders due Friday!"'
+            className={`${FIELD} w-full`}
+          />
+        )}
+      </div>
+      <div className="space-y-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={alsoEmail} onChange={(e) => setAlsoEmail(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+          <span className="font-medium">✉️ Also email everyone who opted in</span>
+        </label>
+        {alsoEmail && (
+          <textarea
+            value={effectiveEmailText}
+            onChange={(e) => { setEmailTouched(true); setEmailText(e.target.value); }}
+            rows={3}
+            placeholder="Email message"
+            className={`${FIELD} w-full resize-none`}
+          />
+        )}
+      </div>
+
       {hasContent && (
         <Field label="Preview">
           <CalloutCard callout={preview} />

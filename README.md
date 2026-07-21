@@ -226,8 +226,11 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   swiped — so the slot stays one card tall and the content below stays in view.
   Call-outs are **admin-managed rows**, not code — the `home_callouts` table
   (migration [`0083_home_callouts.sql`](supabase/migrations/0083_home_callouts.sql))
-  is edited in the Family Fest Planner's **Callouts** section (image, title/body,
-  action button, show window). Dismissals are session-scoped (`sessionStorage`):
+  is edited at Admin → Alerts & Notifications (image, title/body, action
+  button, show window, and two one-time side actions — "also send a
+  notification" / "also send an email" — added in migration
+  [`0126_unified_broadcast_composer.sql`](supabase/migrations/0126_unified_broadcast_composer.sql)).
+  Dismissals are session-scoped (`sessionStorage`):
   a swiped card stays gone while moving between tabs but comes back the next
   time the app is opened. See CLAUDE.md → **Home call-out stack**.
 - **New-member onboarding** — the first time a brand-new member verifies their
