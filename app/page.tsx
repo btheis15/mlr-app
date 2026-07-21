@@ -2,6 +2,7 @@ import { RESORT } from "@/lib/data";
 import { RowLink } from "@/components/RowLink";
 import { HomeSpotlight } from "@/components/HomeSpotlight";
 import { HouseHubCard } from "@/components/HouseHubCard";
+import { AdminDashboardCard } from "@/components/AdminDashboardCard";
 import { HomeQuickActions } from "@/components/HomeQuickActions";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import { HomeSignInCTA } from "@/components/HomeSignInCTA";
@@ -54,6 +55,11 @@ export default function HomePage() {
           Self-hides for guests and anyone not assigned to a house. Kept right
           under the call-out stack, above the Work Checklist. */}
       <HouseHubCard />
+
+      {/* Admin dashboard — a fast entry point for admins, right under the house
+          card. Self-hides for everyone else (Profile → Admin still has its own
+          link into the same /admin dashboard). */}
+      <AdminDashboardCard />
 
       {/* Work Checklist — kept directly under the Family Fest summary card. Its
           own expandable card (collapsed by default so the list stays tucked away
