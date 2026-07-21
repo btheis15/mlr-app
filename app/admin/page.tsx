@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminGuard } from "@/app/admin/AdminGuard";
+import { BackLink } from "@/components/BackLink";
 
 /**
  * Admin dashboard — the front door for everything that used to be buried in
@@ -31,7 +32,9 @@ const CARDS: {
 export default function AdminPage() {
   return (
     <AdminGuard>
-      <div className="space-y-4 pt-6">
+      <div className="space-y-4 pt-2">
+        <BackLink href="/" label="Home" />
+
         <header className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Admin dashboard</h1>
           <p className="text-sm text-foreground/60">

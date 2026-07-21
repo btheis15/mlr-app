@@ -1,5 +1,6 @@
 import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { AdminAlertComposer } from "@/components/AdminAlertComposer";
 import { AdminNotificationComposer } from "@/components/AdminNotificationComposer";
 import { AdminCallouts } from "@/components/AdminCallouts";
@@ -27,25 +28,24 @@ export default function AdminAlertsPage() {
           <AdminScheduledBroadcasts />
         </div>
 
-        <div className="space-y-2">
-          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
-            Post an alert
-          </p>
-          <p className="px-1 text-xs text-muted">
-            Banner notice to everyone (+ email).
-          </p>
+        {/* Both composers are one-off "fill it out, send it" forms with nothing
+            to browse (unlike Home callouts below, a real list) — collapsed by
+            default keeps the page from opening on two full forms at once. */}
+        <CollapsibleSection
+          title="Post an alert"
+          icon="📣"
+          subtitle="Banner notice to everyone (+ email)."
+        >
           <AdminAlertComposer />
-        </div>
+        </CollapsibleSection>
 
-        <div className="space-y-2">
-          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
-            Send a notification
-          </p>
-          <p className="px-1 text-xs text-muted">
-            To everyone or admins · lands in their Activity tab.
-          </p>
+        <CollapsibleSection
+          title="Send a notification"
+          icon="🔔"
+          subtitle="To everyone or admins · lands in their Activity tab."
+        >
           <AdminNotificationComposer />
-        </div>
+        </CollapsibleSection>
 
         <div className="space-y-2">
           <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">
