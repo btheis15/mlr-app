@@ -843,6 +843,21 @@ client's `effectiveStatus()`.
 - Every write path degrades gracefully pre-migration (retries without the new
   columns/params on a column/param-not-found error), matching the existing
   `email_audience` fallback pattern in `lib/broadcast.ts`'s `postAnnouncement()`.
+- **The mac-mini email itself is event-targeted too (migration
+  [`0127`](supabase/migrations/0127_event_targeted_email.sql))** — the gap left
+  by 0096: banner visibility, the Home callout, and the Activity-tab insert
+  all respected "not going", but `alert-mailer.js`'s `handle()` emailed
+  opted-in members regardless, since `alert_recipients()` had no idea an
+  announcement was linked to an event. `alert_recipients()` grew the same two
+  trailing params (`p_event_id`, `p_exclude_not_attending`) `send_broadcast_notification`
+  already has, and the mailer passes the announcement row's own columns
+  through (falling back to the old call shape pre-migration, same pattern as
+  everywhere else). The mac mini's **phone push** for an alert
+  (`push-sender.js`/`apns-sender.js` `handleAlert`) had the exact same gap —
+  both now separately query `event_attendance` for `not_going` rows on the
+  linked event and skip those profiles before sending. All four channels a
+  banner/email send can reach — banner, Activity tab, email, push — now agree
+  on who counts as "not going."
 
 ### Scheduled broadcasts (migration 0097)
 

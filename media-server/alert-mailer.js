@@ -82,7 +82,17 @@ async function start() {
       .is("email_sent_at", null)
       .select("id");
     if (!claimed || claimed.length === 0) return; // already handled
-    let { data: recips, error } = await sb.rpc("alert_recipients", { audience: row.email_audience || "all" });
+    let { data: recips, error } = await sb.rpc("alert_recipients", {
+      audience: row.email_audience || "all",
+      p_event_id: row.event_id ?? null,
+      p_exclude_not_attending: row.exclude_not_attending ?? false,
+    });
+    if (error) {
+      // pre-0127: no event-targeting params yet — email without them (skips
+      // the "not going" exclusion, matching the only behavior that existed
+      // before this migration) rather than fail outright.
+      ({ data: recips, error } = await sb.rpc("alert_recipients", { audience: row.email_audience || "all" }));
+    }
     if (error) ({ data: recips, error } = await sb.rpc("alert_recipients")); // pre-0017: no audience param → everyone
     if (error) {
       console.error("[mailer] alert_recipients error:", error.message);
@@ -468,7 +478,7 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
   async function sweep() {
     const { data: pending } = await sb
       .from("announcements")
-      .select("id, title, body, severity, notify_email, email_sent_at, created_at, email_audience")
+      .select("id, title, body, severity, notify_email, email_sent_at, created_at, email_audience, event_id, exclude_not_attending")
       .is("email_sent_at", null)
       .eq("notify_email", true)
       .order("created_at", { ascending: false })
