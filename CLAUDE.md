@@ -1578,6 +1578,57 @@ the post-media hold trigger), and [`0128`](supabase/migrations/0128_chat_moderat
 extending the queue/blocklist/set-status to chat; also fixes a latent post bug
 where the member-edit status pin reverted the automated holds).
 
+## Conversation search (semantic, on-device)
+
+A search box at the **foot of the Feed conversation list** ([`FeedView`](components/FeedView.tsx))
+lets a member **search every conversation they can see — by meaning, not exact
+words** ("the plumbing problem upstairs" finds "leak in the second-floor
+bathroom"). It spans the resort **Family Feed** (posts + comments), their
+**committee/area chats**, and their **house chat**, and each result taps through
+to the source message (reusing the existing `?c/&area/&m`, `?house/&m`, `?post`
+deep-links, so the room scrolls to + flashes the message like an Activity
+deep-link).
+
+**The RLS guarantee.** Content is embedded **once** into a single **locked**
+table (`content_embeddings`, migration [`0129`](supabase/migrations/0129_semantic_search.sql) —
+no anon/authenticated grant, deny-all RLS). Search is a `SECURITY DEFINER` RPC
+**`search_conversations(query_embedding, match_count)`** that re-applies the
+**exact same visibility rules** the Feed/chat screens use — reusing
+`can_access_committee_area` (0063) and `is_house_member` (0064) plus the
+members-only / `status='visible'` / not-`deleted_at` gates. Because `auth.uid()`
+inside a DEFINER function still resolves to the **calling** member, each person
+searches exactly their own slice — join a committee and its history is instantly
+searchable; leave and it's gone — **with no per-user index to maintain**. The
+mini's `/search` endpoint forwards the caller's own Supabase token so the RPC
+runs *as them*; it never uses the service-role key for search.
+
+**All on-device / on the mini** (no cloud AI, tied to the author's Apple-only
+constraint via the mini):
+- **`media-server/embed-service/`** — a small Swift/Vapor microservice
+  (`POST /embed`, loopback :8786, launchd `com.mlr.embed-service`) that turns
+  text into 512-d L2-normalized vectors with Apple's **NaturalLanguage**
+  `NLContextualEmbedding`. Deliberately **separate from `fm-service`** and does
+  NOT import FoundationModels — so the FM-generation SIGTRAP on the current beta
+  can't take search down. (Apple's FM LLM / `fm serve` has **no** embeddings
+  endpoint; NaturalLanguage is the right on-device tool.) Build/deploy:
+  `embed-service/scripts/build-restart.sh`. Its shared secret + URL live in
+  `media-server/.env` (`EMBED_SHARED_SECRET`, `EMBED_URL`).
+- **[`media-server/search-indexer.js`](media-server/search-indexer.js)** — a
+  side-job (like the moderation backfill) that reconciles `content_embeddings`
+  every ~2 min: embeds new/edited posts + chat (service-role → embed-service →
+  upsert) and prunes orphans (deleted/soft-deleted). It indexes *all* statuses;
+  search-time RLS is the only scoping. Tolerates embed-service down / migration
+  not yet run (logs + retries).
+- **`POST /search`** in [`media-server/server.js`](media-server/server.js) —
+  `requireUser` → embed the query on the mini → call `search_conversations` as
+  the caller (RLS) → return results. Client seam [`lib/search.ts`](lib/search.ts);
+  UI [`ConversationSearch`](components/ConversationSearch.tsx).
+
+**Go-live order** (search shows an error state until all three are done):
+(1) run migration 0129 in Supabase; (2) build + launchd-install embed-service on
+the mini; (3) `git pull` + restart media-server (indexer backfills, `/search`
+works). The web UI degrades to a clean "Search is unavailable" until then.
+
 ## Backend seams (planned, not yet wired)
 
 These are built UI-first with the swap point isolated to one module each:
