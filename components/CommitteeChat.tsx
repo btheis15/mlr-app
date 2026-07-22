@@ -10,6 +10,7 @@ import { MemberSheet } from "@/components/MemberSheet";
 import { MeetingSection } from "@/components/MeetingSection";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
+import { motion } from "framer-motion";
 import { fetchJoinState } from "@/lib/roles";
 import { useDebouncedCallback } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -373,6 +374,15 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   // Keep pinned to the latest message.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
+
+  // Spring-in for NEW messages only (see HouseChat for the rationale): the
+  // initial batch mounts without animating (listReadyRef false through the first
+  // render with messages), later arrivals mount with an entrance, and existing
+  // rows keep their stable m.id key so a realtime refetch never re-animates.
+  const listReadyRef = useRef(false);
+  useEffect(() => {
+    if (messages.length > 0) listReadyRef.current = true;
   }, [messages.length]);
 
   // Re-pin the list to the latest message — but only the inner scroller, never
@@ -747,26 +757,32 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
               const prev = g.items[i - 1];
               const grouped = prev && prev.authorId === m.authorId && new Date(m.ts).getTime() - new Date(prev.ts).getTime() < 5 * 60 * 1000;
               return (
-                <MessageRow
+                <motion.div
                   key={m.id}
-                  m={m}
-                  mine={m.authorId === uid}
-                  grouped={!!grouped}
-                  uid={uid}
-                  canDelete={!m.deletedAt && ((m.authorId === uid && within24h(m.ts)) || isAdmin)}
-                  canEdit={!m.deletedAt && m.authorId === uid && within24h(m.ts)}
-                  reply={msgById.get(m.replyToId ?? "")}
-                  members={members}
-                  reacting={reactingId === m.id}
-                  onOpenReact={() => setReactingId((cur) => (cur === m.id ? null : m.id))}
-                  onReact={(e) => react(m.id, e)}
-                  onReply={() => startReply(m)}
-                  onEdit={() => startEdit(m)}
-                  onDelete={() => deleteMessage(m.id)}
-                  onOpenMember={(mm) => setMemberSheet(mm)}
-                  onOpenPhoto={(u) => setLightbox(u)}
-                  onJumpToReply={scrollToMessage}
-                />
+                  initial={listReadyRef.current ? { opacity: 0, y: 10 } : false}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                >
+                  <MessageRow
+                    m={m}
+                    mine={m.authorId === uid}
+                    grouped={!!grouped}
+                    uid={uid}
+                    canDelete={!m.deletedAt && ((m.authorId === uid && within24h(m.ts)) || isAdmin)}
+                    canEdit={!m.deletedAt && m.authorId === uid && within24h(m.ts)}
+                    reply={msgById.get(m.replyToId ?? "")}
+                    members={members}
+                    reacting={reactingId === m.id}
+                    onOpenReact={() => setReactingId((cur) => (cur === m.id ? null : m.id))}
+                    onReact={(e) => react(m.id, e)}
+                    onReply={() => startReply(m)}
+                    onEdit={() => startEdit(m)}
+                    onDelete={() => deleteMessage(m.id)}
+                    onOpenMember={(mm) => setMemberSheet(mm)}
+                    onOpenPhoto={(u) => setLightbox(u)}
+                    onJumpToReply={scrollToMessage}
+                  />
+                </motion.div>
               );
             })}
           </div>
