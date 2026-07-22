@@ -341,6 +341,12 @@ export interface ScheduleEvent {
   crewUserIds?: string[];
   /** Optional "what to bring" note. */
   bring?: string;
+  /** Optional cover photo (site-assets URL). */
+  imageUrl?: string | null;
+  /** Optional click-through link — a Google Doc/Sheet, sign-up form, or any
+   *  web page for this event. `linkLabel` is the button text shown for it. */
+  linkUrl?: string | null;
+  linkLabel?: string | null;
 }
 
 /** A "thing to do" that runs all week with no set time — e.g. the scavenger

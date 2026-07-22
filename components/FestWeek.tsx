@@ -357,6 +357,10 @@ function EventRow({
               ✏️ Edit this event
             </button>
           )}
+          {event.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={event.imageUrl} alt="" className="max-h-56 w-full rounded-xl object-cover" />
+          )}
           <p className="text-xs text-foreground/60">
             📍 <Protected label="Sign in for location">{event.location}</Protected>
           </p>
@@ -370,6 +374,16 @@ function EventRow({
               </p>
               <p className="mt-0.5 text-sm text-foreground/80">{event.bring}</p>
             </div>
+          )}
+          {event.linkUrl && (
+            <a
+              href={event.linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="press inline-block rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
+            >
+              🔗 {event.linkLabel?.trim() || "Open link"}
+            </a>
           )}
           {event.lead && (
             <div>

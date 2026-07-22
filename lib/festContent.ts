@@ -149,6 +149,9 @@ interface ScheduleRow {
   lead_name: string | null;
   lead_phone: string | null;
   crew_user_ids: string[] | null;
+  image_url: string | null;
+  link_url: string | null;
+  link_label: string | null;
 }
 interface DinnerRow {
   id: string;
@@ -231,6 +234,9 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
     leadUserId: r.lead_user_id,
     crewUserIds: r.crew_user_ids ?? [],
+    imageUrl: r.image_url,
+    linkUrl: r.link_url,
+    linkLabel: r.link_label,
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -305,7 +311,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -426,6 +432,9 @@ export interface ScheduleInput {
   leadPhone: string | null;
   crewUserIds: string[];
   position: number;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -443,6 +452,9 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     lead_phone: i.leadPhone,
     crew_user_ids: i.crewUserIds,
     position: i.position,
+    image_url: i.imageUrl,
+    link_url: i.linkUrl,
+    link_label: i.linkLabel,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -457,6 +469,8 @@ export interface ScheduleDetailsInput {
   location: string | null;
   description: string | null;
   bring: string | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
 }
 export async function updateScheduleDetails(id: string, i: ScheduleDetailsInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -467,6 +481,8 @@ export async function updateScheduleDetails(id: string, i: ScheduleDetailsInput)
       location: i.location,
       description: i.description,
       bring: i.bring,
+      link_url: i.linkUrl,
+      link_label: i.linkLabel,
       updated_at: new Date().toISOString(),
       updated_by: await currentUid(),
     })
@@ -753,7 +769,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -774,6 +790,9 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     leadPhone: r.lead_phone,
     crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
+    imageUrl: r.image_url,
+    linkUrl: r.link_url,
+    linkLabel: r.link_label,
   }));
 }
 

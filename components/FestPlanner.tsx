@@ -267,7 +267,11 @@ function Frame({ children, variant = "tabs" }: { children: React.ReactNode; vari
   // master sheet, not navigating the app. Wide, centered, its own scroll.
   if (variant === "page") {
     return (
-      <div className="fixed inset-0 z-[80] overflow-y-auto bg-background">
+      // z-[50]: below the shared Sheet's z-[60] (Sheet.tsx) — this page is its
+      // own full-viewport `fixed` overlay, so without a lower z-index here the
+      // "＋ Add an event"/dinner/dues/activity sheets it opens would paint
+      // behind this opaque background and look like the buttons do nothing.
+      <div className="fixed inset-0 z-[50] overflow-y-auto bg-background">
         <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
           <header className="mb-8 flex items-start justify-between gap-4 border-b border-border pb-5">
             <div className="space-y-1">
@@ -470,8 +474,29 @@ export function ScheduleSheet({
   const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
   const [picking, setPicking] = useState(false);
   const [pickingCrew, setPickingCrew] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(draft?.imageUrl ?? null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [linkUrl, setLinkUrl] = useState(draft?.linkUrl ?? "");
+  const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const canSave = title.trim().length > 0 && day.length > 0 && !save.pending;
+
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImageBusy(true);
+    setImageError(null);
+    try {
+      setImageUrl(await uploadSiteImage(file, `schedule/${draft?.id ?? crypto.randomUUID()}`));
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setImageBusy(false);
+    }
+  };
 
   const submit = () =>
     save.run(async () => {
@@ -491,6 +516,9 @@ export function ScheduleSheet({
         leadPhone: orNull(leadPhone),
         crewUserIds,
         position: draft?.position ?? nextPosition,
+        imageUrl,
+        linkUrl: orNull(linkUrl),
+        linkLabel: orNull(linkLabel),
       });
       if (error) return error;
       onSaved();
@@ -586,6 +614,53 @@ export function ScheduleSheet({
 
       <Field label="What to bring (optional)">
         <input value={bring} onChange={(e) => setBring(e.target.value)} placeholder="e.g. swimsuit & towel" className={`${FIELD} w-full`} />
+      </Field>
+
+      <Field label="Photo (optional)">
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="mb-2 max-h-40 w-full rounded-xl object-cover" />
+        )}
+        <input ref={imageInputRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={imageBusy}
+            className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-primary ring-1 ring-border disabled:opacity-50"
+          >
+            {imageBusy ? "Uploading…" : imageUrl ? "Replace photo" : "Add a photo"}
+          </button>
+          {imageUrl && (
+            <button
+              type="button"
+              onClick={() => setImageUrl(null)}
+              className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-border"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        {imageError && <p className="mt-1 text-xs font-medium text-accent">{imageError}</p>}
+      </Field>
+
+      <Field label="Link (optional)">
+        <p className="mb-1.5 text-xs text-foreground/50">
+          A Google Doc/Sheet, sign-up form, or any web page for this event.
+        </p>
+        <input
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          placeholder="https://…"
+          inputMode="url"
+          className={`${FIELD} mb-2 w-full`}
+        />
+        <input
+          value={linkLabel}
+          onChange={(e) => setLinkLabel(e.target.value)}
+          placeholder="Button text, e.g. Sign up sheet"
+          className={`${FIELD} w-full`}
+        />
       </Field>
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">

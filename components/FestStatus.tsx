@@ -251,6 +251,16 @@ function TodayEvent({
               🎒 <span className="text-foreground/40">Bring:</span> {e.bring}
             </p>
           )}
+          {e.linkUrl && (
+            <a
+              href={e.linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="press mt-1.5 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"
+            >
+              🔗 {e.linkLabel?.trim() || "Open link"}
+            </a>
+          )}
         </div>
       </div>
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
