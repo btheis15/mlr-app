@@ -65,7 +65,7 @@ export function ConversationSearch({ channels, houseChannel, onOpenResult, onClo
     setError(null);
     const t = setTimeout(async () => {
       try {
-        const r = await searchConversations(term, 25);
+        const r = await searchConversations(term, 15);
         if (my !== seq.current) return;
         setResults(r);
         setSearched(true);

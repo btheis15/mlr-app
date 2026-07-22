@@ -1624,6 +1624,15 @@ constraint via the mini):
   the caller (RLS) → return results. Client seam [`lib/search.ts`](lib/search.ts);
   UI [`ConversationSearch`](components/ConversationSearch.tsx).
 
+**Hybrid ranking (migration [`0130`](supabase/migrations/0130_search_hybrid.sql)).**
+Apple's mean-pooled vectors are anisotropic (cosine sims bunch in a narrow
+~0.85–0.92 band), so short keyword queries barely separate — pure semantic read
+as "everything, unfiltered". `search_conversations` now fuses Postgres full-text
+with the vectors: **keyword matches rank first** (semantic as tiebreaker), and it
+falls back to **pure semantic only when there are no keyword matches** (the "find
+it without the exact words" case). `query_text` was added to the RPC (with a
+default, so the call is backward-compatible); media-server's `/search` passes it.
+
 **Go-live order** (search shows an error state until all three are done):
 (1) run migration 0129 in Supabase; (2) build + launchd-install embed-service on
 the mini; (3) `git pull` + restart media-server (indexer backfills, `/search`
