@@ -324,9 +324,10 @@ ${roomPickNote}
   // Email room members when a meeting is proposed with "Also email everyone" on
   // (migration 0117) — mirrors the announcements claim/retry pattern. The
   // meeting_proposal_email RPC (service-role) returns the title, an in-app
-  // deep-link, and the emails of room members with email_alerts on (minus the
-  // organizer). BCC keeps addresses private; the button opens the app straight
-  // into the voting UI.
+  // deep-link, and the emails of EVERY room member (minus the organizer),
+  // regardless of profiles.email_alerts — incl. invited-but-unverified temp
+  // accounts (migration 0132). BCC keeps addresses private; the button opens the
+  // app straight into the voting UI.
   async function handleMeeting(row) {
     if (!row || !row.notify_email || row.proposal_email_sent_at) return;
     const { data: claimed } = await sb
@@ -370,10 +371,11 @@ ${roomPickNote}
   }
 
   // Email the whole group when a meeting is confirmed to a time WITH a Meet link
-  // (migration 0118). Always sends on confirmation (respecting email_alerts) —
-  // it's the payoff — a polished email describing the meeting + a big "Join the
-  // Google Meet" button. Claims confirm_email_sent_at; gated on meet_url so a
-  // linkless finalize waits until the link is added, then fires with it.
+  // (migration 0118). Always sends on confirmation to EVERY room member
+  // regardless of profiles.email_alerts (migration 0132 — the join link isn't a
+  // passive alert) — it's the payoff — a polished email describing the meeting +
+  // a big "Join the Google Meet" button. Claims confirm_email_sent_at; gated on
+  // meet_url so a linkless finalize waits until the link is added, then fires with it.
   async function handleMeetingConfirmed(row) {
     if (!row || row.status !== "scheduled" || !row.meet_url || row.confirm_email_sent_at) return;
     const { data: claimed } = await sb
