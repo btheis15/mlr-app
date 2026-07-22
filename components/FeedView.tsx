@@ -559,6 +559,7 @@ export function FeedView() {
     return (
       <>
         <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+          <div key={active} aria-hidden className="chat-unmask pointer-events-none absolute inset-0 z-20 bg-background" />
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
             <BackButton
               label={openedFromHouseRef.current ? "House" : "Feed"}
@@ -601,6 +602,7 @@ export function FeedView() {
     return (
       <>
         <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+          <div key={active} aria-hidden className="chat-unmask pointer-events-none absolute inset-0 z-20 bg-background" />
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
             <BackButton label="Feed" onClick={() => closeChat(() => setActive("list"))} />
             <div className="min-w-0 flex-1 text-center">
@@ -643,6 +645,7 @@ export function FeedView() {
   if (archivedActive) {
     return (
       <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
+        <div key={active} aria-hidden className="chat-unmask pointer-events-none absolute inset-0 z-20 bg-background" />
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
           <BackButton label="Feed" onClick={() => closeChat(() => setActive("list"))} />
           <div className="min-w-0 flex-1 text-center">
