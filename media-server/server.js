@@ -34,6 +34,8 @@ const path = require("path");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
+const { embedOne, toVectorLiteral } = require("./embed-client");
+const { start: startSearchIndexer } = require("./search-indexer");
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
@@ -119,6 +121,13 @@ const inviteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many invite requests. Try again in a bit." },
+});
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60, // 60 searches/min/IP — plenty for a person typing, not a scraping tool
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many searches. Try again shortly." },
 });
 app.use(globalLimiter);
 
@@ -638,6 +647,55 @@ app.post("/moderate/text", moderateTextLimiter, requireUser, express.json({ limi
   }
 });
 
+// Semantic search across everything this member can see — the resort Feed
+// (posts + comments), their committee/area chats, and their house chat — with
+// "find it without the exact words" matching. The mini does the AI part (embed
+// the query on-device via embed-service) and the FILTERING part happens in
+// Postgres: we forward the caller's own Supabase token so the search_conversations
+// RPC (migration 0129) runs AS this member and RLS scopes the results to exactly
+// what they're allowed to see. This server never bypasses that with the
+// service-role key for search — the user's token is the whole point.
+app.post("/search", searchLimiter, requireUser, express.json({ limit: "8kb" }), async (req, res) => {
+  const q = String((req.body && req.body.q) || "").trim().slice(0, 500);
+  const limit = Math.min(Math.max(Number((req.body && req.body.limit) || 20) || 20, 1), 50);
+  if (q.length < 2) return res.json({ query: q, count: 0, results: [] });
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return res.status(503).json({ error: "Search isn't configured." });
+
+  // The caller's token was just validated by requireUser — reuse it so RLS applies.
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
+  const token = m && m[1];
+  if (!token) return res.status(401).json({ error: "Sign in required." });
+
+  // 1) Embed the query on the mini (on-device Apple NLContextualEmbedding).
+  let vec;
+  try {
+    vec = await embedOne(q);
+  } catch (e) {
+    console.error(`[search] embed failed: ${e && e.message}`);
+    return res.status(503).json({ error: "Search is warming up. Try again in a moment." });
+  }
+  if (!vec) return res.json({ query: q, count: 0, results: [] });
+
+  // 2) Run the RLS-scoped similarity search AS this member.
+  try {
+    const { createClient } = require("@supabase/supabase-js");
+    const userSb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await userSb.rpc("search_conversations", {
+      query_embedding: toVectorLiteral(vec),
+      match_count: limit,
+    });
+    if (error) throw error;
+    const results = Array.isArray(data) ? data : [];
+    res.json({ query: q, count: results.length, results });
+  } catch (e) {
+    console.error(`[search] rpc failed: ${e && e.message}`);
+    res.status(502).json({ error: "Couldn't run the search." });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`MLR media-server on :${PORT}`);
   console.log(`  public URL : ${PUBLIC_URL}`);
@@ -705,4 +763,14 @@ try {
   startBackfill({ moderateMedia, recordMediaModeration, mediaDir: MEDIA_DIR });
 } catch (e) {
   console.error("[recheck] not started:", e && e.message);
+}
+
+// Optional: keep the semantic-search index fresh (embeds new/edited posts + chat
+// via the on-device embed-service, into content_embeddings). No-op unless the
+// service-role key is set; tolerates embed-service being down or the 0129
+// migration not having run yet. Isolated so it can never take down uploads.
+try {
+  startSearchIndexer();
+} catch (e) {
+  console.error("[search-index] not started:", e && e.message);
 }

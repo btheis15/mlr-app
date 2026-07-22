@@ -14,6 +14,8 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
 import { HouseChat } from "@/components/HouseChat";
+import { ConversationSearch } from "@/components/ConversationSearch";
+import type { SearchResult } from "@/lib/search";
 import { Sheet } from "@/components/Sheet";
 import { MeetingComposer } from "@/components/MeetingComposer";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
@@ -118,6 +120,46 @@ export function FeedView() {
   // room (no organizer gate — everyone here can already see everyone here).
   const [emailTarget, setEmailTarget] = useState<EmailTarget | null>(null);
   const [composeEmail, setComposeEmail] = useState(false);
+  // Semantic search across every conversation this member can see.
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Jump from a search result into the right conversation. We set the URL
+  // params the chat/feed views already understand (?c/&area/&m for committees,
+  // ?house/&m for a house, ?post for the Family Feed) THEN switch the active
+  // view — the room mounts fresh and its own `?m` effect scrolls to + flashes
+  // the message, exactly like an Activity-tab deep-link.
+  const openResult = (r: SearchResult) => {
+    const url = new URL(window.location.href);
+    const clear = (...keys: string[]) => keys.forEach((k) => url.searchParams.delete(k));
+    setSearchOpen(false);
+    if (r.source_type === "post" || r.source_type === "post_comment") {
+      clear("c", "area", "house", "m");
+      if (r.post_id) url.searchParams.set("post", r.post_id);
+      else clear("post");
+      window.history.replaceState(null, "", url.toString());
+      setActive("posts");
+      return;
+    }
+    if (r.source_type === "committee_message" && r.committee_id) {
+      const ch = channels.find((c) => c.committeeId === r.committee_id && (c.area ?? "") === (r.area ?? ""));
+      if (!ch) return;
+      clear("post", "house");
+      url.searchParams.set("c", ch.slug);
+      if (ch.area) url.searchParams.set("area", ch.area);
+      else clear("area");
+      url.searchParams.set("m", r.source_id);
+      window.history.replaceState(null, "", url.toString());
+      setActive(ch.key);
+      return;
+    }
+    if (r.source_type === "house_message" && houseChannel && r.house_id === houseChannel.houseId) {
+      clear("post", "c", "area");
+      url.searchParams.set("house", houseChannel.slug);
+      url.searchParams.set("m", r.source_id);
+      window.history.replaceState(null, "", url.toString());
+      setActive(houseChannel.key);
+    }
+  };
   const chatBoxRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   // Opened from the House hub (/posts?house=slug): back should return to /house,
@@ -714,11 +756,35 @@ export function FeedView() {
         </ChatSection>
       )}
 
+      {/* Search — at the foot of the conversation list. Semantic ("find it
+          without the exact words") and scoped to your own RLS: it only ever
+          surfaces messages you can already see. */}
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        className="press flex w-full items-center gap-2 rounded-xl bg-card px-4 py-3 text-sm text-muted"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        Search all conversations…
+      </button>
+
       {/* Archived chats — a quiet, unobtrusive line at the very bottom. Opens a
           read-only view of a committee/role you were in that's since been
           "deleted" (archived, migration 0112). Kept out of the way; admins
           restore from Admin → Committees. */}
       {archivedChannels.length > 0 && <ArchivedChatsLine channels={archivedChannels} onOpen={setActive} />}
+
+      {searchOpen && (
+        <ConversationSearch
+          channels={channels}
+          houseChannel={houseChannel}
+          onOpenResult={openResult}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }
