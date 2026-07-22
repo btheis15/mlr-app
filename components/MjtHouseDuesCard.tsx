@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { Protected } from "@/components/Guard";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/roles";
+import { useIdentity } from "@/components/IdentityProvider";
+import { useCachedResource } from "@/lib/swrCache";
 
 const BETH_PHONE = "8472872608";
 const BETH_EMAIL = "bethbirkholz@hotmail.com";
@@ -26,26 +27,24 @@ const FEST_YEAR = Number(FAMILY_FEST.startDate.slice(0, 4));
  */
 export function MjtHouseDuesCard({ slug }: { slug: string }) {
   const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
-  const [paid, setPaid] = useState<boolean | null>(null); // null = still loading
+  const { userId } = useIdentity();
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (slug !== "mjt-house") return;
-    let cancelled = false;
-    (async () => {
+  // Cached paid state (null = still checking) — seeds the last-known value
+  // instantly (memory across tab switches, persisted across cold opens) so the
+  // "you're paid" card doesn't blink absent-then-present every time you land on
+  // the House Hub. The fetch still revalidates behind the seed.
+  const { data: paid, mutate } = useCachedResource<boolean | null>(
+    slug === "mjt-house" && userId ? `mjtDues.${userId}.${FEST_YEAR}` : null,
+    null,
+    async () => {
       const sb = supabase;
-      const id = sb ? await getCurrentUserId() : null;
-      if (!id) {
-        if (!cancelled) setPaid(false);
-        return;
-      }
-      const { data } = await sb!.from("profiles").select("mjt_dues_paid_year").eq("id", id).maybeSingle();
-      if (!cancelled) setPaid((data?.mjt_dues_paid_year as number | null) === FEST_YEAR);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
+      if (!sb || !userId) return false;
+      const { data } = await sb.from("profiles").select("mjt_dues_paid_year").eq("id", userId).maybeSingle();
+      return (data?.mjt_dues_paid_year as number | null) === FEST_YEAR;
+    },
+    { persist: "local" },
+  );
 
   if (slug !== "mjt-house") return null;
   if (!season || season.daysSinceEnd > TAIL_DAYS) return null;
@@ -55,10 +54,9 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
     (async () => {
       setBusy(true);
       const sb = supabase;
-      const id = sb ? await getCurrentUserId() : null;
-      if (id) {
-        await sb!.from("profiles").update({ mjt_dues_paid_year: year }).eq("id", id);
-        setPaid(year === FEST_YEAR);
+      if (sb && userId) {
+        await sb.from("profiles").update({ mjt_dues_paid_year: year }).eq("id", userId);
+        mutate(year === FEST_YEAR);
       }
       setBusy(false);
     })();

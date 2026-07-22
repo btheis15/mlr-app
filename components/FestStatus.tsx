@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Countdown } from "@/components/Countdown";
 import { Protected, useGuest } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
-import { fetchCommitteeId, fetchJoinState, getCurrentUserId } from "@/lib/roles";
+import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
@@ -74,12 +74,23 @@ export function FestStatus({
   // directly on the card. Chef/crew get the narrower DinnerDetailsEditSheet
   // for their own dinner; full editors get the Planner's own DinnerSheet/
   // ScheduleSheet, same as FestWeek.
-  const [uid, setUid] = useState<string | null>(null);
-  const [canEditAll, setCanEditAll] = useState(false);
+  // The real session uid (available on the first client tick) drives the
+  // chef/crew self-edit checks below — no async getCurrentUserId round-trip.
+  const uid = userId;
   const [members, setMembers] = useState<FestMemberOption[]>([]);
   const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
   const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
   const festDayOptions = eventDays(startDate, endDate);
+
+  // Cached edit-permission — seeds the last-known value instantly (memory across
+  // tab switches, persisted across cold opens) so the Edit affordances don't pop
+  // in a frame or two late while the can_edit_fest RPC re-resolves on each visit.
+  const { data: canEditAll } = useCachedResource<boolean>(
+    user && userId ? `canEditFest.${userId}` : null,
+    false,
+    canEditFest,
+    { persist: "local" },
+  );
 
   const reloadAdminData = useCallback(() => {
     fetchMemberOptions().then(setMembers);
@@ -87,23 +98,11 @@ export function FestStatus({
     fetchScheduleDrafts().then(setScheduleDrafts);
   }, []);
 
+  // Once we know the viewer can edit, pull the Planner drafts + member list the
+  // full-edit sheets need (a chef/crew self-editor never pays for this).
   useEffect(() => {
-    if (!user) {
-      setUid(null);
-      setCanEditAll(false);
-      return;
-    }
-    let active = true;
-    getCurrentUserId().then((id) => active && setUid(id));
-    canEditFest().then((ok) => {
-      if (!active) return;
-      setCanEditAll(ok);
-      if (ok) reloadAdminData();
-    });
-    return () => {
-      active = false;
-    };
-  }, [user, reloadAdminData]);
+    if (canEditAll) reloadAdminData();
+  }, [canEditAll, reloadAdminData]);
 
   const onSaved = () => {
     onContentSaved?.();

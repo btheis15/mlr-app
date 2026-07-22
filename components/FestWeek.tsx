@@ -12,7 +12,7 @@ import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet"
 import { ActivityDetailsEditSheet } from "@/components/ActivityDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet, ActivitySheet } from "@/components/FestPlanner";
 import { useIdentity } from "@/components/IdentityProvider";
-import { getCurrentUserId } from "@/lib/roles";
+import { useCachedResource } from "@/lib/swrCache";
 import {
   canEditFest,
   fetchMemberOptions,
@@ -54,9 +54,9 @@ export function FestWeek({
   onContentSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
-  const { user } = useIdentity();
-  const [uid, setUid] = useState<string | null>(null);
-  const [canEditAll, setCanEditAll] = useState(false);
+  const { user, userId } = useIdentity();
+  // Real session uid drives the chef/crew self-edit checks (no async round-trip).
+  const uid = userId;
   // Full-access editors (admins/committee) can edit ANYTHING on this view —
   // not just the chef/crew-scoped dinner details — by reusing the Planner's
   // own DinnerSheet/ScheduleSheet in place. Those need the member directory +
@@ -72,6 +72,16 @@ export function FestWeek({
   // have content, used to render the accordion sections).
   const festDayOptions = eventDays(startDate, endDate);
 
+  // Cached edit-permission — seeds the last-known value instantly (memory across
+  // tab switches, persisted across cold opens) so the Edit affordances don't pop
+  // in a frame or two late while the can_edit_fest RPC re-resolves each visit.
+  const { data: canEditAll } = useCachedResource<boolean>(
+    user && userId ? `canEditFest.${userId}` : null,
+    false,
+    canEditFest,
+    { persist: "local" },
+  );
+
   const reloadAdminData = useCallback(() => {
     fetchMemberOptions().then(setMembers);
     fetchDinnerDrafts().then(setDinnerDrafts);
@@ -79,23 +89,10 @@ export function FestWeek({
     fetchActivityDrafts().then(setActivityDrafts);
   }, []);
 
+  // Once we know the viewer can edit, pull the Planner drafts + member list.
   useEffect(() => {
-    if (!user) {
-      setUid(null);
-      setCanEditAll(false);
-      return;
-    }
-    let active = true;
-    getCurrentUserId().then((id) => active && setUid(id));
-    canEditFest().then((ok) => {
-      if (!active) return;
-      setCanEditAll(ok);
-      if (ok) reloadAdminData();
-    });
-    return () => {
-      active = false;
-    };
-  }, [user, reloadAdminData]);
+    if (canEditAll) reloadAdminData();
+  }, [canEditAll, reloadAdminData]);
 
   const onSaved = () => {
     onContentSaved?.();
