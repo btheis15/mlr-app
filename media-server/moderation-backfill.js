@@ -1,0 +1,130 @@
+// Deferred re-moderation queue.
+//
+// Moderation is FAIL-OPEN: when the model can't be reached (PCC quota exhausted,
+// fm serve down, a transient error that outlived the retries), moderateMedia()
+// returns null and the upload goes through UNCHECKED. Without this, that item
+// would stay unchecked forever — so anything posted during an outage escapes.
+//
+// This closes that gap: every fail-open upload is enqueued (persisted to disk so
+// it survives a restart) and re-checked on a timer. When the model comes back
+// (e.g. quota resets), the sweep re-runs moderateMedia on the still-on-disk file;
+// a clean verdict just drops it from the queue, and a FLAGGED verdict records it
+// to media_moderation — whose trigger (migration 0128) then RETROACTIVELY holds
+// the already-posted post/message, exactly like the async chat path. So "resume
+// when usage resets" is automatic and covers the outage window too.
+//
+// Self-contained + never throws: a bad queue file, a missing media file, or a
+// model error can't take down the server.
+
+const fs = require("fs");
+const path = require("path");
+
+const QUEUE_FILE = path.join(__dirname, ".mod-recheck.json");
+const SWEEP_MS = Number(process.env.MOD_RECHECK_MS || 15 * 60 * 1000); // 15 min
+const FIRST_SWEEP_MS = Number(process.env.MOD_RECHECK_FIRST_MS || 90 * 1000); // 90s after boot
+const MAX_ATTEMPTS = Number(process.env.MOD_RECHECK_MAX_ATTEMPTS || 200); // give up after N tries
+const MAX_AGE_MS = Number(process.env.MOD_RECHECK_MAX_AGE_MS || 14 * 24 * 60 * 60 * 1000); // 14 days
+const PER_SWEEP = Number(process.env.MOD_RECHECK_PER_SWEEP || 25); // items processed per tick
+
+// items: [{ url, relPath, kind, category, attempts, firstAt, lastAt }]
+let queue = [];
+let loaded = false;
+
+function load() {
+  if (loaded) return;
+  loaded = true;
+  try {
+    if (fs.existsSync(QUEUE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(QUEUE_FILE, "utf8"));
+      if (Array.isArray(raw)) queue = raw;
+    }
+  } catch (e) {
+    console.warn(`[recheck] couldn't read queue (${e.message}) — starting empty`);
+    queue = [];
+  }
+}
+
+function persist() {
+  try {
+    fs.writeFileSync(QUEUE_FILE, JSON.stringify(queue));
+  } catch (e) {
+    console.warn(`[recheck] couldn't persist queue: ${e.message}`);
+  }
+}
+
+// Enqueue a fail-open upload for later re-checking. Deduped by URL. `relPath` is
+// the path relative to MEDIA_DIR (so it survives an absolute-path/dir change).
+function enqueueRecheck({ url, relPath, kind, category }) {
+  if (!url || !relPath) return;
+  load();
+  if (queue.some((q) => q.url === url)) return;
+  const nowIso = new Date().toISOString();
+  queue.push({ url, relPath, kind: kind || "image", category: category || "posts", attempts: 0, firstAt: nowIso, lastAt: null });
+  persist();
+  console.log(`[recheck] queued ${relPath} (${queue.length} pending re-check)`);
+}
+
+// One pass over the queue. `deps` = { moderateMedia, recordMediaModeration, mediaDir }.
+async function sweepOnce(deps) {
+  load();
+  if (!queue.length) return;
+  const { moderateMedia, recordMediaModeration, mediaDir } = deps;
+  const now = Date.now();
+  const batch = queue.slice(0, PER_SWEEP);
+  const drop = new Set();
+  let checked = 0;
+  let flagged = 0;
+
+  for (const item of batch) {
+    const abs = path.join(mediaDir, item.relPath);
+    // File gone (deleted/moved) → nothing to check, drop it.
+    if (!fs.existsSync(abs)) { drop.add(item.url); continue; }
+    // Aged out or too many tries → give up (member reports + admin queue remain
+    // the backstop). Logged so a persistent outage is visible.
+    if (item.attempts >= MAX_ATTEMPTS || (item.firstAt && now - Date.parse(item.firstAt) > MAX_AGE_MS)) {
+      console.warn(`[recheck] giving up on ${item.relPath} after ${item.attempts} tries`);
+      drop.add(item.url);
+      continue;
+    }
+    let v = null;
+    try {
+      v = await moderateMedia(abs, item.kind);
+    } catch (e) {
+      console.warn(`[recheck] ${item.relPath} error: ${e.message}`);
+    }
+    if (v) {
+      checked++;
+      if (v.flagged) {
+        flagged++;
+        console.log(`[recheck] ${item.relPath} → FLAGGED ${v.category} — recording (retroactive hold)`);
+        try { await recordMediaModeration(item.url, v); } catch (e) { console.warn(`[recheck] record failed: ${e.message}`); }
+      }
+      drop.add(item.url); // resolved (clean or flagged) → done
+    } else {
+      // Still can't check (model unavailable) — bump attempts, try next sweep.
+      item.attempts++;
+      item.lastAt = new Date().toISOString();
+    }
+  }
+
+  if (drop.size) queue = queue.filter((q) => !drop.has(q.url));
+  persist();
+  if (checked || flagged || drop.size) {
+    console.log(`[recheck] sweep: ${checked} checked (${flagged} flagged), ${queue.length} still pending`);
+  }
+}
+
+// Start the periodic re-check. No-op scheduling if deps are missing.
+function startBackfill(deps) {
+  if (!deps || !deps.moderateMedia || !deps.recordMediaModeration || !deps.mediaDir) {
+    console.warn("[recheck] backfill not started (missing deps)");
+    return;
+  }
+  load();
+  console.log(`[recheck] backfill armed — ${queue.length} pending, sweep every ${Math.round(SWEEP_MS / 60000)}m`);
+  const run = () => { sweepOnce(deps).catch((e) => console.warn(`[recheck] sweep error: ${e.message}`)); };
+  setTimeout(run, FIRST_SWEEP_MS);
+  setInterval(run, SWEEP_MS);
+}
+
+module.exports = { enqueueRecheck, startBackfill, sweepOnce };

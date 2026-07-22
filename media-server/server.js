@@ -33,6 +33,7 @@ const fs = require("fs");
 const path = require("path");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 const { moderateMedia, moderateText } = require("./moderation");
+const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
@@ -587,7 +588,14 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
               console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
               return recordMediaModeration(fileUrl, v);
             }
-            console.log(`[moderate] (async) ${rel} → ${v ? "ok via " + v.model : "not checked (fail-open)"}`);
+            if (v) {
+              console.log(`[moderate] (async) ${rel} → ok via ${v.model}`);
+            } else {
+              // Couldn't check (model unavailable) — queue for re-check so it
+              // gets moderated once the model is back (retroactive hold via 0128).
+              console.log(`[moderate] (async) ${rel} → not checked (fail-open) — queued for re-check`);
+              enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
+            }
           })
           .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
       } else {
@@ -602,7 +610,8 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
               moderation = { flagged: false };
             }
           } else {
-            console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open)`);
+            console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open) — queued for re-check`);
+            enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
           }
         } catch (e) {
           console.error(`[moderate] error (fail-open): ${e.message}`);
@@ -687,4 +696,13 @@ try {
   require("./work-followup").start().catch((e) => console.error("[work-followup] start failed:", e && e.message));
 } catch (e) {
   console.error("[work-followup] not started:", e && e.message);
+}
+
+// Re-moderate anything that failed open (model unavailable at upload) once the
+// model is back — so nothing posted during an outage stays unchecked. A flag
+// found later retroactively holds the item (media_moderation trigger, 0128).
+try {
+  startBackfill({ moderateMedia, recordMediaModeration, mediaDir: MEDIA_DIR });
+} catch (e) {
+  console.error("[recheck] not started:", e && e.message);
 }
