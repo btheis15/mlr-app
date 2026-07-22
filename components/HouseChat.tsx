@@ -11,7 +11,8 @@ import { MeetingSection } from "@/components/MeetingSection";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { motion } from "framer-motion";
-import { useDebouncedCallback } from "@/lib/hooks";
+import { useDebouncedCallback, useTypingChannel } from "@/lib/hooks";
+import { TypingIndicator } from "@/components/TypingIndicator";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Lightbox } from "@/components/Lightbox";
 import { formatDayHeading, formatClock, groupByDay, plural } from "@/lib/format";
@@ -149,6 +150,11 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
   isAdminRef.current = isAdmin;
 
   const isMember = access === "member";
+
+  // Ephemeral "who's typing" on its OWN realtime channel (never touches the
+  // message subscription). notifyTyping() is throttled inside the hook.
+  const myName = members.find((m) => m.id === uid)?.name || "Someone";
+  const { typers, notifyTyping } = useTypingChannel(uid && houseId ? `house:${slug}` : null, uid, myName);
 
   // ── Who am I + do I have access? ───────────────────────────────────────────
   const loadAccess = async (id?: string | null) => {
@@ -414,6 +420,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
 
   const onComposerChange = (v: string) => {
     setText(v);
+    if (v.trim()) notifyTyping();
     if (mentionIds.length) {
       setMentionIds((ids) => ids.filter((id) => {
         const n = members.find((m) => m.id === id)?.name;
@@ -713,6 +720,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
 
       {/* Composer */}
       <div className="shrink-0 border-t border-border bg-card" style={embedded ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <TypingIndicator names={typers} />
         {status && <p className="px-4 pt-2 text-center text-xs font-medium text-accent">{status}</p>}
 
         {editing && (
