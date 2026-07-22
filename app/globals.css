@@ -175,6 +175,32 @@ html[data-ff] {
   background-image: var(--ff-ambient-image);
 }
 
+/* ── Wide-gamut (Display-P3) upgrade — HDR pop on capable screens ─────────────
+   On a P3 display the vivid Northwoods ACCENTS render richer/deeper than sRGB
+   can express — campfire orange, lake teal, golden sun, dusk violet, fest wine,
+   and a touch more depth on the pine primary — for a subtle "HDR" liveliness in
+   icons, chips, tints, and buttons. The light birch/pine IDENTITY is untouched:
+   background, foreground, cards, borders, the readability floors, and the logo
+   band (which must match the raster logo) all stay sRGB. The hex tokens above
+   remain the source of truth + the fallback for non-P3 devices. Placed after
+   the .ff-section bases so both scopes override cleanly. LIGHT MODE ONLY. */
+@supports (color: color(display-p3 1 1 1)) {
+  :root {
+    --color-primary: color(display-p3 0.06 0.32 0.21); /* pine green, a touch deeper */
+    --color-accent: color(display-p3 0.79 0.24 0);     /* campfire orange, vivid */
+    --color-lake: color(display-p3 0 0.46 0.58);       /* lake teal */
+    --color-campfire: color(display-p3 0.79 0.24 0);
+    --color-sun: color(display-p3 0.72 0.32 0);        /* golden amber */
+    --color-dusk: color(display-p3 0.42 0.11 0.94);    /* evening violet */
+    --color-fest: color(display-p3 0.57 0.15 0.15);    /* heraldic wine */
+  }
+  /* Family Fest's scoped heraldry gets the same wide-gamut treatment. */
+  .ff-section {
+    --color-primary: color(display-p3 0.57 0.15 0.15); /* gules (wine) */
+    --color-accent: color(display-p3 0.1 0.22 0.56);   /* azure */
+  }
+}
+
 /* In the Family Fest section, titles get the Roman-inscription display serif. */
 .ff-section h1,
 .ff-section .font-display {
@@ -283,6 +309,18 @@ html[data-ff] {
   animation-delay: calc(var(--i, 0) * 45ms);
 }
 
+/* TabBar active-icon pop — a quick spring on the icon each time a tab becomes
+   active. TabBar.tsx keys the icon by active-state so this keyframe REPLAYS on
+   every switch (a class swap alone wouldn't restart it). Peaks past the resting
+   size then settles at scale(1.1), matching the active icon's static scale-110,
+   so nothing jumps when the animation ends (no fill-mode needed). */
+@keyframes mlr-tab-pop {
+  0%   { transform: scale(0.84); }
+  55%  { transform: scale(1.22); }
+  100% { transform: scale(1.1); }
+}
+@utility tab-icon-pop { animation: mlr-tab-pop 320ms var(--ease-ios); }
+
 /* One gentle nudge that hints a Home call-out card can be swiped away
    (components/CalloutStack.tsx). Played once per session on the front card;
    skipped under reduce-motion. */
@@ -355,7 +393,7 @@ html[data-splash] #app-logo { opacity: 0; }
   .page-enter, .sheet-panel, .sheet-close, .pop-panel, .pop-close,
   .sm\:pop-panel, .sm\:pop-close,
   .scrim-in, .scrim-out, .rise,
-  .chat-push, .chat-pop {
+  .chat-push, .chat-pop, .tab-icon-pop {
     animation: mlr-fade-in 1ms linear both;
   }
   .press { transition: none; }
