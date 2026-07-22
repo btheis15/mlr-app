@@ -11,7 +11,6 @@ import { BackLink } from "@/components/BackLink";
 import { SkeletonList } from "@/components/Skeleton";
 import { WorkChecklist } from "@/components/WorkChecklist";
 import { MjtHouseDuesCard } from "@/components/MjtHouseDuesCard";
-import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
 import { fetchHouseRecipients } from "@/lib/emailBlast";
 
@@ -99,6 +98,7 @@ function HouseHubBody({
 
   const calHref = `/house/calendar?house=${slug}`;
   const chatHref = `/posts?house=${slug}`;
+  const [emailOpen, setEmailOpen] = useState(false);
 
   return (
     <div className="space-y-5 pt-2">
@@ -116,30 +116,55 @@ function HouseHubBody({
           house and outside its active window (see MjtHouseDuesCard). */}
       <MjtHouseDuesCard slug={slug} />
 
-      {/* Primary destinations as a 2-up tile grid (breaks the monotony of a
-          single stacked column). Calendar carries the live "next up" line. */}
-      <div className="grid grid-cols-2 gap-3">
-        <HubTile href={calHref} emoji="📅" tile="bg-primary/12" title="Calendar" subtitle={calSubtitle} clamp />
-        <HubTile href={chatHref} emoji="💬" tile="bg-lake/12" title="House chat" subtitle="Talk with your house." />
-      </div>
-
-      {/* Secondary "house info" group — reach the house + the shared rules doc. */}
+      {/* Communication — the two ways to reach the whole house, as tiles. Email
+          opens its composer inline right below the grid. */}
       <section className="space-y-2">
-        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">House</h2>
-        <CollapsibleSection
-          title="Email the house"
-          icon="✉️"
-          subtitle="Everyone — including folks not on the app yet"
-        >
-          <EmailMembersComposer
-            sourceKey={`house:${houseId}`}
-            load={() => fetchHouseRecipients(houseId)}
-            groupNoun={`the ${houseName}`}
-            migrationFile="0123_family_roster.sql"
-          />
-        </CollapsibleSection>
-        <HouseRulesCard houseId={houseId} initialRules={rules} />
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Communication</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <HubTile href={chatHref} emoji="💬" tile="bg-lake/12" title="House chat" subtitle="Talk with your house." />
+          <button
+            type="button"
+            onClick={() => setEmailOpen((o) => !o)}
+            aria-expanded={emailOpen}
+            className="press flex flex-col gap-2 rounded-2xl bg-card p-4 text-left ring-1 ring-border transition-shadow hover:shadow-sm"
+          >
+            <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-2xl">✉️</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Email the house</p>
+              <p className="mt-0.5 text-xs text-foreground/60">Everyone — even folks not on the app</p>
+            </div>
+          </button>
+        </div>
+        {emailOpen && (
+          <div className="rounded-2xl bg-card p-4 ring-1 ring-border">
+            <EmailMembersComposer
+              sourceKey={`house:${houseId}`}
+              load={() => fetchHouseRecipients(houseId)}
+              groupNoun={`the ${houseName}`}
+              migrationFile="0123_family_roster.sql"
+            />
+          </div>
+        )}
       </section>
+
+      {/* Calendar — its own section, full-width so the live "next up" line breathes. */}
+      <section className="space-y-2">
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Calendar</h2>
+        <Link
+          href={calHref}
+          className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        >
+          <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-2xl">📅</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">House calendar</p>
+            <p className="mt-0.5 truncate text-xs text-foreground/60">{calSubtitle}</p>
+          </div>
+          <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>›</span>
+        </Link>
+      </section>
+
+      {/* House rules — a self-titled card, effectively its own section. */}
+      <HouseRulesCard houseId={houseId} initialRules={rules} />
 
       {/* Work items — the house's to-do list (the checklist also shows MLR items). */}
       <section className="space-y-2">
