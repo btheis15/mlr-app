@@ -116,48 +116,34 @@ function HouseHubBody({
           house and outside its active window (see MjtHouseDuesCard). */}
       <MjtHouseDuesCard slug={slug} />
 
-      {/* Calendar — the marquee card, with a "next up" line */}
-      <HubCard
-        href={calHref}
-        emoji="📅"
-        tile="bg-primary/12"
-        title="House calendar"
-        subtitle={calSubtitle}
-      />
+      {/* Primary destinations as a 2-up tile grid (breaks the monotony of a
+          single stacked column). Calendar carries the live "next up" line. */}
+      <div className="grid grid-cols-2 gap-3">
+        <HubTile href={calHref} emoji="📅" tile="bg-primary/12" title="Calendar" subtitle={calSubtitle} clamp />
+        <HubTile href={chatHref} emoji="💬" tile="bg-lake/12" title="House chat" subtitle="Talk with your house." />
+      </div>
 
-      {/* Chat */}
-      <HubCard
-        href={chatHref}
-        emoji="💬"
-        tile="bg-lake/12"
-        title="House chat"
-        subtitle="Talk with everyone in your house."
-      />
-
-      {/* Email the whole house — account members PLUS the not-yet-on-the-app
-          people an admin added to this house on the family roster (0123). */}
-      <CollapsibleSection
-        title="Email the house"
-        icon="✉️"
-        subtitle="Everyone in the house — including folks not on the app yet"
-      >
-        <EmailMembersComposer
-          sourceKey={`house:${houseId}`}
-          load={() => fetchHouseRecipients(houseId)}
-          groupNoun={`the ${houseName}`}
-          migrationFile="0123_family_roster.sql"
-        />
-      </CollapsibleSection>
-
-      {/* House rules — a shared, editable open-text doc (any member). */}
-      <HouseRulesCard houseId={houseId} initialRules={rules} />
-
-      {/* Who's staying lives on the House calendar (surfaced via the "Next up"
-          line on the calendar card above) — no separate preview here. */}
+      {/* Secondary "house info" group — reach the house + the shared rules doc. */}
+      <section className="space-y-2">
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">House</h2>
+        <CollapsibleSection
+          title="Email the house"
+          icon="✉️"
+          subtitle="Everyone — including folks not on the app yet"
+        >
+          <EmailMembersComposer
+            sourceKey={`house:${houseId}`}
+            load={() => fetchHouseRecipients(houseId)}
+            groupNoun={`the ${houseName}`}
+            migrationFile="0123_family_roster.sql"
+          />
+        </CollapsibleSection>
+        <HouseRulesCard houseId={houseId} initialRules={rules} />
+      </section>
 
       {/* Work items — the house's to-do list (the checklist also shows MLR items). */}
       <section className="space-y-2">
-        <h2 className="px-0.5 text-sm font-bold">To-do list</h2>
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">To-do list</h2>
         <WorkChecklist />
       </section>
     </div>
@@ -247,34 +233,36 @@ function HouseRulesCard({ houseId, initialRules }: { houseId: string; initialRul
   );
 }
 
-function HubCard({
+/** A vertical tile (icon chip on top, then title + subtitle) for the primary
+ *  House Hub destinations, laid out 2-up. `clamp` keeps a long subtitle (the
+ *  calendar's "next up" line) to two lines so both tiles stay the same height. */
+function HubTile({
   href,
   emoji,
   tile,
   title,
   subtitle,
+  clamp = false,
 }: {
   href: string;
   emoji: string;
   tile: string;
   title: string;
   subtitle: string;
+  clamp?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+      className="press flex flex-col gap-2 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
     >
       <span aria-hidden className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${tile}`}>
         {emoji}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <p className="text-sm font-semibold">{title}</p>
-        <p className="mt-0.5 truncate text-xs text-foreground/60">{subtitle}</p>
+        <p className={`mt-0.5 text-xs text-foreground/60 ${clamp ? "line-clamp-2" : ""}`}>{subtitle}</p>
       </div>
-      <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>
-        ›
-      </span>
     </Link>
   );
 }
