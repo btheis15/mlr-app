@@ -143,8 +143,13 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0135_schedule_signup_slots.sql`](supabase/migrations/0135_schedule_signup_slots.sql),
   [`0136_schedule_signup_custom.sql`](supabase/migrations/0136_schedule_signup_custom.sql),
   and [`0138_activity_signup_slots.sql`](supabase/migrations/0138_activity_signup_slots.sql)
-  (activities). A Home callout can also link to a signup-enabled event with a
-  "📝 Sign up" button (migration
+  (activities). Specific slots can be built while creating the item (before the
+  first save); the organizer/crew get a "📋 View all" roster of every slot + row;
+  and a schedule event can be flagged **"Anytime (no set day)"** to show in the
+  "Anytime all week" group instead of a day (migration
+  [`0139_schedule_item_anytime.sql`](supabase/migrations/0139_schedule_item_anytime.sql)).
+  A Home callout can also link to a signup-enabled event with a "📝 Sign up"
+  button (migration
   [`0137_callout_signup_link.sql`](supabase/migrations/0137_callout_signup_link.sql)).
   See CLAUDE.md → **Event sign-up slots**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,

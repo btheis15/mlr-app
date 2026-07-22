@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PrivateName } from "@/components/Guard";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { MemberPickerSheet } from "@/components/FestPlanner";
 import { fetchMemberOptions, type FestMemberOption } from "@/lib/festContent";
 import {
@@ -48,6 +50,7 @@ export function ScheduleSignupSlots({
   const [memberOptions, setMemberOptions] = useState<FestMemberOption[]>(members);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rosterOpen, setRosterOpen] = useState(false);
 
   const fields: SignupField[] = target.signupFields ?? [];
 
@@ -82,7 +85,19 @@ export function ScheduleSignupSlots({
 
   return (
     <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
+        {/* Organizer/crew get a consolidated view of every slot + row in one place. */}
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setRosterOpen(true)}
+            className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
+          >
+            📋 View all
+          </button>
+        )}
+      </div>
       {target.signupInstructions?.trim() && (
         <p className="whitespace-pre-line rounded-xl bg-background px-3 py-2 text-xs leading-relaxed text-foreground/70 ring-1 ring-border/60">
           {target.signupInstructions.trim()}
@@ -130,7 +145,91 @@ export function ScheduleSignupSlots({
       {error && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{error}</p>
       )}
+      {rosterOpen && (
+        <SignupRosterSheet slotViews={slotViews} signups={signups} fields={fields} onClose={() => setRosterOpen(false)} />
+      )}
     </div>
+  );
+}
+
+/** The organizer/crew's "everything in one place" view — every slot, every
+ *  person, and every custom-column value, as a scannable table. */
+function SignupRosterSheet({
+  slotViews,
+  signups,
+  fields,
+  onClose,
+}: {
+  slotViews: SlotView[];
+  signups: ScheduleSignup[];
+  fields: SignupField[];
+  onClose: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const total = signups.length;
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="signup-roster"
+      header={
+        <div id="signup-roster">
+          <h2 className="text-lg font-bold">All sign-ups</h2>
+          <p className="text-xs text-foreground/50">
+            {total} {total === 1 ? "person" : "people"} across {slotViews.length}{" "}
+            {slotViews.length === 1 ? "slot" : "slots"}
+          </p>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {slotViews.map((view) => {
+          const rows = signups.filter((s) => view.matches(s));
+          return (
+            <div key={view.key} className="rounded-2xl bg-card ring-1 ring-border">
+              <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+                <p className="text-sm font-semibold">{view.label}</p>
+                <span className={`text-xs ${rows.length >= view.capacity ? "text-accent" : "text-foreground/50"}`}>
+                  {rows.length}/{view.capacity}
+                </span>
+              </div>
+              {rows.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-foreground/45">No one yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-foreground/50">
+                        <th className="px-3 py-1.5 font-medium">#</th>
+                        <th className="px-3 py-1.5 font-medium">Name</th>
+                        {fields.map((f) => (
+                          <th key={f.id} className="px-3 py-1.5 font-medium">{f.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((s, i) => (
+                        <tr key={s.id} className="border-t border-border/50 align-top">
+                          <td className="px-3 py-1.5 text-foreground/40">{i + 1}</td>
+                          <td className="px-3 py-1.5 font-medium">
+                            <PrivateName name={s.name} />
+                          </td>
+                          {fields.map((f) => (
+                            <td key={f.id} className="px-3 py-1.5 text-foreground/70">
+                              {s.fields?.[f.id]?.trim() || "—"}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 

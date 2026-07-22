@@ -51,7 +51,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       <header className="space-y-1">
         <p className="text-xs text-foreground/50">
-          {formatDateLong(event.day)} · {formatTime(event.start)}
+          {event.anytime ? "Anytime all week" : formatDateLong(event.day)} · {formatTime(event.start)}
           {event.end ? `–${formatTime(event.end)}` : ""}
         </p>
         <h1 className="text-2xl font-bold tracking-tight">

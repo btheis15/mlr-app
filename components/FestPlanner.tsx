@@ -467,6 +467,7 @@ export function ScheduleSheet({
   const { closing, close } = useSheetDismiss(onClose);
   const save = useSaveStatus();
   const [day, setDay] = useState(draft?.day ?? days[0] ?? "");
+  const [anytime, setAnytime] = useState(draft?.anytime ?? false);
   const [title, setTitle] = useState(draft?.title ?? "");
   const [emoji, setEmoji] = useState(draft?.emoji ?? "");
   const [hasTime, setHasTime] = useState(Boolean(draft?.startTime));
@@ -488,9 +489,12 @@ export function ScheduleSheet({
   const [linkUrl, setLinkUrl] = useState(draft?.linkUrl ?? "");
   const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
   const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
+  // Slots added while the event is still brand-new (no id to attach them to
+  // yet) — persisted right after the first save. See SignupConfigEditor.
+  const [pendingSlots, setPendingSlots] = useState<PendingSlot[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const canSave = title.trim().length > 0 && day.length > 0 && signupIsValid(signup) && !save.pending;
+  const canSave = title.trim().length > 0 && (anytime || day.length > 0) && signupIsValid(signup) && !save.pending;
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -509,9 +513,10 @@ export function ScheduleSheet({
 
   const submit = () =>
     save.run(async () => {
-      const { error } = await saveScheduleItem({
+      const { error, id } = await saveScheduleItem({
         id: draft?.id,
         day,
+        anytime,
         startTime: hasTime ? orNull(startTime) : null,
         endTime: hasTime ? orNull(endTime) : null,
         title: title.trim(),
@@ -531,6 +536,8 @@ export function ScheduleSheet({
         ...signupPayload(signup),
       });
       if (error) return error;
+      const slotErr = await flushPendingSlots("schedule", draft?.id, id, pendingSlots);
+      if (slotErr) return slotErr;
       onSaved();
       return null;
     });
@@ -544,11 +551,25 @@ export function ScheduleSheet({
       footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} />}
     >
       <Field label="Day">
-        <select value={day} onChange={(e) => setDay(e.target.value)} className={`${FIELD} w-full`}>
-          {days.map((d) => (
-            <option key={d} value={d}>{formatDateLong(d)}</option>
-          ))}
-        </select>
+        <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm">Anytime (no set day)</span>
+            <span className="block text-xs text-foreground/50">Shows in &ldquo;Anytime all week&rdquo; instead of on a day.</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={anytime}
+            onChange={(e) => setAnytime(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+        {!anytime && (
+          <select value={day} onChange={(e) => setDay(e.target.value)} className={`${FIELD} w-full`}>
+            {days.map((d) => (
+              <option key={d} value={d}>{formatDateLong(d)}</option>
+            ))}
+          </select>
+        )}
       </Field>
 
       <Field label="Event">
@@ -673,7 +694,15 @@ export function ScheduleSheet({
         />
       </Field>
 
-      <SignupConfigEditor kind="schedule" parentId={draft?.id} days={days} value={signup} onChange={setSignup} />
+      <SignupConfigEditor
+        kind="schedule"
+        parentId={draft?.id}
+        days={days}
+        value={signup}
+        onChange={setSignup}
+        pendingSlots={pendingSlots}
+        onPendingSlots={setPendingSlots}
+      />
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
         <span className="min-w-0">
@@ -769,18 +798,50 @@ export function signupPayload(v: SignupDraft) {
   };
 }
 
+/** A slot added before the parent item exists — held in the sheet's state and
+ *  flushed by flushPendingSlots() right after the first save. */
+export interface PendingSlot {
+  day: string | null;
+  startTime: string;
+  endTime: string | null;
+  capacity: number | null;
+}
+
+/** After saving a brand-new item (no prior id), create any slots the user added
+ *  while it was still unsaved. No-op when editing an existing item (those slots
+ *  were written live) or when there are none. Returns an error string on failure. */
+async function flushPendingSlots(
+  kind: SignupKind,
+  existingId: string | undefined,
+  savedId: string | undefined,
+  pending: PendingSlot[],
+): Promise<string | null> {
+  if (existingId || !savedId || pending.length === 0) return null;
+  for (let i = 0; i < pending.length; i++) {
+    const s = pending[i];
+    const { error } = await createScheduleSlot(kind, savedId, { ...s, label: null, position: i });
+    if (error) return error;
+  }
+  return null;
+}
+
 function SignupConfigEditor({
   kind,
   parentId,
   days,
   value,
   onChange,
+  pendingSlots,
+  onPendingSlots,
 }: {
   kind: SignupKind;
   parentId: string | undefined;
   days: string[];
   value: SignupDraft;
   onChange: (v: SignupDraft) => void;
+  /** Slots staged for a not-yet-saved item (used only when `parentId` is unset). */
+  pendingSlots: PendingSlot[];
+  onPendingSlots: (s: PendingSlot[]) => void;
 }) {
   const set = (patch: Partial<SignupDraft>) => onChange({ ...value, ...patch });
   return (
@@ -863,12 +924,14 @@ function SignupConfigEditor({
                 <p className="text-xs font-medium text-accent">End time must be after the start time.</p>
               )}
             </div>
-          ) : parentId ? (
-            <SignupSlotsEditor kind={kind} parentId={parentId} days={days} />
           ) : (
-            <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/60 ring-1 ring-border/60">
-              Save this first, then reopen it to add specific time slots.
-            </p>
+            <SignupSlotsEditor
+              kind={kind}
+              parentId={parentId}
+              days={days}
+              pending={pendingSlots}
+              onPending={onPendingSlots}
+            />
           )}
 
           {/* Instructions shown to everyone signing up. */}
@@ -924,10 +987,25 @@ function SignupConfigEditor({
 }
 
 /** Inline editor for the arbitrary, independent sign-up slots of an event or
- *  activity (signup_mode = 'slots', migrations 0136/0138). Writes live to the
- *  kind's slots table as you add/remove — so it needs an already-saved id. */
-function SignupSlotsEditor({ kind, parentId, days }: { kind: SignupKind; parentId: string; days: string[] }) {
-  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+ *  activity (signup_mode = 'slots', migrations 0136/0138). Two modes: with a
+ *  `parentId` it writes live to the kind's slots table as you add/remove; with
+ *  no parent yet (a brand-new, unsaved item) it stages slots in the parent
+ *  sheet's `pending` list, flushed on the first save (flushPendingSlots). */
+function SignupSlotsEditor({
+  kind,
+  parentId,
+  days,
+  pending,
+  onPending,
+}: {
+  kind: SignupKind;
+  parentId: string | undefined;
+  days: string[];
+  pending: PendingSlot[];
+  onPending: (s: PendingSlot[]) => void;
+}) {
+  const live = Boolean(parentId);
+  const [saved, setSaved] = useState<ScheduleSlot[]>([]);
   const [day, setDay] = useState("");
   const [time, setTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -935,37 +1013,56 @@ function SignupSlotsEditor({ kind, parentId, days }: { kind: SignupKind; parentI
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => setSlots(await fetchScheduleSlots(kind, parentId)), [kind, parentId]);
+  const reload = useCallback(async () => {
+    if (parentId) setSaved(await fetchScheduleSlots(kind, parentId));
+  }, [kind, parentId]);
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  // Rows to show — persisted slots (live) or the staged pending list (new).
+  const rows: { key: string; day: string | null; startTime: string; endTime: string | null; capacity: number | null }[] = live
+    ? saved.map((s) => ({ key: s.id, day: s.day, startTime: s.startTime, endTime: s.endTime, capacity: s.capacity }))
+    : pending.map((s, i) => ({ key: String(i), ...s }));
+
+  const clearInputs = () => {
+    setTime("");
+    setEndTime("");
+    setCap("");
+  };
+
   const add = async () => {
     if (!time) return;
-    setBusy(true);
-    setError(null);
-    const { error } = await createScheduleSlot(kind, parentId, {
+    const slot: PendingSlot = {
       day: day || null,
       startTime: time,
       endTime: endTime || null,
-      label: null,
       capacity: cap.trim() ? Number(cap) : null,
-      position: slots.length,
-    });
+    };
+    if (!live) {
+      onPending([...pending, slot]);
+      clearInputs();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error } = await createScheduleSlot(kind, parentId!, { ...slot, label: null, position: saved.length });
     if (error) setError(error);
     else {
-      setTime("");
-      setEndTime("");
-      setCap("");
+      clearInputs();
       await reload();
     }
     setBusy(false);
   };
 
-  const remove = async (id: string) => {
+  const remove = async (key: string) => {
+    if (!live) {
+      onPending(pending.filter((_, i) => String(i) !== key));
+      return;
+    }
     setBusy(true);
     setError(null);
-    const { error } = await deleteScheduleSlot(kind, id);
+    const { error } = await deleteScheduleSlot(kind, key);
     if (error) setError(error);
     else await reload();
     setBusy(false);
@@ -974,10 +1071,10 @@ function SignupSlotsEditor({ kind, parentId, days }: { kind: SignupKind; parentI
   return (
     <div className="space-y-2 rounded-xl bg-background p-2.5 ring-1 ring-border/60">
       <span className="block text-xs font-semibold text-foreground/60">Time slots</span>
-      {slots.length > 0 ? (
+      {rows.length > 0 ? (
         <ul className="space-y-1">
-          {slots.map((s) => (
-            <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5 text-xs">
+          {rows.map((s) => (
+            <li key={s.key} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5 text-xs">
               <span className="font-medium">
                 {s.day ? `${formatDate(s.day)} · ` : ""}
                 {formatTime(s.startTime)}
@@ -986,7 +1083,7 @@ function SignupSlotsEditor({ kind, parentId, days }: { kind: SignupKind; parentI
               </span>
               <button
                 type="button"
-                onClick={() => remove(s.id)}
+                onClick={() => remove(s.key)}
                 disabled={busy}
                 aria-label="Remove slot"
                 className="press text-foreground/50"
@@ -1501,13 +1598,14 @@ export function ActivitySheet({
   const [leadPhone, setLeadPhone] = useState(draft?.leadPhone ?? "");
   const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
   const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
+  const [pendingSlots, setPendingSlots] = useState<PendingSlot[]>([]);
   const [picking, setPicking] = useState(false);
   const [pickingCrew, setPickingCrew] = useState(false);
 
   const canSave = title.trim().length > 0 && signupIsValid(signup) && !save.pending;
   const submit = () =>
     save.run(async () => {
-      const { error } = await saveActivity({
+      const { error, id } = await saveActivity({
         id: draft?.id,
         title: title.trim(),
         emoji: orNull(emoji),
@@ -1522,6 +1620,8 @@ export function ActivitySheet({
         ...signupPayload(signup),
       });
       if (error) return error;
+      const slotErr = await flushPendingSlots("activity", draft?.id, id, pendingSlots);
+      if (slotErr) return slotErr;
       onSaved();
       return null;
     });
@@ -1587,7 +1687,15 @@ export function ActivitySheet({
         </button>
       </Field>
 
-      <SignupConfigEditor kind="activity" parentId={draft?.id} days={days} value={signup} onChange={setSignup} />
+      <SignupConfigEditor
+        kind="activity"
+        parentId={draft?.id}
+        days={days}
+        value={signup}
+        onChange={setSignup}
+        pendingSlots={pendingSlots}
+        onPendingSlots={setPendingSlots}
+      />
 
       {picking && (
         <MemberPickerSheet

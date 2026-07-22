@@ -125,7 +125,9 @@ export function FestStatus({
   );
 
   if (season?.isLive) {
-    const today = eventsForDay(events, t);
+    // Anytime events (migration 0139) live in the "Anytime all week" group, not
+    // in a day's "Happening today" list.
+    const today = eventsForDay(events, t).filter((e) => !e.anytime);
     const dinner = dinnerForDay(dinners, t);
     return (
       <div className="space-y-3">

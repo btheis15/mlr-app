@@ -341,6 +341,10 @@ export interface ScheduleEvent {
   crewUserIds?: string[];
   /** Optional "what to bring" note. */
   bring?: string;
+  /** True ⇒ not locked to `day` — rendered in the "Anytime all week" group
+   *  alongside activities (migration 0139). `day` still holds a value but the
+   *  client ignores it for display/grouping. */
+  anytime?: boolean;
   /** Optional cover photo (site-assets URL). */
   imageUrl?: string | null;
   /** Optional click-through link — a Google Doc/Sheet, sign-up form, or any

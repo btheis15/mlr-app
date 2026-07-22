@@ -762,7 +762,10 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     need to share a length or increment ("Mon 10:50am, Wed 1:48pm, …"). Stored as
     `fest_schedule_slots` rows (public-read; writes RLS-gated to the same manage
     predicate via `_can_manage_item_signups(item_id)`). The Planner's inline
-    `SignupSlotsEditor` adds/removes them (needs an already-saved event id).
+    `SignupSlotsEditor` adds/removes them. When editing an **existing** item it
+    writes live; on a **brand-new** item (no id yet) it stages slots in the sheet
+    and `flushPendingSlots()` creates them right after the first save (so you can
+    build the slots while creating the event — `writeRow` now returns the new id).
 - **Instructions + custom columns** (migration 0136). The creator can write
   free-text `signup_instructions` and define `signup_fields` — an ordered jsonb
   array of `{id,label}` extra columns **required on every person's row** (e.g. a
@@ -777,6 +780,16 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   p_fields)`. Capacity + one-linked-member-per-slot are enforced server-side.
   Removal (`remove_schedule_signup`) is limited to the row's **adder**, the
   **linked person**, or an **organizer**.
+- **Roster view for the organizer/crew.** `canManage` viewers get a "📋 View all"
+  button on the sign-up card opening `SignupRosterSheet` — every slot, person, and
+  custom-column value as one scannable table (in `ScheduleSignupSlots`).
+- **Anytime schedule events** (migration 0139). The event editor has an
+  **"Anytime (no set day)"** toggle (`fest_schedule_items.anytime`) so an event
+  isn't locked to a day — it renders in the "Anytime all week" group alongside
+  activities (`FestWeek`) instead of a day card, saving a trip to the separate
+  activity editor. Modeled as a flag, not a nullable `day`, so date formatters
+  stay safe; `FestWeek`/`FestStatus` exclude `anytime` events from day/"today"
+  lists, and the schedule detail header shows "Anytime all week".
 - **A Home callout can link to an event's sign-up** (migration 0137).
   `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
   as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a

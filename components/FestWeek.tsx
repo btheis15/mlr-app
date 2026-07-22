@@ -100,13 +100,17 @@ export function FestWeek({
     if (canEditAll) reloadAdminData();
   };
 
+  // Anytime events (migration 0139) aren't locked to a day — they render in the
+  // "Anytime all week" group with activities, not in any day card.
+  const anytimeEvents = events.filter((e) => e.anytime);
+  const dayEventsAll = events.filter((e) => !e.anytime);
   const days = Array.from(
-    new Set([...events.map((e) => e.day), ...dinners.map((d) => d.day)]),
+    new Set([...dayEventsAll.map((e) => e.day), ...dinners.map((d) => d.day)]),
   ).sort();
 
   return (
     <section className="space-y-3">
-      {things.length > 0 && (
+      {(things.length > 0 || anytimeEvents.length > 0) && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-accent">🗺️ Anytime all week</h2>
           {things.map((a, i) => (
@@ -122,6 +126,24 @@ export function FestWeek({
               onSaved={onSaved}
             />
           ))}
+          {anytimeEvents.length > 0 && (
+            <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+              <ul>
+                {anytimeEvents.map((e) => (
+                  <EventRow
+                    key={e.id}
+                    event={e}
+                    uid={uid}
+                    canEditAll={canEditAll}
+                    draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
+                    days={festDayOptions}
+                    members={members}
+                    onSaved={onSaved}
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -133,7 +155,7 @@ export function FestWeek({
 
       <div className="space-y-3">
         {days.map((day, i) => {
-          const dayEvents = eventsForDay(events, day);
+          const dayEvents = eventsForDay(dayEventsAll, day);
           const dinner = dinnerForDay(dinners, day);
           return (
             <div
