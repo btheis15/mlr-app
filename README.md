@@ -132,6 +132,16 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
   (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
   attendance**.
+- **Event sign-up slots** — a Family Fest schedule event can take limited
+  sign-ups, either as even slots across a time range **or** an arbitrary list of
+  specific times (each with its own day/length), with creator-written
+  instructions and any number of required extra columns (e.g. "Character"). Each
+  seat is one row — a linked member or a typed name — and any signed-in member
+  can sign up anyone. UI [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx),
+  seam [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts); migrations
+  [`0135_schedule_signup_slots.sql`](supabase/migrations/0135_schedule_signup_slots.sql)
+  + [`0136_schedule_signup_custom.sql`](supabase/migrations/0136_schedule_signup_custom.sql).
+  See CLAUDE.md → **Event sign-up slots**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,
   Cabin requests, Help contact, Sign-ins, and View as — each its own `/admin/*`

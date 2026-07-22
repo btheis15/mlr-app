@@ -1,24 +1,27 @@
 "use client";
 
-// Limited sign-up time slots on a schedule event (migration 0135) — e.g. "4
-// people per slot, every hour from noon to 4pm." Shown wherever an event's
-// expanded details already render (FestWeek's EventRow, FestStatus's
-// TodayEvent), right alongside the existing Edit affordance.
+// Sign-up slots on a schedule event (migrations 0135 + 0136). Shown wherever an
+// event's expanded details render (FestWeek's EventRow, FestStatus's
+// TodayEvent). Two modes: derived interval slots, or the creator's own
+// arbitrary list of slots. Each slot holds up to N people; each person is one
+// row — a linked member or a typed name — plus a value for every custom column
+// the creator defined. ANY signed-in member can add anyone, and add several.
 
 import { useCallback, useEffect, useState } from "react";
-import { formatTime } from "@/lib/format";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PrivateName } from "@/components/Guard";
 import { MemberPickerSheet } from "@/components/FestPlanner";
+import { fetchMemberOptions, type FestMemberOption } from "@/lib/festContent";
 import {
-  computeSlots,
+  resolveSlotViews,
   fetchScheduleSignups,
+  fetchScheduleSlots,
   signUpForSlot,
   removeScheduleSignup,
   type ScheduleSignup,
+  type SlotView,
 } from "@/lib/scheduleSignups";
-import type { FestMemberOption } from "@/lib/festContent";
-import type { ScheduleEvent } from "@/lib/types";
+import type { ScheduleEvent, ScheduleSlot, SignupField } from "@/lib/types";
 
 export function ScheduleSignupSlots({
   event,
@@ -26,174 +29,337 @@ export function ScheduleSignupSlots({
   members,
 }: {
   event: ScheduleEvent;
-  /** Can act on ANY slot (add/remove other people) — the same predicate as
-   *  the edit affordance: can_edit_fest() OR this event's lead/crew. */
+  /** Can act on ANY row (remove other people's sign-ups) — the same predicate
+   *  as the edit affordance: can_edit_fest() OR this event's lead/crew. */
   canManage: boolean;
   members: FestMemberOption[];
 }) {
   const { userId, promptSignIn } = useIdentity();
   const [signups, setSignups] = useState<ScheduleSignup[]>([]);
-  const [busySlot, setBusySlot] = useState<string | null>(null);
+  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [memberOptions, setMemberOptions] = useState<FestMemberOption[]>(members);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pickingSlot, setPickingSlot] = useState<string | null>(null);
-  const [namingSlot, setNamingSlot] = useState<string | null>(null);
-  const [nameInput, setNameInput] = useState("");
 
-  const reload = useCallback(async () => setSignups(await fetchScheduleSignups(event.id)), [event.id]);
+  const fields: SignupField[] = event.signupFields ?? [];
+
+  const reload = useCallback(async () => {
+    const [s, sl] = await Promise.all([
+      fetchScheduleSignups(event.id),
+      event.signupMode === "slots" ? fetchScheduleSlots(event.id) : Promise.resolve([]),
+    ]);
+    setSignups(s);
+    setSlots(sl);
+  }, [event.id, event.signupMode]);
   useEffect(() => {
     void reload();
   }, [reload]);
+  // Keep the seed fresh if the editor's member list arrives after mount.
+  useEffect(() => {
+    if (members.length) setMemberOptions((prev) => (prev.length ? prev : members));
+  }, [members]);
 
-  const slots = computeSlots(event);
-  if (!slots.length) return null;
-  const capacity = event.signupCapacity ?? 0;
+  const slotViews = resolveSlotViews(event, slots);
+  if (!slotViews.length) return null;
 
-  const runAction = async (slot: string, action: () => Promise<{ error?: string }>) => {
-    setBusySlot(slot);
+  const runAction = async (key: string, action: () => Promise<{ error?: string }>) => {
+    setBusyKey(key);
     setError(null);
     const { error } = await action();
     if (error) setError(error);
     else await reload();
-    setBusySlot(null);
-  };
-
-  const join = (slot: string) => {
-    if (!userId) {
-      promptSignIn();
-      return;
-    }
-    void runAction(slot, () => signUpForSlot(event.id, slot));
-  };
-  const leave = (slot: string, signupId: string) => void runAction(slot, () => removeScheduleSignup(signupId));
-  const addMember = (slot: string, m: FestMemberOption) => {
-    setPickingSlot(null);
-    void runAction(slot, () => signUpForSlot(event.id, slot, { forUserId: m.id }));
-  };
-  const addName = (slot: string) => {
-    const name = nameInput.trim();
-    if (!name) return;
-    setNamingSlot(null);
-    setNameInput("");
-    void runAction(slot, () => signUpForSlot(event.id, slot, { name }));
+    setBusyKey(null);
+    return !error;
   };
 
   return (
     <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
+      {event.signupInstructions?.trim() && (
+        <p className="whitespace-pre-line rounded-xl bg-background px-3 py-2 text-xs leading-relaxed text-foreground/70 ring-1 ring-border/60">
+          {event.signupInstructions.trim()}
+        </p>
+      )}
       <div className="space-y-2">
-        {slots.map((slot) => {
-          const inSlot = signups.filter((s) => s.slotStart === slot);
-          const full = inSlot.length >= capacity;
-          const mine = userId ? inSlot.find((s) => s.userId === userId) : undefined;
-          const busy = busySlot === slot;
-          return (
-            <div key={slot} className="rounded-xl bg-background p-2.5 ring-1 ring-border/60">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{formatTime(slot)}</p>
-                <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
-                  {inSlot.length}/{capacity} filled
-                </span>
-              </div>
-              {inSlot.length > 0 && (
-                <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                  {inSlot.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary"
-                    >
-                      <PrivateName name={s.name} />
-                      {(s.userId === userId || canManage) && (
-                        <button
-                          type="button"
-                          onClick={() => leave(slot, s.id)}
-                          disabled={busy}
-                          aria-label={`Remove ${s.name} from this slot`}
-                          className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {mine ? (
-                  <p className="text-xs font-medium text-primary">You&rsquo;re signed up ✓</p>
-                ) : (
-                  !full && (
-                    <button
-                      type="button"
-                      onClick={() => join(slot)}
-                      disabled={busy}
-                      className="press rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary disabled:opacity-50"
-                    >
-                      {userId ? "+ Join this slot" : "Sign in to join"}
-                    </button>
+        {slotViews.map((view) => (
+          <SlotCard
+            key={view.key}
+            view={view}
+            signups={signups.filter((s) => view.matches(s))}
+            fields={fields}
+            userId={userId}
+            canManage={canManage}
+            busy={busyKey === view.key}
+            members={memberOptions}
+            ensureMembers={async () => {
+              if (memberOptions.length) return;
+              const m = await fetchMemberOptions();
+              setMemberOptions(m);
+            }}
+            onJoin={() =>
+              userId
+                ? void runAction(view.key, () =>
+                    signUpForSlot(event.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart }),
                   )
-                )}
-                {canManage && !full && (
-                  <>
-                    {members.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setPickingSlot(slot)}
-                        disabled={busy}
-                        className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-foreground/70 ring-1 ring-border disabled:opacity-50"
-                      >
-                        + Add a member
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setNamingSlot(slot)}
-                      disabled={busy}
-                      className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-foreground/70 ring-1 ring-border disabled:opacity-50"
-                    >
-                      + Add a name
-                    </button>
-                  </>
-                )}
-              </div>
-              {namingSlot === slot && (
-                <div className="mt-2 flex gap-2">
-                  <input
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="Name"
-                    autoFocus
-                    className="min-w-0 flex-1 rounded-lg bg-background px-2.5 py-1.5 text-sm ring-1 ring-border"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => addName(slot)}
-                    disabled={!nameInput.trim()}
-                    className="press rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setNamingSlot(null); setNameInput(""); }}
-                    className="press rounded-lg px-2 text-xs font-medium text-foreground/50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                : promptSignIn()
+            }
+            onAdd={(payload) =>
+              runAction(view.key, () =>
+                signUpForSlot(event.id, {
+                  slotId: view.slotId,
+                  slotStart: view.slotId ? null : view.slotStart,
+                  forUserId: payload.forUserId,
+                  name: payload.forUserId ? undefined : payload.name,
+                  fields: payload.fields,
+                }),
+              )
+            }
+            onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(id))}
+            requireSignIn={promptSignIn}
+          />
+        ))}
       </div>
       {error && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{error}</p>
       )}
-      {pickingSlot && (
-        <MemberPickerSheet
+    </div>
+  );
+}
+
+function SlotCard({
+  view,
+  signups,
+  fields,
+  userId,
+  canManage,
+  busy,
+  members,
+  ensureMembers,
+  onJoin,
+  onAdd,
+  onRemove,
+  requireSignIn,
+}: {
+  view: SlotView;
+  signups: ScheduleSignup[];
+  fields: SignupField[];
+  userId: string | null;
+  canManage: boolean;
+  busy: boolean;
+  members: FestMemberOption[];
+  ensureMembers: () => Promise<void>;
+  onJoin: () => void;
+  onAdd: (payload: { forUserId?: string; name: string; fields: Record<string, string> }) => Promise<boolean>;
+  onRemove: (id: string) => void;
+  requireSignIn: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const full = signups.length >= view.capacity;
+  const mine = userId ? signups.some((s) => s.userId === userId) : false;
+  const hasFields = fields.length > 0;
+
+  return (
+    <div className="rounded-xl bg-background p-2.5 ring-1 ring-border/60">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">{view.label}</p>
+        <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
+          {signups.length}/{view.capacity} filled
+        </span>
+      </div>
+
+      {signups.length > 0 && (
+        <ul className="mt-1.5 space-y-1">
+          {signups.map((s) => (
+            <li
+              key={s.id}
+              className="flex items-start justify-between gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
+            >
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  <PrivateName name={s.name} />
+                </p>
+                {fields.length > 0 && (
+                  <p className="mt-0.5 text-primary/70">
+                    {fields
+                      .map((f) => `${f.label}: ${s.fields?.[f.id]?.trim() || "—"}`)
+                      .join(" · ")}
+                  </p>
+                )}
+              </div>
+              {(s.userId === userId || s.addedBy === userId || canManage) && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(s.id)}
+                  disabled={busy}
+                  aria-label={`Remove ${s.name} from this slot`}
+                  className="press mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                >
+                  ✕
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {!full && !adding && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {/* Fast self-join only when there are no extra columns to fill. */}
+          {!mine && !hasFields && (
+            <button
+              type="button"
+              onClick={onJoin}
+              disabled={busy}
+              className="press rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary disabled:opacity-50"
+            >
+              {userId ? "+ Join this slot" : "Sign in to join"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (!userId) {
+                requireSignIn();
+                return;
+              }
+              setAdding(true);
+            }}
+            disabled={busy}
+            className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-foreground/70 ring-1 ring-border disabled:opacity-50"
+          >
+            {hasFields ? "+ Sign up" : "+ Add someone"}
+          </button>
+        </div>
+      )}
+
+      {adding && (
+        <AddSignupForm
+          fields={fields}
           members={members}
-          onPick={(m) => addMember(pickingSlot, m)}
-          onClose={() => setPickingSlot(null)}
+          myUserId={userId}
+          ensureMembers={ensureMembers}
+          busy={busy}
+          onCancel={() => setAdding(false)}
+          onSubmit={async (payload) => {
+            const ok = await onAdd(payload);
+            if (ok) setAdding(false);
+          }}
         />
+      )}
+    </div>
+  );
+}
+
+function AddSignupForm({
+  fields,
+  members,
+  myUserId,
+  ensureMembers,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  fields: SignupField[];
+  members: FestMemberOption[];
+  myUserId: string | null;
+  ensureMembers: () => Promise<void>;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: { forUserId?: string; name: string; fields: Record<string, string> }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [forUserId, setForUserId] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [picking, setPicking] = useState(false);
+
+  const setField = (id: string, v: string) => setValues((prev) => ({ ...prev, [id]: v }));
+  const allFieldsFilled = fields.every((f) => (values[f.id] ?? "").trim());
+  const canSubmit = name.trim().length > 0 && allFieldsFilled && !busy;
+
+  const linkMember = (m: FestMemberOption) => {
+    setForUserId(m.id);
+    setName(m.name);
+    setPicking(false);
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-card p-2.5 ring-1 ring-border">
+      <div>
+        <span className="mb-1 block text-[11px] font-medium text-foreground/50">Who&rsquo;s signing up</span>
+        <input
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setForUserId(null); // typing over a linked pick unlinks it
+          }}
+          placeholder="Type a name"
+          autoFocus
+          className="w-full rounded-lg bg-background px-2.5 py-1.5 text-sm ring-1 ring-border"
+        />
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {forUserId && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              🔗 linked account
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={async () => {
+              await ensureMembers();
+              setPicking(true);
+            }}
+            className="press rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-foreground/70 ring-1 ring-border"
+          >
+            Link a member
+          </button>
+          {myUserId && (
+            <button
+              type="button"
+              onClick={() => {
+                const me = members.find((m) => m.id === myUserId);
+                setForUserId(myUserId);
+                setName(me?.name ?? "Me");
+              }}
+              className="press rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-foreground/70 ring-1 ring-border"
+            >
+              It&rsquo;s me
+            </button>
+          )}
+        </div>
+      </div>
+
+      {fields.map((f) => (
+        <label key={f.id} className="block">
+          <span className="mb-1 block text-[11px] font-medium text-foreground/50">{f.label}</span>
+          <input
+            value={values[f.id] ?? ""}
+            onChange={(e) => setField(f.id, e.target.value)}
+            placeholder={f.label}
+            className="w-full rounded-lg bg-background px-2.5 py-1.5 text-sm ring-1 ring-border"
+          />
+        </label>
+      ))}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onSubmit({ forUserId: forUserId ?? undefined, name: name.trim(), fields: values })}
+          disabled={!canSubmit}
+          className="press rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          Add to slot
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="press rounded-lg px-2 text-xs font-medium text-foreground/50"
+        >
+          Cancel
+        </button>
+      </div>
+
+      {picking && (
+        <MemberPickerSheet members={members} onPick={linkMember} onClose={() => setPicking(false)} />
       )}
     </div>
   );

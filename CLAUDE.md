@@ -727,6 +727,47 @@ person leads/cooks — matched by `*_user_id`, never the free-text name, so an
 account-less lead is untouched — plus a one-time backfill for names that already
 drifted. Fixes web + iOS at once (both read the same columns); no client change.
 
+## Event sign-up slots (migrations 0135 → 0136)
+
+A schedule event can take **limited sign-ups** for time slots (e.g. a craft
+station that fits 4 at a time, or a play where each role is a seat). Turned on
+in the event editor ([`ScheduleSheet`](components/FestPlanner.tsx)) by "the event
+creator" = `can_edit_fest()` **OR** the event's own lead/crew (the 0110 self-edit
+predicate, wrapped as `_can_manage_schedule_signups`). Surfaced by
+[`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) wherever an event's
+details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
+[`FestStatus`](components/FestStatus.tsx)'s `TodayEvent`). Client seam
+[`lib/scheduleSignups.ts`](lib/scheduleSignups.ts).
+
+- **Two ways to define the slots** (`fest_schedule_items.signup_mode`):
+  - **`interval`** (migration 0135, the original) — a capacity + interval +
+    first/last time on the event's single day. The slot list isn't stored; it's
+    **derived** identically client-side (`computeSlots`) and server-side
+    (`fest_schedule_slot_starts()`) so they can't disagree.
+  - **`slots`** (migration 0136 — "you don't have to have an event range") —
+    an arbitrary list of **independent** slots, each with its **own day + start**,
+    an optional end, an optional label, and an optional per-slot capacity. No two
+    need to share a length or increment ("Mon 10:50am, Wed 1:48pm, …"). Stored as
+    `fest_schedule_slots` rows (public-read; writes RLS-gated to the same manage
+    predicate via `_can_manage_item_signups(item_id)`). The Planner's inline
+    `SignupSlotsEditor` adds/removes them (needs an already-saved event id).
+- **Instructions + custom columns** (migration 0136). The creator can write
+  free-text `signup_instructions` and define `signup_fields` — an ordered jsonb
+  array of `{id,label}` extra columns **required on every person's row** (e.g. a
+  play wants "Name" + "Character"). Per-person values live in
+  `fest_schedule_signups.fields` (jsonb keyed by field id); the RPC enforces
+  every defined field is non-empty.
+- **One person per row; anyone can add anyone.** Each seat is a row —
+  a **linked member** (name snapshotted from the profile) **or a typed name** for
+  someone without an account. Migration 0136 **drops the organizer gate**: any
+  signed-in member may fill out a row for anyone (and several), via
+  `sign_up_for_schedule_slot(p_item, p_slot, p_for_user, p_name, p_slot_id,
+  p_fields)`. Capacity + one-linked-member-per-slot are enforced server-side.
+  Removal (`remove_schedule_signup`) is limited to the row's **adder**, the
+  **linked person**, or an **organizer**.
+- 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
+  native app can add the same UI against these tables without a backend change.
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

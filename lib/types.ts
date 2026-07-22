@@ -356,6 +356,39 @@ export interface ScheduleEvent {
   signupStartTime?: string | null;
   /** "HH:MM", the boundary the last slot must end by. */
   signupEndTime?: string | null;
+  /** "interval" = derive slots from the start/end + minutes above (migration
+   *  0135). "slots" = arbitrary, independent slots listed in `fest_schedule_slots`
+   *  (migration 0136), each with its own day/time and no shared increment. */
+  signupMode?: "interval" | "slots" | null;
+  /** Free-text instructions the creator writes for people signing up. */
+  signupInstructions?: string | null;
+  /** Extra columns required on every person's sign-up row (e.g. "Character").
+   *  The base name (linked account or typed) is always collected separately. */
+  signupFields?: SignupField[] | null;
+}
+
+/** One admin-defined extra column on a sign-up (migration 0136). `id` is a
+ *  stable key the per-person values in `fest_schedule_signups.fields` map on. */
+export interface SignupField {
+  id: string;
+  label: string;
+}
+
+/** One explicit sign-up slot when `signupMode = "slots"` (migration 0136). */
+export interface ScheduleSlot {
+  id: string;
+  scheduleItemId: string;
+  /** ISO "YYYY-MM-DD"; null falls back to the event's own day. */
+  day: string | null;
+  /** "HH:MM". */
+  startTime: string;
+  /** "HH:MM", optional. */
+  endTime: string | null;
+  /** Optional label shown instead of the auto "day · time". */
+  label: string | null;
+  /** Per-slot capacity; null falls back to the event's `signupCapacity`. */
+  capacity: number | null;
+  position: number;
 }
 
 /** A "thing to do" that runs all week with no set time — e.g. the scavenger
