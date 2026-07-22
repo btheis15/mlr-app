@@ -413,8 +413,10 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     if (!sb || !houseId || !uid || !canSend) return;
     setSending(true);
     setStatus(null);
-    try {
-      if (editing) {
+
+    // ── Editing an existing message: update text + re-sync @mentions. ──
+    if (editing) {
+      try {
         const { error: updErr } = await sb
           .from("house_messages")
           .update({ text: text.trim() || null, edited_at: new Date().toISOString() })
@@ -426,17 +428,50 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         }
         setText(""); setMentionIds([]); setEditing(null);
         await refetchMessages(houseId);
-        return;
+      } catch (err) {
+        const m = err instanceof Error ? err.message : "please try again";
+        setStatus(`Couldn't save the edit: ${m}`);
+        window.setTimeout(() => setStatus(null), 6000);
+      } finally {
+        setSending(false);
       }
+      return;
+    }
 
-      // Chat is optimistic: messages post immediately (assume good intent, no
-      // send-time moderation latency). The mini moderates the uploaded media
-      // ASYNCHRONOUSLY and, if it's flagged, retroactively holds this message a
-      // few seconds later (media_moderation → hold trigger, migration 0128),
-      // which RLS then hides from the room. So nothing to check or wait on here.
+    // ── New message — OPTIMISTIC. The bubble appears the instant you hit send
+    // and the composer clears; the media (if any) uploads + inserts behind it,
+    // then refetchMessages reconciles (the temp bubble is replaced by the real
+    // row). On failure we roll the bubble back and restore the composer so a
+    // send is never silently lost. (Moderation stays optimistic/async too — the
+    // mini checks the media in the background and retroactively holds it via
+    // migration 0128 if flagged.) ──
+    const draftText = text.trim();
+    const draftPending = pending;
+    const draftMentions = mentionIds;
+    const draftReply = replyTo;
+    const me = members.find((mm) => mm.id === uid);
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Msg = {
+      id: tempId,
+      authorId: uid,
+      author: me?.name || "You",
+      authorAvatar: me?.avatarUrl ?? null,
+      text: draftText || undefined,
+      ts: new Date().toISOString(),
+      replyToId: draftReply?.id ?? null,
+      // Object-URL previews (revoked only on unmount) so photos show instantly too.
+      media: draftPending.map((p) => ({ url: p.url, type: p.type, name: p.name })),
+      reactions: [],
+      mentions: [],
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setText(""); setPending([]); setMentionIds([]); setReplyTo(null);
+    atBottomRef.current = true; // follow the new bubble down
+
+    try {
       const uploaded: ChatMedia[] = [];
       const token = (await sb.auth.getSession()).data.session?.access_token;
-      for (const p of pending) {
+      for (const p of draftPending) {
         if (!token) throw new Error("Not signed in.");
         // Only photos are re-encoded; videos + files upload as-is.
         const f = p.type === "image" ? await compressImage(p.file) : p.file;
@@ -446,7 +481,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
 
       const { data: ins, error: insErr } = await sb
         .from("house_messages")
-        .insert({ house_id: houseId, author_id: uid, text: text.trim() || null, reply_to_id: replyTo?.id ?? null })
+        .insert({ house_id: houseId, author_id: uid, text: draftText || null, reply_to_id: draftReply?.id ?? null })
         .select("id")
         .single();
       if (insErr) throw insErr;
@@ -459,13 +494,14 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         // photos/videos still attach (file-type sends need the migration).
         if (insMedia.error) await sb.from("house_message_media").insert(rows.map(({ file_name, ...r }) => r));
       }
-      if (mentionIds.length) {
-        await sb.from("house_message_mentions").insert(mentionIds.map((id) => ({ message_id: mid, mentioned_user_id: id })));
+      if (draftMentions.length) {
+        await sb.from("house_message_mentions").insert(draftMentions.map((id) => ({ message_id: mid, mentioned_user_id: id })));
       }
 
-      setText(""); setPending([]); setMentionIds([]); setReplyTo(null);
-      await refetchMessages(houseId);
+      await refetchMessages(houseId); // real row replaces the temp bubble
     } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setText(draftText); setPending(draftPending); setMentionIds(draftMentions); setReplyTo(draftReply);
       const m = err instanceof Error ? err.message : "please try again";
       setStatus(/max|size|large|exceed|413|payload/i.test(m) ? "That file was too big to send." : `Couldn't send: ${m}`);
       window.setTimeout(() => setStatus(null), 6000);
