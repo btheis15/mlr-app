@@ -34,6 +34,23 @@ const MOD_MAX_DIM = Number(process.env.MOD_MAX_DIM || 1024); // longest edge sen
 const MOD_JPEG_QUALITY = Number(process.env.MOD_JPEG_QUALITY || 80);
 const MOD_MAX_IMG_BYTES = Number(process.env.MOD_MAX_IMG_BYTES || 700000); // encoded cap (~930 KB base64, under the 1 MB body limit)
 
+// Adaptive downscale ladder. We ALWAYS classify a downscaled COPY (never the
+// stored original, which is served full-quality). fm serve's practical
+// body/vision ceiling sits well below 1 MB and can vary, so we start at the
+// largest rung and, on an HTTP 413 (too large), drop to the next one down — so
+// the copy we actually check is the largest size fm serve will accept.
+const MOD_DIM_LADDER = (process.env.MOD_DIM_LADDER || `${MOD_MAX_DIM},768,512`)
+  .split(",").map((s) => Number(s.trim())).filter((n) => n > 0);
+// Transient failures (PCC/fm-serve blips: "fetch failed", 5xx, timeouts) are
+// RETRIED with backoff rather than failing open on the first miss — the old
+// single-attempt behavior let unchecked media through whenever the model
+// hiccuped (in practice, most uploads went unchecked). fail-open is still the
+// LAST resort, only after every size × attempt × model has been exhausted.
+const MOD_RETRIES = Number(process.env.MOD_RETRIES || 2); // extra attempts per size after the first
+const MOD_RETRY_BACKOFF_MS = Number(process.env.MOD_RETRY_BACKOFF_MS || 500);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const PROMPT =
   'You are a content-safety filter for a family resort community app used by all ages. ' +
   'Examine the image and decide if it contains content that is sensitive or inappropriate for a general family audience — ' +
@@ -61,25 +78,27 @@ function parseVerdict(text) {
   }
 }
 
-// Downscale to a modest resolution and re-encode as JPEG before base64, so the
-// request body stays under `fm serve`'s 1 MB limit (see the constants above).
-// Auto-orients via EXIF; a second, smaller pass guards the rare dense image that
-// still exceeds the cap at MOD_MAX_DIM.
-async function downscaledJpegB64(filePath) {
-  const shrink = (dim, quality) =>
-    sharp(filePath, { failOn: "none" })
-      .rotate()
-      .resize({ width: dim, height: dim, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality })
-      .toBuffer();
-  let buf = await shrink(MOD_MAX_DIM, MOD_JPEG_QUALITY);
-  if (buf.length > MOD_MAX_IMG_BYTES) buf = await shrink(768, 60);
+// Downscale + re-encode a COPY of the media as JPEG at a given longest-edge, and
+// return its base64. Auto-orients via EXIF. This is ONLY the copy sent to the
+// classifier — the stored/served file is never touched (photos stay full
+// quality; video stays <=1080p via transcode.js).
+async function jpegB64AtDim(filePath, dim, quality) {
+  const buf = await sharp(filePath, { failOn: "none" })
+    .rotate()
+    .resize({ width: dim, height: dim, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality })
+    .toBuffer();
   return buf.toString("base64");
 }
 
-async function classifyImageBase64(b64, ext) {
-  const base = {
+// One classify request to one model. Returns a discriminated result:
+//   { verdict }    — a parsed { flagged, category, reason, model }
+//   { tooLarge }   — HTTP 413: retry at a smaller size (drop a ladder rung)
+//   { retry, why } — transient (fetch failed / 5xx / timeout / unparseable): retry
+async function classifyOnce(b64, ext, model) {
+  const body = {
     stream: false,
+    model,
     messages: [
       {
         role: "user",
@@ -90,34 +109,56 @@ async function classifyImageBase64(b64, ext) {
       },
     ],
   };
-  for (const model of MOD_MODELS) {
-    try {
-      const resp = await fetch(FM_SERVE_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...base, model }),
-        signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
-      if (v) return { ...v, model };
-    } catch (e) {
-      console.warn(`[moderate] ${model} failed: ${e.message}`);
-    }
+  try {
+    const resp = await fetch(FM_SERVE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
+    });
+    if (resp.status === 413) return { tooLarge: true };
+    if (!resp.ok) return { retry: true, why: `HTTP ${resp.status}` };
+    const data = await resp.json();
+    const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+    if (v) return { verdict: { ...v, model } };
+    return { retry: true, why: "unparseable response" };
+  } catch (e) {
+    return { retry: true, why: e.message }; // fetch failed / timeout
   }
-  return null; // fail-open
 }
 
+// Check a downscaled COPY of the image. Walk the size ladder (drop to a smaller
+// rung on a 413), retry transient failures with backoff, across every model in
+// MOD_MODELS. Returns a verdict, or null ONLY after genuinely exhausting every
+// size × attempt × model (then the caller fails open). The stored original is
+// never modified — we only ever post the original once this copy checks clean.
 async function moderateImageFile(filePath) {
-  let b64;
-  try {
-    b64 = await downscaledJpegB64(filePath);
-  } catch (e) {
-    console.warn(`[moderate] read/resize failed: ${e.message}`);
-    return null;
+  for (const dim of MOD_DIM_LADDER) {
+    let b64;
+    try {
+      b64 = await jpegB64AtDim(filePath, dim, MOD_JPEG_QUALITY);
+    } catch (e) {
+      console.warn(`[moderate] resize@${dim} failed: ${e.message}`);
+      continue;
+    }
+    // Skip a size we already know is over the encoded cap, unless it's the
+    // smallest rung (then just try it — an attempt beats no check at all).
+    const isSmallest = dim === MOD_DIM_LADDER[MOD_DIM_LADDER.length - 1];
+    if (b64.length > MOD_MAX_IMG_BYTES && !isSmallest) continue;
+
+    for (let attempt = 0; attempt <= MOD_RETRIES; attempt++) {
+      let sawTooLarge = false;
+      for (const model of MOD_MODELS) {
+        const r = await classifyOnce(b64, "jpeg", model);
+        if (r.verdict) return r.verdict;
+        if (r.tooLarge) { sawTooLarge = true; break; }
+        console.warn(`[moderate] ${model}@${dim}px attempt ${attempt + 1} transient: ${r.why}`);
+      }
+      if (sawTooLarge) break; // drop to the next smaller size
+      if (attempt < MOD_RETRIES) await sleep(MOD_RETRY_BACKOFF_MS * (attempt + 1));
+    }
   }
-  return classifyImageBase64(b64, "jpeg");
+  return null; // exhausted → fail-open
 }
 
 function extractFrames(videoPath, outDir) {
@@ -188,21 +229,24 @@ async function moderateText(text) {
     guardrails: "permissive-content-transformations",
     messages: [{ role: "user", content: `${TEXT_PROMPT}\n\nText:\n${t.slice(0, 4000)}` }],
   };
-  for (const model of MOD_MODELS) {
-    try {
-      const resp = await fetch(FM_SERVE_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...base, model }),
-        signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
-      if (v) return { ...v, model };
-    } catch (e) {
-      console.warn(`[moderate:text] ${model} failed: ${e.message}`);
+  for (let attempt = 0; attempt <= MOD_RETRIES; attempt++) {
+    for (const model of MOD_MODELS) {
+      try {
+        const resp = await fetch(FM_SERVE_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...base, model }),
+          signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+        if (v) return { ...v, model };
+      } catch (e) {
+        console.warn(`[moderate:text] ${model} attempt ${attempt + 1} failed: ${e.message}`);
+      }
     }
+    if (attempt < MOD_RETRIES) await sleep(MOD_RETRY_BACKOFF_MS * (attempt + 1));
   }
   return null; // fail-open
 }
