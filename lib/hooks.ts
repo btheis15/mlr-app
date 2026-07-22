@@ -821,3 +821,71 @@ export function useCanEditFest(): boolean {
   );
   return data;
 }
+
+/**
+ * Ephemeral "who's typing" for a chat room, on its OWN realtime channel
+ * (`typing:<roomKey>`) — deliberately separate from the message subscription so
+ * this can never disrupt message delivery. Returns the list of other people
+ * currently typing (self excluded via broadcast self:false) and a throttled
+ * `notifyTyping()` to call on each keystroke. Each typer self-clears ~4.5s after
+ * their last keystroke, so a dropped "stopped typing" can't leave it stuck.
+ * Nothing persists; if the broadcast can't reach anyone, it's simply a no-op.
+ */
+export function useTypingChannel(
+  roomKey: string | null,
+  uid: string | null,
+  myName: string,
+): { typers: string[]; notifyTyping: () => void } {
+  const [typers, setTypers] = useState<Record<string, string>>({}); // uid -> name
+  const chanRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const lastSent = useRef(0);
+  const myNameRef = useRef(myName);
+  myNameRef.current = myName;
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!sb || !roomKey || !uid) return;
+    const chan = sb.channel(`typing:${roomKey}`, { config: { broadcast: { self: false } } });
+    chan
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const p = payload as { uid?: string; name?: string };
+        if (!p?.uid || p.uid === uid) return;
+        const who = p.uid;
+        setTypers((prev) => (prev[who] ? prev : { ...prev, [who]: p.name || "Someone" }));
+        const t = timers.current;
+        if (t.has(who)) clearTimeout(t.get(who)!);
+        t.set(
+          who,
+          setTimeout(() => {
+            setTypers((prev) => {
+              const next = { ...prev };
+              delete next[who];
+              return next;
+            });
+            t.delete(who);
+          }, 4500),
+        );
+      })
+      .subscribe();
+    chanRef.current = chan;
+    const localTimers = timers.current;
+    return () => {
+      localTimers.forEach(clearTimeout);
+      localTimers.clear();
+      setTypers({});
+      sb.removeChannel(chan);
+      chanRef.current = null;
+    };
+  }, [roomKey, uid]);
+
+  const notifyTyping = useCallback(() => {
+    if (!uid || !chanRef.current) return;
+    const now = Date.now();
+    if (now - lastSent.current < 2500) return; // throttle to one ping / 2.5s
+    lastSent.current = now;
+    void chanRef.current.send({ type: "broadcast", event: "typing", payload: { uid, name: myNameRef.current } });
+  }, [uid]);
+
+  return { typers: Object.values(typers), notifyTyping };
+}
