@@ -11,6 +11,7 @@ import { MemberSheetHost } from "@/components/MemberSheetHost";
 import { SplashIntro } from "@/components/SplashIntro";
 import { FestThemeSync } from "@/components/FestThemeSync";
 import { DemoDateProvider } from "@/lib/DemoDateProvider";
+import { MotionProvider } from "@/components/MotionProvider";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { AppHeader } from "@/components/AppHeader";
 import { UpdateBanner } from "@/components/UpdateBanner";
@@ -82,6 +83,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="h-full overflow-hidden text-foreground antialiased">
+        <MotionProvider>
         <DemoDateProvider>
           <IdentityProvider>
             {/* App-open splash: logo pops, holds until auth resolves, then flies
@@ -122,6 +124,7 @@ export default async function RootLayout({
           <MemberSheetHost />
           </IdentityProvider>
         </DemoDateProvider>
+        </MotionProvider>
         <Analytics />
       </body>
     </html>

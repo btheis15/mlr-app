@@ -7,6 +7,7 @@ import { FAMILY_FEST } from "@/lib/data";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
 import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 
 // Icons are names from the hand-rolled line-icon set (components/Icon.tsx);
 // the fest tab wears a tent (the gathering), not the old crossed swords.
@@ -92,22 +93,27 @@ export function TabBar() {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
+                onClick={() => haptic("light")}
                 className={`press flex flex-col items-center gap-0.5 py-2 text-[11px] transition-colors ${color}`}
               >
-                <span
-                  className={`relative transition-transform ${
-                    active ? "scale-110" : ""
-                  }`}
-                >
-                  {/* Active = bolder stroke; color comes from the Link's
-                      text class above (fest wine vs forest green) via
-                      the icon's currentColor. */}
-                  <Icon
-                    name={tab.icon}
-                    size={22}
-                    strokeWidth={active ? 2.4 : 1.8}
-                    className="block"
-                  />
+                <span className="relative">
+                  {/* Active = bolder stroke + a spring pop. The pop replays on
+                      each activation because the key flips off→on, remounting
+                      this span (a class swap alone wouldn't restart the keyframe).
+                      Badges live on the OUTER span so they don't scale with it.
+                      Color comes from the Link's text class (fest wine vs forest
+                      green) via the icon's currentColor. */}
+                  <span
+                    key={active ? "on" : "off"}
+                    className={`block transition-transform ${active ? "scale-110 tab-icon-pop" : ""}`}
+                  >
+                    <Icon
+                      name={tab.icon}
+                      size={22}
+                      strokeWidth={active ? 2.4 : 1.8}
+                      className="block"
+                    />
+                  </span>
                   {live && (
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fest/70" />
