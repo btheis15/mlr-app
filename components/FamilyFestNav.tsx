@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutGroup, motion } from "framer-motion";
 
 /**
  * The Family Fest section's in-section sub-nav: parchment pill links to each
@@ -50,25 +51,36 @@ export function FamilyFestNav() {
       // content readable as it slides underneath.
       className="sticky top-0 z-30 -mx-4 bg-background/90 backdrop-blur"
     >
-      <div className="flex gap-1.5 overflow-x-auto px-4 py-2">
-        {LINKS.map((l) => {
-          const active = isActive(pathname, l.href);
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              aria-current={active ? "page" : undefined}
-              className={`press flex h-11 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold ${
-                active
-                  ? "bg-primary text-white shadow-sm"
-                  : "bg-card text-foreground/70 ring-1 ring-border"
-              }`}
-            >
-              {l.label}
-            </Link>
-          );
-        })}
-      </div>
+      <LayoutGroup id="ff-nav">
+        <div className="flex gap-1.5 overflow-x-auto px-4 py-2">
+          {LINKS.map((l) => {
+            const active = isActive(pathname, l.href);
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                aria-current={active ? "page" : undefined}
+                className={`press relative flex h-11 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold ${
+                  active ? "text-white" : "bg-card text-foreground/70 ring-1 ring-border"
+                }`}
+              >
+                {/* Shared-element pill glides between pills as the route changes
+                    (framer layoutId). The persistent layout mounts this nav once,
+                    so the pill animates across navigations instead of teleporting. */}
+                {active && (
+                  <motion.span
+                    layoutId="ff-nav-pill"
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                    className="absolute inset-0 rounded-full bg-primary shadow-sm"
+                    aria-hidden
+                  />
+                )}
+                <span className="relative z-10">{l.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </LayoutGroup>
     </nav>
   );
 }

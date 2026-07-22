@@ -8,6 +8,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 
 // Icons are names from the hand-rolled line-icon set (components/Icon.tsx);
 // the fest tab wears a tent (the gathering), not the old crossed swords.
@@ -125,7 +126,7 @@ export function TabBar() {
                       aria-label={`${unread} new`}
                       className="absolute -right-2.5 -top-1 flex min-w-[1.05rem] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-[1.05rem] text-white ring-2 ring-card"
                     >
-                      {unread > 99 ? "99+" : unread}
+                      {unread > 99 ? "99+" : <AnimatedNumber value={unread} duration={350} />}
                     </span>
                   )}
                 </span>

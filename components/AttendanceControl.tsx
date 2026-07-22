@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { AttendanceStatus } from "@/lib/types";
+import { Celebration } from "@/components/Celebration";
+import { haptic } from "@/lib/haptics";
 
 // The Facebook-style RSVP: a segmented control (Going / Maybe / Can't make).
 // Presentational-ish — the parent decides what a tap does (write the RSVP, or
@@ -45,14 +47,25 @@ export function AttendanceControl({
   // rather than just quietly reverting on the next reload.
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Confetti when a member newly RSVPs "going" (not on a re-tap of the same
+  // choice). A small delight moment on the app's most common happy action.
+  const [celebrate, setCelebrate] = useState(false);
 
   const tap = async (status: AttendanceStatus) => {
     if (saving) return;
     setSaving(true);
     setError(null);
+    const wasGoing = value === "going";
     try {
       const ok = await onChange(status);
-      if (ok === false) setError("Couldn't save — try again.");
+      if (ok === false) {
+        setError("Couldn't save — try again.");
+      } else if (status === "going" && !wasGoing) {
+        haptic("success");
+        setCelebrate(true);
+      } else {
+        haptic("light");
+      }
     } finally {
       setSaving(false);
     }
@@ -60,6 +73,7 @@ export function AttendanceControl({
 
   return (
     <div className={className}>
+      {celebrate && <Celebration onDone={() => setCelebrate(false)} />}
       <div className={`grid gap-2 ${hideMaybe ? "grid-cols-2" : "grid-cols-3"}`} role="group" aria-label="Your RSVP">
         {options.map((o) => {
           const on = value === o.value;
