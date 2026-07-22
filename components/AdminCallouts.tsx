@@ -23,9 +23,11 @@ import {
   fetchCallouts,
   saveCallout,
   deleteCallout,
+  fetchFestContent,
   type HomeCallout,
   type CalloutLink,
 } from "@/lib/festContent";
+import type { ScheduleEvent } from "@/lib/types";
 
 /** "Jul 1 – Jul 15" / "through Jul 15" / "from Jul 1" / "always" — the show
  *  window, for the list row summary. */
@@ -224,6 +226,19 @@ function CalloutSheet({
     eventId: draft?.eventId ?? null,
     excludeNotAttending: draft?.excludeNotAttending ?? true,
   });
+  // Link a "Sign up" button to a schedule event that's taking sign-ups
+  // (migration 0137). Distinct from eventTarget above (which only targets/hides).
+  const [signupItemId, setSignupItemId] = useState<string | null>(draft?.signupItemId ?? null);
+  const [signupOptions, setSignupOptions] = useState<ScheduleEvent[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchFestContent().then((c) => {
+      if (alive) setSignupOptions(c.schedule.filter((e) => e.signupEnabled));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -295,9 +310,10 @@ function CalloutSheet({
     eventId: eventTarget.eventId,
     excludeNotAttending: eventTarget.excludeNotAttending,
     deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
+    signupItemId,
   };
 
-  const hasContent = Boolean(title.trim() || body.trim() || imageUrl);
+  const hasContent = Boolean(title.trim() || body.trim() || imageUrl || signupItemId);
   const validRange = !startsOn || !endsOn || endsOn >= startsOn;
   const canSave =
     hasContent &&
@@ -323,6 +339,7 @@ function CalloutSheet({
         eventId: eventTarget.eventId,
         excludeNotAttending: eventTarget.excludeNotAttending,
         deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
+        signupItemId,
       });
       if (error) return error;
 
@@ -460,6 +477,29 @@ function CalloutSheet({
         </p>
       </Field>
       <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
+      <Field label="Link to an event's sign-up (optional)">
+        <select
+          value={signupItemId ?? ""}
+          onChange={(e) => setSignupItemId(e.target.value || null)}
+          className={`${FIELD} w-full`}
+        >
+          <option value="">No sign-up button</option>
+          {/* Keep the current pick selectable even if it's not in the list
+              (e.g. a private event, or the schedule hasn't loaded yet). */}
+          {signupItemId && !signupOptions.some((e) => e.id === signupItemId) && (
+            <option value={signupItemId}>Linked event</option>
+          )}
+          {signupOptions.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.title} — {formatDate(`${e.day}T00:00:00`)}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+          Adds a &ldquo;📝 Sign up&rdquo; button that opens that event&rsquo;s sign-up sheet. Only events
+          with sign-ups turned on appear here.
+        </p>
+      </Field>
       {draft && (
         <ReminderScheduler
           sourceType="callout"

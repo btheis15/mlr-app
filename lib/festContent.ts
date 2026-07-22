@@ -16,6 +16,7 @@ import type {
   FestActivity,
   DuesTier,
   FestConfigContent,
+  SignupField,
 } from "@/lib/types";
 
 /** The fest year these tables are keyed on. Bump (or parameterize) for 2027. */
@@ -73,6 +74,10 @@ export interface HomeCallout {
    *  from startsOn/endsOn, which only gate when the card is shown. Reminder
    *  offsets (lib/scheduledBroadcasts.ts) are computed relative to this. */
   deadlineAt: string | null;
+  /** Optional link to a schedule event's SIGN-UP (migration 0137). The
+   *  fest_schedule_items id; the card renders a "Sign up" button deep-linking
+   *  to /family-fest/schedule/<id>. Distinct from `eventId` (targeting only). */
+  signupItemId: string | null;
 }
 
 /** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
@@ -94,6 +99,7 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     eventId: null,
     excludeNotAttending: false,
     deadlineAt: null,
+    signupItemId: null,
   },
 ];
 
@@ -157,6 +163,9 @@ interface ScheduleRow {
   signup_slot_minutes: number | null;
   signup_start_time: string | null;
   signup_end_time: string | null;
+  signup_mode: string | null;
+  signup_instructions: string | null;
+  signup_fields: SignupField[] | null;
 }
 interface DinnerRow {
   id: string;
@@ -210,10 +219,11 @@ interface CalloutRow {
   event_id: string | null;
   exclude_not_attending: boolean;
   deadline_at: string | null;
+  signup_item_id: string | null;
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at, signup_item_id";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -247,6 +257,9 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupSlotMinutes: r.signup_slot_minutes,
     signupStartTime: r.signup_start_time,
     signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -306,6 +319,7 @@ function mapCallout(r: CalloutRow): HomeCallout {
     eventId: r.event_id,
     excludeNotAttending: r.exclude_not_attending,
     deadlineAt: r.deadline_at,
+    signupItemId: r.signup_item_id ?? null,
   };
 }
 
@@ -321,7 +335,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -450,6 +464,9 @@ export interface ScheduleInput {
   signupSlotMinutes: number | null;
   signupStartTime: string | null;
   signupEndTime: string | null;
+  signupMode: "interval" | "slots";
+  signupInstructions: string | null;
+  signupFields: SignupField[];
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -475,6 +492,9 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_slot_minutes: i.signupSlotMinutes,
     signup_start_time: i.signupStartTime,
     signup_end_time: i.signupEndTime,
+    signup_mode: i.signupMode,
+    signup_instructions: i.signupInstructions,
+    signup_fields: i.signupFields,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -692,6 +712,7 @@ export interface CalloutInput {
   eventId: string | null;
   excludeNotAttending: boolean;
   deadlineAt: string | null;
+  signupItemId: string | null;
 }
 export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -709,6 +730,7 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     event_id: i.eventId,
     exclude_not_attending: i.excludeNotAttending,
     deadline_at: i.deadlineAt,
+    signup_item_id: i.signupItemId,
   };
   const q = i.id
     ? sb.from("home_callouts").update(row).eq("id", i.id)
@@ -789,7 +811,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -818,6 +840,9 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupSlotMinutes: r.signup_slot_minutes,
     signupStartTime: r.signup_start_time,
     signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   }));
 }
 
