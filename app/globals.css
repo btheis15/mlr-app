@@ -321,6 +321,21 @@ html[data-ff] {
 }
 @utility tab-icon-pop { animation: mlr-tab-pop 320ms var(--ease-ios); }
 
+/* Chat-open unmask. Opening a chat room on mobile flashed as the message list
+   painted/reflowed under the slide-in. This is a solid bg-background cover that
+   holds opaque for a beat as the room opens, then fades out to reveal the
+   already-settled chat — the "hold until loaded" that kills the flicker. FeedView
+   keys it by the active room so it replays on each open. */
+@keyframes mlr-chat-unmask {
+  0%, 42% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@utility chat-unmask { animation: mlr-chat-unmask 500ms var(--ease-ios) forwards; }
+/* Under reduce-motion just don't cover anything (chat-push is instant too). */
+@media (prefers-reduced-motion: reduce) {
+  .chat-unmask { animation: none; opacity: 0; }
+}
+
 /* One gentle nudge that hints a Home call-out card can be swiped away
    (components/CalloutStack.tsx). Played once per session on the front card;
    skipped under reduce-motion. */
