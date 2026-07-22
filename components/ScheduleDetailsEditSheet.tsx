@@ -28,6 +28,8 @@ export function ScheduleDetailsEditSheet({
   const [location, setLocation] = useState(event.location === "TBD" ? "" : event.location);
   const [description, setDescription] = useState(event.description);
   const [bring, setBring] = useState(event.bring ?? "");
+  const [linkUrl, setLinkUrl] = useState(event.linkUrl ?? "");
+  const [linkLabel, setLinkLabel] = useState(event.linkLabel ?? "");
 
   const submit = () =>
     save.run(async () => {
@@ -35,6 +37,8 @@ export function ScheduleDetailsEditSheet({
         location: location.trim() || null,
         description: description.trim() || null,
         bring: bring.trim() || null,
+        linkUrl: linkUrl.trim() || null,
+        linkLabel: linkLabel.trim() || null,
       });
       if (error) return error;
       onSaved();
@@ -91,6 +95,25 @@ export function ScheduleDetailsEditSheet({
           value={bring}
           onChange={(e) => setBring(e.target.value)}
           placeholder="e.g. swimsuit & towel"
+          className={`${FIELD} w-full`}
+        />
+      </div>
+      <div className="space-y-2">
+        <SectionLabel>Link (optional)</SectionLabel>
+        <p className="text-xs text-foreground/50">
+          A Google Doc/Sheet, sign-up form, or any web page for this event.
+        </p>
+        <input
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          placeholder="https://…"
+          inputMode="url"
+          className={`${FIELD} w-full`}
+        />
+        <input
+          value={linkLabel}
+          onChange={(e) => setLinkLabel(e.target.value)}
+          placeholder="Button text, e.g. Sign up sheet"
           className={`${FIELD} w-full`}
         />
       </div>
