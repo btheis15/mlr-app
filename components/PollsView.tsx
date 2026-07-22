@@ -10,6 +10,9 @@ import { useBusyAction, useDebouncedCallback, useSaveStatus } from "@/lib/hooks"
 import { applyMyVote, castVote, closePoll, deletePoll, fetchPolls, type Poll } from "@/lib/polls";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useCachedResource } from "@/lib/swrCache";
+import { Celebration } from "@/components/Celebration";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { haptic } from "@/lib/haptics";
 
 // The /polls screen: the family's voting booth (migration 0084). Open polls
 // first (tap an option to vote / change your vote — one vote per member per
@@ -43,6 +46,7 @@ function PollsList() {
     { persist: "local" },
   );
   const [composing, setComposing] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
   const [schedule] = useDebouncedCallback(250);
   const { busy, run } = useBusyAction();
   const { status, show } = useSaveStatus();
@@ -82,6 +86,8 @@ function PollsList() {
         mutate(prev);
         show(error);
       } else {
+        haptic("success");
+        setCelebrate(true);
         await reload();
       }
     },
@@ -111,6 +117,7 @@ function PollsList() {
 
   return (
     <div className="space-y-4">
+      {celebrate && <Celebration onDone={() => setCelebrate(false)} />}
       {!isSupabaseConfigured && (
         <ComingSoonCTA
           icon="🗳️"
@@ -267,7 +274,8 @@ function PollCard({
                   {o.label}
                 </span>
                 <span className="shrink-0 text-xs tabular-nums text-foreground/55">
-                  {o.votes} · {pct}%
+                  <AnimatedNumber value={o.votes} duration={400} /> ·{" "}
+                  <AnimatedNumber value={pct} duration={400} format={(n) => `${Math.round(n)}%`} />
                 </span>
               </span>
             </button>
