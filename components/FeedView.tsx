@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { POSTS } from "@/lib/data";
+
+// Run the chat viewport-pin BEFORE the browser paints, so the mobile height
+// reconciliation (calc(100dvh) inline → visualViewport height) happens in the
+// same frame the chat appears — no post-paint resize jump/flicker. Falls back to
+// useEffect during SSR (useLayoutEffect would warn there). Decided once at module
+// load, so it doesn't change between renders.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
@@ -421,8 +428,13 @@ export function FeedView() {
   }, [active]);
 
   // Pin the active chat to the visual viewport so the iOS keyboard can't shove
-  // the page around (same technique as the old overlay).
-  useEffect(() => {
+  // the page around (same technique as the old overlay). Runs as a LAYOUT effect
+  // so the first `apply()` sets the real (visualViewport-based) height before the
+  // browser paints — otherwise mobile paints the inline calc(100dvh - 64px)
+  // first, then resizes to the smaller visible height a frame later, which reads
+  // as an awkward flicker when opening a chat (desktop's dvh == visible height,
+  // so it never showed there).
+  useIsoLayoutEffect(() => {
     if (active === "list" || active === "posts") return;
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     const el = chatBoxRef.current;
