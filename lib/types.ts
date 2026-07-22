@@ -347,6 +347,15 @@ export interface ScheduleEvent {
    *  web page for this event. `linkLabel` is the button text shown for it. */
   linkUrl?: string | null;
   linkLabel?: string | null;
+  /** Limited sign-up time slots (e.g. "4 people per hour, noon–4pm") — see
+   *  lib/scheduleSignups.ts for the slot list + capacity math. */
+  signupEnabled?: boolean;
+  signupCapacity?: number | null;
+  signupSlotMinutes?: number | null;
+  /** "HH:MM", first slot's start. */
+  signupStartTime?: string | null;
+  /** "HH:MM", the boundary the last slot must end by. */
+  signupEndTime?: string | null;
 }
 
 /** A "thing to do" that runs all week with no set time — e.g. the scavenger

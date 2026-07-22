@@ -16,6 +16,7 @@ import { firstName } from "@/lib/privacy";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
+import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
 import {
   canEditFest,
   fetchMemberOptions,
@@ -263,6 +264,11 @@ function TodayEvent({
           )}
         </div>
       </div>
+      {e.signupEnabled && (
+        <div className="mt-3">
+          <ScheduleSignupSlots event={e} canManage={canEditThis} members={members} />
+        </div>
+      )}
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
       {canEditThis && (
         <button

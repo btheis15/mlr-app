@@ -11,6 +11,7 @@ import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { ActivityDetailsEditSheet } from "@/components/ActivityDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet, ActivitySheet } from "@/components/FestPlanner";
+import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useCachedResource } from "@/lib/swrCache";
 import {
@@ -384,6 +385,9 @@ function EventRow({
             >
               🔗 {event.linkLabel?.trim() || "Open link"}
             </a>
+          )}
+          {event.signupEnabled && (
+            <ScheduleSignupSlots event={event} canManage={canEditThis} members={members} />
           )}
           {event.lead && (
             <div>

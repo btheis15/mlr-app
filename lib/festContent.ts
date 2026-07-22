@@ -152,6 +152,11 @@ interface ScheduleRow {
   image_url: string | null;
   link_url: string | null;
   link_label: string | null;
+  signup_enabled: boolean;
+  signup_capacity: number | null;
+  signup_slot_minutes: number | null;
+  signup_start_time: string | null;
+  signup_end_time: string | null;
 }
 interface DinnerRow {
   id: string;
@@ -237,6 +242,11 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     imageUrl: r.image_url,
     linkUrl: r.link_url,
     linkLabel: r.link_label,
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -311,7 +321,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -435,6 +445,11 @@ export interface ScheduleInput {
   imageUrl: string | null;
   linkUrl: string | null;
   linkLabel: string | null;
+  signupEnabled: boolean;
+  signupCapacity: number | null;
+  signupSlotMinutes: number | null;
+  signupStartTime: string | null;
+  signupEndTime: string | null;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -455,6 +470,11 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     image_url: i.imageUrl,
     link_url: i.linkUrl,
     link_label: i.linkLabel,
+    signup_enabled: i.signupEnabled,
+    signup_capacity: i.signupCapacity,
+    signup_slot_minutes: i.signupSlotMinutes,
+    signup_start_time: i.signupStartTime,
+    signup_end_time: i.signupEndTime,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -769,7 +789,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -793,6 +813,11 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     imageUrl: r.image_url,
     linkUrl: r.link_url,
     linkLabel: r.link_label,
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
   }));
 }
 
