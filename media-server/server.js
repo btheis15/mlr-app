@@ -564,27 +564,49 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     console.log(`[upload] saved ${rel} (${size} bytes)`);
 
     // Tier-2 guard: AI moderation. A flagged image/video → record a verdict
-    // keyed by the public URL (== post_media.storage_path) so the 0043 trigger
-    // holds the parent post for admin review. FAIL-OPEN: any error/unavailability
-    // just lets the upload through (the Flag-as-inappropriate reports + admin
-    // queue are the backstop).
+    // keyed by the public URL (== *_media.storage_path) so the hold triggers
+    // (0043 posts, 0128 chat) hold the parent for admin review. FAIL-OPEN: any
+    // error/unavailability just lets the upload through (member reports + the
+    // admin queue are the backstop).
+    //
+    //   • Main Feed (category=posts/work): moderate INLINE — the verdict is
+    //     recorded before we respond, so the post_media insert holds the post at
+    //     post time.
+    //   • CHAT (category=chat): OPTIMISTIC — respond IMMEDIATELY (assume good
+    //     intent, no send-time latency) and moderate in the BACKGROUND. A flagged
+    //     verdict is written to media_moderation afterward, and its trigger
+    //     (0128) RETROACTIVELY holds the already-posted message (RLS then hides
+    //     it from the room within a refetch).
     let moderation = null;
     if (MOD_ENABLED && isMedia) {
-      try {
-        const v = await moderateMedia(served, kind);
-        if (v) {
-          console.log(`[moderate] ${rel} → ${v.flagged ? `FLAGGED ${v.category} (${v.reason})` : "ok"} via ${v.model}`);
-          if (v.flagged) {
-            await recordMediaModeration(fileUrl, v);
-            moderation = { flagged: true, category: v.category };
+      if (category === "chat") {
+        // Fire-and-forget — never blocks the upload response.
+        moderateMedia(served, kind)
+          .then((v) => {
+            if (v && v.flagged) {
+              console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
+              return recordMediaModeration(fileUrl, v);
+            }
+            console.log(`[moderate] (async) ${rel} → ${v ? "ok via " + v.model : "not checked (fail-open)"}`);
+          })
+          .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
+      } else {
+        try {
+          const v = await moderateMedia(served, kind);
+          if (v) {
+            console.log(`[moderate] ${rel} → ${v.flagged ? `FLAGGED ${v.category} (${v.reason})` : "ok"} via ${v.model}`);
+            if (v.flagged) {
+              await recordMediaModeration(fileUrl, v);
+              moderation = { flagged: true, category: v.category };
+            } else {
+              moderation = { flagged: false };
+            }
           } else {
-            moderation = { flagged: false };
+            console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open)`);
           }
-        } else {
-          console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open)`);
+        } catch (e) {
+          console.error(`[moderate] error (fail-open): ${e.message}`);
         }
-      } catch (e) {
-        console.error(`[moderate] error (fail-open): ${e.message}`);
       }
     }
     res.json({ url: fileUrl, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel, moderation });

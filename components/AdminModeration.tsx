@@ -8,8 +8,19 @@ import { SkeletonList } from "@/components/Skeleton";
 import { useBusyAction } from "@/lib/hooks";
 import { plural } from "@/lib/format";
 
+type ModEntity = "post" | "comment" | "committee_message" | "house_message";
+
+// Friendly label for the entity chip (raw values like "committee_message" read
+// badly uppercased). Chat rows carry their room in the body (see moderation_queue).
+const ENTITY_LABEL: Record<ModEntity, string> = {
+  post: "post",
+  comment: "comment",
+  committee_message: "committee chat",
+  house_message: "house chat",
+};
+
 interface QueueRow {
-  entity_type: "post" | "comment";
+  entity_type: ModEntity;
   entity_id: string;
   post_id: string | null;
   author_id: string | null;
@@ -156,7 +167,7 @@ export function AdminModeration() {
               {queue.map((r) => (
                 <li key={`${r.entity_type}-${r.entity_id}`} className="space-y-2 rounded-xl bg-background p-3 ring-1 ring-border">
                   <div className="flex items-center gap-2 text-xs text-faint">
-                    <span className="rounded-full bg-foreground/5 px-1.5 py-0.5 font-medium uppercase tracking-wide">{r.entity_type}</span>
+                    <span className="rounded-full bg-foreground/5 px-1.5 py-0.5 font-medium uppercase tracking-wide">{ENTITY_LABEL[r.entity_type] ?? r.entity_type}</span>
                     {r.status === "pending" && (
                       <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-700">Held</span>
                     )}

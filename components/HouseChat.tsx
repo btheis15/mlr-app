@@ -429,6 +429,11 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         return;
       }
 
+      // Chat is optimistic: messages post immediately (assume good intent, no
+      // send-time moderation latency). The mini moderates the uploaded media
+      // ASYNCHRONOUSLY and, if it's flagged, retroactively holds this message a
+      // few seconds later (media_moderation → hold trigger, migration 0128),
+      // which RLS then hides from the room. So nothing to check or wait on here.
       const uploaded: ChatMedia[] = [];
       const token = (await sb.auth.getSession()).data.session?.access_token;
       for (const p of pending) {
