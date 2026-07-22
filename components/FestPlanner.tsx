@@ -479,9 +479,21 @@ export function ScheduleSheet({
   const [imageError, setImageError] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState(draft?.linkUrl ?? "");
   const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
+  const [signupEnabled, setSignupEnabled] = useState(draft?.signupEnabled ?? false);
+  const [signupCapacity, setSignupCapacity] = useState(String(draft?.signupCapacity ?? 4));
+  const [signupSlotMinutes, setSignupSlotMinutes] = useState(String(draft?.signupSlotMinutes ?? 60));
+  const [signupStartTime, setSignupStartTime] = useState(toTimeInputValue(draft?.signupStartTime) || "12:00");
+  const [signupEndTime, setSignupEndTime] = useState(toTimeInputValue(draft?.signupEndTime) || "16:00");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const canSave = title.trim().length > 0 && day.length > 0 && !save.pending;
+  const signupValid =
+    !signupEnabled ||
+    (Number(signupCapacity) > 0 &&
+      Number(signupSlotMinutes) > 0 &&
+      signupStartTime.length > 0 &&
+      signupEndTime.length > 0 &&
+      signupStartTime < signupEndTime);
+  const canSave = title.trim().length > 0 && day.length > 0 && signupValid && !save.pending;
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -519,6 +531,11 @@ export function ScheduleSheet({
         imageUrl,
         linkUrl: orNull(linkUrl),
         linkLabel: orNull(linkLabel),
+        signupEnabled,
+        signupCapacity: signupEnabled ? Number(signupCapacity) : null,
+        signupSlotMinutes: signupEnabled ? Number(signupSlotMinutes) : null,
+        signupStartTime: signupEnabled ? signupStartTime : null,
+        signupEndTime: signupEnabled ? signupEndTime : null,
       });
       if (error) return error;
       onSaved();
@@ -661,6 +678,71 @@ export function ScheduleSheet({
           placeholder="Button text, e.g. Sign up sheet"
           className={`${FIELD} w-full`}
         />
+      </Field>
+
+      <Field label="Limited sign-up">
+        <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm">Take sign-ups for time slots</span>
+            <span className="block text-xs text-foreground/50">e.g. 4 people per slot, every hour from noon to 4pm</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={signupEnabled}
+            onChange={(e) => setSignupEnabled(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+        {signupEnabled && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-foreground/50">People per slot</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={signupCapacity}
+                  onChange={(e) => setSignupCapacity(e.target.value)}
+                  className={`${FIELD} w-full`}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-foreground/50">Minutes per slot</span>
+                <input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={signupSlotMinutes}
+                  onChange={(e) => setSignupSlotMinutes(e.target.value)}
+                  className={`${FIELD} w-full`}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-foreground/50">First slot starts</span>
+                <input
+                  type="time"
+                  value={signupStartTime}
+                  onChange={(e) => setSignupStartTime(e.target.value)}
+                  className={FIELD}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-foreground/50">Last slot ends by</span>
+                <input
+                  type="time"
+                  value={signupEndTime}
+                  onChange={(e) => setSignupEndTime(e.target.value)}
+                  className={FIELD}
+                />
+              </label>
+            </div>
+            {!signupValid && (
+              <p className="text-xs font-medium text-accent">End time must be after the start time.</p>
+            )}
+          </div>
+        )}
       </Field>
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
@@ -1500,7 +1582,9 @@ function LeadPicker({
   );
 }
 
-function MemberPickerSheet({
+/** Exported so ScheduleSignupSlots can reuse it for "add a member to this
+ *  slot" instead of duplicating a search-and-pick list. */
+export function MemberPickerSheet({
   members,
   onPick,
   onClose,
