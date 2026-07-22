@@ -1216,9 +1216,17 @@ polls + creating an Event** below).
   [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
 - **Two optional/automatic emails via the mac-mini
   [`alert-mailer.js`](media-server/alert-mailer.js)** — both the exact claim-a-row
-  pattern as admin alerts and both gated by each member's existing
-  `profiles.email_alerts` opt-in (nobody who turned email off gets one). Like all
-  mini email/push, they need the mini running + restarted.
+  pattern as admin alerts. Unlike broadcast alerts, meeting emails go to **every
+  room member with an email, regardless of `profiles.email_alerts`** (migration
+  [`0132`](supabase/migrations/0132_meeting_email_all_members.sql)) — that toggle
+  gates passive announcements, but a meeting proposal/confirmation is a deliberate,
+  actionable email about a meeting you're in. This deliberately reaches
+  **invited-but-not-yet-verified "temp" accounts** too: `/admin/invite` creates the
+  `auth.users` row (email set) + a `profiles` row (`on_auth_user_created` trigger)
+  and the roster-link trigger stamps `committee_roster.linked_user_id` on email
+  match, so they qualify as a room member and get the email at their invited
+  address (the same one they'll verify with). Like all mini email/push, they need
+  the mini running + restarted.
   - **Proposal email (opt-in, migration
     [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
     has an **"Also email everyone a link to vote"** checkbox, **default OFF** — the
