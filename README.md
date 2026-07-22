@@ -148,6 +148,9 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   and a schedule event can be flagged **"Anytime (no set day)"** to show in the
   "Anytime all week" group instead of a day (migration
   [`0139_schedule_item_anytime.sql`](supabase/migrations/0139_schedule_item_anytime.sql)).
+  The creator can also set **reminder pushes** (any lead times) so everyone in a
+  slot is buzzed before it starts, fired by a pg_cron tick (migration
+  [`0140_signup_slot_reminders.sql`](supabase/migrations/0140_signup_slot_reminders.sql)).
   A Home callout can also link to a signup-enabled event with a "📝 Sign up"
   button (migration
   [`0137_callout_signup_link.sql`](supabase/migrations/0137_callout_signup_link.sql)).

@@ -790,6 +790,20 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   activity editor. Modeled as a flag, not a nullable `day`, so date formatters
   stay safe; `FestWeek`/`FestStatus` exclude `anytime` events from day/"today"
   lists, and the schedule detail header shows "Anytime all week".
+- **Per-slot reminder pushes** (migration 0140). The creator picks one or more
+  lead times (`fest_schedule_items.signup_reminder_minutes` /
+  `fest_activities.signup_reminder_minutes` — quick chips 15m/30m/1h/2h/3h/1d + a
+  custom-minutes input in `SignupConfigEditor`), and everyone signed up for a slot
+  gets a `signup_reminder` notification (in-app + phone push) that long before
+  **their** slot starts. Fired by a `pg_cron` tick `run_signup_reminders()` (like
+  `run_scheduled_broadcasts`, works with the app closed), which resolves each
+  slot's absolute instant (day + "HH:MM" at `America/Chicago`) and dedupes via the
+  `fest_signup_reminders_sent` ledger. Only fires for slots with a real date/time
+  (a schedule event's day, or any slot with a day) — activity-interval / day-less
+  slots have no moment to count down to and are skipped. The push is an
+  **override** (like `help_urgent`): anyone with phone push on gets it, since they
+  chose to sign up — added to both mini senders' pushable sets. `signup_reminder`
+  is a `NotifType`, on by default, mutable in Profile → Notifications → Family Fest.
 - **A Home callout can link to an event's sign-up** (migration 0137).
   `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
   as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a

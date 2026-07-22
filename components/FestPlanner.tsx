@@ -745,6 +745,7 @@ export interface SignupDraft {
   endTime: string;
   instructions: string;
   fields: SignupField[];
+  reminderMinutes: number[];
 }
 
 /** Seed a SignupDraft from an item draft's persisted signup* fields. */
@@ -757,6 +758,7 @@ export function signupDraft(src?: {
   signupEndTime?: string | null;
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
+  signupReminderMinutes?: number[] | null;
 }): SignupDraft {
   return {
     enabled: src?.signupEnabled ?? false,
@@ -767,6 +769,7 @@ export function signupDraft(src?: {
     endTime: toTimeInputValue(src?.signupEndTime) || "16:00",
     instructions: src?.signupInstructions ?? "",
     fields: src?.signupFields ?? [],
+    reminderMinutes: src?.signupReminderMinutes ?? [],
   };
 }
 
@@ -795,8 +798,19 @@ export function signupPayload(v: SignupDraft) {
     signupEndTime: v.enabled && v.mode === "interval" ? v.endTime : null,
     signupInstructions: v.enabled ? orNull(v.instructions) : null,
     signupFields: v.enabled ? v.fields.map((f) => ({ id: f.id, label: f.label.trim() })).filter((f) => f.label) : [],
+    signupReminderMinutes: v.enabled ? [...v.reminderMinutes].sort((a, b) => b - a) : [],
   };
 }
+
+/** Quick-pick reminder lead times (minutes before a slot) + their labels. */
+const REMINDER_CHOICES: { m: number; label: string }[] = [
+  { m: 15, label: "15 min" },
+  { m: 30, label: "30 min" },
+  { m: 60, label: "1 hour" },
+  { m: 120, label: "2 hours" },
+  { m: 180, label: "3 hours" },
+  { m: 1440, label: "1 day" },
+];
 
 /** A slot added before the parent item exists — held in the sheet's state and
  *  flushed by flushPendingSlots() right after the first save. */
@@ -844,6 +858,14 @@ function SignupConfigEditor({
   onPendingSlots: (s: PendingSlot[]) => void;
 }) {
   const set = (patch: Partial<SignupDraft>) => onChange({ ...value, ...patch });
+  const [customMin, setCustomMin] = useState("");
+  const toggleReminder = (m: number) =>
+    set({ reminderMinutes: value.reminderMinutes.includes(m) ? value.reminderMinutes.filter((x) => x !== m) : [...value.reminderMinutes, m] });
+  const addCustomReminder = () => {
+    const m = parseInt(customMin, 10);
+    if (Number.isFinite(m) && m > 0 && !value.reminderMinutes.includes(m)) set({ reminderMinutes: [...value.reminderMinutes, m] });
+    setCustomMin("");
+  };
   return (
     <Field label="Limited sign-up">
       <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
@@ -978,6 +1000,69 @@ function SignupConfigEditor({
             </div>
             <p className="mt-1 text-[11px] text-foreground/45">
               Each column is required on every person&rsquo;s row. The name is always collected.
+            </p>
+          </div>
+
+          {/* Reminder push notifications before each slot. */}
+          <div>
+            <span className="mb-1 block text-xs text-foreground/50">Remind people before their slot (push)</span>
+            <div className="flex flex-wrap gap-1.5">
+              {REMINDER_CHOICES.map(({ m, label }) => {
+                const on = value.reminderMinutes.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => toggleReminder(m)}
+                    className={`press rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                      on ? "bg-primary text-white ring-primary" : "bg-card text-foreground/70 ring-border"
+                    }`}
+                  >
+                    {label}
+                    {on ? " ✓" : ""}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Any other lead time the creator wants. */}
+            {value.reminderMinutes.some((m) => !REMINDER_CHOICES.some((c) => c.m === m)) && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {value.reminderMinutes
+                  .filter((m) => !REMINDER_CHOICES.some((c) => c.m === m))
+                  .sort((a, b) => b - a)
+                  .map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => toggleReminder(m)}
+                      className="press rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-primary"
+                    >
+                      {m} min ✓
+                    </button>
+                  ))}
+              </div>
+            )}
+            <div className="mt-1.5 flex gap-2">
+              <input
+                type="number"
+                min={1}
+                value={customMin}
+                onChange={(e) => setCustomMin(e.target.value)}
+                placeholder="Custom minutes"
+                className={`${FIELD} w-32`}
+              />
+              <button
+                type="button"
+                onClick={addCustomReminder}
+                disabled={!customMin.trim()}
+                className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/25 disabled:opacity-50"
+              >
+                + Add
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-foreground/45">
+              Everyone signed up gets a push that long before their slot starts. Add as many as you like. Only
+              fires for slots that have a set date &amp; time.
             </p>
           </div>
         </div>

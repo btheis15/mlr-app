@@ -77,6 +77,12 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
+    title: "Family Fest",
+    rows: [
+      { value: "signup_reminder", icon: "⏰", label: "Sign-up slot reminders", desc: "A reminder before a Family Fest sign-up slot you're in — the event's creator picks how far ahead" },
+    ],
+  },
+  {
     title: "Help requests",
     rows: [
       { value: "help_request", icon: "🙌", label: "Help requests near me", desc: "When someone at the resort asks for help (needs “Willing to help” on too)" },

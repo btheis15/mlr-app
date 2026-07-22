@@ -109,6 +109,7 @@ export type NotifType =
   | "house_stay_created"
   | "meeting_proposed"
   | "meeting_scheduled"
+  | "signup_reminder"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -141,6 +142,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "house_stay_created",
   "meeting_proposed",
   "meeting_scheduled",
+  "signup_reminder",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized
@@ -369,6 +371,9 @@ export interface ScheduleEvent {
   /** Extra columns required on every person's sign-up row (e.g. "Character").
    *  The base name (linked account or typed) is always collected separately. */
   signupFields?: SignupField[] | null;
+  /** Lead times (minutes before a slot) at which everyone signed up gets a
+   *  reminder push (migration 0140), e.g. [120, 60, 15]. */
+  signupReminderMinutes?: number[] | null;
 }
 
 /** One admin-defined extra column on a sign-up (migration 0136). `id` is a
@@ -408,6 +413,7 @@ export interface FestActivity {
   signupMode?: "interval" | "slots" | null;
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
+  signupReminderMinutes?: number[] | null;
 }
 
 /** One night's dinner: the head chef of the day, the houses on crew, what's

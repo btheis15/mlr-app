@@ -328,6 +328,11 @@ async function start() {
     // A note from whoever runs a place to its current/upcoming guests (migration
     // 0120) — relay to a phone push, gated on push_types.
     "cabin_message",
+    // A sign-up slot reminder (migration 0140) — fanned out by the pg_cron
+    // run_signup_reminders() to everyone signed up for a slot, some lead time
+    // before it. An OVERRIDE push (handled below): anyone with phone push on
+    // gets it, since they chose to sign up for that slot.
+    "signup_reminder",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
@@ -340,10 +345,11 @@ async function start() {
       .eq("id", n.recipient_id)
       .maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    if (n.type === "help_urgent") {
-      // Emergency override: buzz anyone whose phone push is ON (push_types is
-      // non-empty = the master switch is on), even if they muted routine help
-      // pushes. Push OFF (empty / no subscription) still gets nothing.
+    if (n.type === "help_urgent" || n.type === "signup_reminder") {
+      // Override: buzz anyone whose phone push is ON (push_types non-empty = the
+      // master switch is on). help_urgent is an emergency to everyone;
+      // signup_reminder goes only to people who chose to sign up for that slot,
+      // so per-category opt-in isn't required. Push OFF still gets nothing.
       if (pushTypes.length === 0) return;
     } else if (!pushTypes.includes(n.type)) {
       return;
