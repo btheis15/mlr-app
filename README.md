@@ -141,6 +141,9 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   seam [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts); migrations
   [`0135_schedule_signup_slots.sql`](supabase/migrations/0135_schedule_signup_slots.sql)
   + [`0136_schedule_signup_custom.sql`](supabase/migrations/0136_schedule_signup_custom.sql).
+  A Home callout can also link to a signup-enabled event with a "📝 Sign up"
+  button (migration
+  [`0137_callout_signup_link.sql`](supabase/migrations/0137_callout_signup_link.sql)).
   See CLAUDE.md → **Event sign-up slots**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,

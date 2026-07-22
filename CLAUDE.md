@@ -765,6 +765,17 @@ details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
   p_fields)`. Capacity + one-linked-member-per-slot are enforced server-side.
   Removal (`remove_schedule_signup`) is limited to the row's **adder**, the
   **linked person**, or an **organizer**.
+- **A Home callout can link to an event's sign-up** (migration 0137).
+  `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
+  as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a
+  prominent **"📝 Sign up"** button that deep-links to
+  `/family-fest/schedule/<id>`, where [`FestScheduleDetail`](components/FestScheduleDetail.tsx)
+  now renders the event's [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx).
+  Picked from a dropdown of signup-enabled events in
+  [`AdminCallouts`](components/AdminCallouts.tsx)' `CalloutSheet`. **Distinct from
+  the callout's `event_id`** (migration 0096, targeting only — hide from
+  non-attendees): a callout can be linked to Family Fest 2026 for targeting AND
+  carry a Sign up button to a specific schedule item at the same time.
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 

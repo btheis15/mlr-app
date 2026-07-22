@@ -3,6 +3,10 @@
 import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
+import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
+import { useIdentity } from "@/components/IdentityProvider";
+import { useCachedResource } from "@/lib/swrCache";
+import { canEditFest } from "@/lib/festContent";
 import { useFestContent } from "@/lib/useFestContent";
 import { formatDateLong, formatTime } from "@/lib/format";
 import type { ScheduleEvent } from "@/lib/types";
@@ -16,7 +20,19 @@ import type { ScheduleEvent } from "@/lib/types";
  */
 export function FestScheduleDetail({ id, fallback }: { id: string; fallback: ScheduleEvent | null }) {
   const { schedule } = useFestContent({ realtime: true });
+  const { user, userId } = useIdentity();
   const event = schedule.find((e) => e.id === id) ?? fallback;
+  // Same "event creator" predicate the sign-up manage RLS uses: a full fest
+  // editor, or this event's own lead/crew. Cached so the affordances don't flicker.
+  const { data: canEditAll } = useCachedResource<boolean>(
+    user && userId ? `canEditFest.${userId}` : null,
+    false,
+    canEditFest,
+    { persist: "local" },
+  );
+  const canManage =
+    Boolean(canEditAll) ||
+    Boolean(userId && event && (event.leadUserId === userId || (event.crewUserIds ?? []).includes(userId)));
 
   if (!event) {
     return (
@@ -46,6 +62,8 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
       </header>
 
       <p className="text-sm leading-relaxed text-foreground/80">{event.description}</p>
+
+      {event.signupEnabled && <ScheduleSignupSlots event={event} canManage={canManage} members={[]} />}
 
       {event.bring && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">

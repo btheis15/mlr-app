@@ -74,6 +74,10 @@ export interface HomeCallout {
    *  from startsOn/endsOn, which only gate when the card is shown. Reminder
    *  offsets (lib/scheduledBroadcasts.ts) are computed relative to this. */
   deadlineAt: string | null;
+  /** Optional link to a schedule event's SIGN-UP (migration 0137). The
+   *  fest_schedule_items id; the card renders a "Sign up" button deep-linking
+   *  to /family-fest/schedule/<id>. Distinct from `eventId` (targeting only). */
+  signupItemId: string | null;
 }
 
 /** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
@@ -95,6 +99,7 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     eventId: null,
     excludeNotAttending: false,
     deadlineAt: null,
+    signupItemId: null,
   },
 ];
 
@@ -214,10 +219,11 @@ interface CalloutRow {
   event_id: string | null;
   exclude_not_attending: boolean;
   deadline_at: string | null;
+  signup_item_id: string | null;
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at, signup_item_id";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -313,6 +319,7 @@ function mapCallout(r: CalloutRow): HomeCallout {
     eventId: r.event_id,
     excludeNotAttending: r.exclude_not_attending,
     deadlineAt: r.deadline_at,
+    signupItemId: r.signup_item_id ?? null,
   };
 }
 
@@ -705,6 +712,7 @@ export interface CalloutInput {
   eventId: string | null;
   excludeNotAttending: boolean;
   deadlineAt: string | null;
+  signupItemId: string | null;
 }
 export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -722,6 +730,7 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     event_id: i.eventId,
     exclude_not_attending: i.excludeNotAttending,
     deadline_at: i.deadlineAt,
+    signup_item_id: i.signupItemId,
   };
   const q = i.id
     ? sb.from("home_callouts").update(row).eq("id", i.id)
