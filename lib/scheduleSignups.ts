@@ -1,30 +1,62 @@
-// Sign-up time slots for a schedule event. Two modes (migration 0135 → 0136):
-//
-//  • "interval" — the slot list is DERIVED here from the event's own signup*
-//    config (capacity / interval / first / last), the same values
-//    sign_up_for_schedule_slot() re-derives server-side, so the two never
-//    disagree. All slots share the event's single day and one length.
-//  • "slots" — the creator lists arbitrary, independent slots (their own day +
-//    time, no shared increment) as rows in `fest_schedule_slots`.
+// Sign-up time slots for a fest schedule event OR an "anytime" activity. Both
+// share the exact same feature (migrations 0135/0136 for schedule events;
+// migration 0138 brought it to activities) — two modes (derived "interval"
+// slots or an arbitrary "slots" list), instructions, custom required columns,
+// and "anyone can sign up anyone." The only difference is which tables/RPCs
+// back it, selected by `kind` here.
 //
 // A sign-up is one person per row: a linked member OR a typed name, plus a
-// value for each admin-defined custom column (event.signupFields). Any
-// signed-in member can add anyone, and add several.
+// value for each admin-defined custom column (target.signupFields).
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { ScheduleEvent, ScheduleSlot } from "@/lib/types";
+import type { SignupField } from "@/lib/types";
 import { formatDate, formatTime } from "@/lib/format";
+
+export type SignupKind = "schedule" | "activity";
+
+/** Per-kind table/column/RPC names — the one place the two flavors diverge. */
+const SOURCES: Record<
+  SignupKind,
+  { signups: string; slots: string; parentCol: string; signRpc: string; removeRpc: string }
+> = {
+  schedule: {
+    signups: "fest_schedule_signups",
+    slots: "fest_schedule_slots",
+    parentCol: "schedule_item_id",
+    signRpc: "sign_up_for_schedule_slot",
+    removeRpc: "remove_schedule_signup",
+  },
+  activity: {
+    signups: "fest_activity_signups",
+    slots: "fest_activity_slots",
+    parentCol: "activity_id",
+    signRpc: "sign_up_for_activity_slot",
+    removeRpc: "remove_activity_signup",
+  },
+};
+
+/** The minimal shape both ScheduleEvent and FestActivity satisfy for sign-ups. */
+export interface SignupTarget {
+  id: string;
+  /** Schedule events have a day; activities don't (undefined). */
+  day?: string;
+  signupEnabled?: boolean;
+  signupCapacity?: number | null;
+  signupSlotMinutes?: number | null;
+  signupStartTime?: string | null;
+  signupEndTime?: string | null;
+  signupMode?: "interval" | "slots" | null;
+  signupInstructions?: string | null;
+  signupFields?: SignupField[] | null;
+}
 
 export interface ScheduleSignup {
   id: string;
-  /** "HH:MM" for interval mode; null for an explicit slot. */
   slotStart: string | null;
-  /** The explicit-slot id (slots mode); null for interval mode. */
   slotId: string | null;
   userId: string | null;
   name: string;
   addedBy: string | null;
-  /** Custom-column values, keyed by field id (event.signupFields). */
   fields: Record<string, string>;
 }
 
@@ -38,9 +70,18 @@ interface ScheduleSignupRow {
   fields: Record<string, string> | null;
 }
 
+export interface ScheduleSlot {
+  id: string;
+  day: string | null;
+  startTime: string;
+  endTime: string | null;
+  label: string | null;
+  capacity: number | null;
+  position: number;
+}
+
 interface ScheduleSlotRow {
   id: string;
-  schedule_item_id: string;
   day: string | null;
   start_time: string;
   end_time: string | null;
@@ -49,14 +90,14 @@ interface ScheduleSlotRow {
   position: number;
 }
 
-/** The event's config needed to compute an interval-mode slot list. */
+/** The config needed to compute an interval-mode slot list. */
 export type SignupConfig = Pick<
-  ScheduleEvent,
+  SignupTarget,
   "signupEnabled" | "signupCapacity" | "signupSlotMinutes" | "signupStartTime" | "signupEndTime"
 >;
 
 /** "HH:MM" start times from signupStartTime up to (not reaching) signupEndTime,
- *  signupSlotMinutes apart. Mirrors fest_schedule_slot_starts() in Postgres. */
+ *  signupSlotMinutes apart. Mirrors the *_slot_starts() Postgres functions. */
 export function computeSlots(config: SignupConfig): string[] {
   const { signupEnabled, signupSlotMinutes, signupStartTime, signupEndTime } = config;
   if (!signupEnabled || !signupSlotMinutes || signupSlotMinutes <= 0 || !signupStartTime || !signupEndTime) return [];
@@ -75,61 +116,52 @@ export function computeSlots(config: SignupConfig): string[] {
 
 /** A slot the UI renders + signs up against, normalized across both modes. */
 export interface SlotView {
-  /** Stable per-slot key — the slot_id (slots mode) or the "HH:MM" (interval). */
   key: string;
-  /** Set only in slots mode. */
   slotId: string | null;
-  /** "HH:MM" — the interval slot_start, or the explicit slot's start. */
   slotStart: string | null;
-  /** Human label, e.g. "Mon, Jul 13 · 10:50 AM". */
   label: string;
-  /** Per-slot capacity (already resolved from the slot or the event default). */
   capacity: number;
-  /** True when a signup row matches this slot. */
   matches: (s: ScheduleSignup) => boolean;
 }
 
-/** Build a slot label from a day (ISO) + start/end "HH:MM", with an optional
- *  override. Falls back to just the time when there's no day. */
 function slotLabel(day: string | null | undefined, start: string, end: string | null, override?: string | null): string {
   if (override && override.trim()) return override.trim();
   const time = end ? `${formatTime(start)}–${formatTime(end)}` : formatTime(start);
   return day ? `${formatDate(day)} · ${time}` : time;
 }
 
-/** The list of slots to render for an event, in either mode. In interval mode
- *  the event's own day labels every slot; in slots mode each explicit row
- *  carries its own day. */
-export function resolveSlotViews(event: ScheduleEvent, slots: ScheduleSlot[]): SlotView[] {
-  const defaultCap = event.signupCapacity ?? 0;
-  if (event.signupMode === "slots") {
+/** The list of slots to render for a target, in either mode. */
+export function resolveSlotViews(target: SignupTarget, slots: ScheduleSlot[]): SlotView[] {
+  const defaultCap = target.signupCapacity ?? 0;
+  if (target.signupMode === "slots") {
     return slots.map((sl) => ({
       key: sl.id,
       slotId: sl.id,
       slotStart: sl.startTime,
-      label: slotLabel(sl.day ?? event.day, sl.startTime, sl.endTime, sl.label),
+      label: slotLabel(sl.day ?? target.day, sl.startTime, sl.endTime, sl.label),
       capacity: sl.capacity ?? defaultCap,
       matches: (s) => s.slotId === sl.id,
     }));
   }
-  return computeSlots(event).map((start) => ({
+  return computeSlots(target).map((start) => ({
     key: start,
     slotId: null,
     slotStart: start,
-    label: slotLabel(event.day, start, null, null),
+    label: slotLabel(target.day, start, null, null),
     capacity: defaultCap,
     matches: (s) => !s.slotId && s.slotStart === start,
   }));
 }
 
-/** All sign-ups across every slot of one event. Empty with no backend. */
-export async function fetchScheduleSignups(scheduleItemId: string): Promise<ScheduleSignup[]> {
+/** All sign-ups across every slot of one target. Empty with no backend. */
+export async function fetchScheduleSignups(kind: SignupKind, parentId: string): Promise<ScheduleSignup[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
+  const src = SOURCES[kind];
   const { data } = await sb
-    .from("fest_schedule_signups")
+    .from(src.signups)
     .select("id, slot_start, slot_id, user_id, name, added_by, fields")
-    .eq("schedule_item_id", scheduleItemId)
+    .eq(src.parentCol, parentId)
     .order("created_at");
   return ((data ?? []) as ScheduleSignupRow[]).map((r) => ({
     id: r.id,
@@ -144,9 +176,10 @@ export async function fetchScheduleSignups(scheduleItemId: string): Promise<Sche
 
 /** Sign someone up for a slot. Pass `slotId` (slots mode) or `slotStart`
  *  (interval mode). Link a member with `forUserId`, or type a `name`; neither
- *  ⇒ the caller. `fields` carries the event's custom-column values. */
+ *  ⇒ the caller. `fields` carries the custom-column values. */
 export async function signUpForSlot(
-  scheduleItemId: string,
+  kind: SignupKind,
+  parentId: string,
   opts: {
     slotStart?: string | null;
     slotId?: string | null;
@@ -157,8 +190,8 @@ export async function signUpForSlot(
 ): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.rpc("sign_up_for_schedule_slot", {
-    p_item: scheduleItemId,
+  const { error } = await sb.rpc(SOURCES[kind].signRpc, {
+    p_item: parentId,
     p_slot: opts.slotStart ?? null,
     p_for_user: opts.forUserId ?? null,
     p_name: opts.name ?? null,
@@ -168,27 +201,27 @@ export async function signUpForSlot(
   return error ? { error: error.message } : {};
 }
 
-export async function removeScheduleSignup(signupId: string): Promise<{ error?: string }> {
+export async function removeScheduleSignup(kind: SignupKind, signupId: string): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.rpc("remove_schedule_signup", { p_signup: signupId });
+  const { error } = await sb.rpc(SOURCES[kind].removeRpc, { p_signup: signupId });
   return error ? { error: error.message } : {};
 }
 
 // ── Explicit slots (signup_mode = 'slots') — organizer-managed via RLS ────────
 
-export async function fetchScheduleSlots(scheduleItemId: string): Promise<ScheduleSlot[]> {
+export async function fetchScheduleSlots(kind: SignupKind, parentId: string): Promise<ScheduleSlot[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
+  const src = SOURCES[kind];
   const { data } = await sb
-    .from("fest_schedule_slots")
-    .select("id, schedule_item_id, day, start_time, end_time, label, capacity, position")
-    .eq("schedule_item_id", scheduleItemId)
+    .from(src.slots)
+    .select("id, day, start_time, end_time, label, capacity, position")
+    .eq(src.parentCol, parentId)
     .order("position")
     .order("start_time");
   return ((data ?? []) as ScheduleSlotRow[]).map((r) => ({
     id: r.id,
-    scheduleItemId: r.schedule_item_id,
     day: r.day,
     startTime: r.start_time,
     endTime: r.end_time,
@@ -199,13 +232,14 @@ export async function fetchScheduleSlots(scheduleItemId: string): Promise<Schedu
 }
 
 export async function createScheduleSlot(
-  scheduleItemId: string,
+  kind: SignupKind,
+  parentId: string,
   slot: { day: string | null; startTime: string; endTime: string | null; label: string | null; capacity: number | null; position: number },
 ): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.from("fest_schedule_slots").insert({
-    schedule_item_id: scheduleItemId,
+  const { error } = await sb.from(SOURCES[kind].slots).insert({
+    [SOURCES[kind].parentCol]: parentId,
     day: slot.day,
     start_time: slot.startTime,
     end_time: slot.endTime,
@@ -216,9 +250,9 @@ export async function createScheduleSlot(
   return error ? { error: error.message } : {};
 }
 
-export async function deleteScheduleSlot(slotId: string): Promise<{ error?: string }> {
+export async function deleteScheduleSlot(kind: SignupKind, slotId: string): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { error } = await sb.from("fest_schedule_slots").delete().eq("id", slotId);
+  const { error } = await sb.from(SOURCES[kind].slots).delete().eq("id", slotId);
   return error ? { error: error.message } : {};
 }

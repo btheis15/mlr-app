@@ -341,6 +341,10 @@ export interface ScheduleEvent {
   crewUserIds?: string[];
   /** Optional "what to bring" note. */
   bring?: string;
+  /** True ⇒ not locked to `day` — rendered in the "Anytime all week" group
+   *  alongside activities (migration 0139). `day` still holds a value but the
+   *  client ignores it for display/grouping. */
+  anytime?: boolean;
   /** Optional cover photo (site-assets URL). */
   imageUrl?: string | null;
   /** Optional click-through link — a Google Doc/Sheet, sign-up form, or any
@@ -368,27 +372,10 @@ export interface ScheduleEvent {
 }
 
 /** One admin-defined extra column on a sign-up (migration 0136). `id` is a
- *  stable key the per-person values in `fest_schedule_signups.fields` map on. */
+ *  stable key the per-person values in the signups' `fields` map on. */
 export interface SignupField {
   id: string;
   label: string;
-}
-
-/** One explicit sign-up slot when `signupMode = "slots"` (migration 0136). */
-export interface ScheduleSlot {
-  id: string;
-  scheduleItemId: string;
-  /** ISO "YYYY-MM-DD"; null falls back to the event's own day. */
-  day: string | null;
-  /** "HH:MM". */
-  startTime: string;
-  /** "HH:MM", optional. */
-  endTime: string | null;
-  /** Optional label shown instead of the auto "day · time". */
-  label: string | null;
-  /** Per-slot capacity; null falls back to the event's `signupCapacity`. */
-  capacity: number | null;
-  position: number;
 }
 
 /** A "thing to do" that runs all week with no set time — e.g. the scavenger
@@ -411,6 +398,16 @@ export interface FestActivity {
    *  anyone in this list can edit the activity's details directly. Omitted
    *  (treat as empty) on the in-code seed. */
   crewUserIds?: string[];
+  /** Sign-up slots for this activity (migration 0138) — same feature as a
+   *  schedule event's (see lib/scheduleSignups.ts + ScheduleEvent's signup*). */
+  signupEnabled?: boolean;
+  signupCapacity?: number | null;
+  signupSlotMinutes?: number | null;
+  signupStartTime?: string | null;
+  signupEndTime?: string | null;
+  signupMode?: "interval" | "slots" | null;
+  signupInstructions?: string | null;
+  signupFields?: SignupField[] | null;
 }
 
 /** One night's dinner: the head chef of the day, the houses on crew, what's

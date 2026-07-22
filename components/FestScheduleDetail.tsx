@@ -51,7 +51,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       <header className="space-y-1">
         <p className="text-xs text-foreground/50">
-          {formatDateLong(event.day)} · {formatTime(event.start)}
+          {event.anytime ? "Anytime all week" : formatDateLong(event.day)} · {formatTime(event.start)}
           {event.end ? `–${formatTime(event.end)}` : ""}
         </p>
         <h1 className="text-2xl font-bold tracking-tight">
@@ -63,7 +63,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       <p className="text-sm leading-relaxed text-foreground/80">{event.description}</p>
 
-      {event.signupEnabled && <ScheduleSignupSlots event={event} canManage={canManage} members={[]} />}
+      {event.signupEnabled && <ScheduleSignupSlots target={event} kind="schedule" canManage={canManage} members={[]} />}
 
       {event.bring && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">

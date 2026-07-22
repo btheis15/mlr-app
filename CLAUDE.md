@@ -727,17 +727,29 @@ person leads/cooks — matched by `*_user_id`, never the free-text name, so an
 account-less lead is untouched — plus a one-time backfill for names that already
 drifted. Fixes web + iOS at once (both read the same columns); no client change.
 
-## Event sign-up slots (migrations 0135 → 0136)
+## Event sign-up slots (migrations 0135 → 0136, activities 0138)
 
-A schedule event can take **limited sign-ups** for time slots (e.g. a craft
-station that fits 4 at a time, or a play where each role is a seat). Turned on
-in the event editor ([`ScheduleSheet`](components/FestPlanner.tsx)) by "the event
-creator" = `can_edit_fest()` **OR** the event's own lead/crew (the 0110 self-edit
-predicate, wrapped as `_can_manage_schedule_signups`). Surfaced by
-[`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) wherever an event's
-details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
-[`FestStatus`](components/FestStatus.tsx)'s `TodayEvent`). Client seam
-[`lib/scheduleSignups.ts`](lib/scheduleSignups.ts).
+A schedule event **or an "Anytime all week" activity** can take **limited
+sign-ups** for time slots (e.g. a craft station that fits 4 at a time, or a play
+where each role is a seat). Turned on in the item's editor
+([`ScheduleSheet`](components/FestPlanner.tsx) / `ActivitySheet`, both via the
+shared `SignupConfigEditor`) by "the creator" = `can_edit_fest()` **OR** the
+item's own lead/crew (the 0110 self-edit predicate, wrapped as
+`_can_manage_schedule_signups` / `_can_manage_activity_signups`). Surfaced by the
+shared [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) (a `kind` prop
+picks schedule- vs activity-backed tables/RPCs) wherever the item's details
+already render ([`FestWeek`](components/FestWeek.tsx)'s `EventRow` **and
+`ActivityCard`**, [`FestStatus`](components/FestStatus.tsx)'s `TodayEvent`, the
+schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts).
+
+- **Schedule events and activities are parallel, isolated implementations**
+  (migration 0138 mirrors 0135/0136 for `fest_activities`): the config columns
+  live on each parent (`fest_schedule_items` / `fest_activities`), and each has
+  its own slots + signups child tables (`fest_{schedule,activity}_slots` /
+  `_signups`) and its own RPCs (`sign_up_for_{schedule,activity}_slot`,
+  `remove_{schedule,activity}_signup`). Real FKs, cascade deletes, no
+  nullable-parent gymnastics. Activities have no day of their own, so
+  interval-mode slots there are time-only; slots-mode slots carry an optional day.
 
 - **Two ways to define the slots** (`fest_schedule_items.signup_mode`):
   - **`interval`** (migration 0135, the original) — a capacity + interval +
@@ -750,7 +762,10 @@ details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
     need to share a length or increment ("Mon 10:50am, Wed 1:48pm, …"). Stored as
     `fest_schedule_slots` rows (public-read; writes RLS-gated to the same manage
     predicate via `_can_manage_item_signups(item_id)`). The Planner's inline
-    `SignupSlotsEditor` adds/removes them (needs an already-saved event id).
+    `SignupSlotsEditor` adds/removes them. When editing an **existing** item it
+    writes live; on a **brand-new** item (no id yet) it stages slots in the sheet
+    and `flushPendingSlots()` creates them right after the first save (so you can
+    build the slots while creating the event — `writeRow` now returns the new id).
 - **Instructions + custom columns** (migration 0136). The creator can write
   free-text `signup_instructions` and define `signup_fields` — an ordered jsonb
   array of `{id,label}` extra columns **required on every person's row** (e.g. a
@@ -765,6 +780,16 @@ details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
   p_fields)`. Capacity + one-linked-member-per-slot are enforced server-side.
   Removal (`remove_schedule_signup`) is limited to the row's **adder**, the
   **linked person**, or an **organizer**.
+- **Roster view for the organizer/crew.** `canManage` viewers get a "📋 View all"
+  button on the sign-up card opening `SignupRosterSheet` — every slot, person, and
+  custom-column value as one scannable table (in `ScheduleSignupSlots`).
+- **Anytime schedule events** (migration 0139). The event editor has an
+  **"Anytime (no set day)"** toggle (`fest_schedule_items.anytime`) so an event
+  isn't locked to a day — it renders in the "Anytime all week" group alongside
+  activities (`FestWeek`) instead of a day card, saving a trip to the separate
+  activity editor. Modeled as a flag, not a nullable `day`, so date formatters
+  stay safe; `FestWeek`/`FestStatus` exclude `anytime` events from day/"today"
+  lists, and the schedule detail header shows "Anytime all week".
 - **A Home callout can link to an event's sign-up** (migration 0137).
   `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
   as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a

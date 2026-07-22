@@ -132,15 +132,22 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
   (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
   attendance**.
-- **Event sign-up slots** — a Family Fest schedule event can take limited
-  sign-ups, either as even slots across a time range **or** an arbitrary list of
-  specific times (each with its own day/length), with creator-written
-  instructions and any number of required extra columns (e.g. "Character"). Each
-  seat is one row — a linked member or a typed name — and any signed-in member
-  can sign up anyone. UI [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx),
+- **Event sign-up slots** — a Family Fest schedule event **or an "Anytime all
+  week" activity** can take limited sign-ups, either as even slots across a time
+  range **or** an arbitrary list of specific times (each with its own day/length),
+  with creator-written instructions and any number of required extra columns
+  (e.g. "Character"). Each seat is one row — a linked member or a typed name — and
+  any signed-in member can sign up anyone. UI
+  [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx),
   seam [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts); migrations
-  [`0135_schedule_signup_slots.sql`](supabase/migrations/0135_schedule_signup_slots.sql)
-  + [`0136_schedule_signup_custom.sql`](supabase/migrations/0136_schedule_signup_custom.sql).
+  [`0135_schedule_signup_slots.sql`](supabase/migrations/0135_schedule_signup_slots.sql),
+  [`0136_schedule_signup_custom.sql`](supabase/migrations/0136_schedule_signup_custom.sql),
+  and [`0138_activity_signup_slots.sql`](supabase/migrations/0138_activity_signup_slots.sql)
+  (activities). Specific slots can be built while creating the item (before the
+  first save); the organizer/crew get a "📋 View all" roster of every slot + row;
+  and a schedule event can be flagged **"Anytime (no set day)"** to show in the
+  "Anytime all week" group instead of a day (migration
+  [`0139_schedule_item_anytime.sql`](supabase/migrations/0139_schedule_item_anytime.sql)).
   A Home callout can also link to a signup-enabled event with a "📝 Sign up"
   button (migration
   [`0137_callout_signup_link.sql`](supabase/migrations/0137_callout_signup_link.sql)).

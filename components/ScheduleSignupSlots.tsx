@@ -1,15 +1,19 @@
 "use client";
 
-// Sign-up slots on a schedule event (migrations 0135 + 0136). Shown wherever an
-// event's expanded details render (FestWeek's EventRow, FestStatus's
-// TodayEvent). Two modes: derived interval slots, or the creator's own
+// Sign-up slots on a schedule event OR an "anytime" activity (migrations
+// 0135/0136 for schedule events, 0138 for activities). Shown wherever the item's
+// details render (FestWeek's EventRow/ActivityCard, FestStatus's TodayEvent, the
+// schedule detail page). Two modes: derived interval slots, or the creator's own
 // arbitrary list of slots. Each slot holds up to N people; each person is one
 // row — a linked member or a typed name — plus a value for every custom column
 // the creator defined. ANY signed-in member can add anyone, and add several.
+// `kind` selects the schedule- vs activity-backed tables/RPCs (lib/scheduleSignups).
 
 import { useCallback, useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PrivateName } from "@/components/Guard";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import { MemberPickerSheet } from "@/components/FestPlanner";
 import { fetchMemberOptions, type FestMemberOption } from "@/lib/festContent";
 import {
@@ -19,18 +23,24 @@ import {
   signUpForSlot,
   removeScheduleSignup,
   type ScheduleSignup,
+  type ScheduleSlot,
   type SlotView,
+  type SignupTarget,
+  type SignupKind,
 } from "@/lib/scheduleSignups";
-import type { ScheduleEvent, ScheduleSlot, SignupField } from "@/lib/types";
+import type { SignupField } from "@/lib/types";
 
 export function ScheduleSignupSlots({
-  event,
+  target,
+  kind = "schedule",
   canManage,
   members,
 }: {
-  event: ScheduleEvent;
+  target: SignupTarget;
+  /** Which flavor: a schedule event or an anytime activity. Defaults to schedule. */
+  kind?: SignupKind;
   /** Can act on ANY row (remove other people's sign-ups) — the same predicate
-   *  as the edit affordance: can_edit_fest() OR this event's lead/crew. */
+   *  as the edit affordance: can_edit_fest() OR this item's lead/crew. */
   canManage: boolean;
   members: FestMemberOption[];
 }) {
@@ -40,17 +50,18 @@ export function ScheduleSignupSlots({
   const [memberOptions, setMemberOptions] = useState<FestMemberOption[]>(members);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rosterOpen, setRosterOpen] = useState(false);
 
-  const fields: SignupField[] = event.signupFields ?? [];
+  const fields: SignupField[] = target.signupFields ?? [];
 
   const reload = useCallback(async () => {
     const [s, sl] = await Promise.all([
-      fetchScheduleSignups(event.id),
-      event.signupMode === "slots" ? fetchScheduleSlots(event.id) : Promise.resolve([]),
+      fetchScheduleSignups(kind, target.id),
+      target.signupMode === "slots" ? fetchScheduleSlots(kind, target.id) : Promise.resolve([]),
     ]);
     setSignups(s);
     setSlots(sl);
-  }, [event.id, event.signupMode]);
+  }, [kind, target.id, target.signupMode]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -59,7 +70,7 @@ export function ScheduleSignupSlots({
     if (members.length) setMemberOptions((prev) => (prev.length ? prev : members));
   }, [members]);
 
-  const slotViews = resolveSlotViews(event, slots);
+  const slotViews = resolveSlotViews(target, slots);
   if (!slotViews.length) return null;
 
   const runAction = async (key: string, action: () => Promise<{ error?: string }>) => {
@@ -74,10 +85,22 @@ export function ScheduleSignupSlots({
 
   return (
     <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
-      {event.signupInstructions?.trim() && (
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
+        {/* Organizer/crew get a consolidated view of every slot + row in one place. */}
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setRosterOpen(true)}
+            className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
+          >
+            📋 View all
+          </button>
+        )}
+      </div>
+      {target.signupInstructions?.trim() && (
         <p className="whitespace-pre-line rounded-xl bg-background px-3 py-2 text-xs leading-relaxed text-foreground/70 ring-1 ring-border/60">
-          {event.signupInstructions.trim()}
+          {target.signupInstructions.trim()}
         </p>
       )}
       <div className="space-y-2">
@@ -99,13 +122,13 @@ export function ScheduleSignupSlots({
             onJoin={() =>
               userId
                 ? void runAction(view.key, () =>
-                    signUpForSlot(event.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart }),
+                    signUpForSlot(kind, target.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart }),
                   )
                 : promptSignIn()
             }
             onAdd={(payload) =>
               runAction(view.key, () =>
-                signUpForSlot(event.id, {
+                signUpForSlot(kind, target.id, {
                   slotId: view.slotId,
                   slotStart: view.slotId ? null : view.slotStart,
                   forUserId: payload.forUserId,
@@ -114,7 +137,7 @@ export function ScheduleSignupSlots({
                 }),
               )
             }
-            onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(id))}
+            onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(kind, id))}
             requireSignIn={promptSignIn}
           />
         ))}
@@ -122,7 +145,91 @@ export function ScheduleSignupSlots({
       {error && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{error}</p>
       )}
+      {rosterOpen && (
+        <SignupRosterSheet slotViews={slotViews} signups={signups} fields={fields} onClose={() => setRosterOpen(false)} />
+      )}
     </div>
+  );
+}
+
+/** The organizer/crew's "everything in one place" view — every slot, every
+ *  person, and every custom-column value, as a scannable table. */
+function SignupRosterSheet({
+  slotViews,
+  signups,
+  fields,
+  onClose,
+}: {
+  slotViews: SlotView[];
+  signups: ScheduleSignup[];
+  fields: SignupField[];
+  onClose: () => void;
+}) {
+  const { closing, close } = useSheetDismiss(onClose);
+  const total = signups.length;
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="signup-roster"
+      header={
+        <div id="signup-roster">
+          <h2 className="text-lg font-bold">All sign-ups</h2>
+          <p className="text-xs text-foreground/50">
+            {total} {total === 1 ? "person" : "people"} across {slotViews.length}{" "}
+            {slotViews.length === 1 ? "slot" : "slots"}
+          </p>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {slotViews.map((view) => {
+          const rows = signups.filter((s) => view.matches(s));
+          return (
+            <div key={view.key} className="rounded-2xl bg-card ring-1 ring-border">
+              <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+                <p className="text-sm font-semibold">{view.label}</p>
+                <span className={`text-xs ${rows.length >= view.capacity ? "text-accent" : "text-foreground/50"}`}>
+                  {rows.length}/{view.capacity}
+                </span>
+              </div>
+              {rows.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-foreground/45">No one yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-foreground/50">
+                        <th className="px-3 py-1.5 font-medium">#</th>
+                        <th className="px-3 py-1.5 font-medium">Name</th>
+                        {fields.map((f) => (
+                          <th key={f.id} className="px-3 py-1.5 font-medium">{f.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((s, i) => (
+                        <tr key={s.id} className="border-t border-border/50 align-top">
+                          <td className="px-3 py-1.5 text-foreground/40">{i + 1}</td>
+                          <td className="px-3 py-1.5 font-medium">
+                            <PrivateName name={s.name} />
+                          </td>
+                          {fields.map((f) => (
+                            <td key={f.id} className="px-3 py-1.5 text-foreground/70">
+                              {s.fields?.[f.id]?.trim() || "—"}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 

@@ -151,6 +151,7 @@ interface ScheduleRow {
   description: string | null;
   bring: string | null;
   is_private: boolean;
+  anytime: boolean;
   lead_user_id: string | null;
   lead_name: string | null;
   lead_phone: string | null;
@@ -204,6 +205,14 @@ interface ActivityRow {
   lead_name: string | null;
   lead_phone: string | null;
   crew_user_ids: string[] | null;
+  signup_enabled: boolean;
+  signup_capacity: number | null;
+  signup_slot_minutes: number | null;
+  signup_start_time: string | null;
+  signup_end_time: string | null;
+  signup_mode: string | null;
+  signup_instructions: string | null;
+  signup_fields: SignupField[] | null;
 }
 interface CalloutRow {
   id: string;
@@ -244,6 +253,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     emoji: r.emoji ?? "🗓️",
     description: r.description ?? "",
     bring: r.bring ?? undefined,
+    anytime: r.anytime ?? false,
     // We carry name + phone for the public card (tap-to-call/text); lead_user_id
     // is the link of record but the display fields stand on their own.
     lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
@@ -302,6 +312,14 @@ function mapActivity(r: ActivityRow): FestActivity {
     lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
     leadUserId: r.lead_user_id,
     crewUserIds: r.crew_user_ids ?? [],
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   };
 }
 function mapCallout(r: CalloutRow): HomeCallout {
@@ -335,7 +353,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -351,7 +369,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
       sb
         .from("fest_activities")
-        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids")
+        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields")
         .eq("fest_year", FEST_YEAR)
         .order("position"),
       sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
@@ -415,20 +433,23 @@ async function currentUid(): Promise<string | null> {
   return (await sb.auth.getUser()).data.user?.id ?? null;
 }
 
-/** Write a row to one fest table — insert when `id` is absent, else update. */
+/** Write a row to one fest table — insert when `id` is absent, else update.
+ *  Returns the row's id on success (the new uuid on insert, the given id on
+ *  update) so a caller can attach child rows to a just-created parent. */
 async function writeRow(
   table: string,
   id: string | undefined,
   row: Record<string, unknown>,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; id?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
   const payload = { ...row, fest_year: FEST_YEAR, updated_at: new Date().toISOString(), updated_by: await currentUid() };
-  const q = id
-    ? sb.from(table).update(payload).eq("id", id)
-    : sb.from(table).insert(payload);
-  const { error } = await q;
-  return error ? { error: error.message } : {};
+  if (id) {
+    const { error } = await sb.from(table).update(payload).eq("id", id);
+    return error ? { error: error.message } : { id };
+  }
+  const { data, error } = await sb.from(table).insert(payload).select("id").single();
+  return error ? { error: error.message } : { id: (data as { id: string } | null)?.id };
 }
 
 async function deleteRow(table: string, id: string): Promise<{ error?: string }> {
@@ -451,6 +472,7 @@ export interface ScheduleInput {
   description: string | null;
   bring: string | null;
   isPrivate: boolean;
+  anytime: boolean;
   leadUserId: string | null;
   leadName: string | null;
   leadPhone: string | null;
@@ -479,6 +501,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     description: i.description,
     bring: i.bring,
     is_private: i.isPrivate,
+    anytime: i.anytime,
     lead_user_id: i.leadUserId,
     lead_name: i.leadName,
     lead_phone: i.leadPhone,
@@ -653,6 +676,14 @@ export interface ActivityInput {
   leadPhone: string | null;
   crewUserIds: string[];
   position: number;
+  signupEnabled: boolean;
+  signupCapacity: number | null;
+  signupSlotMinutes: number | null;
+  signupStartTime: string | null;
+  signupEndTime: string | null;
+  signupMode: "interval" | "slots";
+  signupInstructions: string | null;
+  signupFields: SignupField[];
 }
 export const saveActivity = (i: ActivityInput) =>
   writeRow("fest_activities", i.id, {
@@ -666,6 +697,14 @@ export const saveActivity = (i: ActivityInput) =>
     lead_phone: i.leadPhone,
     crew_user_ids: i.crewUserIds,
     position: i.position,
+    signup_enabled: i.signupEnabled,
+    signup_capacity: i.signupCapacity,
+    signup_slot_minutes: i.signupSlotMinutes,
+    signup_start_time: i.signupStartTime,
+    signup_end_time: i.signupEndTime,
+    signup_mode: i.signupMode,
+    signup_instructions: i.signupInstructions,
+    signup_fields: i.signupFields,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
 
@@ -811,7 +850,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -827,6 +866,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     description: r.description,
     bring: r.bring,
     isPrivate: r.is_private,
+    anytime: r.anytime ?? false,
     leadUserId: r.lead_user_id,
     leadName: r.lead_name,
     leadPhone: r.lead_phone,
@@ -920,7 +960,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_activities")
-    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, position")
+    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
@@ -935,6 +975,14 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
     leadPhone: r.lead_phone,
     crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   }));
 }
 
