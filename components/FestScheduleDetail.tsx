@@ -63,7 +63,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       <p className="text-sm leading-relaxed text-foreground/80">{event.description}</p>
 
-      {event.signupEnabled && <ScheduleSignupSlots event={event} canManage={canManage} members={[]} />}
+      {event.signupEnabled && <ScheduleSignupSlots target={event} kind="schedule" canManage={canManage} members={[]} />}
 
       {event.bring && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">

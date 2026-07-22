@@ -727,17 +727,29 @@ person leads/cooks — matched by `*_user_id`, never the free-text name, so an
 account-less lead is untouched — plus a one-time backfill for names that already
 drifted. Fixes web + iOS at once (both read the same columns); no client change.
 
-## Event sign-up slots (migrations 0135 → 0136)
+## Event sign-up slots (migrations 0135 → 0136, activities 0138)
 
-A schedule event can take **limited sign-ups** for time slots (e.g. a craft
-station that fits 4 at a time, or a play where each role is a seat). Turned on
-in the event editor ([`ScheduleSheet`](components/FestPlanner.tsx)) by "the event
-creator" = `can_edit_fest()` **OR** the event's own lead/crew (the 0110 self-edit
-predicate, wrapped as `_can_manage_schedule_signups`). Surfaced by
-[`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) wherever an event's
-details already expand ([`FestWeek`](components/FestWeek.tsx)'s `EventRow`,
-[`FestStatus`](components/FestStatus.tsx)'s `TodayEvent`). Client seam
-[`lib/scheduleSignups.ts`](lib/scheduleSignups.ts).
+A schedule event **or an "Anytime all week" activity** can take **limited
+sign-ups** for time slots (e.g. a craft station that fits 4 at a time, or a play
+where each role is a seat). Turned on in the item's editor
+([`ScheduleSheet`](components/FestPlanner.tsx) / `ActivitySheet`, both via the
+shared `SignupConfigEditor`) by "the creator" = `can_edit_fest()` **OR** the
+item's own lead/crew (the 0110 self-edit predicate, wrapped as
+`_can_manage_schedule_signups` / `_can_manage_activity_signups`). Surfaced by the
+shared [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) (a `kind` prop
+picks schedule- vs activity-backed tables/RPCs) wherever the item's details
+already render ([`FestWeek`](components/FestWeek.tsx)'s `EventRow` **and
+`ActivityCard`**, [`FestStatus`](components/FestStatus.tsx)'s `TodayEvent`, the
+schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts).
+
+- **Schedule events and activities are parallel, isolated implementations**
+  (migration 0138 mirrors 0135/0136 for `fest_activities`): the config columns
+  live on each parent (`fest_schedule_items` / `fest_activities`), and each has
+  its own slots + signups child tables (`fest_{schedule,activity}_slots` /
+  `_signups`) and its own RPCs (`sign_up_for_{schedule,activity}_slot`,
+  `remove_{schedule,activity}_signup`). Real FKs, cascade deletes, no
+  nullable-parent gymnastics. Activities have no day of their own, so
+  interval-mode slots there are time-only; slots-mode slots carry an optional day.
 
 - **Two ways to define the slots** (`fest_schedule_items.signup_mode`):
   - **`interval`** (migration 0135, the original) — a capacity + interval +

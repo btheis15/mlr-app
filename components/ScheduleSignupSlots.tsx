@@ -1,11 +1,13 @@
 "use client";
 
-// Sign-up slots on a schedule event (migrations 0135 + 0136). Shown wherever an
-// event's expanded details render (FestWeek's EventRow, FestStatus's
-// TodayEvent). Two modes: derived interval slots, or the creator's own
+// Sign-up slots on a schedule event OR an "anytime" activity (migrations
+// 0135/0136 for schedule events, 0138 for activities). Shown wherever the item's
+// details render (FestWeek's EventRow/ActivityCard, FestStatus's TodayEvent, the
+// schedule detail page). Two modes: derived interval slots, or the creator's own
 // arbitrary list of slots. Each slot holds up to N people; each person is one
 // row — a linked member or a typed name — plus a value for every custom column
 // the creator defined. ANY signed-in member can add anyone, and add several.
+// `kind` selects the schedule- vs activity-backed tables/RPCs (lib/scheduleSignups).
 
 import { useCallback, useEffect, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -19,18 +21,24 @@ import {
   signUpForSlot,
   removeScheduleSignup,
   type ScheduleSignup,
+  type ScheduleSlot,
   type SlotView,
+  type SignupTarget,
+  type SignupKind,
 } from "@/lib/scheduleSignups";
-import type { ScheduleEvent, ScheduleSlot, SignupField } from "@/lib/types";
+import type { SignupField } from "@/lib/types";
 
 export function ScheduleSignupSlots({
-  event,
+  target,
+  kind = "schedule",
   canManage,
   members,
 }: {
-  event: ScheduleEvent;
+  target: SignupTarget;
+  /** Which flavor: a schedule event or an anytime activity. Defaults to schedule. */
+  kind?: SignupKind;
   /** Can act on ANY row (remove other people's sign-ups) — the same predicate
-   *  as the edit affordance: can_edit_fest() OR this event's lead/crew. */
+   *  as the edit affordance: can_edit_fest() OR this item's lead/crew. */
   canManage: boolean;
   members: FestMemberOption[];
 }) {
@@ -41,16 +49,16 @@ export function ScheduleSignupSlots({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fields: SignupField[] = event.signupFields ?? [];
+  const fields: SignupField[] = target.signupFields ?? [];
 
   const reload = useCallback(async () => {
     const [s, sl] = await Promise.all([
-      fetchScheduleSignups(event.id),
-      event.signupMode === "slots" ? fetchScheduleSlots(event.id) : Promise.resolve([]),
+      fetchScheduleSignups(kind, target.id),
+      target.signupMode === "slots" ? fetchScheduleSlots(kind, target.id) : Promise.resolve([]),
     ]);
     setSignups(s);
     setSlots(sl);
-  }, [event.id, event.signupMode]);
+  }, [kind, target.id, target.signupMode]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -59,7 +67,7 @@ export function ScheduleSignupSlots({
     if (members.length) setMemberOptions((prev) => (prev.length ? prev : members));
   }, [members]);
 
-  const slotViews = resolveSlotViews(event, slots);
+  const slotViews = resolveSlotViews(target, slots);
   if (!slotViews.length) return null;
 
   const runAction = async (key: string, action: () => Promise<{ error?: string }>) => {
@@ -75,9 +83,9 @@ export function ScheduleSignupSlots({
   return (
     <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
-      {event.signupInstructions?.trim() && (
+      {target.signupInstructions?.trim() && (
         <p className="whitespace-pre-line rounded-xl bg-background px-3 py-2 text-xs leading-relaxed text-foreground/70 ring-1 ring-border/60">
-          {event.signupInstructions.trim()}
+          {target.signupInstructions.trim()}
         </p>
       )}
       <div className="space-y-2">
@@ -99,13 +107,13 @@ export function ScheduleSignupSlots({
             onJoin={() =>
               userId
                 ? void runAction(view.key, () =>
-                    signUpForSlot(event.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart }),
+                    signUpForSlot(kind, target.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart }),
                   )
                 : promptSignIn()
             }
             onAdd={(payload) =>
               runAction(view.key, () =>
-                signUpForSlot(event.id, {
+                signUpForSlot(kind, target.id, {
                   slotId: view.slotId,
                   slotStart: view.slotId ? null : view.slotStart,
                   forUserId: payload.forUserId,
@@ -114,7 +122,7 @@ export function ScheduleSignupSlots({
                 }),
               )
             }
-            onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(id))}
+            onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(kind, id))}
             requireSignIn={promptSignIn}
           />
         ))}

@@ -56,8 +56,10 @@ import {
   fetchScheduleSlots,
   createScheduleSlot,
   deleteScheduleSlot,
+  type ScheduleSlot,
+  type SignupKind,
 } from "@/lib/scheduleSignups";
-import type { SignupField, ScheduleSlot } from "@/lib/types";
+import type { SignupField } from "@/lib/types";
 
 type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "details" | "images";
 
@@ -222,7 +224,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
           <PayeeEditor items={payees} onChanged={reloadDrafts} />
         </PageSection>
         <PageSection icon="🗺️" title="Anytime activities">
-          <ActivityEditor items={activities} members={members} onChanged={reloadDrafts} />
+          <ActivityEditor items={activities} days={days} members={members} onChanged={reloadDrafts} />
         </PageSection>
         <PageSection icon="🖼️" title="Images">
           <ImagesEditor />
@@ -260,7 +262,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       )}
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
-      {section === "activities" && <ActivityEditor items={activities} members={members} onChanged={reloadDrafts} />}
+      {section === "activities" && <ActivityEditor items={activities} days={days} members={members} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>
@@ -485,25 +487,10 @@ export function ScheduleSheet({
   const [imageError, setImageError] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState(draft?.linkUrl ?? "");
   const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
-  const [signupEnabled, setSignupEnabled] = useState(draft?.signupEnabled ?? false);
-  const [signupMode, setSignupMode] = useState<"interval" | "slots">(draft?.signupMode ?? "interval");
-  const [signupCapacity, setSignupCapacity] = useState(String(draft?.signupCapacity ?? 4));
-  const [signupSlotMinutes, setSignupSlotMinutes] = useState(String(draft?.signupSlotMinutes ?? 60));
-  const [signupStartTime, setSignupStartTime] = useState(toTimeInputValue(draft?.signupStartTime) || "12:00");
-  const [signupEndTime, setSignupEndTime] = useState(toTimeInputValue(draft?.signupEndTime) || "16:00");
-  const [signupInstructions, setSignupInstructions] = useState(draft?.signupInstructions ?? "");
-  const [signupFields, setSignupFields] = useState<SignupField[]>(draft?.signupFields ?? []);
+  const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const signupValid =
-    !signupEnabled ||
-    signupMode === "slots" || // slots are validated individually as they're added
-    (Number(signupCapacity) > 0 &&
-      Number(signupSlotMinutes) > 0 &&
-      signupStartTime.length > 0 &&
-      signupEndTime.length > 0 &&
-      signupStartTime < signupEndTime);
-  const canSave = title.trim().length > 0 && day.length > 0 && signupValid && !save.pending;
+  const canSave = title.trim().length > 0 && day.length > 0 && signupIsValid(signup) && !save.pending;
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -541,17 +528,7 @@ export function ScheduleSheet({
         imageUrl,
         linkUrl: orNull(linkUrl),
         linkLabel: orNull(linkLabel),
-        signupEnabled,
-        signupMode,
-        signupCapacity: signupEnabled ? Number(signupCapacity) : null,
-        // Interval config only applies to interval mode; slots mode ignores it.
-        signupSlotMinutes: signupEnabled && signupMode === "interval" ? Number(signupSlotMinutes) : null,
-        signupStartTime: signupEnabled && signupMode === "interval" ? signupStartTime : null,
-        signupEndTime: signupEnabled && signupMode === "interval" ? signupEndTime : null,
-        signupInstructions: signupEnabled ? orNull(signupInstructions) : null,
-        signupFields: signupEnabled
-          ? signupFields.map((f) => ({ id: f.id, label: f.label.trim() })).filter((f) => f.label)
-          : [],
+        ...signupPayload(signup),
       });
       if (error) return error;
       onSaved();
@@ -696,154 +673,7 @@ export function ScheduleSheet({
         />
       </Field>
 
-      <Field label="Limited sign-up">
-        <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-          <span className="min-w-0">
-            <span className="text-sm">Take sign-ups for time slots</span>
-            <span className="block text-xs text-foreground/50">e.g. 4 people per slot, every hour from noon to 4pm</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={signupEnabled}
-            onChange={(e) => setSignupEnabled(e.target.checked)}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-          />
-        </label>
-        {signupEnabled && (
-          <div className="space-y-3">
-            {/* How the slots are defined. */}
-            <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border">
-              {(
-                [
-                  ["interval", "By time range", "Even slots, one length"],
-                  ["slots", "Specific times", "Pick each slot yourself"],
-                ] as const
-              ).map(([val, label, hint]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setSignupMode(val)}
-                  className={`press rounded-lg px-2 py-1.5 text-left ${
-                    signupMode === val ? "bg-primary text-white" : "text-foreground/70"
-                  }`}
-                >
-                  <span className="block text-xs font-semibold">{label}</span>
-                  <span className={`block text-[10px] ${signupMode === val ? "text-white/80" : "text-foreground/45"}`}>
-                    {hint}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <label className="block">
-              <span className="mb-1 block text-xs text-foreground/50">
-                People per slot{signupMode === "slots" ? " (default)" : ""}
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={signupCapacity}
-                onChange={(e) => setSignupCapacity(e.target.value)}
-                className={`${FIELD} w-full`}
-              />
-            </label>
-
-            {signupMode === "interval" ? (
-              <div className="space-y-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-foreground/50">Minutes per slot</span>
-                  <input
-                    type="number"
-                    min={5}
-                    step={5}
-                    value={signupSlotMinutes}
-                    onChange={(e) => setSignupSlotMinutes(e.target.value)}
-                    className={`${FIELD} w-full`}
-                  />
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-foreground/50">First slot starts</span>
-                    <input
-                      type="time"
-                      value={signupStartTime}
-                      onChange={(e) => setSignupStartTime(e.target.value)}
-                      className={FIELD}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-foreground/50">Last slot ends by</span>
-                    <input
-                      type="time"
-                      value={signupEndTime}
-                      onChange={(e) => setSignupEndTime(e.target.value)}
-                      className={FIELD}
-                    />
-                  </label>
-                </div>
-                {!signupValid && (
-                  <p className="text-xs font-medium text-accent">End time must be after the start time.</p>
-                )}
-              </div>
-            ) : draft?.id ? (
-              <SignupSlotsEditor scheduleItemId={draft.id} days={days} />
-            ) : (
-              <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/60 ring-1 ring-border/60">
-                Save this event first, then reopen it to add specific time slots.
-              </p>
-            )}
-
-            {/* Instructions shown to everyone signing up. */}
-            <label className="block">
-              <span className="mb-1 block text-xs text-foreground/50">Sign-up instructions (optional)</span>
-              <textarea
-                value={signupInstructions}
-                onChange={(e) => setSignupInstructions(e.target.value)}
-                rows={2}
-                placeholder="e.g. One person per role. List the character you're playing."
-                className={`${FIELD} w-full resize-none`}
-              />
-            </label>
-
-            {/* Extra required columns per person. */}
-            <div>
-              <span className="mb-1 block text-xs text-foreground/50">Extra info to collect per person (optional)</span>
-              <div className="space-y-1.5">
-                {signupFields.map((f, i) => (
-                  <div key={f.id} className="flex gap-2">
-                    <input
-                      value={f.label}
-                      onChange={(e) =>
-                        setSignupFields((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
-                      }
-                      placeholder="Column label (e.g. Character)"
-                      className={`${FIELD} min-w-0 flex-1`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSignupFields((prev) => prev.filter((_, j) => j !== i))}
-                      aria-label="Remove column"
-                      className="press rounded-lg px-2 text-sm font-medium text-foreground/50 ring-1 ring-border"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setSignupFields((prev) => [...prev, { id: crypto.randomUUID(), label: "" }])}
-                  className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/25"
-                >
-                  + Add a column
-                </button>
-              </div>
-              <p className="mt-1 text-[11px] text-foreground/45">
-                Each column is required on every person&rsquo;s row. The name is always collected.
-              </p>
-            </div>
-          </div>
-        )}
-      </Field>
+      <SignupConfigEditor kind="schedule" parentId={draft?.id} days={days} value={signup} onChange={setSignup} />
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
         <span className="min-w-0">
@@ -872,19 +702,240 @@ export function ScheduleSheet({
   );
 }
 
-/** Inline editor for the arbitrary, independent sign-up slots of an event
- *  (signup_mode = 'slots', migration 0136). Writes live to `fest_schedule_slots`
- *  as you add/remove — so it needs an already-saved event id. */
-function SignupSlotsEditor({ scheduleItemId, days }: { scheduleItemId: string; days: string[] }) {
+// ── Reusable sign-up config editor (schedule events + anytime activities) ─────
+// The "Limited sign-up" block shared by ScheduleSheet and ActivitySheet. Fully
+// controlled: it holds no state, the parent owns a SignupDraft.
+
+/** The editor's working copy of an item's sign-up config (strings for inputs). */
+export interface SignupDraft {
+  enabled: boolean;
+  mode: "interval" | "slots";
+  capacity: string;
+  slotMinutes: string;
+  startTime: string;
+  endTime: string;
+  instructions: string;
+  fields: SignupField[];
+}
+
+/** Seed a SignupDraft from an item draft's persisted signup* fields. */
+export function signupDraft(src?: {
+  signupEnabled?: boolean;
+  signupMode?: "interval" | "slots" | null;
+  signupCapacity?: number | null;
+  signupSlotMinutes?: number | null;
+  signupStartTime?: string | null;
+  signupEndTime?: string | null;
+  signupInstructions?: string | null;
+  signupFields?: SignupField[] | null;
+}): SignupDraft {
+  return {
+    enabled: src?.signupEnabled ?? false,
+    mode: src?.signupMode ?? "interval",
+    capacity: String(src?.signupCapacity ?? 4),
+    slotMinutes: String(src?.signupSlotMinutes ?? 60),
+    startTime: toTimeInputValue(src?.signupStartTime) || "12:00",
+    endTime: toTimeInputValue(src?.signupEndTime) || "16:00",
+    instructions: src?.signupInstructions ?? "",
+    fields: src?.signupFields ?? [],
+  };
+}
+
+/** Interval mode needs a valid time range; slots mode validates per-slot. */
+export function signupIsValid(v: SignupDraft): boolean {
+  return (
+    !v.enabled ||
+    v.mode === "slots" ||
+    (Number(v.capacity) > 0 &&
+      Number(v.slotMinutes) > 0 &&
+      v.startTime.length > 0 &&
+      v.endTime.length > 0 &&
+      v.startTime < v.endTime)
+  );
+}
+
+/** The signup* columns to persist, from the editor draft. */
+export function signupPayload(v: SignupDraft) {
+  return {
+    signupEnabled: v.enabled,
+    signupMode: v.mode,
+    signupCapacity: v.enabled ? Number(v.capacity) : null,
+    // Interval config only applies to interval mode; slots mode ignores it.
+    signupSlotMinutes: v.enabled && v.mode === "interval" ? Number(v.slotMinutes) : null,
+    signupStartTime: v.enabled && v.mode === "interval" ? v.startTime : null,
+    signupEndTime: v.enabled && v.mode === "interval" ? v.endTime : null,
+    signupInstructions: v.enabled ? orNull(v.instructions) : null,
+    signupFields: v.enabled ? v.fields.map((f) => ({ id: f.id, label: f.label.trim() })).filter((f) => f.label) : [],
+  };
+}
+
+function SignupConfigEditor({
+  kind,
+  parentId,
+  days,
+  value,
+  onChange,
+}: {
+  kind: SignupKind;
+  parentId: string | undefined;
+  days: string[];
+  value: SignupDraft;
+  onChange: (v: SignupDraft) => void;
+}) {
+  const set = (patch: Partial<SignupDraft>) => onChange({ ...value, ...patch });
+  return (
+    <Field label="Limited sign-up">
+      <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+        <span className="min-w-0">
+          <span className="text-sm">Take sign-ups for time slots</span>
+          <span className="block text-xs text-foreground/50">e.g. 4 people per slot, every hour from noon to 4pm</span>
+        </span>
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          onChange={(e) => set({ enabled: e.target.checked })}
+          className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+        />
+      </label>
+      {value.enabled && (
+        <div className="space-y-3">
+          {/* How the slots are defined. */}
+          <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border">
+            {(
+              [
+                ["interval", "By time range", "Even slots, one length"],
+                ["slots", "Specific times", "Pick each slot yourself"],
+              ] as const
+            ).map(([val, label, hint]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => set({ mode: val })}
+                className={`press rounded-lg px-2 py-1.5 text-left ${
+                  value.mode === val ? "bg-primary text-white" : "text-foreground/70"
+                }`}
+              >
+                <span className="block text-xs font-semibold">{label}</span>
+                <span className={`block text-[10px] ${value.mode === val ? "text-white/80" : "text-foreground/45"}`}>
+                  {hint}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <label className="block">
+            <span className="mb-1 block text-xs text-foreground/50">
+              People per slot{value.mode === "slots" ? " (default)" : ""}
+            </span>
+            <input
+              type="number"
+              min={1}
+              value={value.capacity}
+              onChange={(e) => set({ capacity: e.target.value })}
+              className={`${FIELD} w-full`}
+            />
+          </label>
+
+          {value.mode === "interval" ? (
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-foreground/50">Minutes per slot</span>
+                <input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={value.slotMinutes}
+                  onChange={(e) => set({ slotMinutes: e.target.value })}
+                  className={`${FIELD} w-full`}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-foreground/50">First slot starts</span>
+                  <input type="time" value={value.startTime} onChange={(e) => set({ startTime: e.target.value })} className={FIELD} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs text-foreground/50">Last slot ends by</span>
+                  <input type="time" value={value.endTime} onChange={(e) => set({ endTime: e.target.value })} className={FIELD} />
+                </label>
+              </div>
+              {!signupIsValid(value) && (
+                <p className="text-xs font-medium text-accent">End time must be after the start time.</p>
+              )}
+            </div>
+          ) : parentId ? (
+            <SignupSlotsEditor kind={kind} parentId={parentId} days={days} />
+          ) : (
+            <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/60 ring-1 ring-border/60">
+              Save this first, then reopen it to add specific time slots.
+            </p>
+          )}
+
+          {/* Instructions shown to everyone signing up. */}
+          <label className="block">
+            <span className="mb-1 block text-xs text-foreground/50">Sign-up instructions (optional)</span>
+            <textarea
+              value={value.instructions}
+              onChange={(e) => set({ instructions: e.target.value })}
+              rows={2}
+              placeholder="e.g. One person per role. List the character you're playing."
+              className={`${FIELD} w-full resize-none`}
+            />
+          </label>
+
+          {/* Extra required columns per person. */}
+          <div>
+            <span className="mb-1 block text-xs text-foreground/50">Extra info to collect per person (optional)</span>
+            <div className="space-y-1.5">
+              {value.fields.map((f, i) => (
+                <div key={f.id} className="flex gap-2">
+                  <input
+                    value={f.label}
+                    onChange={(e) => set({ fields: value.fields.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                    placeholder="Column label (e.g. Character)"
+                    className={`${FIELD} min-w-0 flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => set({ fields: value.fields.filter((_, j) => j !== i) })}
+                    aria-label="Remove column"
+                    className="press rounded-lg px-2 text-sm font-medium text-foreground/50 ring-1 ring-border"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => set({ fields: [...value.fields, { id: crypto.randomUUID(), label: "" }] })}
+                className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-primary ring-1 ring-primary/25"
+              >
+                + Add a column
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-foreground/45">
+              Each column is required on every person&rsquo;s row. The name is always collected.
+            </p>
+          </div>
+        </div>
+      )}
+    </Field>
+  );
+}
+
+/** Inline editor for the arbitrary, independent sign-up slots of an event or
+ *  activity (signup_mode = 'slots', migrations 0136/0138). Writes live to the
+ *  kind's slots table as you add/remove — so it needs an already-saved id. */
+function SignupSlotsEditor({ kind, parentId, days }: { kind: SignupKind; parentId: string; days: string[] }) {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
-  const [day, setDay] = useState(days[0] ?? "");
+  const [day, setDay] = useState("");
   const [time, setTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => setSlots(await fetchScheduleSlots(scheduleItemId)), [scheduleItemId]);
+  const reload = useCallback(async () => setSlots(await fetchScheduleSlots(kind, parentId)), [kind, parentId]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -893,7 +944,7 @@ function SignupSlotsEditor({ scheduleItemId, days }: { scheduleItemId: string; d
     if (!time) return;
     setBusy(true);
     setError(null);
-    const { error } = await createScheduleSlot(scheduleItemId, {
+    const { error } = await createScheduleSlot(kind, parentId, {
       day: day || null,
       startTime: time,
       endTime: endTime || null,
@@ -914,7 +965,7 @@ function SignupSlotsEditor({ scheduleItemId, days }: { scheduleItemId: string; d
   const remove = async (id: string) => {
     setBusy(true);
     setError(null);
-    const { error } = await deleteScheduleSlot(id);
+    const { error } = await deleteScheduleSlot(kind, id);
     if (error) setError(error);
     else await reload();
     setBusy(false);
@@ -950,8 +1001,9 @@ function SignupSlotsEditor({ scheduleItemId, days }: { scheduleItemId: string; d
       )}
       <div className="grid grid-cols-2 gap-2">
         <label className="block">
-          <span className="mb-1 block text-[11px] text-foreground/50">Day</span>
+          <span className="mb-1 block text-[11px] text-foreground/50">Day (optional)</span>
           <select value={day} onChange={(e) => setDay(e.target.value)} className={`${FIELD} w-full`}>
+            <option value="">No specific day</option>
             {days.map((d) => (
               <option key={d} value={d}>{formatDate(d)}</option>
             ))}
@@ -1386,10 +1438,12 @@ function PayeeSheet({
 
 function ActivityEditor({
   items,
+  days,
   members,
   onChanged,
 }: {
   items: ActivityDraft[];
+  days: string[];
   members: FestMemberOption[];
   onChanged: () => void;
 }) {
@@ -1409,6 +1463,7 @@ function ActivityEditor({
       {editing && (
         <ActivitySheet
           draft={editing === "new" ? null : editing}
+          days={days}
           members={members}
           nextPosition={items.length}
           onClose={() => setEditing(null)}
@@ -1421,12 +1476,14 @@ function ActivityEditor({
 
 export function ActivitySheet({
   draft,
+  days,
   members,
   nextPosition,
   onClose,
   onSaved,
 }: {
   draft: ActivityDraft | null;
+  days: string[];
   members: FestMemberOption[];
   nextPosition: number;
   onClose: () => void;
@@ -1443,10 +1500,11 @@ export function ActivitySheet({
   const [leadName, setLeadName] = useState(draft?.leadName ?? "");
   const [leadPhone, setLeadPhone] = useState(draft?.leadPhone ?? "");
   const [crewUserIds, setCrewUserIds] = useState<string[]>(draft?.crewUserIds ?? []);
+  const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
   const [picking, setPicking] = useState(false);
   const [pickingCrew, setPickingCrew] = useState(false);
 
-  const canSave = title.trim().length > 0 && !save.pending;
+  const canSave = title.trim().length > 0 && signupIsValid(signup) && !save.pending;
   const submit = () =>
     save.run(async () => {
       const { error } = await saveActivity({
@@ -1461,6 +1519,7 @@ export function ActivitySheet({
         leadPhone: orNull(leadPhone),
         crewUserIds,
         position: draft?.position ?? nextPosition,
+        ...signupPayload(signup),
       });
       if (error) return error;
       onSaved();
@@ -1527,6 +1586,8 @@ export function ActivitySheet({
           + Add a crew member…
         </button>
       </Field>
+
+      <SignupConfigEditor kind="activity" parentId={draft?.id} days={days} value={signup} onChange={setSignup} />
 
       {picking && (
         <MemberPickerSheet

@@ -204,6 +204,14 @@ interface ActivityRow {
   lead_name: string | null;
   lead_phone: string | null;
   crew_user_ids: string[] | null;
+  signup_enabled: boolean;
+  signup_capacity: number | null;
+  signup_slot_minutes: number | null;
+  signup_start_time: string | null;
+  signup_end_time: string | null;
+  signup_mode: string | null;
+  signup_instructions: string | null;
+  signup_fields: SignupField[] | null;
 }
 interface CalloutRow {
   id: string;
@@ -302,6 +310,14 @@ function mapActivity(r: ActivityRow): FestActivity {
     lead: r.lead_name?.trim() ? { name: r.lead_name, phone: r.lead_phone ?? undefined } : undefined,
     leadUserId: r.lead_user_id,
     crewUserIds: r.crew_user_ids ?? [],
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   };
 }
 function mapCallout(r: CalloutRow): HomeCallout {
@@ -351,7 +367,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
       sb
         .from("fest_activities")
-        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids")
+        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields")
         .eq("fest_year", FEST_YEAR)
         .order("position"),
       sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
@@ -653,6 +669,14 @@ export interface ActivityInput {
   leadPhone: string | null;
   crewUserIds: string[];
   position: number;
+  signupEnabled: boolean;
+  signupCapacity: number | null;
+  signupSlotMinutes: number | null;
+  signupStartTime: string | null;
+  signupEndTime: string | null;
+  signupMode: "interval" | "slots";
+  signupInstructions: string | null;
+  signupFields: SignupField[];
 }
 export const saveActivity = (i: ActivityInput) =>
   writeRow("fest_activities", i.id, {
@@ -666,6 +690,14 @@ export const saveActivity = (i: ActivityInput) =>
     lead_phone: i.leadPhone,
     crew_user_ids: i.crewUserIds,
     position: i.position,
+    signup_enabled: i.signupEnabled,
+    signup_capacity: i.signupCapacity,
+    signup_slot_minutes: i.signupSlotMinutes,
+    signup_start_time: i.signupStartTime,
+    signup_end_time: i.signupEndTime,
+    signup_mode: i.signupMode,
+    signup_instructions: i.signupInstructions,
+    signup_fields: i.signupFields,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
 
@@ -920,7 +952,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_activities")
-    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, position")
+    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
@@ -935,6 +967,14 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
     leadPhone: r.lead_phone,
     crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
+    signupEnabled: r.signup_enabled,
+    signupCapacity: r.signup_capacity,
+    signupSlotMinutes: r.signup_slot_minutes,
+    signupStartTime: r.signup_start_time,
+    signupEndTime: r.signup_end_time,
+    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupInstructions: r.signup_instructions,
+    signupFields: r.signup_fields ?? [],
   }));
 }
 

@@ -117,6 +117,7 @@ export function FestWeek({
               uid={uid}
               canEditAll={canEditAll}
               draft={activityDrafts.find((d) => d.id === a.id) ?? null}
+              days={festDayOptions}
               members={members}
               onSaved={onSaved}
             />
@@ -208,6 +209,7 @@ function ActivityCard({
   uid,
   canEditAll,
   draft,
+  days,
   members,
   onSaved,
 }: {
@@ -216,6 +218,7 @@ function ActivityCard({
   uid: string | null;
   canEditAll: boolean;
   draft: ActivityDraft | null;
+  days: string[];
   members: FestMemberOption[];
   onSaved: () => void;
 }) {
@@ -254,6 +257,11 @@ function ActivityCard({
           </div>
         </div>
       )}
+      {activity.signupEnabled && (
+        <div className="mt-3">
+          <ScheduleSignupSlots target={activity} kind="activity" canManage={canEditThis} members={members} />
+        </div>
+      )}
       {canEditThis && (
         <button
           type="button"
@@ -266,6 +274,7 @@ function ActivityCard({
       {editing && fullEdit && draft && (
         <ActivitySheet
           draft={draft}
+          days={days}
           members={members}
           nextPosition={draft.position}
           onClose={() => setEditing(false)}
@@ -387,7 +396,7 @@ function EventRow({
             </a>
           )}
           {event.signupEnabled && (
-            <ScheduleSignupSlots event={event} canManage={canEditThis} members={members} />
+            <ScheduleSignupSlots target={event} kind="schedule" canManage={canEditThis} members={members} />
           )}
           {event.lead && (
             <div>

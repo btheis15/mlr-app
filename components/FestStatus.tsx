@@ -266,7 +266,7 @@ function TodayEvent({
       </div>
       {e.signupEnabled && (
         <div className="mt-3">
-          <ScheduleSignupSlots event={e} canManage={canEditThis} members={members} />
+          <ScheduleSignupSlots target={e} kind="schedule" canManage={canEditThis} members={members} />
         </div>
       )}
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
