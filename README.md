@@ -26,9 +26,17 @@ Theis · Fishing · Hunting · Boating · Tomahawk, WI).
 - **Tailwind v4** — light-mode-only theme tokens (forest-green primary) as CSS
   variables via `@theme` in [`app/globals.css`](app/globals.css); brush-script
   wordmark (Yellowtail) via `next/font`
-- **Framer Motion** for interactions
+- **Framer Motion** for interactions — one global `MotionProvider`
+  (`reducedMotion="user"`) plus a small reusable kit (`AnimatedNumber`,
+  `AnimatedList`, `SegmentedControl`, `Celebration`, `TypingIndicator`) layered on
+  the CSS motion tokens in `globals.css`. Wide-gamut **P3/HDR** accent colors on
+  capable screens (`@supports (color: color(display-p3 …))`), sRGB fallback.
 - **PWA** — standalone manifest, "Add to Home Screen" hint on iOS
 - **Hosting** — live on **Vercel** (currently manual via `vercel --prod`)
+
+See [`docs/ARCHITECTURE.json`](docs/ARCHITECTURE.json) for a full machine-readable
+map of the app (routes, data model, components, backend, chat internals, motion
+kit, constraints, and an improvement backlog).
 
 ## Quick start
 
