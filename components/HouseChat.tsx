@@ -976,14 +976,20 @@ function MessageRow({
         })()}
 
         {reacting && (
-          <div className={`absolute z-10 -top-9 flex gap-0.5 rounded-full bg-background px-1.5 py-1 shadow-lg ring-1 ring-border ${mine ? "right-0" : "left-0"}`}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            style={{ transformOrigin: mine ? "bottom right" : "bottom left" }}
+            className={`absolute z-10 -top-9 flex gap-0.5 rounded-full bg-background px-1.5 py-1 shadow-lg ring-1 ring-border ${mine ? "right-0" : "left-0"}`}
+          >
             {REACTIONS.map((e) => (
               <button key={e} onClick={() => onReact(e)} className="press rounded-full px-1 text-lg">{e}</button>
             ))}
             <button onClick={onReply} className="press rounded-full px-1 text-base" aria-label="Reply">↩︎</button>
             {canEdit && <button onClick={onEdit} className="press rounded-full px-1 text-base" aria-label="Edit">✏️</button>}
             {canDelete && <button onClick={onDelete} className="press rounded-full px-1 text-base" aria-label="Delete">🗑️</button>}
-          </div>
+          </motion.div>
         )}
       </div>
     </div>
