@@ -1624,14 +1624,23 @@ constraint via the mini):
   the caller (RLS) → return results. Client seam [`lib/search.ts`](lib/search.ts);
   UI [`ConversationSearch`](components/ConversationSearch.tsx).
 
-**Hybrid ranking (migration [`0130`](supabase/migrations/0130_search_hybrid.sql)).**
+**Ranking is keyword-precise (migrations [`0130`](supabase/migrations/0130_search_hybrid.sql)
++ [`0131`](supabase/migrations/0131_search_keyword_precision.sql)).**
 Apple's mean-pooled vectors are anisotropic (cosine sims bunch in a narrow
-~0.85–0.92 band), so short keyword queries barely separate — pure semantic read
-as "everything, unfiltered". `search_conversations` now fuses Postgres full-text
-with the vectors: **keyword matches rank first** (semantic as tiebreaker), and it
-falls back to **pure semantic only when there are no keyword matches** (the "find
-it without the exact words" case). `query_text` was added to the RPC (with a
+~0.85–0.92 band), so pure semantic can't separate relevant from irrelevant and
+read as "everything, unfiltered". `search_conversations` now filters strictly by
+**Postgres full-text match** (`to_tsvector @@ websearch_to_tsquery`), ordering by
+`ts_rank` then embedding similarity. `query_text` was added to the RPC (with a
 default, so the call is backward-compatible); media-server's `/search` passes it.
+- ⚠️ **Filter with `@@`, never `ts_rank(...) > 0`** — ts_rank returns a tiny
+  non-zero (~1e-20) for NON-matching multi-word queries, so `> 0` leaks the whole
+  corpus in under the real hits (the 0130 bug; single-word queries returned exactly
+  0 and hid it). No keyword match ⇒ zero rows ⇒ the UI shows "No matching messages".
+- The embedding vectors now only **break ties** among keyword matches. The "find
+  it without the exact words" semantic behavior is intentionally OFF (the vectors
+  are too anisotropic to threshold). Restoring it cleanly would need **mean-centering**
+  the embeddings so a similarity cutoff becomes meaningful — a future enhancement,
+  not wired.
 
 **Go-live order** (search shows an error state until all three are done):
 (1) run migration 0129 in Supabase; (2) build + launchd-install embed-service on
