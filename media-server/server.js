@@ -683,10 +683,21 @@ app.post("/search", searchLimiter, requireUser, express.json({ limit: "8kb" }), 
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data, error } = await userSb.rpc("search_conversations", {
-      query_embedding: toVectorLiteral(vec),
+    const vecLit = toVectorLiteral(vec);
+    // Hybrid: keyword matches rank first, semantic fills in (migration 0130).
+    let { data, error } = await userSb.rpc("search_conversations", {
+      query_embedding: vecLit,
+      query_text: q,
       match_count: limit,
     });
+    // Pre-0130 DB (RPC has no query_text param) → fall back to the semantic-only
+    // signature so search keeps working until the migration is applied.
+    if (error && (error.code === "PGRST202" || /find the function|schema cache|query_text/i.test(`${error.message || ""} ${error.hint || ""}`))) {
+      ({ data, error } = await userSb.rpc("search_conversations", {
+        query_embedding: vecLit,
+        match_count: limit,
+      }));
+    }
     if (error) throw error;
     const results = Array.isArray(data) ? data : [];
     res.json({ query: q, count: results.length, results });
