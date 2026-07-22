@@ -19,6 +19,7 @@ import {
 import { fetchHelpRequests } from "@/lib/helpRequests";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
+import { canEditFest } from "@/lib/festContent";
 import {
   createHouseStay,
   deleteHouseStay,
@@ -802,4 +803,21 @@ export function useHouseCalendar(houseId: string | null): {
     editStay,
     removeStay,
   };
+}
+
+/**
+ * Cached Family-Fest edit permission. Seeds the last-known value instantly
+ * (memory across tab switches, persisted across cold opens) so Edit affordances
+ * don't pop in a frame or two late while can_edit_fest() re-resolves on each
+ * visit. uid-scoped + wiped on signOut; false for guests / no backend.
+ */
+export function useCanEditFest(): boolean {
+  const { user, userId } = useIdentity();
+  const { data } = useCachedResource<boolean>(
+    user && userId ? `canEditFest.${userId}` : null,
+    false,
+    canEditFest,
+    { persist: "local" },
+  );
+  return data;
 }

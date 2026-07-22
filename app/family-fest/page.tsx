@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCanEditFest } from "@/lib/hooks";
 import { FestStatus } from "@/components/FestStatus";
 import { FestRsvp } from "@/components/FestRsvp";
 import { FestWeek } from "@/components/FestWeek";
@@ -10,8 +10,6 @@ import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestContent } from "@/lib/useFestContent";
-import { canEditFest } from "@/lib/festContent";
-import { useIdentity } from "@/components/IdentityProvider";
 import { formatDateLong } from "@/lib/format";
 
 /**
@@ -28,21 +26,9 @@ import { formatDateLong } from "@/lib/format";
  */
 export default function FamilyFestPage() {
   const { config, schedule, dinners, activities, reload } = useFestContent({ realtime: true });
-  const { user } = useIdentity();
-  const [canEdit, setCanEdit] = useState(false);
-
-  // Only signed-in members can possibly edit; re-check when sign-in flips.
-  useEffect(() => {
-    let active = true;
-    if (!user) {
-      setCanEdit(false);
-      return;
-    }
-    canEditFest().then((ok) => active && setCanEdit(ok));
-    return () => {
-      active = false;
-    };
-  }, [user]);
+  // Cached edit-permission — the "Edit Family Fest" link seeds instantly instead
+  // of popping in a frame or two late each visit (see useCanEditFest).
+  const canEdit = useCanEditFest();
 
   return (
     <div className="space-y-4 pt-1">
