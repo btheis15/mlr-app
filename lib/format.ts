@@ -85,9 +85,21 @@ export function timeAgo(input: string | number | Date): string {
   return `${days}d`;
 }
 
+// Parse to a Date, treating a bare "YYYY-MM-DD" as LOCAL midnight. `new
+// Date("YYYY-MM-DD")` is parsed as UTC, which lands on the PREVIOUS local day in
+// western (negative-offset) timezones — so a day-key round-tripped back through
+// `new Date()` shifts back a day, e.g. mislabeling today's chat messages as
+// "Yesterday". Full ISO timestamps (with a time) and Dates pass through as-is.
+function toLocalDate(input: string | number | Date): Date {
+  if (typeof input === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+    return new Date(`${input}T00:00:00`);
+  }
+  return input instanceof Date ? input : new Date(input);
+}
+
 /** Local "YYYY-MM-DD" key for grouping posts into days (not UTC). */
 export function dayKey(input: string | number | Date): string {
-  const d = input instanceof Date ? input : new Date(input);
+  const d = toLocalDate(input);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -96,7 +108,7 @@ export function dayKey(input: string | number | Date): string {
 
 /** Timeline day header: "Today", "Yesterday", else "Saturday, July 27, 2026". */
 export function formatDayHeading(input: string | number | Date): string {
-  const d = input instanceof Date ? input : new Date(input);
+  const d = toLocalDate(input);
   const today = dayKey(new Date());
   const yest = dayKey(new Date(Date.now() - 86_400_000));
   const key = dayKey(d);
