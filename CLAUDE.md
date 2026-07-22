@@ -1216,17 +1216,21 @@ polls + creating an Event** below).
   [`PushToggle`](components/PushToggle.tsx) row (off by default → opt in).
 - **Two optional/automatic emails via the mac-mini
   [`alert-mailer.js`](media-server/alert-mailer.js)** — both the exact claim-a-row
-  pattern as admin alerts. Unlike broadcast alerts, meeting emails go to **every
-  room member with an email, regardless of `profiles.email_alerts`** (migration
-  [`0132`](supabase/migrations/0132_meeting_email_all_members.sql)) — that toggle
-  gates passive announcements, but a meeting proposal/confirmation is a deliberate,
-  actionable email about a meeting you're in. This deliberately reaches
-  **invited-but-not-yet-verified "temp" accounts** too: `/admin/invite` creates the
-  `auth.users` row (email set) + a `profiles` row (`on_auth_user_created` trigger)
-  and the roster-link trigger stamps `committee_roster.linked_user_id` on email
-  match, so they qualify as a room member and get the email at their invited
-  address (the same one they'll verify with). Like all mini email/push, they need
-  the mini running + restarted.
+  pattern as admin alerts. **PRINCIPLE: `profiles.email_alerts` gates ONLY the
+  broadcast Alerts/Notifications email channel (`alert_recipients`, 0127). Every
+  *transactional* email overrides it** — meeting proposal/confirmation and the cabin
+  "message guests" note (migrations
+  [`0132`](supabase/migrations/0132_meeting_email_all_members.sql) →
+  [`0133`](supabase/migrations/0133_transactional_email_overrides.sql)); cabin
+  approve/deny/edit/cancel already ignored it (they go to the single requester via
+  `cabin_booking_notification`). So meeting emails reach **every room member with an
+  email regardless of `email_alerts`** — verified members, invited-but-unverified
+  "temp" accounts (`/admin/invite` creates `auth.users` + a `profiles` row via the
+  `on_auth_user_created` trigger; the roster-link trigger stamps
+  `committee_roster.linked_user_id` on email match), AND **account-less rostered
+  people** (committee_roster / family_roster slots with an email but no account — the
+  `UNION`s from 0123, which 0132 accidentally dropped and 0133 restored). Like all
+  mini email/push, they need the mini running + restarted.
   - **Proposal email (opt-in, migration
     [`0117`](supabase/migrations/0117_meeting_proposal_email.sql)).** The composer
     has an **"Also email everyone a link to vote"** checkbox, **default OFF** — the
