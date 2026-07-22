@@ -10,9 +10,8 @@ import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { DinnerSheet } from "@/components/FestPlanner";
 import { useIdentity } from "@/components/IdentityProvider";
-import { getCurrentUserId } from "@/lib/roles";
+import { useCanEditFest } from "@/lib/hooks";
 import {
-  canEditFest,
   fetchMemberOptions,
   fetchDinnerDrafts,
   type FestMemberOption,
@@ -36,11 +35,14 @@ import type { Dinner } from "@/lib/types";
  */
 export default function FestDinnersPage() {
   const { dinners, reload } = useFestContent({ realtime: true });
-  const { user } = useIdentity();
-  const [uid, setUid] = useState<string | null>(null);
-  const [canEditAll, setCanEditAll] = useState(false);
+  const { userId } = useIdentity();
+  const uid = userId;
   const [members, setMembers] = useState<FestMemberOption[]>([]);
   const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
+
+  // Cached edit-permission — seeds instantly so the Dinner edit buttons don't
+  // pop in a frame or two late each visit (see useCanEditFest).
+  const canEditAll = useCanEditFest();
 
   const reloadAdminData = useCallback(() => {
     fetchMemberOptions().then(setMembers);
@@ -48,22 +50,8 @@ export default function FestDinnersPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setUid(null);
-      setCanEditAll(false);
-      return;
-    }
-    let active = true;
-    getCurrentUserId().then((id) => active && setUid(id));
-    canEditFest().then((ok) => {
-      if (!active) return;
-      setCanEditAll(ok);
-      if (ok) reloadAdminData();
-    });
-    return () => {
-      active = false;
-    };
-  }, [user, reloadAdminData]);
+    if (canEditAll) reloadAdminData();
+  }, [canEditAll, reloadAdminData]);
 
   const onSaved = () => {
     reload();
