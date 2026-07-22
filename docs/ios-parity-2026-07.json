@@ -1,0 +1,287 @@
+{
+  "meta": {
+    "title": "iOS parity catch-up — 2026-07",
+    "purpose": "Machine-readable work-list of NEW functional changes the web app (mlr-app) shipped after the native app's last sync, to be hand-ported into the native SwiftUI app (mlr-app-ios). One backend, two clients: every RPC/table below is ALREADY LIVE on the shared Supabase project, so this is Swift-side service wiring + new SwiftUI surfaces only. No iOS SQL, no new migrations.",
+    "generated": "2026-07-22",
+    "web_source": "btheis15/mlr-app @ origin/main (through PR #362)",
+    "ios_target": "btheis15/mlr-app-ios",
+    "ios_last_sync": "2026-07-18 — committee taxonomy Phases 1-4 (web #310/#311) + emoji/username (#315). iOS PARITY_PLAN workstreams A-F all verified LANDED (design foundation, Fest redesign, cabins parity, broadcasts+reminders, OnThisDay/post-reactions, committee self-service/AdminMembers/PreviewAs).",
+    "delta_scope": "web PRs #316-#362; backend migrations 0114-0128 (15 new since the 0108/0113 the last iOS plan referenced)",
+    "conventions": {
+      "services": "each web lib/*.ts seam maps to a Swift Services/*Service.swift; new RPCs use the Encodable param-struct + .rpc()/.from() idiom (see CabinService.swift, NotificationsService.swift)",
+      "param_names": "RPC param names must match the SQL EXACTLY (p_scope, p_meeting, p_room_ids, p_approver_user_id, p_exclude_not_attending, ...). The web lib/*.ts files are the signature reference.",
+      "sheets": "new sheets build on MLRSheet + fieldStyle; both light + dark palettes (Color(light:dark:) per Colors.swift)",
+      "mini_side_effects": "emails and phone push are mac-mini side-effects (alert-mailer.js / push-sender.js / apns-sender.js) fired off Supabase realtime — the native app does NOT send them, but must surface the same opt-in checkboxes and honor the same notif/push pref rows so the mini fans them out."
+    }
+  },
+
+  "do_not_rebuild": [
+    { "pr": 334, "note": "Tap a member's name in Admin -> Members to open profile — ALREADY on iOS (AdminMembersView row Button -> MemberSheetView)." },
+    { "pr": 342, "note": "Event-targeted email/push honor 'not going' — iOS CLIENT already collects the event target (EventTargetPicker wired into both admin composers) and passes p_event_id + p_exclude_not_attending. The 'honoring' on email/push is mac-mini side. iOS change = NONE, except note alert_recipients() dropped its old 1-arg overload (call the widened signature)." },
+    { "pr": 322, "note": "request_cabin_stay overload dedupe — backend plumbing only. iOS already calls this RPC; just use the canonical 8-arg signature request_cabin_stay(p_cabin,p_check_in,p_check_out,p_guests,p_notes,p_for_user,p_room_ids,p_notify)." },
+    { "pr": 340, "note": "Admin alerts back-link + collapsed composers — superseded by #341; port the #341 end-state (WS4), not this intermediate." },
+    { "prs": [316, 317], "note": "Intermediate steps of the Dinners redesign — port only the #318 end-state (WS6)." }
+  ],
+
+  "skip_web_only": {
+    "prs": [319, 320, 329, 330, 331, 337, 354, 355, 357, 358, 360],
+    "reason": "GitHub-Pages/Vercel build plumbing (#319/#320), desktop Lodge-Sidebar layout (#329/#330 — web-only, and reverted), PWA chunk-load recovery (#331), an &nbsp; copy fix (#337), and mobile chat-open flicker / hydration-caching fixes (#354/#355/#357/#358/#360). None apply to a native SwiftUI app.",
+    "partial_skip": { "pr": 351, "note": "The Local Places two-tap-to-open fix is a web-only Safari <details> quirk — a native DisclosureGroup already opens on first tap. Only the 'Alerts' Home quick-link half of #351 is portable (WS7)." }
+  },
+
+  "workstreams": [
+    {
+      "id": "WS1",
+      "title": "Meeting scheduler (committee / house / family -> Google Meet or a real Event)",
+      "priority": "P0",
+      "ios_status": "absent",
+      "size": "largest new feature — entirely missing on iOS",
+      "prs": [323, 324, 325, 326, 327, 328],
+      "migrations": ["0116", "0117", "0118", "0119", "0121", "0122"],
+      "summary": "A Doodle/when2meet-style scheduler pinned to any committee/area or house chat room, plus a family-wide scope. Organizer proposes candidate slots; members mark Yes/If-need-be/No per slot; organizer picks the winner and either pastes a Google Meet link (posts a join message + notifies the room) or creates a real calendar Event from it.",
+      "backend": {
+        "tables": [
+          "meetings (scope_type committee|house|family, committee_id/committee_slug/area OR house_id, title, description, status open|scheduled|cancelled, chosen_slot_id, meet_url, respond_by, notify_email, proposal_email_sent_at, confirm_email_sent_at, created_event_id, source_meeting back-link)",
+          "meeting_slots (meeting_id, starts_at, ends_at [nullable = date range], duration_min, position)",
+          "meeting_availability (PK (slot_id,user_id), meeting_id, status yes|if_need_be|no)",
+          "events.source gains 'meeting' + events.source_meeting_id",
+          "event_attendance.confirmed (bool default true)"
+        ],
+        "rpcs": [
+          "create_meeting(p_scope,p_committee_id,p_area,p_house_id,p_title,p_description,p_slots,p_respond_by,p_email)",
+          "create_scheduled_meeting(p_scope,p_committee_id,p_area,p_house_id,p_title,p_description,p_starts_at,p_ends_at,p_duration_min,p_meet_url)",
+          "set_my_availability(p_meeting,p_answers)  // bulk upsert {slotId:status}",
+          "finalize_meeting(p_meeting,p_slot,p_meet_url)  // organizer-or-admin; marks scheduled, posts room msg, fans meeting_scheduled",
+          "finalize_meeting_as_event(p_meeting,p_slot,p_kind,p_title,p_description,p_location)  // winning slot -> events row; carries Yes/If-need-be voters as UNCONFIRMED going/maybe",
+          "cancel_meeting(p_meeting)",
+          "delete_meeting(p_meeting)",
+          "can_organize_meeting(p_scope,p_committee_id,p_area,p_house_id)  // gate; UI must ask this too",
+          "set_event_attendance(p_event,p_status,p_days)  // now stamps confirmed=true on any self-write (reconfirm = re-tap Going/Maybe/Can't)",
+          "meeting_proposal_email(p_meeting) / meeting_confirmed_email(p_meeting)  // service_role, mac-mini only — NOT called by clients"
+        ]
+      },
+      "gating": "can_organize_meeting = app admin (any room) OR a committee/area Lead (committee_roster role ending ' · Lead'). Houses = admin-only (no Lead). Family scope = admin-only. All 3 tables are members-only reads scoped to the room via can_access_committee_area (0063) / is_house_member (0064); family reads open to any signed-in member.",
+      "google_meet": "Guided in-app, ONE paste, NO OAuth. Finalize opens a step panel: 'Create Google Meet' button opens a prefilled Google Calendar event (googleCalendarCreateUrl); organizer adds the Meet link + saves, then pastes it back into a field. A linkless finalize is allowed (lock the time now, add link later via the response bar's 'Add the Meet link').",
+      "modes": "MeetingComposer toggle: 'Find a time' (propose slots -> vote, default) vs 'Set a time now' (one known time, no voting -> create_scheduled_meeting, immediately finalized). Plus a 'Times' vs 'Dates' toggle (defaults Dates for family scope) that swaps each slot's time picker for a date-range picker (meeting_slots.ends_at).",
+      "family_scope_and_events": "#328: scope='family' poll open to every member, organized admin-only, entered via Events tab '📅 Propose dates'; active poll shows as a card near the top of Events. Second finalize outcome 'Create an event' (any scope) writes an events row (source='meeting'); voters carry over as UNCONFIRMED RSVPs (event_attendance.confirmed=false), EventSheet shows '(hasn't confirmed)' to planners, and an auto-queued 14-day 'still coming?' reminder rides scheduled_broadcasts with payload.onlyUnconfirmed.",
+      "area_targeting": "#327: on a committee page, organizer can target a single role/area sub-channel (NULL area = committee-wide General). Reuses meetings.area + can_organize_meeting's area-Lead check — no migration.",
+      "notifications": "Two notif kinds meeting_proposed / meeting_scheduled -> every room member. Default ON in NotifPrefs (a 'Meetings' section, not admin-gated). Both in PUSHABLE_FEED_TYPES + a PushToggle row (off by default, opt-in).",
+      "emails_mini": "#324: optional PROPOSAL email (composer 'Also email everyone a link to vote' checkbox, default OFF -> p_email -> meetings.notify_email); automatic CONFIRMATION email on finalize WITH a Meet link (includes organizer). Both are mac-mini alert-mailer side-effects — iOS just surfaces the checkbox + knows confirmation always fires on link-present finalize.",
+      "surfaces": [
+        "Create lives in the room's ⋯ menu (ChatMembersSheet) as '📅 Schedule a meeting', organizer-gated -> MeetingComposer. Houses previously had no ⋯ header button on iOS — add one for parity.",
+        "MeetingSection = the active-meeting response bar ONLY, pinned atop the chat body (renders nothing unless a meeting is live). Owns fetch + realtime + ?meeting=<id> deep-link; hosts MeetingSchedulerSheet (availability + tallies + who's-free + guided finalize).",
+        "CommitteeDetailView also embeds a MeetingSection (#326).",
+        "EventsView embeds a family-scope MeetingSection + a '📅 Propose dates' entry (admin, family scope)."
+      ],
+      "web_refs": { "lib": ["lib/meetings.ts", "lib/events.ts", "lib/scheduledBroadcasts.ts", "lib/types.ts"], "components": ["MeetingComposer.tsx", "MeetingSchedulerSheet.tsx", "MeetingSection.tsx", "CommitteeChat.tsx", "HouseChat.tsx", "CommitteeDetail.tsx", "FeedView.tsx (ChatMembersSheet)", "EventComposer.tsx", "EventSheet.tsx", "ReminderScheduler.tsx", "NotifPrefs.tsx", "PushToggle.tsx"] },
+      "ios_targets": {
+        "new": ["Services/MeetingsService.swift", "Models/Meeting.swift (Meeting + MeetingSlot + MeetingAvailability)", "Meetings/MeetingComposer.swift", "Meetings/MeetingSchedulerSheet.swift", "Meetings/MeetingSectionBar.swift"],
+        "edit": ["Committees/CommitteeChatView.swift (⋯ menu + pinned section)", "Houses/HouseChatView.swift (⋯ menu + section; add ⋯ header button)", "Committees/CommitteeDetailView.swift (embed section)", "Events/EventsView.swift (family propose-dates + active-poll card)", "Events/EventComposer.swift + EventsService.swift (source='meeting', confirmed RSVP, onlyUnconfirmed reminder)", "Tabs/ProfileTab/NotifPrefsView.swift + PushToggleView.swift (Meetings kinds)", "Shared/Components/ReminderScheduler.swift ('Only remind people who haven't confirmed yet' toggle)"]
+      },
+      "acceptance": "Lead/admin proposes slots from a committee ⋯ menu; members vote; organizer finalizes with a pasted Meet link -> a join-link message lands in the room + everyone gets a meeting_scheduled notification. 'Set a time now' lands scheduled with no voting. From Events, an admin proposes dates family-wide, finalizes into a real Event, and Yes voters appear as unconfirmed RSVPs that flip confirmed on re-tap."
+    },
+
+    {
+      "id": "WS2",
+      "title": "Places to stay: open roster + per-place approver + guest messaging",
+      "priority": "P1",
+      "ios_status": "partial",
+      "gap": "iOS can EDIT existing cabins + rooms (AdminCabinDetails, CabinService.saveCabin/saveCabinRoom) but has NO 'Add a place' button, NO per-place approver, and NO guest messaging.",
+      "prs": [321, 326],
+      "migrations": ["0114", "0120"],
+      "summary": "Places to stay grows from the fixed two cabins into an open-ended admin-managed roster. Admins add a place (kind cabin|house, bedrooms/beds, notes, and a per-place approver who need NOT be an app admin). The approver or an admin can message everyone currently/soon staying there.",
+      "backend": {
+        "tables": [
+          "cabins.kind (text 'cabin'|'house' default 'cabin' — display badge only, no capacity behavior)",
+          "cabins.approver_user_id (uuid FK profiles, null = all admins)",
+          "cabin_messages (cabin_id, sender_id, subject, body, notify_email, email_sent_at, created_at)",
+          "profiles.notif_types default gains 'cabin_message'"
+        ],
+        "rpcs": [
+          "create_cabin(p_name,p_kind,p_room_count,p_bed_count,p_notes,p_approver_user_id)  // admin-only, auto-slugs",
+          "is_cabin_approver(p_cabin_id)  // admin OR that place's approver_user_id — the widened gate",
+          "send_cabin_message(p_cabin,p_subject,p_body,p_email)  // is_cabin_approver-gated; fans 'cabin_message' notif; returns recipient count",
+          "cabin_message_recipients(p_message)  // service_role, mac-mini only",
+          "review_cabin_stay / cancel_cabin_stay / admin_update_cabin_booking / set_booking_rooms  // all now gated on is_cabin_approver instead of admin-only"
+        ]
+      },
+      "notes": "is_cabin_approver(cabin) widens BOTH the write gate on review/cancel/admin_update/set_booking_rooms AND the read RLS on cabin_bookings / cabin_booking_rooms — so a non-admin approver sees & acts on requests for their place(s) only. Recipients of send_cabin_message = distinct members with an approved booking whose stay hasn't ended (check_out >= today). 'cabin_message' is a PushType (DEFAULT_PUSH_TYPES); optional email BCCs approved-not-yet-ended guests with email_alerts on (mac-mini). notif_on_cabin_request also notifies the approver.",
+      "web_refs": { "lib": ["lib/cabins.ts", "lib/types.ts"], "components": ["AdminCabinDetails.tsx", "AdminCabinBookings.tsx", "CabinRequestSheet.tsx", "CabinMessageSheet.tsx"], "routes": ["app/request-stay/page.tsx"] },
+      "ios_targets": {
+        "new": ["Cabins/CabinMessageSheet.swift"],
+        "edit": [
+          "Services/CabinService.swift (add createCabin, isCabinApprover, fetchMyApproverCabinIds, sendCabinMessage, fetchManageableCabins; add kind + approver_user_id to Cabin model)",
+          "Cabins/AdminCabinDetails.swift ('＋ Add a place' button -> create_cabin; ApproverPicker sheet -> approver_user_id; 'extra beds' relabel once named rooms exist)",
+          "Tabs/ProfileTab/Admin/AdminCabinBookings.swift ('📣 Message guests' button; compute canManage = admin OR approver-of->=1-place, not isAdmin)",
+          "Cabins/CabinRequestSheet.swift (kind badge on card)",
+          "add a self-hiding 'Requests to approve' surface for non-admin approvers (iOS equivalent of request-stay mounting AdminCabinBookings for non-admins)"
+        ]
+      },
+      "acceptance": "An admin adds a new 'house' place with 3 bedrooms and sets a non-admin member as its approver; that member (no admin access) sees a 'Requests to approve' section, approves a stay, and taps 'Message guests' to notify everyone booked there."
+    },
+
+    {
+      "id": "WS3",
+      "title": "Family roster + widened email pools + email-from-chat",
+      "priority": "P1",
+      "ios_status": "partial",
+      "gap": "iOS has committee-scoped email (CommitteeEmailComposer everyone/byRole/pick) but NO family roster, NO house/App-Admins email pools, and NO 'Email members' entry in the chat ⋯ menu.",
+      "prs": [332, 333, 335, 336, 338],
+      "migrations": ["0123", "0124", "0125"],
+      "summary": "A master 'Family roster' of people NOT on the app yet (name + email + phone + optional house), managed by admins under Admin -> Members. Email is the join key: when someone verifies with a matching email their roster slot auto-links to the new account. Enables emailing an entire house (incl. not-yet-signed-up people) and adds House / App-Admins / by-Role pools to the People email composer, plus an 'Email members' button in every chat ⋯ menu.",
+      "backend": {
+        "tables": ["family_roster (name, email [unique lower-case], phone, house_id, position, linked_user_id, updated_at/by)"],
+        "rpcs": [
+          "house_member_recipients(hid)  // unions account members + account-less roster people assigned to the house",
+          "directory_recipients()",
+          "admin_recipients()  // App Admins pool (open to any signed-in member)",
+          "all_member_recipients()  // widened to include account-less roster",
+          "committee_member_recipients(cid)  // now ALSO returns roles text[] so the By-Role picker lights up",
+          "link_family_roster() / family_from_committee_roster() / sync_committee_roster_from_family()  // triggers — keep the two account-less rosters + accounts in sync by email (backend only)"
+        ]
+      },
+      "notes": "Reads = signed-in members (carries PII/emails); writes = admins only. One person one record: adding an email'd account-less person to any committee roster also auto-adds them to the family roster, and editing name/email/phone on the family roster cascades back to their committee slots (triggers 0125). Roster 'name' seeds a new account's display_name on signup only if they didn't set their own. Emailing is a mailto:/native-mail hand-off — nothing sent from the app. #338: chat ⋯ 'Email members' is open to ANYONE in the room (no organizer gate), pre-scoped: committee General = whole roster, area sub-channel = that area's members, house channel = the house.",
+      "web_refs": { "lib": ["lib/familyRoster.ts", "lib/emailBlast.ts"], "components": ["AdminFamilyRoster.tsx", "AdminRosterInvite.tsx", "EmailMembers.tsx", "EmailMembersComposer.tsx", "HouseHub.tsx", "FeedView.tsx (ChatEmailSheet)"], "routes": ["app/admin/members/page.tsx"] },
+      "ios_targets": {
+        "new": ["Services/FamilyRosterService.swift", "Models/FamilyRosterEntry.swift", "People/AdminFamilyRosterView.swift", "People/EmailMembersView.swift (generalize CommitteeEmailComposer: add House / App Admins / By-Role pools)"],
+        "edit": [
+          "Tabs/ProfileTab/Admin/AdminMembersView.swift (host the family-roster editor under Members)",
+          "Committees/CommitteeChatView.swift + Houses/HouseChatView.swift (add '✉️ Email members' to the ⋯ menu, pre-scoped)",
+          "Services/CommitteeService.swift (committee_member_recipients now returns roles[])"
+        ]
+      },
+      "acceptance": "Admin adds a family member (not on the app) to the roster with an email + house; a house email now includes them; when they later sign in with that email their account auto-links. From the People composer an admin narrows Family Fest to just 'Meals'. From a house chat ⋯ menu any member taps 'Email members' and the mail composer is pre-filled with the house."
+    },
+
+    {
+      "id": "WS4",
+      "title": "Unified broadcast composer + email-without-banner",
+      "priority": "P2",
+      "ios_status": "partial",
+      "gap": "iOS has TWO composers (AdminAlertComposer banner + AdminNotificationComposer push) each with a mirror-to-the-other toggle. Web merged them into ONE composer with 3 independent channels and added email-without-banner (announcements.show_banner) + callout side-actions. AdminScheduledBroadcasts shows sent history as a plain always-visible section, not a collapsed disclosure.",
+      "prs": [341, 343],
+      "migrations": ["0126"],
+      "summary": "Replace the two admin forms with one AdminBroadcastComposer offering 3 independent channel checkboxes: 📣 Banner, 🔔 Activity tab, ✉️ Email (>=1 required). New: a send can email opted-in members WITHOUT painting a banner (announcements.show_banner=false). Wire the same two primitives into a Home callout's optional 'Also send a notification' / 'Also email everyone'. Tuck already-sent scheduled broadcasts into a collapsed disclosure.",
+      "backend": {
+        "tables": ["announcements.show_banner (bool default true — banner only renders rows where true; mini push-sender skips the phone push when false, since push rides with the banner not email-alone)"],
+        "rpcs": ["run_scheduled_broadcasts()  // +show_banner support (server-side, no iOS change)", "postAnnouncement() / sendActivityNotification()  // web primitives in lib/broadcast.ts — mirror as service helpers"]
+      },
+      "notes": "Banner + Email both write ONE announcements row; Activity tab uses send_broadcast_notification. Scheduling queues one scheduled_broadcasts row per channel-group ('announcement' for banner/email, 'notification' for activity) at the same send time. Callout side-actions (in AdminCalloutsView) default OFF each open — not a saved property — and fire right after saveCallout using the callout's own eventTarget.",
+      "web_refs": { "lib": ["lib/broadcast.ts", "lib/scheduledBroadcasts.ts", "lib/localAnnouncements.ts"], "components": ["AdminBroadcastComposer.tsx", "AdminCallouts.tsx", "AnnouncementBanner.tsx", "AdminScheduledBroadcasts.tsx"] },
+      "ios_targets": {
+        "new": ["Tabs/ProfileTab/Admin/AdminBroadcastComposer.swift (merges the two)"],
+        "edit": [
+          "Tabs/ProfileTab/Admin/AdminAlertComposer.swift + AdminNotificationComposer.swift (retire in favor of the merged composer)",
+          "Services/NotificationsService.swift (show_banner param; postAnnouncement/sendActivityNotification helpers)",
+          "Tabs/ProfileTab/Admin/AdminCalloutsView.swift (Also-notify / Also-email side-actions)",
+          "Tabs/ProfileTab/Admin/AdminScheduledBroadcasts.swift (tuck 'Recent'/sent into a collapsed DisclosureGroup below pending)"
+        ]
+      },
+      "acceptance": "One admin form sends a banner + Activity entry + email in a single action; unchecking Banner emails opted-in members with no banner painted and no phone push. The Scheduled queue shows only pending items with sent history collapsed behind a 'Previously sent' disclosure."
+    },
+
+    {
+      "id": "WS5",
+      "title": "Chat parity: optimistic send, typing indicators, smart scroll, moderation, direct tunnel",
+      "priority": "P1",
+      "ios_status": "partial",
+      "gap": "iOS chat already has reactions/who-reacted, mentions, 24h edit + soft-delete. MISSING: optimistic send (waits for server round-trip), typing indicators, smart auto-scroll + jump-to-bottom pill (current auto-scroll always fires, no pill), chat message moderation (chat messages can't be reported and never enter the queue; no status filter), and a direct Home->House-chat tunnel (currently two hops).",
+      "prs": [348, 349, 361, 344],
+      "extra_commit": "4b0dce7 (Wave 4 smart auto-scroll + scroll-to-bottom pill — a direct-to-main commit, NOT a numbered PR)",
+      "migrations": ["0128"],
+      "items": [
+        {
+          "feature": "Optimistic chat send (#348)",
+          "build": "Insert a temp bubble (id `temp-<ts>`) with any attached media the instant send is tapped; clear the composer; upload media + insert; refetch and drop the temp bubble. On failure restore the FULL draft (text, pending media, mentions, reply-to). Moderation stays async (see below).",
+          "ios_evidence": "HouseChatView.send()/CommitteeChatView.send() currently await the insert then append the returned row — no pending bubble."
+        },
+        {
+          "feature": "Typing indicators (#361)",
+          "build": "A live 'X is typing…' row above the composer, one/two names or 'Several people are typing', animated dots, nothing when idle. Rides its OWN Supabase Realtime broadcast channel `typing:<roomKey>` (SEPARATE from the message subscription so it can't disrupt delivery). notifyTyping() throttled per keystroke (only when text non-empty, self:false); each typer self-clears ~4.5s after last keystroke. roomKey = `committee:<slug>:<area>` or `house:<slug>`. Ephemeral — nothing persisted, no table/RPC.",
+          "ios_evidence": "No typing state/channel anywhere on iOS."
+        },
+        {
+          "feature": "Smart auto-scroll + jump pill (commit 4b0dce7)",
+          "build": "Jump-to-bottom on first open; smooth-follow only when ALREADY at bottom; a tappable '↓ New messages' pill when scrolled up (auto-hides at bottom); your own optimistic sends always pin to bottom.",
+          "ios_evidence": "Both chats do .onChange(messages.count){scrollTo(last)} — always scrolls, no scroll-position detection, no pill."
+        },
+        {
+          "feature": "Chat content moderation (#344)",
+          "build": "Add committee_messages.status / house_messages.status (visible|pending|hidden). RLS returns non-'visible' rows only to author + admins, so a held message must silently DISAPPEAR from the room on refetch (retroactive hold via the media_moderation verdict trigger, arriving seconds after the optimistic post). Add a 'Report' action to the chat bubble context menu (report_content) and include held chat messages in the admin review queue (moderation_queue) + Approve/Remove (set_content_status +committee_message/house_message entity types). Chat text also rides the deterministic blocklist floor server-side. AI media grading + backfill run on the mac-mini — NOT native.",
+          "ios_evidence": "AdminModerationView handles post/post_comment only; chat bubble menus have React/Edit/Delete but NO Report; chat has no status field/filter."
+        },
+        {
+          "feature": "Home -> House Chat direct tunnel (#349)",
+          "build": "Give the Home House-Hub card a dedicated 'Chat' button that deep-links STRAIGHT into the house chat room (no stop at the hub). Keep the card body -> House Hub.",
+          "ios_evidence": "iOS path is Home -> HouseHubView -> 'House chat' link (two hops)."
+        }
+      ],
+      "backend": { "tables": ["committee_messages.status", "house_messages.status", "+ status-aware read RLS on both"], "rpcs": ["set_content_status(p_entity_type,p_entity_id,p_status)  // +committee_message/house_message", "moderation_queue()  // +held chat messages", "report_content(...)  // now usable from chat"] },
+      "web_refs": { "lib": ["lib/hooks.ts (useTypingChannel)"], "components": ["CommitteeChat.tsx", "HouseChat.tsx", "TypingIndicator.tsx", "AdminModeration.tsx", "HouseHubCard.tsx"] },
+      "ios_targets": { "edit": ["Committees/CommitteeChatView.swift", "Houses/HouseChatView.swift", "Services/CommitteeService.swift + HousesService.swift (send path, status filter, typing channel, report)", "Tabs/ProfileTab/Admin/AdminModerationView.swift (chat entity types)", "Models/Post.swift or chat message models (add status)", "Tabs/HomeTab/HomeView.swift + House Hub card (direct chat button)"] },
+      "acceptance": "Sending a chat message shows the bubble instantly; a second device shows 'X is typing…' as they type; scrolling up reveals a 'New messages' pill; reporting a message removes it for everyone but the author/admins and surfaces it in the review queue; the Home house card jumps straight into the room."
+    },
+
+    {
+      "id": "WS6",
+      "title": "Family Fest Dinners — weekly-menu list (no click-through)",
+      "priority": "P2",
+      "ios_status": "partial",
+      "gap": "iOS FestDinnersView still renders NavigationLink rows pushing to FestDinnersDetailView (the old click-through). Web redesigned it to a flat weekly-menu list.",
+      "prs": [318],
+      "migrations": [],
+      "summary": "Make the Dinners tab read like a weekly menu — day · serving time · menu · head chef · houses on crew — all shown at once in one scrollable list, no tap-to-expand and no click-through. Deliberately OMIT crew-prep time/location (only the crew needs that). Keep the always-visible Edit button + chef/crew self-edit rules (already on iOS via FestDinnerEditSheet). Remove the redundant 'Schedule' sub-nav pill (the Overview already shows the full week).",
+      "notes": "The standalone dinner detail (FestDinnersDetailView) stays for any deep-link but nothing should link to it. FamilyFest sub-nav becomes Dinners + Pay only (photos live on the Feed tab).",
+      "web_refs": { "components": ["FestWeek.tsx", "FamilyFestNav.tsx"], "routes": ["app/family-fest/dinners/page.tsx"] },
+      "ios_targets": { "edit": ["Tabs/FamilyFestTab/FestDinnersView.swift (inline full-details cards, drop the NavigationLink)", "Tabs/FamilyFestTab/FestDinnersDetailView.swift (keep for deep-link only)", "the Family Fest sub-nav (Dinners + Pay only)"] },
+      "acceptance": "Opening Dinners shows every dinner's day/time/menu/chef/crew-houses at once with no taps; the Schedule pill is gone."
+    },
+
+    {
+      "id": "WS7",
+      "title": "Home & House Hub information architecture",
+      "priority": "P2",
+      "ios_status": "partial",
+      "gap": "No Admin Dashboard card / Alerts quick-link on the iOS Home; HouseHubView is a flat single-column stack, not grouped sections.",
+      "prs": [339, 351, 356, 359, 353],
+      "migrations": [],
+      "items": [
+        { "feature": "Admin Dashboard card on Home (#339)", "build": "An admin-only Home card (below the House Hub card) that jumps to the admin dashboard. Self-hides for non-admins and during 'View as' preview (isAdmin already reads false in preview).", "ios_evidence": "HomeView quickActionsGrid has no admin card; admin lives only in the Profile tab." },
+        { "feature": "Admin 'Alerts' quick-link on Home (#351)", "build": "A secondary 'Alerts' button on the admin card that jumps straight to the broadcast composer / alerts surface. (The Local Places two-tap half of #351 is web-only — skip.)" },
+        { "feature": "House Hub grouped sections (#356 -> #359)", "build": "Regroup HouseHubView into labeled sections — Communication / Calendar / Rules — with primary destinations (Calendar, House chat) as a 2-up tile grid, 'Email the house' + House rules under a House/Communication header, to-do under its own. Port the #359 end-state (supersedes #356's layout).", "ios_evidence": "HouseHubView is a flat VStack of full-width cards." },
+        { "feature": "Equalize Home quick-link button sizes (#353)", "priority": "P3-trivial", "build": "Keep the House-card 'Chat' and Admin-card 'Alerts' buttons the same size." }
+      ],
+      "web_refs": { "components": ["AdminDashboardCard.tsx", "HouseHub.tsx", "HouseHubCard.tsx"] },
+      "ios_targets": { "edit": ["Tabs/HomeTab/HomeView.swift (+ new HomeAdminDashboardCard)", "Houses/HouseHubView.swift (grouped sections + tile grid)"] },
+      "acceptance": "Admins see a dashboard shortcut + Alerts button on Home; the House Hub reads as grouped Communication / Calendar / Rules sections."
+    },
+
+    {
+      "id": "WS8",
+      "title": "Native motion analogs (polish — optional)",
+      "priority": "P3",
+      "ios_status": "partial",
+      "gap": "Web added framer-motion delight. Native equivalents differ; some overlap the prior parity-plan Workstream H. Low priority, do after functional items.",
+      "prs": [346, 347, 350, 352],
+      "migrations": [],
+      "items": [
+        { "web": "P3/HDR accent color (#346)", "native": "Color(.displayP3, ...) / wide-gamut asset catalog; mirror accents: pine, campfire orange, lake teal, golden sun, dusk violet, fest wine (already in Colors.swift)." },
+        { "web": "TabBar active-icon pop (#346)", "native": ".symbolEffect / spring .scaleEffect on tab select." },
+        { "web": "Animated numbers (#347)", "native": ".contentTransition(.numericText()) on vote counts, dues totals, RSVP tallies, unread badges (tabular-nums)." },
+        { "web": "Confetti on RSVP 'going' (#347)", "native": "one-shot particle overlay + haptic('success')." },
+        { "web": "Gliding segmented pill (#347)", "native": "matchedGeometryEffect namespace on FamilyFestNav / segmented controls." },
+        { "web": "Chat message spring-in (#350) + reaction-tray pop (#352)", "native": ".transition(.scale.combined(with:.opacity)) spring on message insert; spring .scale on the reaction tray (the tray feature itself already exists on iOS)." }
+      ],
+      "note": "ALL must honor Reduce Motion (render target instantly / no confetti).",
+      "web_refs": { "lib": ["lib/haptics.ts"], "components": ["MotionProvider.tsx", "AnimatedNumber.tsx", "AnimatedList.tsx", "Celebration.tsx", "SegmentedControl.tsx", "TabBar.tsx"] },
+      "ios_targets": { "edit": ["Shared/Design/Colors.swift", "App tab bar", "Shared/Components/AttendanceControl.swift", "Polls/PollsView.swift", "chat views", "Fest nav"] }
+    }
+  ],
+
+  "sequencing": {
+    "suggested_order": ["WS1", "WS5", "WS2", "WS3", "WS4", "WS6", "WS7", "WS8"],
+    "rationale": "WS1 (meetings) is the biggest net-new surface and touches chat + committees + events. WS5 (chat) is high-visibility daily-use parity. WS2/WS3 are admin/ops features. WS4/WS6/WS7 are self-contained. WS8 is polish last. All backend is already live on the shared Supabase project — no migration ordering to worry about; port in any order the team prefers.",
+    "branch": "one branch per workstream on btheis15/mlr-app-ios; draft PR after the first substantive push; update the iOS repo's own docs (IOS_PARITY_PLAN.md / IOS_COMPAT.md) as features land.",
+    "build_check": "open 'MLR App.xcodeproj', resolve SPM, Build (⌘B). Watch for new Swift files missing target membership. Verify light AND dark on every new surface."
+  }
+}
