@@ -438,7 +438,15 @@ export function FeedView() {
     if (active === "list" || active === "posts") return;
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     const el = chatBoxRef.current;
-    const apply = () => {
+    // withTransform=false on the FIRST (pre-paint) call: the chat-push slide-in
+    // owns `transform` via its keyframes, so setting an inline translateY before
+    // paint makes the panel flash in-place for a frame before the animation yanks
+    // it off-screen to slide in — a flicker that showed on desktop too. We set
+    // the HEIGHT before paint (the mobile dvh→visible reconciliation) but leave
+    // transform to the animation. The keyboard/resize handlers (post-paint, where
+    // any inline transform is harmless — overridden mid-animation, correct after)
+    // still set it so the room follows the on-screen keyboard.
+    const apply = (withTransform: boolean) => {
       if (!el) return;
       const innerH = window.innerHeight;
       const visH = vv ? vv.height : innerH;
@@ -446,18 +454,19 @@ export function FeedView() {
       const tabBar = document.querySelector("nav.fixed") as HTMLElement | null;
       const tabH = keyboardOpen ? 0 : tabBar?.getBoundingClientRect().height ?? 64;
       el.style.height = `${visH - tabH}px`;
-      el.style.transform = `translateY(${vv ? vv.offsetTop : 0}px)`;
+      if (withTransform) el.style.transform = `translateY(${vv ? vv.offsetTop : 0}px)`;
     };
-    apply();
-    const t = setTimeout(apply, 60);
-    window.addEventListener("resize", apply);
-    vv?.addEventListener("resize", apply);
-    vv?.addEventListener("scroll", apply);
+    apply(false);
+    const onEvt = () => apply(true);
+    const t = setTimeout(onEvt, 60);
+    window.addEventListener("resize", onEvt);
+    vv?.addEventListener("resize", onEvt);
+    vv?.addEventListener("scroll", onEvt);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("resize", apply);
-      vv?.removeEventListener("resize", apply);
-      vv?.removeEventListener("scroll", apply);
+      window.removeEventListener("resize", onEvt);
+      vv?.removeEventListener("resize", onEvt);
+      vv?.removeEventListener("scroll", onEvt);
     };
   }, [active]);
 
