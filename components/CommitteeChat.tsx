@@ -371,10 +371,29 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     }
   };
 
-  // Keep pinned to the latest message.
+  // Smart auto-scroll: jump to the bottom on first load; SMOOTH-follow a new
+  // message only when you're already at the bottom; if you've scrolled up to
+  // read history, don't yank you — surface a tappable "new messages" pill.
+  const [showJump, setShowJump] = useState(false);
+  const prevLenRef = useRef(0);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const prev = prevLenRef.current;
+    prevLenRef.current = messages.length;
+    if (messages.length === 0) return;
+    if (prev === 0) {
+      bottomRef.current?.scrollIntoView({ block: "end" }); // initial: jump
+      return;
+    }
+    if (messages.length > prev) {
+      if (atBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+      else setShowJump(true);
+    }
   }, [messages.length]);
+
+  const jumpToBottom = () => {
+    setShowJump(false);
+    bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  };
 
   // Spring-in for NEW messages only (see HouseChat for the rationale): the
   // initial batch mounts without animating (listReadyRef false through the first
@@ -735,13 +754,16 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       {committeeId && !readOnly && (
         <MeetingSection scope={{ type: "committee", committeeId, slug, area }} members={members} />
       )}
+      <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onScroll={(e) => {
           const sc = e.currentTarget;
-          atBottomRef.current = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+          const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+          atBottomRef.current = atBottom;
+          if (atBottom) setShowJump(false);
         }}
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
+        className="h-full space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
       >
         {loaded && messages.length === 0 && (
           <p className="mt-10 text-center text-sm text-muted">No messages yet — say hi to the {name} crew! 👋</p>
@@ -788,6 +810,16 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           </div>
         ))}
         <div ref={bottomRef} />
+      </div>
+        {showJump && (
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            className="press absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+          >
+            ↓ New messages
+          </button>
+        )}
       </div>
 
       {/* Composer — hidden for an archived (read-only) chat: the history stays
