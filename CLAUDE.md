@@ -1,6 +1,27 @@
 # CLAUDE.md — mlr-app
 
-Entry point for Claude/AI sessions on this repo. Read this first.
+Entry point for Claude/AI sessions on this repo. Read this first. For a single
+machine-readable map of the whole app (routes, nav graph, ~55-table data model,
+every component by domain, backend, chat internals, the motion kit, hard
+constraints, and an improvement backlog), see
+[`docs/ARCHITECTURE.json`](docs/ARCHITECTURE.json).
+
+**Motion (updated):** `framer-motion` is now installed and is the physics layer
+on top of the CSS motion tokens in `app/globals.css`. One global
+[`MotionProvider`](components/MotionProvider.tsx) (`reducedMotion="user"`) wraps
+the app in `layout.tsx`. Reusable primitives: [`AnimatedNumber`](components/AnimatedNumber.tsx)
+(rAF count-up), [`AnimatedList`](components/AnimatedList.tsx) (FLIP reorder),
+[`SegmentedControl`](components/SegmentedControl.tsx) + FamilyFestNav's `layoutId`
+pill, [`Celebration`](components/Celebration.tsx) (confetti), and
+[`TypingIndicator`](components/TypingIndicator.tsx). A wide-gamut **P3/HDR** color
+layer (`@supports (color: color(display-p3 …))` in `globals.css`) enriches the
+accent palette on capable screens; sRGB stays the source of truth. Haptics via
+[`lib/haptics.ts`](lib/haptics.ts) (Android-only, no-op on iOS). Nav-gated states
+that used to flicker in late are cached on-device: [`useCanEditFest`](lib/hooks.ts)
+(fest Edit affordances) + the MJT dues card, plus [`useTypingChannel`](lib/hooks.ts)
+for chat typing on its own realtime channel. Chat is optimistic (instant send,
+spring-in bubbles, smart scroll + jump pill); a hold-then-fade cover
+(`chat-unmask`) masks the room-open paint on mobile.
 
 ## What this repo is
 
@@ -11,8 +32,10 @@ EST 1987) with vintage heritage from the original resort (Leo & Dorothy Theis ·
 Fishing · Hunting · Boating · light-housekeeping cabins · Tomahawk, WI). Same
 conventions as the author's other apps (`stock-game`, `innjoy-mobile`): App
 Router, CSS-variable theme tokens, bottom `TabBar`, iOS install hint. Live on
-**Vercel** (mlr-app-omega.vercel.app); currently **read-only**
-(see `lib/features.ts` `READ_ONLY`).
+**Vercel** (mlr-app-omega.vercel.app); **fully interactive** — sign-in (email
+OTP), posts/chat, RSVP, polls, cabins, uploads, admin, and push are all live.
+(`lib/features.ts` `READ_ONLY` is now **vestigial** — it gates nothing; features
+check `isSupabaseConfigured` + per-migration existence instead.)
 
 MLR is the **umbrella app**, and **Family Fest** (the one-week annual gathering)
 is now a **built-in section** of it at `/family-fest/*` — schedule, dinners,
@@ -1505,15 +1528,16 @@ them"). Client seam `sendCabinMessage()` / `fetchManageableCabins()` in
 
 ## Content safeguards (feed moderation)
 
-Layered safeguards on the social surfaces (Posts + comments + uploaded media) so
-sensitive/inappropriate/illegal content doesn't sit in front of the family. Full
-writeup + the on-device Apple "Tier 2" plan in
+Layered safeguards on the social surfaces (Posts + comments, **committee/house
+chat**, and uploaded media) so sensitive/inappropriate/illegal content doesn't
+sit in front of the family. Full writeup in
 [`docs/content-moderation.md`](docs/content-moderation.md). Posts stay
 **post-moderated** (still go live instantly) but anything a filter trips is
 **held for admin review** — a `status` of `visible | pending | hidden` on
-`posts`/`post_comments`; RLS only returns non-`visible` rows to the author +
-admins, so held/removed content drops out of the public feed without being
-destroyed. **Live now (Tiers 0+1):**
+`posts`/`post_comments` **and `committee_messages`/`house_messages` (migration
+[`0128`](supabase/migrations/0128_chat_moderation.sql))**; RLS only returns
+non-`visible` rows to the author + admins, so held/removed content drops out of
+the feed/room without being destroyed. **Live now (Tiers 0+1+2):**
 - **Tier 0 (deterministic):** the mini's `/upload` sniffs **magic bytes** and
   rejects anything that isn't really an image/video ([`media-server/server.js`](media-server/server.js)
   `sniffMediaKind`); text length caps + an admin-managed **blocklist** auto-hold
@@ -1526,15 +1550,33 @@ destroyed. **Live now (Tiers 0+1):**
   Content review) with Approve/Remove (`set_content_status`). Members can't change
   their own item's status (a `BEFORE UPDATE` guard), so editing can't un-hide.
   Every action is audited in `content_moderation_events`.
-- **Tier 2 (on-device Apple, planned, mini-only):** `SensitiveContentAnalysis`
-  for nudity in images + sampled video frames, and `FoundationModels` for
-  context-aware text — wired into `fm-service`. **No CSAM API exists for third
-  parties** and **PCC is unattainable**; both run on-device. See the doc.
+- **Tier 2 (AI, on the mini — LIVE):** every uploaded photo/video is graded by
+  Apple's models through the mini's local `fm serve`
+  ([`media-server/moderation.js`](media-server/moderation.js)) — **Private Cloud
+  Compute preferred** (it works via the Login-Item `fm serve`, no entitlement),
+  on-device fallback. It grades a **downscaled copy** (walks 1024→768→512, drops
+  a rung on a 413) and **retries** transient PCC/fm-serve blips before failing
+  open, so checks actually run; anything that couldn't be checked during an
+  outage is re-queued and re-checked once the model is back
+  ([`media-server/moderation-backfill.js`](media-server/moderation-backfill.js)).
+  A flagged verdict is written to `media_moderation` (keyed by the media URL); a
+  trigger then holds the parent **post** (0043) or **chat message** (0128).
+  **The Main Feed moderates at post time; CHAT is optimistic** — a chat message
+  posts instantly and the mini checks its media ASYNChronously, so a flagged
+  verdict *retroactively* holds the message a few seconds later (the
+  media_moderation trigger, 0128). Chat text also rides the deterministic
+  blocklist floor. A dedicated `SensitiveContentAnalysis` nudity/CSAM signal is
+  still a possible future add (see the doc) — **no third-party CSAM API exists**.
 
-Data model: migration [`0040`](supabase/migrations/0040_content_moderation.sql)
+Data model: migrations [`0040`](supabase/migrations/0040_content_moderation.sql)
 (`status` columns + status-aware RLS, `moderation_blocklist`, `content_reports`,
 `content_moderation_events`, the `moderate_content_text`/`apply_content_report`
-triggers, and the `report_content`/`set_content_status`/`moderation_queue` RPCs).
+triggers, and the `report_content`/`set_content_status`/`moderation_queue` RPCs),
+[`0043`](supabase/migrations/0043_media_moderation.sql) (`media_moderation` +
+the post-media hold trigger), and [`0128`](supabase/migrations/0128_chat_moderation.sql)
+(chat `status` + read RLS + the media_moderation retroactive-hold trigger +
+extending the queue/blocklist/set-status to chat; also fixes a latent post bug
+where the member-edit status pin reverted the automated holds).
 
 ## Backend seams (planned, not yet wired)
 
