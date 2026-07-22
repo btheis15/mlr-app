@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchMyHouse } from "@/lib/houses";
 import { useCachedResource } from "@/lib/swrCache";
+import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 import type { House } from "@/lib/types";
 
 /**
@@ -37,20 +39,29 @@ export function HouseHubCard() {
   if (!house) return null;
 
   return (
-    <Link
-      href="/house"
-      className="press flex items-center gap-3 rounded-2xl bg-primary p-4 text-white shadow-sm"
-    >
-      <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-2xl">
-        {house.emoji}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{house.name}</p>
-        <p className="mt-0.5 text-xs text-white/80">Your house — calendar, chat &amp; to-do list</p>
-      </div>
-      <span className="shrink-0 text-lg leading-none text-white/70" aria-hidden>
-        ›
-      </span>
-    </Link>
+    // One card, two tunnels: the body opens the House Hub (calendar + to-do +
+    // chat), and the Chat button jumps STRAIGHT into the house chat room
+    // (/posts?house=<slug> — FeedView's deep-link opens it directly, no stop at
+    // the chats list). Two sibling Links (a Link can't nest inside a Link).
+    <div className="flex items-center gap-2 rounded-2xl bg-primary p-3 pl-4 text-white shadow-sm">
+      <Link href="/house" className="press flex min-w-0 flex-1 items-center gap-3 py-1">
+        <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-2xl">
+          {house.emoji}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{house.name}</p>
+          <p className="mt-0.5 text-xs text-white/80">Your house — calendar &amp; to-do list</p>
+        </div>
+      </Link>
+      <Link
+        href={`/posts?house=${house.slug}`}
+        onClick={() => haptic("light")}
+        aria-label={`Open ${house.name} chat`}
+        className="press flex shrink-0 flex-col items-center gap-0.5 rounded-xl bg-white/15 px-3 py-2 text-[11px] font-semibold"
+      >
+        <Icon name="feed" size={20} strokeWidth={2} />
+        Chat
+      </Link>
+    </div>
   );
 }
