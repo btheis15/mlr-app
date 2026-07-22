@@ -57,7 +57,7 @@ export function HouseHubCard() {
         href={`/posts?house=${house.slug}`}
         onClick={() => haptic("light")}
         aria-label={`Open ${house.name} chat`}
-        className="press flex shrink-0 flex-col items-center gap-0.5 rounded-xl bg-white/15 px-3 py-2 text-[11px] font-semibold"
+        className="press flex w-[4.25rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl bg-white/15 py-2 text-[11px] font-semibold"
       >
         <Icon name="feed" size={20} strokeWidth={2} />
         Chat
