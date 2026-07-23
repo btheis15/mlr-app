@@ -38,6 +38,9 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   meeting_proposed: "📅",
   meeting_scheduled: "✅",
   signup_reminder: "⏰",
+  tournament_published: "🏆",
+  tournament_match_ready: "🎯",
+  tournament_champion: "🥇",
   broadcast: "📣",
 };
 

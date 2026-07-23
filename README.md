@@ -159,6 +159,17 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0141_merge_activities_into_anytime_events.sql`](supabase/migrations/0141_merge_activities_into_anytime_events.sql)
   (web-only; iOS still reads the untouched `fest_activities` table for now).
   See CLAUDE.md → **Event sign-up slots**.
+- **Tournament brackets** — a competitive activity (cornhole, ping-pong) turns its
+  sign-ups into a live **tournament**: seed/hand-arrange entrants (teams or
+  individuals, incl. account-less typed-in names), pick a bye/play-in strategy, and
+  record results with one tap (winner required, scores optional) that auto-advance the
+  bracket. Any member watches it update live. Run by the activity's lead/crew. Single-
+  elimination ships first; round-robin (standings + tie-breakers + stats) and
+  pools→bracket follow. Migration
+  [`0144_tournaments.sql`](supabase/migrations/0144_tournaments.sql), seam
+  [`lib/tournaments.ts`](lib/tournaments.ts), UI
+  [`TournamentView`](components/TournamentView.tsx). See CLAUDE.md → **Tournament
+  brackets**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,
   Cabin requests, Help contact, Sign-ins, and View as — each its own `/admin/*`

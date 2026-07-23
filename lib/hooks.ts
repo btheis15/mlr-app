@@ -17,6 +17,12 @@ import {
   summarize,
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
+import {
+  fetchTournamentsForItem,
+  applyMatchResult,
+  recordMatchResult,
+  type Tournament,
+} from "@/lib/tournaments";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
@@ -667,6 +673,84 @@ export function useHelpRequests(): {
   }, [reload, schedule]);
 
   return { requests, loading, reload };
+}
+
+/**
+ * Live tournaments for one activity (schedule item). Mirrors `useEvents` /
+ * `useHelpRequests`: an SWR-cached load + a debounced Realtime subscription over
+ * the four tournament tables, plus an OPTIMISTIC `recordResult` for the manager's
+ * score entry (paints the advanced bracket immediately, then reconciles on the
+ * realtime reload). Members-only reads, so the key is uid-scoped and null for
+ * guests (they get [] and a sign-in nudge). Usually one tournament per activity,
+ * but the shape is a list (an activity could host two).
+ */
+export function useTournament(scheduleItemId: string | null): {
+  tournaments: Tournament[];
+  loading: boolean;
+  reload: () => Promise<void>;
+  recordResult: (
+    matchId: string,
+    winnerId: string,
+    score1?: number | null,
+    score2?: number | null,
+  ) => Promise<boolean>;
+} {
+  const { userId } = useIdentity();
+  const [schedule] = useDebouncedCallback(250);
+  const key =
+    isSupabaseConfigured && userId && scheduleItemId ? `tournament.${userId}.${scheduleItemId}` : null;
+  const { data: tournaments, loading, reload, mutate } = useCachedResource<Tournament[]>(
+    key,
+    [],
+    () => fetchTournamentsForItem(scheduleItemId ?? ""),
+    { persist: "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !scheduleItemId) return;
+    const channel = sb
+      .channel(`tournament-${scheduleItemId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_entrants" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_participants" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_matches" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [scheduleItemId, reload, schedule]);
+
+  // Per-match in-flight lock: a double-tap on the same match doesn't fire two
+  // writes that could settle out of order (the useEvents.setStatus pattern).
+  const pending = useRef<Record<string, Promise<boolean>>>({});
+  const recordResult = useCallback(
+    (matchId: string, winnerId: string, score1: number | null = null, score2: number | null = null): Promise<boolean> => {
+      if (!isSupabaseConfigured) return Promise.resolve(false);
+      const inFlight = pending.current[matchId];
+      if (inFlight) return inFlight;
+      // Optimistic: advance the winner in whichever tournament holds this match.
+      mutate((list) => list.map((t) => (t.matches.some((m) => m.id === matchId) ? applyMatchResult(t, matchId, winnerId, score1, score2) : t)));
+      const run = (async (): Promise<boolean> => {
+        try {
+          const { error } = await recordMatchResult(matchId, winnerId, score1, score2);
+          if (error) {
+            await reload(); // roll back the optimistic paint to server truth
+            return false;
+          }
+          await reload();
+          return true;
+        } finally {
+          delete pending.current[matchId];
+        }
+      })();
+      pending.current[matchId] = run;
+      return run;
+    },
+    [mutate, reload],
+  );
+
+  return { tournaments, loading, reload, recordResult };
 }
 
 /**

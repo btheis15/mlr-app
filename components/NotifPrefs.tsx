@@ -80,6 +80,9 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     title: "Family Fest",
     rows: [
       { value: "signup_reminder", icon: "⏰", label: "Sign-up slot reminders", desc: "A reminder before a Family Fest sign-up slot you're in — the event's creator picks how far ahead" },
+      { value: "tournament_published", icon: "🏆", label: "Tournament bracket set", desc: "When the bracket goes live for an activity you're entered in" },
+      { value: "tournament_match_ready", icon: "🎯", label: "My next match is ready", desc: "When your next game in a tournament is set and ready to play" },
+      { value: "tournament_champion", icon: "🥇", label: "Tournament champion", desc: "When a tournament you're in crowns its winner" },
     ],
   },
   {

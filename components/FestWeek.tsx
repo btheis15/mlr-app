@@ -11,6 +11,7 @@ import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
 import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
+import { TournamentSection } from "@/components/TournamentView";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useCachedResource } from "@/lib/swrCache";
 import {
@@ -313,6 +314,9 @@ function EventRow({
           {event.signupEnabled && (
             <ScheduleSignupSlots target={event} kind="schedule" canManage={canEditThis} members={members} />
           )}
+          {/* Only mount when the row is open — Expander keeps its children in the
+              DOM while collapsed, and we don't want a realtime channel per row. */}
+          {open && <TournamentSection scheduleItemId={event.id} canManage={canEditThis} itemTitle={event.title} />}
           {event.lead && (
             <div>
               <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>

@@ -333,6 +333,11 @@ async function start() {
     // before it. An OVERRIDE push (handled below): anyone with phone push on
     // gets it, since they chose to sign up for that slot.
     "signup_reminder",
+    // Tournament brackets (migration 0144): the bracket going live, a member's
+    // next match becoming ready, and the champion being crowned. All relay to a
+    // phone push, gated on push_types (off by default — opt in via Profile →
+    // Notifications).
+    "tournament_published", "tournament_match_ready", "tournament_champion",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
