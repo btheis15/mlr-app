@@ -67,7 +67,8 @@ export type PushType =
   | "chat_poll_created"
   | "tournament_published"
   | "tournament_match_ready"
-  | "tournament_champion";
+  | "tournament_champion"
+  | "private_activity_invite";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -118,6 +119,7 @@ export type NotifType =
   | "tournament_published"
   | "tournament_match_ready"
   | "tournament_champion"
+  | "private_activity_invite"
   | "broadcast";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
@@ -155,6 +157,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "tournament_published",
   "tournament_match_ready",
   "tournament_champion",
+  "private_activity_invite",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized

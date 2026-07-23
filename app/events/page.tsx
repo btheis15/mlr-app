@@ -9,10 +9,12 @@ import { EventSheet } from "@/components/EventSheet";
 import { EventComposer } from "@/components/EventComposer";
 import { MeetingSection } from "@/components/MeetingSection";
 import { MeetingComposer } from "@/components/MeetingComposer";
+import { PrivateActivityComposer } from "@/components/PrivateActivityComposer";
+import { PrivateActivitySheet } from "@/components/PrivateActivitySheet";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useEvents } from "@/lib/hooks";
+import { useEvents, usePrivateActivities } from "@/lib/hooks";
 import { EMPTY_SUMMARY, effectiveStatus, pastEvents, upcomingEvents } from "@/lib/events";
 import { fetchCanOrganize } from "@/lib/meetings";
 import type { AttendanceStatus, ResortEvent } from "@/lib/types";
@@ -27,12 +29,21 @@ type Composer = { mode: "new" } | { mode: "edit"; event: ResortEvent } | null;
 
 export default function EventsPage() {
   const { today } = useDemoDate();
-  const { isAdmin } = useIdentity();
+  const { isAdmin, user, userId, promptSignIn } = useIdentity();
   const { events, summaries, mine, loading, canRsvp, setStatus, reload } = useEvents({ realtime: true });
+  const { activities, reload: reloadActivities } = usePrivateActivities();
   const [openId, setOpenId] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
   const [showPast, setShowPast] = useState(false);
   const [showDeclined, setShowDeclined] = useState(false);
+
+  // Private activities — a member-created, invite-only game/get-together (0150).
+  const [creatingActivity, setCreatingActivity] = useState(false);
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const openActivity = activities.find((a) => a.id === openActivityId) ?? null;
+  const liveActivities = activities.filter((a) => !a.archivedAt);
+  const archivedActivities = activities.filter((a) => a.archivedAt);
 
   // Family-wide date polling (migration 0122) — admin-only to organize, open to
   // every signed-in member to vote. Mirrors CommitteeDetail's canOrganize/
@@ -68,8 +79,11 @@ export default function EventsPage() {
   // finalized meeting poll's "View the event" link).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const id = new URLSearchParams(window.location.search).get("open");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("open");
     if (id) setOpenId(id);
+    const act = params.get("activity");
+    if (act) setOpenActivityId(act);
   }, []);
 
   const openEvent = events.find((e) => e.id === openId) ?? null;
@@ -125,6 +139,41 @@ export default function EventsPage() {
             </button>
           )}
         </div>
+      )}
+
+      {/* Anyone can spin up a private activity — an invite-only game/get-together
+          nobody else sees, with an optional tournament. */}
+      {isSupabaseConfigured && (
+        <button
+          onClick={() => (user ? setCreatingActivity(true) : promptSignIn())}
+          className="press w-full rounded-2xl bg-accent/10 py-3 text-sm font-semibold text-accent ring-1 ring-accent/20"
+        >
+          🎉 Create an activity
+        </button>
+      )}
+
+      {(liveActivities.length > 0 || archivedActivities.length > 0) && (
+        <section className="space-y-2">
+          <h2 className="px-0.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">Your activities</h2>
+          {liveActivities.map((a) => (
+            <ActivityRow key={a.id} activity={a} onOpen={() => setOpenActivityId(a.id)} />
+          ))}
+          {archivedActivities.length > 0 && (
+            <>
+              <button
+                onClick={() => setShowArchived((v) => !v)}
+                aria-expanded={showArchived}
+                className="press px-0.5 pt-1 text-sm font-semibold text-foreground/60"
+              >
+                Finished &amp; archived ({archivedActivities.length}) {showArchived ? "▾" : "▸"}
+              </button>
+              {showArchived &&
+                archivedActivities.map((a) => (
+                  <ActivityRow key={a.id} activity={a} onOpen={() => setOpenActivityId(a.id)} muted />
+                ))}
+            </>
+          )}
+        </section>
       )}
 
       {loading ? (
@@ -241,6 +290,57 @@ export default function EventsPage() {
           onCreated={() => {}}
         />
       )}
+
+      {creatingActivity && (
+        <PrivateActivityComposer
+          members={members}
+          myId={userId}
+          onClose={() => setCreatingActivity(false)}
+          onCreated={(id) => {
+            void reloadActivities();
+            setOpenActivityId(id);
+          }}
+        />
+      )}
+
+      {openActivity && (
+        <PrivateActivitySheet
+          activity={openActivity}
+          members={members}
+          myId={userId}
+          onClose={() => setOpenActivityId(null)}
+          onChanged={reloadActivities}
+        />
+      )}
     </div>
+  );
+}
+
+function ActivityRow({
+  activity,
+  onOpen,
+  muted = false,
+}: {
+  activity: import("@/lib/privateActivities").PrivateActivity;
+  onOpen: () => void;
+  muted?: boolean;
+}) {
+  const count = activity.members.length;
+  return (
+    <button
+      onClick={onOpen}
+      className={`press flex w-full items-center gap-3 rounded-2xl bg-card p-3.5 text-left ring-1 ring-border ${muted ? "opacity-60" : ""}`}
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/10 text-xl">{activity.emoji || "🎉"}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold leading-tight">{activity.title}</span>
+        <span className="block truncate text-xs text-foreground/55">
+          <span className="font-medium text-primary">Private</span>
+          {activity.tournamentEnabled ? " · 🏆 Tournament" : ""}
+          {` · ${count} ${count === 1 ? "person" : "people"}`}
+        </span>
+      </span>
+      <span className="shrink-0 text-foreground/30">›</span>
+    </button>
   );
 }

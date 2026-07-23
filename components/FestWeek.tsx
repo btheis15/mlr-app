@@ -317,7 +317,7 @@ function EventRow({
           {/* Only mount when the row is open — Expander keeps its children in the
               DOM while collapsed, and we don't want a realtime channel per row. */}
           {open && event.tournamentEnabled && (
-            <TournamentSection scheduleItemId={event.id} canManage={canEditThis} itemTitle={event.title} enabled />
+            <TournamentSection host={{ kind: "schedule", id: event.id }} canManage={canEditThis} itemTitle={event.title} enabled />
           )}
           {event.lead && (
             <div>

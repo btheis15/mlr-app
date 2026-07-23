@@ -171,6 +171,16 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   seam [`lib/tournaments.ts`](lib/tournaments.ts), UI
   [`TournamentView`](components/TournamentView.tsx). See CLAUDE.md → **Tournament
   brackets**.
+- **Private activities** — **any member** can tap **"🎉 Create an activity"** in the
+  Events tab to spin up a private, invite-only game/get-together (e.g. a weekend
+  ping-pong or baggo tournament) shared with only the people they add — including
+  typed-in names for anyone not on the app. Nobody else sees it; nobody is notified
+  unless the organizer opts in, and then only the people involved. It reuses the full
+  tournament machinery, and a host can archive a finished game or delete it. Migration
+  [`0150`](supabase/migrations/0150_private_activities.sql), seam
+  [`lib/privateActivities.ts`](lib/privateActivities.ts), UI
+  [`PrivateActivityComposer`](components/PrivateActivityComposer.tsx)/[`PrivateActivitySheet`](components/PrivateActivitySheet.tsx).
+  See CLAUDE.md → **Private activities**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,
   Cabin requests, Help contact, Sign-ins, and View as — each its own `/admin/*`

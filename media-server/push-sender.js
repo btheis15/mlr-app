@@ -342,6 +342,10 @@ async function start() {
     // phone push, gated on push_types (off by default — opt in via Profile →
     // Notifications).
     "tournament_published", "tournament_match_ready", "tournament_champion",
+    // Private activities (migration 0150): being added to someone's private
+    // activity/game — only ever sent to the people involved, and only when the
+    // organizer opted in. Off by default; opt into the push in Profile.
+    "private_activity_invite",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;

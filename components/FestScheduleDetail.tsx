@@ -66,7 +66,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       {event.signupEnabled && <ScheduleSignupSlots target={event} kind="schedule" canManage={canManage} members={[]} />}
 
-      <TournamentSection scheduleItemId={event.id} canManage={canManage} itemTitle={event.title} enabled={!!event.tournamentEnabled} />
+      <TournamentSection host={{ kind: "schedule", id: event.id }} canManage={canManage} itemTitle={event.title} enabled={!!event.tournamentEnabled} />
 
       {event.bring && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">

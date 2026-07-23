@@ -18,11 +18,13 @@ import {
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
 import {
-  fetchTournamentsForItem,
+  fetchTournamentsForHost,
   applyMatchResult,
   recordMatchResult,
   type Tournament,
+  type TournamentHost,
 } from "@/lib/tournaments";
+import { fetchPrivateActivities, type PrivateActivity } from "@/lib/privateActivities";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
@@ -684,7 +686,7 @@ export function useHelpRequests(): {
  * guests (they get [] and a sign-in nudge). Usually one tournament per activity,
  * but the shape is a list (an activity could host two).
  */
-export function useTournament(scheduleItemId: string | null): {
+export function useTournament(host: TournamentHost | null): {
   tournaments: Tournament[];
   loading: boolean;
   reload: () => Promise<void>;
@@ -697,20 +699,20 @@ export function useTournament(scheduleItemId: string | null): {
 } {
   const { userId } = useIdentity();
   const [schedule] = useDebouncedCallback(250);
-  const key =
-    isSupabaseConfigured && userId && scheduleItemId ? `tournament.${userId}.${scheduleItemId}` : null;
+  const hostId = host ? `${host.kind}.${host.id}` : null;
+  const key = isSupabaseConfigured && userId && hostId ? `tournament.${userId}.${hostId}` : null;
   const { data: tournaments, loading, reload, mutate } = useCachedResource<Tournament[]>(
     key,
     [],
-    () => fetchTournamentsForItem(scheduleItemId ?? ""),
+    () => (host ? fetchTournamentsForHost(host) : Promise.resolve([])),
     { persist: "session" },
   );
 
   useEffect(() => {
     const sb = supabase;
-    if (!isSupabaseConfigured || !sb || !scheduleItemId) return;
+    if (!isSupabaseConfigured || !sb || !hostId) return;
     const channel = sb
-      .channel(`tournament-${scheduleItemId}`)
+      .channel(`tournament-${hostId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, () => schedule(reload))
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_entrants" }, () => schedule(reload))
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_participants" }, () => schedule(reload))
@@ -719,7 +721,7 @@ export function useTournament(scheduleItemId: string | null): {
     return () => {
       sb.removeChannel(channel);
     };
-  }, [scheduleItemId, reload, schedule]);
+  }, [hostId, reload, schedule]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Per-match in-flight lock: a double-tap on the same match doesn't fire two
   // writes that could settle out of order (the useEvents.setStatus pattern).
@@ -751,6 +753,42 @@ export function useTournament(scheduleItemId: string | null): {
   );
 
   return { tournaments, loading, reload, recordResult };
+}
+
+/**
+ * Private activities (migration 0150) the viewer can see — their own + any
+ * they've been invited to. Uid-scoped SWR cache + realtime over the two tables.
+ * Empty for guests / no backend.
+ */
+export function usePrivateActivities(): {
+  activities: PrivateActivity[];
+  loading: boolean;
+  reload: () => Promise<void>;
+} {
+  const { userId, isAdmin } = useIdentity();
+  const [schedule] = useDebouncedCallback(250);
+  const key = isSupabaseConfigured && userId ? `privateActivities.${userId}` : null;
+  const { data: activities, loading, reload } = useCachedResource<PrivateActivity[]>(
+    key,
+    [],
+    () => fetchPrivateActivities(userId, isAdmin),
+    { persist: "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !userId) return;
+    const channel = sb
+      .channel(`private-activities-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "private_activities" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "private_activity_members" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [userId, reload, schedule]);
+
+  return { activities, loading, reload };
 }
 
 /**
