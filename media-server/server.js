@@ -503,17 +503,43 @@ app.post("/admin/invite-link", express.json(), inviteLimiter, requireAdmin, asyn
   res.json({ results });
 });
 
-// Admin: report + trigger the "pull latest + restart" cycle that otherwise
-// needs someone on the mini itself. REPO_DIR is the mlr-app checkout that
-// contains this folder; launchd's KeepAlive relaunches node within
-// ThrottleInterval (10s) on any exit, so a plain process.exit(0) is the
-// restart — no launchctl call needed.
+// Owner-only: restarting this very process is a step above ordinary admin
+// actions (it's an infrastructure control, not app content), so it's gated
+// to exactly one account by verified email rather than the broader
+// profiles.is_admin flag every app admin has. Mirrors lib/owner.ts on the
+// client (which only decides whether to SHOW the button — this is the real
+// gate). No profiles lookup needed: GoTrue's own /auth/v1/user response
+// already carries the verified email.
+const OWNER_EMAIL = "brian.theis15@gmail.com";
+async function requireOwner(req, res, next) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
+  if (!m || !SUPABASE_URL || !SUPABASE_ANON_KEY) return res.status(401).json({ error: "Sign in required." });
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${m[1]}` },
+    });
+    if (!r.ok) { console.warn(`[owner] token rejected by Supabase: ${r.status}`); return res.status(401).json({ error: "Invalid or expired session." }); }
+    const user = await r.json();
+    if (String(user.email || "").trim().toLowerCase() !== OWNER_EMAIL) return res.status(403).json({ error: "Not available." });
+    req.ownerId = user.id;
+    next();
+  } catch (e) {
+    console.error(`[owner] auth check failed: ${e && e.message}`);
+    return res.status(503).json({ error: "Couldn't reach the auth service." });
+  }
+}
+
+// Report + trigger the "pull latest + restart" cycle that otherwise needs
+// someone on the mini itself. REPO_DIR is the mlr-app checkout that contains
+// this folder; launchd's KeepAlive relaunches node within ThrottleInterval
+// (10s) on any exit, so a plain process.exit(0) is the restart — no
+// launchctl call needed.
 const REPO_DIR = path.join(__dirname, "..");
 function git(args) {
   return execFileSync("git", args, { cwd: REPO_DIR, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
-app.get("/admin/media-server-status", requireAdmin, async (_req, res) => {
+app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
   try {
     git(["fetch", "origin", "main"]);
     const local = git(["rev-parse", "HEAD"]);
@@ -525,7 +551,7 @@ app.get("/admin/media-server-status", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/admin/restart-media-server", requireAdmin, async (req, res) => {
+app.post("/admin/restart-media-server", requireOwner, async (req, res) => {
   let before, after, changedFiles = [];
   try {
     before = git(["rev-parse", "HEAD"]);
@@ -548,7 +574,7 @@ app.post("/admin/restart-media-server", requireAdmin, async (req, res) => {
     }
   }
 
-  console.log(`[admin] restart-media-server: ${req.adminId} pulled ${before.slice(0, 7)} -> ${after.slice(0, 7)} (${changedFiles.length} files changed), restarting now`);
+  console.log(`[owner] restart-media-server: ${req.ownerId} pulled ${before.slice(0, 7)} -> ${after.slice(0, 7)} (${changedFiles.length} files changed), restarting now`);
   res.json({ ok: true, updated: before !== after, from: before.slice(0, 7), to: after.slice(0, 7), filesChanged: changedFiles.length });
   // Give the response a moment to flush before this process exits.
   setTimeout(() => process.exit(0), 300);
