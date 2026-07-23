@@ -544,6 +544,78 @@ export function computeStandings(t: Tournament, pool: string | null = null): Sta
   return sorted;
 }
 
+const TIEBREAKER_LABEL: Record<string, string> = {
+  win_pct: "win-loss record",
+  head_to_head: "head-to-head",
+  point_diff: "point differential",
+  points_for: "points scored",
+};
+
+/** Human legend of the tiebreaker order actually in effect (drops win% — that's
+ *  the record itself — and the point-based ones when no scores were recorded). */
+export function tiebreakerLegend(t: Tournament, showPoints: boolean): string {
+  const order = t.tiebreakers
+    .filter((tb) => tb !== "win_pct")
+    .filter((tb) => showPoints || (tb !== "point_diff" && tb !== "points_for"));
+  return order.map((tb) => TIEBREAKER_LABEL[tb] ?? tb.replace(/_/g, " ")).join(", then ");
+}
+
+export interface TieNote {
+  over: string;
+  under: string;
+  reason: string;
+}
+
+/** For each pair of adjacent entrants with an IDENTICAL W-L(-T) record, explain
+ *  which tiebreaker put one above the other (head-to-head names who beat whom).
+ *  Empty when nothing is tied. Same ranking logic as computeStandings. */
+export function standingTieNotes(t: Tournament, pool: string | null = null): TieNote[] {
+  const rows = computeStandings(t, pool);
+  const completed = t.matches.filter(
+    (m) => m.status === "complete" && m.slot1EntrantId && m.slot2EntrantId,
+  );
+  const h2h = (aId: string, bId: string): number => {
+    const m = completed.find(
+      (mm) =>
+        (mm.slot1EntrantId === aId && mm.slot2EntrantId === bId) ||
+        (mm.slot1EntrantId === bId && mm.slot2EntrantId === aId),
+    );
+    if (!m || !m.winnerEntrantId) return 0;
+    return m.winnerEntrantId === aId ? 1 : -1;
+  };
+  const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const notes: TieNote[] = [];
+  for (let i = 0; i < rows.length - 1; i++) {
+    const a = rows[i];
+    const b = rows[i + 1];
+    if (a.wins !== b.wins || a.losses !== b.losses || a.ties !== b.ties) continue;
+    // Only note ties a real tiebreaker actually decided — skip pairs that are
+    // genuinely even (e.g. an unplayed pool where everyone is 0-0-0), so the
+    // note doesn't spam every adjacent row.
+    let reason = "";
+    for (const tb of t.tiebreakers) {
+      if (tb === "win_pct") continue; // equal (same record)
+      if (tb === "head_to_head") {
+        if (h2h(a.entrantId, b.entrantId) === 1) {
+          reason = "won their head-to-head game";
+          break;
+        }
+        continue; // didn't play / tied that game → next tiebreaker
+      }
+      if (tb === "point_diff" && a.diff !== b.diff) {
+        reason = `better point differential (${signed(a.diff)} vs ${signed(b.diff)})`;
+        break;
+      }
+      if (tb === "points_for" && a.pointsFor !== b.pointsFor) {
+        reason = `scored more points (${a.pointsFor} vs ${b.pointsFor})`;
+        break;
+      }
+    }
+    if (reason) notes.push({ over: a.name, under: b.name, reason });
+  }
+  return notes;
+}
+
 /** Random-pair a name list into teams of `size` for the setup preview (the real
  *  teaming is server-side in generate_teams). Returns { teams, leftover }. */
 export function formTeamsPreview(
