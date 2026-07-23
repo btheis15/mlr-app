@@ -34,6 +34,26 @@ async function postAdmin(path: string, token: string, body: unknown): Promise<vo
   await postAdminJson(path, token, body);
 }
 
+async function getAdminJson<T>(path: string, token: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${MEDIA_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    throw new Error("Couldn't reach the server.");
+  }
+  if (!res.ok) {
+    let msg = `Request failed (${res.status}).`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j?.error) msg = j.error;
+    } catch {
+      /* keep the status-code message */
+    }
+    throw new Error(msg);
+  }
+  return (await res.json()) as T;
+}
+
 /** Invite a new member: pre-creates a named account and emails them a sign-in code. */
 export const inviteMember = (name: string, email: string, token: string) =>
   postAdmin("/admin/invite", token, { name, email });
@@ -52,3 +72,28 @@ export interface InviteLinkResult {
  *  straight in, no code to type. Returns per-email success/failure. */
 export const inviteByEmailLink = (entries: { email: string; name?: string }[], token: string) =>
   postAdminJson<{ results: InviteLinkResult[] }>("/admin/invite-link", token, { entries }).then((r) => r.results);
+
+export interface MediaServerStatus {
+  ok: boolean;
+  commit: string;
+  upToDate: boolean;
+  behind: number;
+  startedAt: string;
+}
+
+/** Current git commit on the mini + how many commits behind origin/main it is. */
+export const getMediaServerStatus = (token: string) =>
+  getAdminJson<MediaServerStatus>("/admin/media-server-status", token);
+
+export interface RestartMediaServerResult {
+  ok: boolean;
+  updated: boolean;
+  from: string;
+  to: string;
+  filesChanged: number;
+}
+
+/** Pulls origin/main (fast-forward only) into the mini's checkout, then exits
+ *  the process — launchd relaunches it within ~10s on the new code. */
+export const restartMediaServer = (token: string) =>
+  postAdminJson<RestartMediaServerResult>("/admin/restart-media-server", token, {});

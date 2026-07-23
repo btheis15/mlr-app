@@ -31,12 +31,14 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
 
+const SERVER_STARTED_AT = new Date().toISOString();
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -499,6 +501,57 @@ app.post("/admin/invite-link", express.json(), inviteLimiter, requireAdmin, asyn
     }
   }
   res.json({ results });
+});
+
+// Admin: report + trigger the "pull latest + restart" cycle that otherwise
+// needs someone on the mini itself. REPO_DIR is the mlr-app checkout that
+// contains this folder; launchd's KeepAlive relaunches node within
+// ThrottleInterval (10s) on any exit, so a plain process.exit(0) is the
+// restart — no launchctl call needed.
+const REPO_DIR = path.join(__dirname, "..");
+function git(args) {
+  return execFileSync("git", args, { cwd: REPO_DIR, stdio: "pipe", encoding: "utf8" }).trim();
+}
+
+app.get("/admin/media-server-status", requireAdmin, async (_req, res) => {
+  try {
+    git(["fetch", "origin", "main"]);
+    const local = git(["rev-parse", "HEAD"]);
+    const remote = git(["rev-parse", "origin/main"]);
+    const behind = Number(git(["rev-list", "--count", `${local}..${remote}`]));
+    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT });
+  } catch (e) {
+    res.status(500).json({ error: (e && e.message) || "Couldn't check git status." });
+  }
+});
+
+app.post("/admin/restart-media-server", requireAdmin, async (req, res) => {
+  let before, after, changedFiles = [];
+  try {
+    before = git(["rev-parse", "HEAD"]);
+    git(["fetch", "origin", "main"]);
+    git(["merge", "--ff-only", "origin/main"]);
+    after = git(["rev-parse", "HEAD"]);
+    if (before !== after) changedFiles = git(["diff", "--name-only", before, after]).split("\n").filter(Boolean);
+  } catch (e) {
+    console.error(`[admin] restart-media-server: git update failed: ${e && e.message}`);
+    return res.status(409).json({ error: "Couldn't fast-forward to origin/main — the mini's checkout may have diverged. It needs a manual look." });
+  }
+
+  const depsChanged = changedFiles.includes("media-server/package.json") || changedFiles.includes("media-server/package-lock.json");
+  if (depsChanged) {
+    try {
+      execFileSync("npm", ["install", "--omit=dev"], { cwd: __dirname, stdio: "pipe", encoding: "utf8" });
+    } catch (e) {
+      console.error(`[admin] restart-media-server: npm install failed: ${e && e.message}`);
+      return res.status(500).json({ error: "Pulled new code but `npm install` failed — fix that on the mini before restarting." });
+    }
+  }
+
+  console.log(`[admin] restart-media-server: ${req.adminId} pulled ${before.slice(0, 7)} -> ${after.slice(0, 7)} (${changedFiles.length} files changed), restarting now`);
+  res.json({ ok: true, updated: before !== after, from: before.slice(0, 7), to: after.slice(0, 7), filesChanged: changedFiles.length });
+  // Give the response a moment to flush before this process exits.
+  setTimeout(() => process.exit(0), 300);
 });
 
 // Tier-2 AI moderation toggle (default on). Set MOD_ENABLED=0 to disable.
