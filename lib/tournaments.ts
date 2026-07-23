@@ -404,6 +404,22 @@ export function hasAnyScores(t: Tournament): boolean {
   return t.matches.some((m) => m.slot1Score != null || m.slot2Score != null);
 }
 
+/** Distinct pool labels present on the entrants (sorted A, B, …). */
+export function poolLabels(t: Tournament): string[] {
+  return Array.from(new Set(t.entrants.map((e) => e.pool).filter((p): p is string => !!p))).sort();
+}
+
+/** True once every pool-stage game is complete (and at least one exists). */
+export function poolStageComplete(t: Tournament): boolean {
+  const pool = t.matches.filter((m) => m.stage === "pool");
+  return pool.length > 0 && pool.every((m) => m.status === "complete");
+}
+
+/** True once the knockout bracket has been generated from the pools. */
+export function hasKnockoutBracket(t: Tournament): boolean {
+  return t.matches.some((m) => m.stage === "bracket");
+}
+
 /**
  * Standings for a round-robin (or one pool), ranked by the tournament's ordered
  * `tiebreakers` (win_pct → head_to_head → point_diff → points_for by default).
@@ -615,6 +631,25 @@ export function generateBracket(id: string, seedOrderIds: string[] | null = null
 /** Generate a round-robin schedule (every entrant plays every other once). */
 export function generateRoundRobin(id: string, seedOrderIds: string[] | null = null): Promise<Res> {
   return rpc("generate_round_robin", { p_tournament: id, p_seed_order: seedOrderIds });
+}
+/** Generate the group stage: split into `poolCount` pools, `advance` per pool go
+ *  on to the knockout. */
+export function generatePools(
+  id: string,
+  poolCount: number,
+  advance: number,
+  seedOrderIds: string[] | null = null,
+): Promise<Res> {
+  return rpc("generate_pools", {
+    p_tournament: id,
+    p_pool_count: poolCount,
+    p_advance: advance,
+    p_seed_order: seedOrderIds,
+  });
+}
+/** Seed the knockout from the finished pools (top N of each pool advance). */
+export function generateBracketFromPools(id: string): Promise<Res> {
+  return rpc("generate_bracket_from_pools", { p_tournament: id });
 }
 export function resetBracket(id: string): Promise<Res> {
   return rpc("reset_bracket", { p_tournament: id });

@@ -18,6 +18,8 @@ export function TournamentBracket({
   rearranging = false,
   selected = null,
   onSlotTap,
+  stageFilter,
+  poolFilter = null,
 }: {
   tournament: Tournament;
   nameFor: (entrantId: string | null) => string;
@@ -29,30 +31,41 @@ export function TournamentBracket({
   selected?: { matchId: string; slot: 1 | 2 } | null;
   /** A slot was tapped in rearrange mode. */
   onSlotTap?: (match: TournamentMatch, slot: 1 | 2) => void;
+  /** Show only matches of this stage (e.g. 'bracket' for a pools knockout). */
+  stageFilter?: "pool" | "bracket";
+  /** Show only matches in this pool. */
+  poolFilter?: string | null;
 }) {
-  const rounds = useMemo(() => {
-    const set = Array.from(new Set(tournament.matches.map((m) => m.round))).sort((a, b) => a - b);
-    return set;
-  }, [tournament.matches]);
+  const shown = useMemo(
+    () =>
+      tournament.matches.filter(
+        (m) => (!stageFilter || m.stage === stageFilter) && (poolFilter == null || m.pool === poolFilter),
+      ),
+    [tournament.matches, stageFilter, poolFilter],
+  );
+  const rounds = useMemo(
+    () => Array.from(new Set(shown.map((m) => m.round))).sort((a, b) => a - b),
+    [shown],
+  );
+  // No "final/SF" labels when nothing progresses (round-robin / pool games).
+  const numberedOnly = shown.every((m) => !m.nextMatchId);
 
   // Default the pager to the earliest round that still has an undecided match
-  // (where the action is), else the final.
+  // (where the action is), else the last round.
   const firstLive = useMemo(() => {
     for (const r of rounds) {
-      if (tournament.matches.some((m) => m.round === r && m.status !== "complete" && m.slot1EntrantId && m.slot2EntrantId)) {
+      if (shown.some((m) => m.round === r && m.status !== "complete" && m.slot1EntrantId && m.slot2EntrantId)) {
         return r;
       }
     }
     return rounds[rounds.length - 1] ?? 1;
-  }, [rounds, tournament.matches]);
+  }, [rounds, shown]);
 
   const [round, setRound] = useState<number>(firstLive);
   const activeRound = rounds.includes(round) ? round : firstLive;
 
   const maxRound = rounds[rounds.length - 1] ?? 1;
-  const matches = tournament.matches
-    .filter((m) => m.round === activeRound)
-    .sort((a, b) => a.position - b.position);
+  const matches = shown.filter((m) => m.round === activeRound).sort((a, b) => a.position - b.position);
 
   if (rounds.length === 0) return null;
 
@@ -61,7 +74,7 @@ export function TournamentBracket({
       {rounds.length > 1 && (
         <SegmentedControl<string>
           size="sm"
-          segments={rounds.map((r) => ({ value: String(r), label: shortRoundLabel(tournament, r, maxRound) }))}
+          segments={rounds.map((r) => ({ value: String(r), label: shortRoundLabel(numberedOnly, r, maxRound) }))}
           value={String(activeRound)}
           onChange={(v) => setRound(Number(v))}
         />
@@ -167,10 +180,9 @@ function BracketMatchCard({
 }
 
 /** Short pager label: Play-in / QF / SF / Final / R{n}. */
-function shortRoundLabel(t: Tournament, round: number, maxRound: number): string {
-  // Round-robin (no progression pointers) has no "final" — just numbered rounds.
-  if (t.matches.every((m) => !m.nextMatchId)) return `R${round}`;
-  if (t.matches.some((m) => m.round === round && m.isPlayIn)) return "Play-in";
+function shortRoundLabel(numberedOnly: boolean, round: number, maxRound: number): string {
+  // Round-robin / pool games (no progression pointers): just numbered rounds.
+  if (numberedOnly) return `R${round}`;
   const fromFinal = maxRound - round;
   if (fromFinal === 0) return "Final";
   if (fromFinal === 1) return "SF";
