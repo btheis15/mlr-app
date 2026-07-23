@@ -1580,21 +1580,30 @@ question, 2–10 options (single- or multi-select), an optional write-in
   revealed, and it returns nothing at all when `chat_polls.anonymous` is
   true — enforced server-side, called only when a poll's results sheet
   opens.
+- **Renders INLINE in the message timeline, not a pinned bar.** A first cut
+  pinned open polls in a top bar (mirroring `MeetingSection`) — too easy to
+  miss, since it doesn't sit where anyone's actually looking. Instead,
+  `CommitteeChat`/`HouseChat` merge `chat_polls` in with `messages` client-side
+  into one `TimelineItem[]` (sorted by `ts`/`createdAt`, then run through the
+  existing `groupByDay`), so a poll shows up exactly where it happened in the
+  conversation, like a rich message — not attached to any one sender's
+  bubble (it's a room-wide card, full width), interactive on the spot: tap an
+  option to vote immediately, no sheet to open first.
 - **Client:** [`lib/chatPolls.ts`](lib/chatPolls.ts) (mirrors
-  `lib/meetings.ts`'s degrade-to-empty-on-missing-table idiom).
-  [`ChatPollSection`](components/ChatPollSection.tsx) is the pinned bar
-  (mounted alongside `MeetingSection` in `CommitteeChat`/`HouseChat`) — unlike
-  `MeetingSection`'s "one featured meeting," it shows **every** open poll as
-  its own pill (polls are lighter-weight/more frequent than meetings) plus a
-  collapsed "Past polls" disclosure for closed ones. Own realtime channel
-  (`chat_polls` + `chat_poll_options`, not `chat_poll_votes`) + SWR cache key
-  `chatPolls.<uid>.<roomKey>`. [`ChatPollComposer`](components/ChatPollComposer.tsx)
+  `lib/meetings.ts`'s degrade-to-empty-on-missing-table idiom) exports
+  **`useChatPolls(scope)`** — the realtime (`chat_polls` + `chat_poll_options`,
+  not `chat_poll_votes`) + SWR-cached (`chatPolls.<uid>.<roomKey>`) hook both
+  chat components call directly (mirrors how `useTypingChannel` is a shared
+  hook, not a mounted component) — called unconditionally per the rules of
+  hooks even before the room/committee id resolves; `scope` itself is null
+  until then and the hook just no-ops. [`ChatPollComposer`](components/ChatPollComposer.tsx)
   is the creation sheet (mounted from the "+" menu, not `FeedView`'s
-  `ChatMembersSheet`). [`ChatPollSheet`](components/ChatPollSheet.tsx) is the
-  vote/results sheet — option rows reuse `PollsView.tsx`'s `PollCard`
+  `ChatMembersSheet`). [`ChatPollCard`](components/ChatPollCard.tsx) is the
+  inline card itself — option rows reuse `PollsView.tsx`'s `PollCard`
   bar-fill visual, extended for multi-select and an inline "Other" text
-  field, with a row of `Avatar`s per option (from `chat_poll_voters`) when
-  the poll isn't anonymous.
+  field, with a row of `Avatar`s per option (from `chat_poll_voters`, fetched
+  once per card mount) when the poll isn't anonymous, plus Close/Delete for
+  the creator or an admin right on the card.
 - **Notifications:** one kind, `chat_poll_created` (mirrors
   `meeting_proposed`) — default on, off by default for phone push (opt in via
   `PushToggle`, same as meetings). No notification on vote/close, mirroring

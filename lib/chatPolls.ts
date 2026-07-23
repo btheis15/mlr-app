@@ -1,21 +1,31 @@
+"use client";
+
 // Client helpers for "quick polls" in committee/house chat rooms (migration
 // 0149). Any room member can start one: a question, 2-10 options (single- or
 // multi-select), an optional write-in "Other", and a choice of anonymous
-// (counts only) or attributed (counts + who picked what) results.
+// (counts only) or attributed (counts + who picked what) results. Polls
+// render INLINE in the message timeline (ChatPollCard, sorted in by
+// createdAt alongside real messages) rather than a separate pinned bar — a
+// pinned "0 responses · tap to vote" bar at the top of the room was too easy
+// to miss.
 //
 // Reads go through two SECURITY DEFINER RPCs rather than a plain table
 // select: fetchChatPollsForRoom() (the room's poll list + your own vote —
-// enough for the pinned bar) and fetchChatPollVoters() (per-voter identity,
-// called only when a results sheet opens, and only ever populated when the
-// poll isn't anonymous). chat_poll_votes itself has no select grant at all —
-// see the migration header — so there is no client path that can read raw
-// vote rows. Writes go through set_chat_poll_votes/create_chat_poll/etc.
+// enough to render every card) and fetchChatPollVoters() (per-voter
+// identity, called once per poll card mount, and only ever populated when
+// the poll isn't anonymous). chat_poll_votes itself has no select grant at
+// all — see the migration header — so there is no client path that can read
+// raw vote rows. Writes go through set_chat_poll_votes/create_chat_poll/etc.
 //
 // Everything degrades to safe no-ops with no backend, and a missing table/
 // function (42P01/42883 — the 0149 migration hasn't run yet) reads as "no
 // polls" — the same idiom as lib/meetings.ts / lib/polls.ts.
 
+import { useEffect } from "react";
+import { useIdentity } from "@/components/IdentityProvider";
+import { useDebouncedCallback } from "@/lib/hooks";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useCachedResource } from "@/lib/swrCache";
 
 /** Which room a poll lives in — drives both the fetch filter and create args. */
 export type ChatPollScope =
@@ -209,4 +219,52 @@ export async function deleteChatPoll(pollId: string): Promise<{ error?: string }
   if (!sb) return { error: "Not available." };
   const { error } = await sb.rpc("delete_chat_poll", { p_poll: pollId });
   return error ? { error: error.message } : {};
+}
+
+/** Stable per-room cache/channel segment, mirroring lib/meetings.ts's roomKeyOf. */
+function roomKeyOf(scope: ChatPollScope): string {
+  return scope.type === "committee" ? `c:${scope.slug}|${scope.area ?? ""}` : `h:${scope.houseId}`;
+}
+
+/**
+ * Every poll in a room, kept live via realtime + the shared SWR cache — the
+ * data source for the inline poll cards in CommitteeChat/HouseChat. `scope`
+ * may be null while the room id hasn't resolved yet (or the room is
+ * archived/read-only); the hook just no-ops in that case, so it's still safe
+ * to call unconditionally (React's rules-of-hooks — the caller can't skip
+ * calling this hook itself, only vary what it's given).
+ */
+export function useChatPolls(scope: ChatPollScope | null): { polls: ChatPoll[]; reload: () => Promise<void> } {
+  const { userId, previewAsId } = useIdentity();
+  const roomKey = scope ? roomKeyOf(scope) : null;
+  const uidForKey = previewAsId ?? userId;
+
+  const { data: polls, reload } = useCachedResource<ChatPoll[]>(
+    scope && uidForKey ? `chatPolls.${uidForKey}.${roomKey}` : null,
+    [],
+    () => (scope ? fetchChatPollsForRoom(scope) : Promise.resolve([])),
+    { persist: previewAsId ? undefined : "local" }
+  );
+
+  const [schedule] = useDebouncedCallback(250);
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !roomKey) return;
+    let channel: ReturnType<typeof sb.channel> | null = null;
+    try {
+      channel = sb
+        .channel(`chat-polls-${roomKey}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "chat_polls" }, () => schedule(reload))
+        .on("postgres_changes", { event: "*", schema: "public", table: "chat_poll_options" }, () => schedule(reload))
+        .subscribe();
+    } catch {
+      channel = null;
+    }
+    return () => {
+      if (channel) sb.removeChannel(channel);
+    };
+  }, [reload, schedule, roomKey]);
+
+  return { polls, reload };
 }

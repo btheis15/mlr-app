@@ -8,8 +8,9 @@ import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { MeetingSection } from "@/components/MeetingSection";
-import { ChatPollSection } from "@/components/ChatPollSection";
+import { ChatPollCard } from "@/components/ChatPollCard";
 import { ChatPollComposer } from "@/components/ChatPollComposer";
+import { closeChatPoll, deleteChatPoll, setChatPollVotes, useChatPolls, type ChatPoll, type ChatPollScope } from "@/lib/chatPolls";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { motion } from "framer-motion";
@@ -55,6 +56,10 @@ interface Msg {
   reactions: { userId: string; emoji: string }[];
   mentions: string[];
 }
+
+// One entry in the merged message-timeline render: a real message, or a quick
+// poll card (migration 0149) interleaved in by its own createdAt.
+type TimelineItem = { kind: "message"; ts: string; msg: Msg } | { kind: "poll"; ts: string; poll: ChatPoll };
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const within24h = (ts: string) => Date.now() - new Date(ts).getTime() < EDIT_WINDOW_MS;
@@ -169,6 +174,28 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
   // message subscription). notifyTyping() is throttled inside the hook.
   const myName = members.find((m) => m.id === uid)?.name || "Someone";
   const { typers, notifyTyping } = useTypingChannel(uid && houseId ? `house:${slug}` : null, uid, myName);
+
+  // Quick polls (migration 0149) — merged inline into the message timeline by
+  // createdAt below, not a pinned bar (too easy to miss). Called unconditionally
+  // (rules of hooks) even though the room might not be a live member view yet;
+  // the hook itself no-ops on a null scope.
+  const pollScope: ChatPollScope | null = houseId ? { type: "house", houseId, slug } : null;
+  const { polls, reload: reloadPolls } = useChatPolls(pollScope);
+
+  const votePoll = async (poll: ChatPoll, optionIds: string[], otherText: string | null) => {
+    const { error } = await setChatPollVotes(poll.id, optionIds, otherText);
+    if (!error) await reloadPolls();
+  };
+  const closePollAction = async (poll: ChatPoll) => {
+    if (!window.confirm(`Close "${poll.question}"? Voting stops and the results freeze.`)) return;
+    const { error } = await closeChatPoll(poll.id);
+    if (!error) await reloadPolls();
+  };
+  const deletePollAction = async (poll: ChatPoll) => {
+    if (!window.confirm(`Delete "${poll.question}"? This removes everyone's votes for good.`)) return;
+    const { error } = await deleteChatPoll(poll.id);
+    if (!error) await reloadPolls();
+  };
 
   // ── Who am I + do I have access? ───────────────────────────────────────────
   const loadAccess = async (id?: string | null) => {
@@ -655,17 +682,24 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
   }
 
   // ── The chat ─────────────────────────────────────────────────────────────────
-  const dayGroups = groupByDay(messages, (m) => m.ts);
+  // Polls render INLINE in the timeline (sorted in by createdAt alongside real
+  // messages), not a separate pinned bar — a top bar was too easy to miss.
+  const timeline: TimelineItem[] = useMemo(() => {
+    const items: TimelineItem[] = [
+      ...messages.map((m) => ({ kind: "message" as const, ts: m.ts, msg: m })),
+      ...polls.map((p) => ({ kind: "poll" as const, ts: p.createdAt, poll: p })),
+    ];
+    items.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    return items;
+  }, [messages, polls]);
+  const dayGroups = groupByDay(timeline, (item) => item.ts);
 
   return wrap(`${members.length} ${plural(members.length, "member")}`, (
     <>
       {/* Meeting scheduler — pinned above the messages so every house member
           sees an open proposal; admins can start one (houses have no leads). */}
       {houseId && (
-        <>
-          <MeetingSection scope={{ type: "house", houseId, slug }} members={members} />
-          <ChatPollSection scope={{ type: "house", houseId, slug }} />
-        </>
+        <MeetingSection scope={{ type: "house", houseId, slug }} members={members} />
       )}
       <div className="relative min-h-0 flex-1">
       <div
@@ -678,7 +712,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         }}
         className="h-full space-y-1 overflow-y-auto overscroll-contain px-3 py-3"
       >
-        {loaded && messages.length === 0 && (
+        {loaded && timeline.length === 0 && (
           <p className="mt-10 text-center text-sm text-muted">No messages yet — say hi to the {name} crew! 👋</p>
         )}
         {dayGroups.map((g) => (
@@ -688,8 +722,30 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
               {formatDayHeading(g.day)}
               <span className="h-px flex-1 bg-border" />
             </div>
-            {g.items.map((m, i) => {
-              const prev = g.items[i - 1];
+            {g.items.map((item, i) => {
+              if (item.kind === "poll") {
+                const poll = item.poll;
+                return (
+                  <motion.div
+                    key={`poll-${poll.id}`}
+                    initial={listReadyRef.current ? { opacity: 0, y: 10 } : false}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  >
+                    <ChatPollCard
+                      poll={poll}
+                      creatorName={members.find((mm) => mm.id === poll.createdBy)?.name ?? "Someone"}
+                      canManage={isAdmin || poll.createdByMe}
+                      onVote={(optionIds, otherText) => void votePoll(poll, optionIds, otherText)}
+                      onClosePoll={() => void closePollAction(poll)}
+                      onDeletePoll={() => void deletePollAction(poll)}
+                    />
+                  </motion.div>
+                );
+              }
+              const m = item.msg;
+              const prevItem = g.items[i - 1];
+              const prev = prevItem?.kind === "message" ? prevItem.msg : undefined;
               const grouped = prev && prev.authorId === m.authorId && new Date(m.ts).getTime() - new Date(prev.ts).getTime() < 5 * 60 * 1000;
               return (
                 <motion.div
