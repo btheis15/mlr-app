@@ -61,14 +61,13 @@ import {
 } from "@/lib/scheduleSignups";
 import type { SignupField } from "@/lib/types";
 
-type Section = "schedule" | "dinners" | "dues" | "payees" | "activities" | "details" | "images";
+type Section = "schedule" | "dinners" | "dues" | "payees" | "details" | "images";
 
 const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
   { key: "dinners", label: "Dinners", icon: "🍽️" },
   { key: "dues", label: "Dues", icon: "💵" },
   { key: "payees", label: "Payees", icon: "💸" },
-  { key: "activities", label: "Anytime", icon: "🗺️" },
   { key: "images", label: "Images", icon: "🖼️" },
   { key: "details", label: "Details", icon: "⚙️" },
 ];
@@ -122,21 +121,18 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   const [dinners, setDinners] = useState<DinnerDraft[]>([]);
   const [dues, setDues] = useState<DuesDraft[]>([]);
   const [payees, setPayees] = useState<PayeeDraft[]>([]);
-  const [activities, setActivities] = useState<ActivityDraft[]>([]);
 
   const reloadDrafts = useCallback(async () => {
-    const [s, d, du, p, a] = await Promise.all([
+    const [s, d, du, p] = await Promise.all([
       fetchScheduleDrafts(),
       fetchDinnerDrafts(),
       fetchDuesDrafts(),
       fetchPayeeDrafts(),
-      fetchActivityDrafts(),
     ]);
     setSchedule(s);
     setDinners(d);
     setDues(du);
     setPayees(p);
-    setActivities(a);
     await reloadContent();
   }, [reloadContent]);
 
@@ -223,9 +219,6 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
         <PageSection icon="💸" title="Who to pay">
           <PayeeEditor items={payees} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="🗺️" title="Anytime activities">
-          <ActivityEditor items={activities} days={days} members={members} onChanged={reloadDrafts} />
-        </PageSection>
         <PageSection icon="🖼️" title="Images">
           <ImagesEditor />
         </PageSection>
@@ -262,7 +255,6 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       )}
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
-      {section === "activities" && <ActivityEditor items={activities} days={days} members={members} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>

@@ -74,7 +74,7 @@ seams**.
 | Route | File | Status |
 |---|---|---|
 | `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: `WelcomeCard`/`HomeSignInCTA`, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), the collapsed-by-default [`WorkChecklist`](components/WorkChecklist.tsx), the always-visible **quick actions grid** ([`HomeQuickActions`](components/HomeQuickActions.tsx) — Events · Committees · People · Ask for Help · Local Places · Cabin Stay), self-hiding **garnish cards** ([`WeatherCard`](components/WeatherCard.tsx) · [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) · [`ActivePollCard`](components/ActivePollCard.tsx) · [`BirthdaysCard`](components/BirthdaysCard.tsx) — see **Home delight cards**), [`HouseHubCard`](components/HouseHubCard.tsx), the admin-only [`AdminDashboardCard`](components/AdminDashboardCard.tsx) (a fast `/admin` entry point right under it — see **Admin dashboard**), [`OnThisDayCard`](components/OnThisDayCard.tsx), an "App & help" group, one-line heritage |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion — the full week, including anytime [`THINGS_TO_DO`](lib/data.ts)) · `dinners` (index page reads like a weekly menu — day, serving time, the menu, head chef, and houses on crew, one scrollable list, no tap-to-expand and no click-through; deliberately omits the crew-prep time/location, which only the crew needs — still editable, just not shown to every reader. Edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link, and still shows the full logistics) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion — the full week, including **anytime events** in an "Anytime all week" group (the old separate "activities" were merged into anytime `fest_schedule_items`, migration 0141)) · `dinners` (index page reads like a weekly menu — day, serving time, the menu, head chef, and houses on crew, one scrollable list, no tap-to-expand and no click-through; deliberately omits the crew-prep time/location, which only the crew needs — still editable, just not shown to every reader. Edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link, and still shows the full logistics) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
 | `/posts` | [`app/posts/page.tsx`](app/posts/page.tsx) | **Feed** tab — the resort-wide Posts feed plus a live chat for each committee/house you're in, switchable by pills, no overlay ([`FeedView`](components/FeedView.tsx) wrapping [`PostsView`](components/PostsView.tsx)/[`CommitteeChat`](components/CommitteeChat.tsx)/[`HouseChat`](components/HouseChat.tsx)). Members-only (`SignInWall`) |
 | `/polls` | [`app/polls/page.tsx`](app/polls/page.tsx) | **Polls** — the family's voting booth ([`PollsView`](components/PollsView.tsx) + [`PollComposer`](components/PollComposer.tsx)); any signed-in member can ask a question, one changeable vote each. Members-only (`SignInWall`). Not a tab — reached from the Home [`ActivePollCard`](components/ActivePollCard.tsx) when a poll is open, or `/polls` directly. See **Family polls** |
 | `/admin` | [`app/admin/page.tsx`](app/admin/page.tsx) | **Admin dashboard** — the front door for admin tools (9 cards + a Family Fest Planner link), gated by [`AdminGuard`](app/admin/AdminGuard.tsx). Not a tab — reached from Profile, or the [`AdminDashboardCard`](components/AdminDashboardCard.tsx) on Home. See **Admin dashboard** |
@@ -785,11 +785,22 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   custom-column value as one scannable table (in `ScheduleSignupSlots`).
 - **Anytime schedule events** (migration 0139). The event editor has an
   **"Anytime (no set day)"** toggle (`fest_schedule_items.anytime`) so an event
-  isn't locked to a day — it renders in the "Anytime all week" group alongside
-  activities (`FestWeek`) instead of a day card, saving a trip to the separate
-  activity editor. Modeled as a flag, not a nullable `day`, so date formatters
+  isn't locked to a day — it renders in the "Anytime all week" group instead of a
+  day card. Modeled as a flag, not a nullable `day`, so date formatters
   stay safe; `FestWeek`/`FestStatus` exclude `anytime` events from day/"today"
   lists, and the schedule detail header shows "Anytime all week".
+- **"Anytime activities" are now just anytime events (migration 0141).** The old
+  separate `fest_activities` concept is **retired on the web**: existing rows
+  (scavenger hunt, merch, …) were converted into anytime `fest_schedule_items`
+  (carrying their sign-up config/slots/signups; provenance in
+  `source_activity_id` etc., idempotent). The Planner's **"Anytime activities"
+  editor + `FestWeek`'s `ActivityCard` are gone** — you create everything through
+  the event editor (with the anytime toggle), and the merged items are linkable
+  from Home callouts like any event. ⚠️ **iOS still reads `fest_activities`** for
+  its own Anytime section, so the table + rows are **left in place** (not dropped)
+  — the native app is a follow-up (web-now/iOS-later); until then the two can
+  drift (a web edit to a converted event won't reflect on the untouched activity
+  row). `fetchFestContent` still returns `activities` but nothing web renders it.
 - **Per-slot reminder pushes** (migration 0140). The creator picks one or more
   lead times (`fest_schedule_items.signup_reminder_minutes` /
   `fest_activities.signup_reminder_minutes` — quick chips 15m/30m/1h/2h/3h/1d + a

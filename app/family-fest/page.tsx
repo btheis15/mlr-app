@@ -25,7 +25,7 @@ import { formatDateLong } from "@/lib/format";
  * editors get a quiet "Edit" link to the Planner.
  */
 export default function FamilyFestPage() {
-  const { config, schedule, dinners, activities, reload } = useFestContent({ realtime: true });
+  const { config, schedule, dinners, reload } = useFestContent({ realtime: true });
   // Cached edit-permission — the "Edit Family Fest" link seeds instantly instead
   // of popping in a frame or two late each visit (see useCanEditFest).
   const canEdit = useCanEditFest();
@@ -69,7 +69,6 @@ export default function FamilyFestPage() {
       <FestWeek
         events={schedule}
         dinners={dinners}
-        things={activities}
         startDate={config.startDate}
         endDate={config.endDate}
         onContentSaved={reload}

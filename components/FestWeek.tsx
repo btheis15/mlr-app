@@ -9,8 +9,7 @@ import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
-import { ActivityDetailsEditSheet } from "@/components/ActivityDetailsEditSheet";
-import { DinnerSheet, ScheduleSheet, ActivitySheet } from "@/components/FestPlanner";
+import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
 import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useCachedResource } from "@/lib/swrCache";
@@ -19,13 +18,11 @@ import {
   fetchMemberOptions,
   fetchDinnerDrafts,
   fetchScheduleDrafts,
-  fetchActivityDrafts,
   type FestMemberOption,
   type DinnerDraft,
   type ScheduleDraft,
-  type ActivityDraft,
 } from "@/lib/festContent";
-import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
+import type { ScheduleEvent, Dinner } from "@/lib/types";
 
 /**
  * The week at a glance: anytime "things to do", then every day as a card that
@@ -39,14 +36,12 @@ import type { ScheduleEvent, Dinner, FestActivity } from "@/lib/types";
 export function FestWeek({
   events,
   dinners,
-  things,
   startDate,
   endDate,
   onContentSaved,
 }: {
   events: ScheduleEvent[];
   dinners: Dinner[];
-  things: FestActivity[];
   startDate: string;
   endDate: string;
   /** Called after any edit saves from an EventRow/DinnerRow, so the caller's
@@ -67,7 +62,6 @@ export function FestWeek({
   const [members, setMembers] = useState<FestMemberOption[]>([]);
   const [dinnerDrafts, setDinnerDrafts] = useState<DinnerDraft[]>([]);
   const [scheduleDrafts, setScheduleDrafts] = useState<ScheduleDraft[]>([]);
-  const [activityDrafts, setActivityDrafts] = useState<ActivityDraft[]>([]);
   // The full fest date range, for the day picker inside DinnerSheet/
   // ScheduleSheet — distinct from `days` below (only the days that actually
   // have content, used to render the accordion sections).
@@ -87,7 +81,6 @@ export function FestWeek({
     fetchMemberOptions().then(setMembers);
     fetchDinnerDrafts().then(setDinnerDrafts);
     fetchScheduleDrafts().then(setScheduleDrafts);
-    fetchActivityDrafts().then(setActivityDrafts);
   }, []);
 
   // Once we know the viewer can edit, pull the Planner drafts + member list.
@@ -100,8 +93,9 @@ export function FestWeek({
     if (canEditAll) reloadAdminData();
   };
 
-  // Anytime events (migration 0139) aren't locked to a day — they render in the
-  // "Anytime all week" group with activities, not in any day card.
+  // Anytime events (migrations 0139/0141 — the old "activities" are now anytime
+  // events too) aren't locked to a day; they render in the "Anytime all week"
+  // group, not in any day card.
   const anytimeEvents = events.filter((e) => e.anytime);
   const dayEventsAll = events.filter((e) => !e.anytime);
   const days = Array.from(
@@ -110,40 +104,25 @@ export function FestWeek({
 
   return (
     <section className="space-y-3">
-      {(things.length > 0 || anytimeEvents.length > 0) && (
+      {anytimeEvents.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-accent">🗺️ Anytime all week</h2>
-          {things.map((a, i) => (
-            <ActivityCard
-              key={a.id}
-              activity={a}
-              index={i}
-              uid={uid}
-              canEditAll={canEditAll}
-              draft={activityDrafts.find((d) => d.id === a.id) ?? null}
-              days={festDayOptions}
-              members={members}
-              onSaved={onSaved}
-            />
-          ))}
-          {anytimeEvents.length > 0 && (
-            <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
-              <ul>
-                {anytimeEvents.map((e) => (
-                  <EventRow
-                    key={e.id}
-                    event={e}
-                    uid={uid}
-                    canEditAll={canEditAll}
-                    draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
-                    days={festDayOptions}
-                    members={members}
-                    onSaved={onSaved}
-                  />
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+            <ul>
+              {anytimeEvents.map((e) => (
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  uid={uid}
+                  canEditAll={canEditAll}
+                  draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
+                  days={festDayOptions}
+                  members={members}
+                  onSaved={onSaved}
+                />
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -221,98 +200,6 @@ function Expander({ open, children }: { open: boolean; children: ReactNode }) {
           {children}
         </div>
       </div>
-    </div>
-  );
-}
-
-function ActivityCard({
-  activity,
-  index,
-  uid,
-  canEditAll,
-  draft,
-  days,
-  members,
-  onSaved,
-}: {
-  activity: FestActivity;
-  index: number;
-  uid: string | null;
-  canEditAll: boolean;
-  draft: ActivityDraft | null;
-  days: string[];
-  members: FestMemberOption[];
-  onSaved: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const canEditThis =
-    canEditAll || Boolean(uid && (activity.leadUserId === uid || (activity.crewUserIds ?? []).includes(uid)));
-  // Full-access editors get the Planner's own full ActivitySheet in place
-  // (title/lead/crew/details); a lead/crew self-editor gets the narrower
-  // ActivityDetailsEditSheet (blurb/details/location only) instead.
-  const fullEdit = canEditAll && Boolean(draft);
-  return (
-    <div
-      style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
-      className="rise rounded-2xl bg-card p-4 ring-1 ring-border"
-    >
-      <p className="text-sm font-semibold">
-        {activity.emoji} {activity.title}
-      </p>
-      <p className="mt-0.5 text-xs text-foreground/70">{activity.blurb}</p>
-      {activity.details && (
-        <p className="mt-1 text-xs leading-relaxed text-foreground/60">{activity.details}</p>
-      )}
-      {activity.location && (
-        <p className="mt-1 text-xs text-foreground/50">
-          📍 <Protected label="Sign in for location">{activity.location}</Protected>
-        </p>
-      )}
-      {activity.lead && (
-        <div className="mt-2">
-          <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>
-          <p className="mt-0.5 text-sm font-semibold">
-            <PrivateName name={activity.lead.name} />
-          </p>
-          <div className="mt-2">
-            <CallTextButtons phone={activity.lead.phone} />
-          </div>
-        </div>
-      )}
-      {activity.signupEnabled && (
-        <div className="mt-3">
-          <ScheduleSignupSlots target={activity} kind="activity" canManage={canEditThis} members={members} />
-        </div>
-      )}
-      {canEditThis && (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="press mt-2 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-primary/25"
-        >
-          ✏️ Edit
-        </button>
-      )}
-      {editing && fullEdit && draft && (
-        <ActivitySheet
-          draft={draft}
-          days={days}
-          members={members}
-          nextPosition={draft.position}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            onSaved();
-          }}
-        />
-      )}
-      {editing && !fullEdit && (
-        <ActivityDetailsEditSheet
-          activity={activity}
-          onClose={() => setEditing(false)}
-          onSaved={onSaved}
-        />
-      )}
     </div>
   );
 }
