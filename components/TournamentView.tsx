@@ -32,18 +32,24 @@ export function TournamentSection({
   scheduleItemId,
   canManage,
   itemTitle,
+  enabled,
 }: {
   scheduleItemId: string;
   canManage: boolean;
   itemTitle: string;
+  /** The activity's `tournamentEnabled` flag — the section only appears when the
+   *  organizer turned "🏆 Tournament" on in the activity editor. */
+  enabled: boolean;
 }) {
   const guest = useGuest();
   const isDbItem = UUID_RE.test(scheduleItemId);
-  const { tournaments, loading, recordResult, reload } = useTournament(guest || !isDbItem ? null : scheduleItemId);
+  const active = enabled && isDbItem && !guest;
+  const { tournaments, loading, recordResult, reload } = useTournament(active ? scheduleItemId : null);
   const [creating, setCreating] = useState(false);
 
-  // Seed (slug-id) activities have no DB row to hang a tournament on.
-  if (!isDbItem) return null;
+  // Only on real DB activities the organizer flagged as a tournament — never a
+  // seed (slug-id) activity, and never the ones not marked as tournaments.
+  if (!isDbItem || !enabled) return null;
 
   if (guest) {
     return (
@@ -54,9 +60,17 @@ export function TournamentSection({
     );
   }
 
-  // Nothing yet: managers can start one; others see nothing (no empty box).
+  // Flagged as a tournament but not built yet: managers get the setup entry
+  // point; everyone else sees a quiet placeholder.
   if (!loading && tournaments.length === 0) {
-    if (!canManage) return null;
+    if (!canManage) {
+      return (
+        <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">🏆 Tournament</h2>
+          <p className="mt-1 text-sm text-foreground/60">Not set up yet — check back soon.</p>
+        </section>
+      );
+    }
     return (
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">🏆 Tournament</h2>
