@@ -17,6 +17,7 @@ import type {
   DuesTier,
   FestConfigContent,
   SignupField,
+  EventLink,
 } from "@/lib/types";
 
 /** The fest year these tables are keyed on. Bump (or parameterize) for 2027. */
@@ -157,8 +158,7 @@ interface ScheduleRow {
   lead_phone: string | null;
   crew_user_ids: string[] | null;
   image_url: string | null;
-  link_url: string | null;
-  link_label: string | null;
+  links: EventLink[] | null;
   signup_enabled: boolean;
   signup_capacity: number | null;
   signup_slot_minutes: number | null;
@@ -262,8 +262,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     leadUserId: r.lead_user_id,
     crewUserIds: r.crew_user_ids ?? [],
     imageUrl: r.image_url,
-    linkUrl: r.link_url,
-    linkLabel: r.link_label,
+    links: r.links ?? [],
     signupEnabled: r.signup_enabled,
     signupCapacity: r.signup_capacity,
     signupSlotMinutes: r.signup_slot_minutes,
@@ -357,7 +356,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -488,8 +487,7 @@ export interface ScheduleInput {
   crewUserIds: string[];
   position: number;
   imageUrl: string | null;
-  linkUrl: string | null;
-  linkLabel: string | null;
+  links: EventLink[];
   signupEnabled: boolean;
   signupCapacity: number | null;
   signupSlotMinutes: number | null;
@@ -518,8 +516,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     crew_user_ids: i.crewUserIds,
     position: i.position,
     image_url: i.imageUrl,
-    link_url: i.linkUrl,
-    link_label: i.linkLabel,
+    links: i.links,
     signup_enabled: i.signupEnabled,
     signup_capacity: i.signupCapacity,
     signup_slot_minutes: i.signupSlotMinutes,
@@ -543,8 +540,7 @@ export interface ScheduleDetailsInput {
   location: string | null;
   description: string | null;
   bring: string | null;
-  linkUrl: string | null;
-  linkLabel: string | null;
+  links: EventLink[];
 }
 export async function updateScheduleDetails(id: string, i: ScheduleDetailsInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -555,8 +551,7 @@ export async function updateScheduleDetails(id: string, i: ScheduleDetailsInput)
       location: i.location,
       description: i.description,
       bring: i.bring,
-      link_url: i.linkUrl,
-      link_label: i.linkLabel,
+      links: i.links,
       updated_at: new Date().toISOString(),
       updated_by: await currentUid(),
     })
@@ -863,7 +858,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -886,8 +881,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     crewUserIds: r.crew_user_ids ?? [],
     position: r.position,
     imageUrl: r.image_url,
-    linkUrl: r.link_url,
-    linkLabel: r.link_label,
+    links: r.links ?? [],
     signupEnabled: r.signup_enabled,
     signupCapacity: r.signup_capacity,
     signupSlotMinutes: r.signup_slot_minutes,

@@ -294,15 +294,20 @@ function EventRow({
               <p className="mt-0.5 text-sm text-foreground/80">{event.bring}</p>
             </div>
           )}
-          {event.linkUrl && (
-            <a
-              href={event.linkUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="press inline-block rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
-            >
-              🔗 {event.linkLabel?.trim() || "Open link"}
-            </a>
+          {(event.links ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {event.links!.map((l, i) => (
+                <a
+                  key={i}
+                  href={l.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="press inline-block rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
+                >
+                  🔗 {l.label?.trim() || "Open link"}
+                </a>
+              ))}
+            </div>
           )}
           {event.signupEnabled && (
             <ScheduleSignupSlots target={event} kind="schedule" canManage={canEditThis} members={members} />

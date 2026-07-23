@@ -15,6 +15,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { BackLink } from "@/components/BackLink";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
+import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useFestContent } from "@/lib/useFestContent";
@@ -481,8 +482,7 @@ export function ScheduleSheet({
   const [imageUrl, setImageUrl] = useState<string | null>(draft?.imageUrl ?? null);
   const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
-  const [linkUrl, setLinkUrl] = useState(draft?.linkUrl ?? "");
-  const [linkLabel, setLinkLabel] = useState(draft?.linkLabel ?? "");
+  const [links, setLinks] = useState(toEditableLinks(draft?.links));
   const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
   // Slots added while the event is still brand-new (no id to attach them to
   // yet) — persisted right after the first save. See SignupConfigEditor.
@@ -526,8 +526,7 @@ export function ScheduleSheet({
         crewUserIds,
         position: draft?.position ?? nextPosition,
         imageUrl,
-        linkUrl: orNull(linkUrl),
-        linkLabel: orNull(linkLabel),
+        links: cleanLinks(links),
         ...signupPayload(signup),
       });
       if (error) return error;
@@ -670,23 +669,11 @@ export function ScheduleSheet({
         {imageError && <p className="mt-1 text-xs font-medium text-accent">{imageError}</p>}
       </Field>
 
-      <Field label="Link (optional)">
+      <Field label="Links (optional)">
         <p className="mb-1.5 text-xs text-foreground/50">
-          A Google Doc/Sheet, sign-up form, or any web page for this event.
+          A Google Doc/Sheet, sign-up form, or any web page for this event — add more than one if you need to.
         </p>
-        <input
-          value={linkUrl}
-          onChange={(e) => setLinkUrl(e.target.value)}
-          placeholder="https://…"
-          inputMode="url"
-          className={`${FIELD} mb-2 w-full`}
-        />
-        <input
-          value={linkLabel}
-          onChange={(e) => setLinkLabel(e.target.value)}
-          placeholder="Button text, e.g. Sign up sheet"
-          className={`${FIELD} w-full`}
-        />
+        <LinksEditor links={links} onChange={setLinks} />
       </Field>
 
       <SignupConfigEditor
