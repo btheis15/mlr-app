@@ -7,7 +7,7 @@ import { TournamentSetupSheet } from "@/components/TournamentSetupSheet";
 import { MatchResultSheet, labelForMatch } from "@/components/MatchResultSheet";
 import { useTournament } from "@/lib/hooks";
 import { useGuest } from "@/components/Guard";
-import type { Tournament, TournamentMatch } from "@/lib/tournaments";
+import { swapMatchEntrants, type Tournament, type TournamentMatch } from "@/lib/tournaments";
 
 // A tournament attaches to a real DB activity (fest_schedule_items, a uuid) — the
 // only kind that can carry sign-ups. In-code SEED schedule events have slug ids
@@ -103,6 +103,26 @@ function TournamentCard({
   const [tab, setTab] = useState<"now" | "bracket">("now");
   const [managing, setManaging] = useState(false);
   const [openMatch, setOpenMatch] = useState<TournamentMatch | null>(null);
+  const [rearranging, setRearranging] = useState(false);
+  const [selected, setSelected] = useState<{ matchId: string; slot: 1 | 2 } | null>(null);
+
+  const onSlotTap = async (m: TournamentMatch, slot: 1 | 2) => {
+    const entrantHere = slot === 1 ? m.slot1EntrantId : m.slot2EntrantId;
+    if (!selected) {
+      // First tap must pick up an entrant (can't move an empty slot).
+      if (entrantHere) setSelected({ matchId: m.id, slot });
+      return;
+    }
+    if (selected.matchId === m.id && selected.slot === slot) {
+      setSelected(null); // tapped the same slot — cancel
+      return;
+    }
+    const src = selected;
+    setSelected(null);
+    // swap works for both move-into-empty and swap-two (a null just moves over).
+    await swapMatchEntrants(src.matchId, src.slot, m.id, slot);
+    await reload();
+  };
 
   const nameFor = useMemo(() => {
     const map = new Map(tournament.entrants.map((e) => [e.id, e.displayName]));
@@ -158,12 +178,38 @@ function TournamentCard({
           {tab === "now" && !isComplete ? (
             <NowView tournament={tournament} nameFor={nameFor} />
           ) : (
-            <TournamentBracket
-              tournament={tournament}
-              nameFor={nameFor}
-              canManage={canManage}
-              onOpenMatch={(m) => setOpenMatch(m)}
-            />
+            <>
+              {canManage && (
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRearranging((v) => !v);
+                      setSelected(null);
+                    }}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                      rearranging ? "bg-accent/10 text-accent ring-accent/30" : "text-foreground/60 ring-border"
+                    }`}
+                  >
+                    {rearranging ? "Done rearranging" : "⇄ Rearrange"}
+                  </button>
+                  {rearranging && (
+                    <span className="text-[11px] text-foreground/50">
+                      {selected ? "Tap a spot to move/swap" : "Tap a team to move it"}
+                    </span>
+                  )}
+                </div>
+              )}
+              <TournamentBracket
+                tournament={tournament}
+                nameFor={nameFor}
+                canManage={canManage}
+                onOpenMatch={(m) => setOpenMatch(m)}
+                rearranging={rearranging}
+                selected={selected}
+                onSlotTap={onSlotTap}
+              />
+            </>
           )}
         </div>
       )}

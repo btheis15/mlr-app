@@ -15,11 +15,20 @@ export function TournamentBracket({
   nameFor,
   canManage,
   onOpenMatch,
+  rearranging = false,
+  selected = null,
+  onSlotTap,
 }: {
   tournament: Tournament;
   nameFor: (entrantId: string | null) => string;
   canManage: boolean;
   onOpenMatch: (m: TournamentMatch) => void;
+  /** When true, tapping a slot selects/moves an entrant instead of scoring. */
+  rearranging?: boolean;
+  /** The currently picked-up slot (first tap), highlighted. */
+  selected?: { matchId: string; slot: 1 | 2 } | null;
+  /** A slot was tapped in rearrange mode. */
+  onSlotTap?: (match: TournamentMatch, slot: 1 | 2) => void;
 }) {
   const rounds = useMemo(() => {
     const set = Array.from(new Set(tournament.matches.map((m) => m.round))).sort((a, b) => a - b);
@@ -65,6 +74,9 @@ export function TournamentBracket({
             nameFor={nameFor}
             canManage={canManage}
             onOpen={() => onOpenMatch(m)}
+            rearranging={rearranging}
+            selected={selected}
+            onSlotTap={onSlotTap}
           />
         ))}
       </div>
@@ -77,23 +89,30 @@ function BracketMatchCard({
   nameFor,
   canManage,
   onOpen,
+  rearranging = false,
+  selected = null,
+  onSlotTap,
 }: {
   match: TournamentMatch;
   nameFor: (id: string | null) => string;
   canManage: boolean;
   onOpen: () => void;
+  rearranging?: boolean;
+  selected?: { matchId: string; slot: 1 | 2 } | null;
+  onSlotTap?: (match: TournamentMatch, slot: 1 | 2) => void;
 }) {
   const bye = (!!match.slot1EntrantId) !== (!!match.slot2EntrantId) && match.status === "complete";
   const bothSet = !!match.slot1EntrantId && !!match.slot2EntrantId;
-  const tappable = canManage && (bothSet || match.status === "complete") && !bye;
+  const tappable = !rearranging && canManage && (bothSet || match.status === "complete") && !bye;
 
-  const row = (entrantId: string | null, score: number | null) => {
+  const row = (entrantId: string | null, score: number | null, slot: 1 | 2) => {
     const isWinner = !!match.winnerEntrantId && entrantId === match.winnerEntrantId;
     const label = entrantId ? nameFor(entrantId) : match.status === "complete" ? "Bye" : "TBD";
-    return (
+    const isSelected = rearranging && selected?.matchId === match.id && selected?.slot === slot;
+    const body = (
       <div
         className={`flex items-center justify-between gap-2 px-3 py-2 ${
-          isWinner ? "bg-primary/10" : ""
+          isSelected ? "bg-accent/15" : isWinner ? "bg-primary/10" : ""
         }`}
       >
         <span
@@ -103,22 +122,34 @@ function BracketMatchCard({
         >
           {label}
         </span>
-        {score != null && <span className="text-sm font-bold tabular-nums">{score}</span>}
+        {rearranging ? (
+          entrantId && <span className="text-xs text-accent">{isSelected ? "moving…" : "move"}</span>
+        ) : (
+          score != null && <span className="text-sm font-bold tabular-nums">{score}</span>
+        )}
       </div>
     );
+    if (rearranging && canManage) {
+      return (
+        <button type="button" onClick={() => onSlotTap?.(match, slot)} className="block w-full text-left">
+          {body}
+        </button>
+      );
+    }
+    return body;
   };
 
   const Tag = tappable ? "button" : "div";
   return (
     <Tag
       {...(tappable ? { type: "button" as const, onClick: onOpen } : {})}
-      className={`block w-full overflow-hidden rounded-2xl text-left ring-1 ring-border ${
-        tappable ? "hover:ring-foreground/25" : ""
-      } ${bye ? "opacity-70" : ""}`}
+      className={`block w-full overflow-hidden rounded-2xl text-left ring-1 ${
+        rearranging ? "ring-accent/40" : "ring-border"
+      } ${tappable ? "hover:ring-foreground/25" : ""} ${bye ? "opacity-70" : ""}`}
     >
-      {row(match.slot1EntrantId, match.slot1Score)}
+      {row(match.slot1EntrantId, match.slot1Score, 1)}
       <div className="h-px bg-border" />
-      {row(match.slot2EntrantId, match.slot2Score)}
+      {row(match.slot2EntrantId, match.slot2Score, 2)}
       {(match.isPlayIn || match.status === "ready") && (
         <div className="flex items-center justify-between bg-card px-3 py-1">
           {match.isPlayIn ? (
