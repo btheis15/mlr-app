@@ -26,6 +26,7 @@ const CARDS: {
   { href: "/admin/cabins", emoji: "🏡", tile: "bg-lake/12", title: "Cabin requests", sub: "Approve room stay requests" },
   { href: "/admin/help-contact", emoji: "☎️", tile: "bg-campfire/12", title: "Help contact", sub: "Who the Help page says to text or call" },
   { href: "/admin/signins", emoji: "🔐", tile: "bg-dusk/12", title: "Sign-ins", sub: "Who joined & recent sign-ins" },
+  { href: "/admin/system", emoji: "🖥️", tile: "bg-primary/12", title: "Media server", sub: "Pull latest code & restart the mac mini" },
   { href: "/admin/preview", emoji: "👁️", tile: "bg-sun/12", title: "View as", sub: "Preview the app as a member or guest" },
 ];
 

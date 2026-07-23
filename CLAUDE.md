@@ -517,7 +517,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
 ## Admin dashboard
 
 `/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for
-every admin tool — a two-column grid of 9 cards plus a Family Fest Planner banner,
+every admin tool — a two-column grid of 10 cards plus a Family Fest Planner banner,
 replacing the ~9 stacked, nested accordions that used to live in Profile →
 Admin. Each card links to its own `/admin/*` sub-page mounting the same
 component that used to live in the accordion (unchanged data flow, just less
@@ -533,6 +533,7 @@ nesting):
 | Cabin requests | `/admin/cabins` | [`AdminCabinBookings`](components/AdminCabinBookings.tsx) |
 | Help contact | `/admin/help-contact` | [`AdminHelpContact`](components/AdminHelpContact.tsx) — see **Help contact** |
 | Sign-ins | `/admin/signins` | [`AdminSignins`](components/AdminSignins.tsx) |
+| Media server | `/admin/system` | [`AdminMediaServer`](components/AdminMediaServer.tsx) — one-tap "pull latest + restart" for the mac mini, see **Mac-mini media server** |
 | View as | `/admin/preview` | [`PreviewAs`](components/PreviewAs.tsx) |
 
 Every sub-page wraps its content in [`AdminGuard`](app/admin/AdminGuard.tsx) —
@@ -1853,6 +1854,21 @@ aware), `/geocode` now requires sign-in (same `requireUser` check as
 see the README), and the `MAX_MB` upload cap default dropped to **256** (was
 1024). See [`media-server/README.md`](media-server/README.md) for the full
 list and the `npm install` + restart needed on the mini.
+
+**Remote restart, from the app.** Shipping a media-server change still needs
+a `git pull` + process restart on the mini, but that no longer requires
+someone at the machine: Admin → **Media server** (`/admin/system`,
+[`AdminMediaServer`](components/AdminMediaServer.tsx)) shows the running
+commit + how far behind `origin/main` it is and a "Pull latest & restart"
+button. It calls `POST /admin/restart-media-server` (`requireAdmin`-gated,
+same auth pattern as `/admin/invite`) — a fast-forward-only `git merge`
+(409s rather than force-pushing over a diverged checkout), a conditional
+`npm install` only if `media-server/package.json`/`package-lock.json`
+changed, then `process.exit(0)`. No `launchctl` call needed: the launchd
+plist (`com.mlr.media-server.plist`) already sets `KeepAlive`, so it
+relaunches on its own within the 10s `ThrottleInterval`, on the new code.
+`GET /admin/media-server-status` backs the status line the card shows before
+you tap anything.
 
 ## Loading stability & the SWR cache
 
