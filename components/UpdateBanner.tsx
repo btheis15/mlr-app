@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVisibleInterval } from "@/lib/hooks";
 
 /**
  * PWA "a newer version is out" nudge.
@@ -81,14 +82,14 @@ export function UpdateBanner() {
     if (latest && latest !== CURRENT) setStale(true);
   }, []);
 
+  // The background 5-min poll. useVisibleInterval pauses it while the app is
+  // hidden (no wasted network wakeups on a backgrounded PWA) and fires an
+  // immediate check the moment it's foregrounded again — which also covers the
+  // old `visibilitychange`/`focus` re-check the poll used to do separately.
+  useVisibleInterval(check, POLL_MS);
+
   useEffect(() => {
     check();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") check();
-    };
-    // Re-check when the app is brought back to the foreground — the most common
-    // moment someone's been sitting on an old build.
-    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);
     // A standalone PWA resumed from the background is often restored from the
     // back/forward cache (persisted page) — the exact case where you see the
@@ -98,12 +99,9 @@ export function UpdateBanner() {
       if (e.persisted) check();
     };
     window.addEventListener("pageshow", onPageShow);
-    const id = window.setInterval(check, POLL_MS);
     return () => {
-      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", check);
       window.removeEventListener("pageshow", onPageShow);
-      window.clearInterval(id);
     };
   }, [check]);
 

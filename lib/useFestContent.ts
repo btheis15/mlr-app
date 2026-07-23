@@ -9,11 +9,19 @@
 // instantly instead of flashing the seed, while a background fetch (and,
 // optionally, a Realtime subscription) keeps it current.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useDebouncedCallback } from "@/lib/hooks";
 import { useCachedResource } from "@/lib/swrCache";
 import { fetchFestContent, SEED_CONTENT, type FestContent } from "@/lib/festContent";
+
+// Per-mount channel-name suffix. useFestContent({realtime:true}) is called from
+// 8+ surfaces, several of which can be mounted at once (Home + a fest page).
+// Static topic names ("fest-content-live") mean those mounts all subscribe to
+// the SAME supabase-js channel object, so redundant bindings pile up and one
+// unmount's removeChannel tears down a topic another mount still needs. A unique
+// suffix gives each mount its own channel that it alone owns and cleans up.
+let festChannelSeq = 0;
 
 const FEST_TABLES = [
   "fest_config",
@@ -50,11 +58,14 @@ export function useFestContent(opts?: { realtime?: boolean }): UseFestContent {
   );
   const [scheduleRefetch] = useDebouncedCallback(250);
   const realtime = opts?.realtime ?? false;
+  const instanceRef = useRef<number | null>(null);
+  if (instanceRef.current === null) instanceRef.current = ++festChannelSeq;
 
   useEffect(() => {
     const sb = supabase;
     if (!realtime || !isSupabaseConfigured || !sb) return;
-    const channel = sb.channel("fest-content-live");
+    const suffix = instanceRef.current;
+    const channel = sb.channel(`fest-content-live-${suffix}`);
     for (const table of FEST_TABLES) {
       channel.on("postgres_changes", { event: "*", schema: "public", table }, () =>
         scheduleRefetch(reload),
@@ -62,7 +73,7 @@ export function useFestContent(opts?: { realtime?: boolean }): UseFestContent {
     }
     channel.subscribe();
     const calloutChannel = sb
-      .channel("home-callouts-live")
+      .channel(`home-callouts-live-${suffix}`)
       .on("postgres_changes", { event: "*", schema: "public", table: CALLOUT_TABLE }, () =>
         scheduleRefetch(reload),
       );

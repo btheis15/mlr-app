@@ -117,7 +117,7 @@ export function TabBar() {
                   </span>
                   {live && (
                     <span className="absolute -right-1.5 -top-0.5 flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fest/70" />
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fest/70 motion-reduce:animate-none" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-fest" />
                     </span>
                   )}

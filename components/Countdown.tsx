@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useDemoDate } from "@/lib/DemoDateProvider";
+import { useVisibleInterval } from "@/lib/hooks";
 
 /**
  * Live countdown to a target date. Ticks in real time normally; when a demo
@@ -16,9 +17,15 @@ export function Countdown({ target }: { target: string }) {
   useEffect(() => {
     if (demoDate) return; // simulating a date → static, no ticking
     setRealNow(Date.now());
-    const id = setInterval(() => setRealNow(Date.now()), 1000);
-    return () => clearInterval(id);
   }, [demoDate]);
+
+  // The 1s tick is the most aggressive foreground timer in the app; pause it
+  // while backgrounded (a hidden PWA re-rendering every second is pure drain)
+  // and disable it entirely while a demo date is frozen.
+  useVisibleInterval(
+    () => setRealNow(Date.now()),
+    demoDate ? null : 1000,
+  );
 
   const now = demoDate ? (demoNow?.getTime() ?? null) : realNow;
   const targetMs = new Date(`${target}T15:00:00`).getTime();
