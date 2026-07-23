@@ -938,8 +938,8 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         libraryFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
@@ -948,8 +948,8 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         cameraFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
@@ -958,8 +958,8 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         documentFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >

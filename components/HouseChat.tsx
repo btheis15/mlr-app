@@ -817,8 +817,8 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         libraryFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
@@ -827,8 +827,8 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         cameraFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
@@ -837,8 +837,8 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
                     <button
                       type="button"
                       onClick={() => {
-                        setAttachMenuOpen(false);
                         documentFileRef.current?.click();
+                        setAttachMenuOpen(false);
                       }}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
