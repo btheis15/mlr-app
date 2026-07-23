@@ -63,17 +63,18 @@ export function TournamentSection({
   }
 
   // Flagged as a tournament but not built yet: managers get the setup entry
-  // point; everyone else sees a quiet placeholder.
+  // point; everyone else sees a quiet placeholder. The setup sheet is rendered
+  // ONCE below as a stable sibling — so reloading after "Create" (which flips this
+  // from the empty state to the card list) doesn't remount + orphan its close(),
+  // which is why the sheet used to hang open after creating.
+  let body;
   if (!loading && tournaments.length === 0) {
-    if (!canManage) {
-      return (
-        <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">🏆 Tournament</h2>
-          <p className="mt-1 text-sm text-foreground/60">Not set up yet — check back soon.</p>
-        </section>
-      );
-    }
-    return (
+    body = !canManage ? (
+      <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">🏆 Tournament</h2>
+        <p className="mt-1 text-sm text-foreground/60">Not set up yet — check back soon.</p>
+      </section>
+    ) : (
       <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">🏆 Tournament</h2>
         <button
@@ -83,24 +84,21 @@ export function TournamentSection({
         >
           Set up a tournament
         </button>
-        {creating && (
-          <TournamentSetupSheet
-            tournament={null}
-            host={host}
-            itemTitle={itemTitle}
-            onChanged={reload}
-            onClose={() => setCreating(false)}
-          />
-        )}
       </section>
+    );
+  } else {
+    body = (
+      <div className="space-y-4">
+        {tournaments.map((t) => (
+          <TournamentCard key={t.id} tournament={t} host={host} canManage={canManage} recordResult={recordResult} reload={reload} />
+        ))}
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {tournaments.map((t) => (
-        <TournamentCard key={t.id} tournament={t} host={host} canManage={canManage} recordResult={recordResult} reload={reload} />
-      ))}
+    <>
+      {body}
       {creating && (
         <TournamentSetupSheet
           tournament={null}
@@ -110,7 +108,7 @@ export function TournamentSection({
           onClose={() => setCreating(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
