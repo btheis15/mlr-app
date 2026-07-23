@@ -267,6 +267,7 @@ function EventRow({
             off. Every other row here starts with plain text/no ring, so this
             never showed up until an edit button became the first child. */}
         <div className="space-y-3 px-4 pb-4 pt-1">
+          <p className="text-sm font-medium leading-snug">{event.title}</p>
           {canEditThis && (
             <button
               type="button"
@@ -393,6 +394,7 @@ export function DinnerRow({
             pill's box-shadow was getting clipped at the top by Expander's
             overflow-hidden with zero top padding here. */}
         <div className="space-y-3 px-4 pb-4 pt-1">
+          <p className="text-sm font-medium leading-snug">Dinner · {dinner.title}</p>
           {canEditThis && (
             <button
               type="button"
