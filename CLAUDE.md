@@ -935,6 +935,12 @@ resolves the item and defers to that existing predicate.
   "no tournament" on 42P01). Hook `useTournament(scheduleItemId)` in
   [`lib/hooks.ts`](lib/hooks.ts) (uid-scoped SWR `tournament.<uid>.<itemId>`, realtime
   over all four tables, optimistic `recordResult` with a per-match in-flight lock).
+- **Gated by a per-activity flag (migration 0147):** `fest_schedule_items.tournament_enabled`
+  (public-read, mirrors `signup_enabled`) — set by a **"🏆 Tournament" toggle in the activity
+  editor** (`ScheduleSheet` in FestPlanner). `TournamentSection` renders **only** when the flag
+  is on, so the section never shows on non-tournament activities (guests included). Wired through
+  `lib/festContent.ts` (`ScheduleRow`/`mapSchedule`/`ScheduleInput`/`saveScheduleItem` + the
+  schedule selects) and `ScheduleEvent.tournamentEnabled`.
 - **Surfaces:** [`TournamentView`](components/TournamentView.tsx) (`TournamentSection`
   is the mount) renders on [`FestScheduleDetail`](components/FestScheduleDetail.tsx)
   and inline in [`FestWeek`](components/FestWeek.tsx)'s `EventRow` (**mounted only when

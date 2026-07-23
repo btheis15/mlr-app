@@ -169,6 +169,7 @@ interface ScheduleRow {
   signup_fields: SignupField[] | null;
   signup_reminder_minutes: number[] | null;
   signup_team_size: number | null;
+  tournament_enabled: boolean;
 }
 interface DinnerRow {
   id: string;
@@ -274,6 +275,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
     signupTeamSize: r.signup_team_size,
+    tournamentEnabled: r.tournament_enabled ?? false,
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -358,7 +360,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size, tournament_enabled",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -500,6 +502,7 @@ export interface ScheduleInput {
   signupFields: SignupField[];
   signupReminderMinutes: number[];
   signupTeamSize: number | null;
+  tournamentEnabled: boolean;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -530,6 +533,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_fields: i.signupFields,
     signup_reminder_minutes: i.signupReminderMinutes,
     signup_team_size: i.signupTeamSize,
+    tournament_enabled: i.tournamentEnabled,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -862,7 +866,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size, tournament_enabled",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -896,6 +900,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
     signupTeamSize: r.signup_team_size,
+    tournamentEnabled: r.tournament_enabled ?? false,
   }));
 }
 

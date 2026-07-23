@@ -484,6 +484,7 @@ export function ScheduleSheet({
   const [imageError, setImageError] = useState<string | null>(null);
   const [links, setLinks] = useState(toEditableLinks(draft?.links));
   const [signup, setSignup] = useState<SignupDraft>(() => signupDraft(draft ?? undefined));
+  const [tournamentEnabled, setTournamentEnabled] = useState(draft?.tournamentEnabled ?? false);
   // Slots added while the event is still brand-new (no id to attach them to
   // yet) — persisted right after the first save. See SignupConfigEditor.
   const [pendingSlots, setPendingSlots] = useState<PendingSlot[]>([]);
@@ -528,6 +529,7 @@ export function ScheduleSheet({
         imageUrl,
         links: cleanLinks(links),
         ...signupPayload(signup),
+        tournamentEnabled,
       });
       if (error) return error;
       const slotErr = await flushPendingSlots("schedule", draft?.id, id, pendingSlots);
@@ -685,6 +687,19 @@ export function ScheduleSheet({
         pendingSlots={pendingSlots}
         onPendingSlots={setPendingSlots}
       />
+
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+        <span className="min-w-0">
+          <span className="text-sm font-medium">🏆 Tournament</span>
+          <span className="block text-xs text-foreground/50">Run a bracket or round-robin for this activity — a Tournament section appears on it.</span>
+        </span>
+        <input
+          type="checkbox"
+          checked={tournamentEnabled}
+          onChange={(e) => setTournamentEnabled(e.target.checked)}
+          className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+        />
+      </label>
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
         <span className="min-w-0">

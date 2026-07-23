@@ -400,6 +400,9 @@ export interface ScheduleEvent {
    *  any signup mode; capacity math is unchanged (still a plain people-count,
    *  so a team of 2 just consumes 2 seats). */
   signupTeamSize?: number | null;
+  /** This activity runs a tournament (migration 0147) — gates the 🏆 Tournament
+   *  section on the activity so it only appears when the organizer opts in. */
+  tournamentEnabled?: boolean;
 }
 
 /** One admin-defined extra column on a sign-up (migration 0136). `id` is a

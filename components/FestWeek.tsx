@@ -316,7 +316,9 @@ function EventRow({
           )}
           {/* Only mount when the row is open — Expander keeps its children in the
               DOM while collapsed, and we don't want a realtime channel per row. */}
-          {open && <TournamentSection scheduleItemId={event.id} canManage={canEditThis} itemTitle={event.title} />}
+          {open && event.tournamentEnabled && (
+            <TournamentSection scheduleItemId={event.id} canManage={canEditThis} itemTitle={event.title} enabled />
+          )}
           {event.lead && (
             <div>
               <p className="text-[11px] uppercase tracking-wide text-foreground/40">In charge</p>
