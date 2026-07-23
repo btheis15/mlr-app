@@ -8,6 +8,8 @@ import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { MeetingSection } from "@/components/MeetingSection";
+import { ChatPollSection } from "@/components/ChatPollSection";
+import { ChatPollComposer } from "@/components/ChatPollComposer";
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { motion } from "framer-motion";
@@ -164,8 +166,20 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   const [status, setStatus] = useState<string | null>(null);
   const [memberSheet, setMemberSheet] = useState<Member | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [pollComposing, setPollComposing] = useState(false);
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const libraryFileRef = useRef<HTMLInputElement>(null);
+  const cameraFileRef = useRef<HTMLInputElement>(null);
+  const documentFileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAttachMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [attachMenuOpen]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -760,7 +774,10 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           open proposal; organizers (admin/lead) can start one. Only for a live
           (non-archived) room with a resolved committee id. */}
       {committeeId && !readOnly && (
-        <MeetingSection scope={{ type: "committee", committeeId, slug, area }} members={members} />
+        <>
+          <MeetingSection scope={{ type: "committee", committeeId, slug, area }} members={members} />
+          <ChatPollSection scope={{ type: "committee", committeeId, slug, area }} />
+        </>
       )}
       <div className="relative min-h-0 flex-1">
       <div
@@ -898,10 +915,73 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           {/* Editing changes text only — hide the attachment buttons so it's clear
               media isn't part of an edit (and to leave more room for the text). */}
           {!editing && (
-            <>
-              <button type="button" onClick={() => fileRef.current?.click()} className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg text-foreground/55" aria-label="Attach a photo, video, or file">📎</button>
-              <input ref={fileRef} type="file" multiple onChange={pickFiles} className="hidden" />
-            </>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setAttachMenuOpen((o) => !o)}
+                aria-label="Add a photo, video, document, or poll"
+                aria-expanded={attachMenuOpen}
+                className="press flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold leading-none text-foreground/55"
+              >
+                +
+              </button>
+              {attachMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setAttachMenuOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    style={{ transformOrigin: "bottom left" }}
+                    className="absolute bottom-11 left-0 z-20 w-56 space-y-0.5 rounded-2xl bg-card p-1.5 shadow-lg ring-1 ring-border"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        libraryFileRef.current?.click();
+                      }}
+                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
+                    >
+                      <span className="text-lg">🖼️</span> Photo &amp; Video Library
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        cameraFileRef.current?.click();
+                      }}
+                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
+                    >
+                      <span className="text-lg">📷</span> Take Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        documentFileRef.current?.click();
+                      }}
+                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
+                    >
+                      <span className="text-lg">📄</span> Document
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        setPollComposing(true);
+                      }}
+                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
+                    >
+                      <span className="text-lg">🗳️</span> Poll
+                    </button>
+                  </motion.div>
+                </>
+              )}
+              <input ref={libraryFileRef} type="file" multiple accept="image/*,video/*" onChange={pickFiles} className="hidden" />
+              <input ref={cameraFileRef} type="file" accept="image/*" capture="environment" onChange={pickFiles} className="hidden" />
+              <input ref={documentFileRef} type="file" multiple onChange={pickFiles} className="hidden" />
+            </div>
           )}
           <textarea
             ref={textareaRef}
@@ -930,6 +1010,14 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} z="z-[55]" />}
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatarUrl} onClose={() => setMemberSheet(null)} />
+      )}
+      {pollComposing && committeeId && (
+        <ChatPollComposer
+          scope={{ type: "committee", committeeId, slug, area }}
+          roomLabel={name}
+          onClose={() => setPollComposing(false)}
+          onCreated={() => setPollComposing(false)}
+        />
       )}
     </>
   ));
