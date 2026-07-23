@@ -216,18 +216,26 @@ export function PrivateActivitySheet({
 
           <ul className="space-y-1.5">
             {[...going, ...other].map((m) => (
-              <li key={m.id} className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2 ring-1 ring-border">
+              <li key={m.id} className="flex items-center gap-2 rounded-xl bg-card px-3 py-2 ring-1 ring-border">
                 <Avatar name={m.name} size={28} />
                 <span className="flex-1 truncate text-sm">
                   {m.name}
                   {!m.userId && <span className="ml-1 text-[11px] text-foreground/40">(not on app)</span>}
                 </span>
-                {m.role === "host" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Host</span>}
+                {m.role === "host" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Organizer</span>}
                 {m.rsvp && <span className="text-[11px] font-medium text-foreground/50">{RSVP_LABEL[m.rsvp]}</span>}
                 {canManage && m.userId !== activity.createdBy && (
-                  <div className="flex items-center gap-1">
-                    {m.role !== "host" && (
-                      <button type="button" onClick={async () => { await setPrivateActivityMemberRole(m.id, "host"); await refresh(); }} className="rounded-full px-1.5 text-[11px] text-foreground/50" aria-label="Make host" title="Make a host">↑host</button>
+                  <div className="flex items-center gap-1.5">
+                    {/* Only app members can be organizers (they need an account to
+                        log in and manage) — a typed-in name can't. */}
+                    {m.userId && (
+                      <button
+                        type="button"
+                        onClick={async () => { await setPrivateActivityMemberRole(m.id, m.role === "host" ? "player" : "host"); await refresh(); }}
+                        className="rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-primary ring-1 ring-border"
+                      >
+                        {m.role === "host" ? "Remove organizer" : "Make organizer"}
+                      </button>
                     )}
                     <button type="button" onClick={async () => { await removePrivateActivityMember(m.id); await refresh(); }} className="grid h-6 w-6 place-items-center rounded-full text-accent" aria-label={`Remove ${m.name}`}>×</button>
                   </div>
@@ -235,6 +243,11 @@ export function PrivateActivitySheet({
               </li>
             ))}
           </ul>
+          {canManage && (
+            <p className="px-0.5 text-[11px] text-foreground/45">
+              Organizers can score, invite, and edit. Add someone on the app, then tap <span className="font-medium text-primary">Make organizer</span> to share control. People not on the app can play, but can&rsquo;t be organizers.
+            </p>
+          )}
         </section>
 
         {/* Host controls: archive / delete */}
