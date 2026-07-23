@@ -154,6 +154,10 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   A Home callout can also link to a signup-enabled event with a "📝 Sign up"
   button (migration
   [`0137_callout_signup_link.sql`](supabase/migrations/0137_callout_signup_link.sql)).
+  The old separate **"Anytime activities"** are now just anytime events —
+  converted in migration
+  [`0141_merge_activities_into_anytime_events.sql`](supabase/migrations/0141_merge_activities_into_anytime_events.sql)
+  (web-only; iOS still reads the untouched `fest_activities` table for now).
   See CLAUDE.md → **Event sign-up slots**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Content review, Committees & join requests, Houses,
