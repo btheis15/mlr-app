@@ -1006,6 +1006,11 @@ a handful of people (app members or **typed-in names** for anyone not on the app
 - **Archive + delete.** A host can **🗄️ Archive** a finished game (tucks it under a
   collapsed "Finished & archived" disclosure in the Events list, still deletable) or
   **Delete** it outright (cascades to roster + tournament).
+- **One tournament per activity (migration 0151).** A partial unique index
+  (`tournaments_one_per_activity` on `private_activity_id`) + an **idempotent**
+  `create_activity_tournament` (returns the existing tournament if one exists) so a
+  repeated "Create tournament" tap can never stack duplicates — it always lands on
+  the one tournament.
 - **Client:** seam [`lib/privateActivities.ts`](lib/privateActivities.ts) (degrades
   to none on 42P01), hook `usePrivateActivities()` in [`lib/hooks.ts`](lib/hooks.ts)
   (uid-scoped SWR `privateActivities.<uid>` + realtime), UI
