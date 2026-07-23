@@ -25,6 +25,9 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "house_stay_created", label: "New stays at your house", desc: "When someone in your house adds a stay to the house calendar" },
   { value: "meeting_proposed", label: "New meeting to schedule", desc: "When a meeting is proposed in a committee or house you're in" },
   { value: "meeting_scheduled", label: "Meeting set", desc: "When a proposed meeting is locked to a time" },
+  { value: "tournament_published", label: "Tournament bracket set", desc: "When the bracket goes live for an activity you're entered in" },
+  { value: "tournament_match_ready", label: "My next match is ready", desc: "When your next game in a tournament is set" },
+  { value: "tournament_champion", label: "Tournament champion", desc: "When a tournament you're in crowns its winner" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 

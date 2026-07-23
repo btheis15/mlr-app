@@ -871,6 +871,68 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 
+## Tournament brackets (migration 0144)
+
+A competitive **activity** (cornhole, ping-pong, horseshoes) can run a
+**tournament** on top of its sign-ups. It attaches to a `fest_schedule_items` row
+(a uuid FK — a **real DB activity only**, never an in-code seed slug) and draws its
+entrants from that item's `fest_schedule_signups` (individual OR fixed-size teams,
+0143). Any signed-in member watches the live bracket; the activity's **lead/crew**
+(the `_can_manage_item_signups` predicate — same gate as its sign-ups) seed,
+arrange, and score it. **No new organizer role** — `is_tournament_manager(t)`
+resolves the item and defers to that existing predicate.
+
+- **Data model** (all members-read, writes via `SECURITY DEFINER` RPCs, realtime):
+  `tournaments` (one per activity: format `single_elim|round_robin|pools_bracket`,
+  `entrant_type`, `team_size`, `bye_strategy`, `status setup|live|complete`,
+  `tiebreakers[]`, optional `target_score`/`win_by`, `winner_entrant_id`),
+  `tournament_entrants` (a solo player or a team; `seed`, `display_name`, `pool`,
+  `signup_team_id` back-link), `tournament_participants` (the people —
+  **`entrant_id` null = the pre-team pool**; **`user_id` null = an account-less
+  typed name**, the 0143 linked-or-typed idiom, `on delete set null` keeps the name
+  snapshot), and `tournament_matches` (the bracket graph — `round`/`position`, two
+  slot entrants, scores, winner, a `next_match_id`+`next_slot` progression pointer,
+  `is_play_in`, `stage pool|bracket` + `pool` for the later formats).
+- **Single-elimination is the shipped format (Phase A).** `generate_bracket`
+  fold-seeds (standard 1-vs-N, mirrors the pure `seedOrder` in `lib/tournaments.ts`),
+  sizes to the next power of two, and auto-resolves **byes** (a round-1 match with one
+  null slot, completed at generation). `bye_strategy`: **byes** (top seeds rest — falls
+  out of fold-seeding) or **play_in** (same graph, round-1 real games flagged/labeled
+  play-in) — random seeding naturally scatters byes ("random byes"). Round-robin +
+  pools→bracket are later migrations against the same tables (Phase B/C).
+- **Scoring is one tap: pick the winner; scores are OPTIONAL** (`record_match_result(
+  p_match, p_winner, p_score1 default null, p_score2 default null)` — winner alone is a
+  complete result). It propagates the winner into `next_match`; changing a decided
+  result runs the recursive `_tournament_advance` cascade that **clears every stale
+  downstream result** so they're replayed. `set_match_entrant`/`swap_match_entrants`
+  hand-place seeds; `reset_bracket` re-opens for restructuring. A
+  `pg_advisory_xact_lock(tournament_id)` serializes concurrent manager edits.
+- **Entrants:** `import_entrants_from_signups` (teams → grouped by
+  `fest_schedule_signups.team_id`; individuals → the pool), `generate_teams`
+  (random-pair the pool into teams of `team_size`), plus `add_participant`/
+  `add_entrant` for hand-adds — **including account-less typed names** (fully
+  supported; they just can't receive notifications).
+- **Client:** seam [`lib/tournaments.ts`](lib/tournaments.ts) (types, the pure bracket
+  math `bracketSize`/`seedOrder`/`firstRoundPreview`/`bracketSummary` for the setup
+  preview, fetch + RPC wrappers, `applyMatchResult` optimistic transform; degrades to
+  "no tournament" on 42P01). Hook `useTournament(scheduleItemId)` in
+  [`lib/hooks.ts`](lib/hooks.ts) (uid-scoped SWR `tournament.<uid>.<itemId>`, realtime
+  over all four tables, optimistic `recordResult` with a per-match in-flight lock).
+- **Surfaces:** [`TournamentView`](components/TournamentView.tsx) (`TournamentSection`
+  is the mount) renders on [`FestScheduleDetail`](components/FestScheduleDetail.tsx)
+  and inline in [`FestWeek`](components/FestWeek.tsx)'s `EventRow` (**mounted only when
+  the row is open** — Expander keeps children in the DOM, so a per-row realtime channel
+  would otherwise open for every event). A spectator "Now/Bracket" toggle
+  ([`TournamentBracket`](components/TournamentBracket.tsx) round pager,
+  [`MatchResultSheet`](components/MatchResultSheet.tsx),
+  [`TournamentSetupSheet`](components/TournamentSetupSheet.tsx)). A Home call-out with
+  `signup_item_id` already deep-links to the activity, so advertising a tournament is free.
+- **Notifications:** `tournament_published` / `tournament_match_ready` /
+  `tournament_champion` via `_notify` (Family Fest section of `NotifPrefs`, default on;
+  `PushToggle` opt-in; both mini senders' `PUSHABLE_FEED_TYPES`). Account-less entrants
+  get none (no `user_id`).
+- 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

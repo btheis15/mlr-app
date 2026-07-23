@@ -307,6 +307,8 @@ async function start() {
     "cabin_message",
     // Sign-up slot reminder (migration 0140) — override push, like help_urgent.
     "signup_reminder",
+    // Tournament brackets (migration 0144) — bracket set, next match ready, champion.
+    "tournament_published", "tournament_match_ready", "tournament_champion",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;

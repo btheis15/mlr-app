@@ -4,6 +4,7 @@ import { BackLink } from "@/components/BackLink";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
+import { TournamentSection } from "@/components/TournamentView";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useCachedResource } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
@@ -64,6 +65,8 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
       <p className="text-sm leading-relaxed text-foreground/80">{event.description}</p>
 
       {event.signupEnabled && <ScheduleSignupSlots target={event} kind="schedule" canManage={canManage} members={[]} />}
+
+      <TournamentSection scheduleItemId={event.id} canManage={canManage} itemTitle={event.title} />
 
       {event.bring && (
         <section className="rounded-2xl bg-card p-4 ring-1 ring-border">
