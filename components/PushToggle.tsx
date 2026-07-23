@@ -29,6 +29,7 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "tournament_published", label: "Tournament bracket set", desc: "When the bracket goes live for an activity you're entered in" },
   { value: "tournament_match_ready", label: "My next match is ready", desc: "When your next game in a tournament is set" },
   { value: "tournament_champion", label: "Tournament champion", desc: "When a tournament you're in crowns its winner" },
+  { value: "private_activity_invite", label: "Invited to an activity", desc: "When someone adds you to a private activity or game" },
   { value: "chat", label: "New committee messages", desc: "Every new message in your committees" },
 ];
 

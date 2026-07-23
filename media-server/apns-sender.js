@@ -311,6 +311,8 @@ async function start() {
     "signup_reminder",
     // Tournament brackets (migration 0144) — bracket set, next match ready, champion.
     "tournament_published", "tournament_match_ready", "tournament_champion",
+    // Private activities (migration 0150) — invited to a private activity/game.
+    "private_activity_invite",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;

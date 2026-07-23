@@ -16,25 +16,27 @@ import {
   hasKnockoutBracket,
   type Tournament,
   type TournamentMatch,
+  type TournamentHost,
 } from "@/lib/tournaments";
 
-// A tournament attaches to a real DB activity (fest_schedule_items, a uuid) — the
-// only kind that can carry sign-ups. In-code SEED schedule events have slug ids
-// (e.g. "ye-olde-family-faire") with no DB row, so we never mount there.
+// A fest tournament attaches to a real DB activity (fest_schedule_items, a uuid).
+// In-code SEED schedule events have slug ids (e.g. "ye-olde-family-faire") with no
+// DB row, so we never mount there. A private-activity host is always a real uuid.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The tournament block on an activity detail page. Lists the activity's
- * tournament(s) (usually one), shows the live bracket to everyone, and gives
+ * The tournament block on an activity detail page (a Family Fest activity OR a
+ * private activity — see `host`). Lists the activity's tournament(s) (usually
+ * one), shows the live bracket to everyone who can see the activity, and gives
  * managers the set-up / scoring controls. Guests get a sign-in nudge.
  */
 export function TournamentSection({
-  scheduleItemId,
+  host,
   canManage,
   itemTitle,
   enabled,
 }: {
-  scheduleItemId: string;
+  host: TournamentHost;
   canManage: boolean;
   itemTitle: string;
   /** The activity's `tournamentEnabled` flag — the section only appears when the
@@ -42,9 +44,9 @@ export function TournamentSection({
   enabled: boolean;
 }) {
   const guest = useGuest();
-  const isDbItem = UUID_RE.test(scheduleItemId);
+  const isDbItem = host.kind === "activity" || UUID_RE.test(host.id);
   const active = enabled && isDbItem && !guest;
-  const { tournaments, loading, recordResult, reload } = useTournament(active ? scheduleItemId : null);
+  const { tournaments, loading, recordResult, reload } = useTournament(active ? host : null);
   const [creating, setCreating] = useState(false);
 
   // Only on real DB activities the organizer flagged as a tournament — never a
@@ -84,7 +86,7 @@ export function TournamentSection({
         {creating && (
           <TournamentSetupSheet
             tournament={null}
-            scheduleItemId={scheduleItemId}
+            host={host}
             itemTitle={itemTitle}
             onChanged={reload}
             onClose={() => setCreating(false)}
@@ -97,12 +99,12 @@ export function TournamentSection({
   return (
     <div className="space-y-4">
       {tournaments.map((t) => (
-        <TournamentCard key={t.id} tournament={t} canManage={canManage} recordResult={recordResult} reload={reload} />
+        <TournamentCard key={t.id} tournament={t} host={host} canManage={canManage} recordResult={recordResult} reload={reload} />
       ))}
       {creating && (
         <TournamentSetupSheet
           tournament={null}
-          scheduleItemId={scheduleItemId}
+          host={host}
           itemTitle={itemTitle}
           onChanged={reload}
           onClose={() => setCreating(false)}
@@ -114,11 +116,13 @@ export function TournamentSection({
 
 function TournamentCard({
   tournament,
+  host,
   canManage,
   recordResult,
   reload,
 }: {
   tournament: Tournament;
+  host: TournamentHost;
   canManage: boolean;
   recordResult: (matchId: string, winnerId: string, s1?: number | null, s2?: number | null) => Promise<boolean>;
   reload: () => Promise<void>;
@@ -311,7 +315,7 @@ function TournamentCard({
       {managing && (
         <TournamentSetupSheet
           tournament={tournament}
-          scheduleItemId={tournament.scheduleItemId}
+          host={host}
           itemTitle={tournament.title}
           onChanged={reload}
           onClose={() => setManaging(false)}

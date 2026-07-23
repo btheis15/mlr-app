@@ -956,6 +956,64 @@ resolves the item and defers to that existing predicate.
   get none (no `user_id`).
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
 
+## Private activities (migration 0150)
+
+A **member-created, invite-only** one-off get-together that lives in the **Events**
+tab (`/events`) but is visible ONLY to the people it's shared with — never
+broadcast, no notification unless the organizer opts in, and then only to the
+people involved. The use case: someone wants to run a quick **ping-pong / baggo
+tournament** with a few family members over a random weekend, without making a big
+resort "event", without an announcement, and without everyone seeing it. They tap
+**"🎉 Create an activity"**, optionally flip on "🏆 Make it a tournament", and add
+a handful of people (app members or **typed-in names** for anyone not on the app).
+
+- **Who can create:** ANY signed-in member (the polls / work-items member-createable
+  doctrine — NOT the admin-only `events` model). Guests get `promptSignIn()`.
+- **Privacy = the houses/cabin-approver pattern.** A `SECURITY DEFINER`
+  `is_private_activity_member(activity)` predicate (creator OR on the roster OR
+  admin) is the RLS `using(...)` clause on both tables, so only the invited people
+  can read the activity, its roster, and its tournament. `is_private_activity_host`
+  (creator/admin/role='host') gates every mutation. There is deliberately **no
+  all-members/public visibility** — private means private.
+- **Data model:** `private_activities` (title/emoji/description/location, optional
+  `starts_at`, `tournament_enabled`, `archived_at`, `created_by`) +
+  `private_activity_members` (the roster: `user_id` null = a typed-in name, the
+  0143 linked-or-typed idiom; `role host|player`; optional `rsvp going|maybe|out`).
+  All writes via SECURITY DEFINER RPCs (`create_private_activity` bundles the
+  invite list + an optional `p_notify`; `update_/delete_/set_private_activity_archived`,
+  `add_/remove_private_activity_member`, `set_private_activity_member_role`,
+  `set_private_activity_rsvp`). Realtime on both tables. **Stored in Supabase, not
+  the mini** — that's what gets the privacy RLS, realtime, and tournament reuse for
+  free (the mini is only media/push/email/moderation).
+- **Tournaments are reused wholesale.** `tournaments` became **polymorphic**: it
+  hangs off EITHER `schedule_item_id` (a fest activity) OR the new
+  `private_activity_id` (exactly one, a `num_nonnulls(...) = 1` check).
+  `is_tournament_manager` branches on which; the four tournament read policies were
+  tightened so a private-activity tournament is visible only to that activity's
+  members. Client-side, a `TournamentHost = {kind:'schedule'|'activity', id}`
+  threads through `lib/tournaments.ts` (`fetchTournamentsForHost` /
+  `createTournamentForHost` / `importEntrantsForHost`), `useTournament(host)`,
+  `TournamentSection`, and `TournamentSetupSheet` — the same bracket/round-robin/
+  pools/scoring UI, entrants imported from the roster instead of sign-ups
+  (`import_entrants_from_activity_members`).
+- **Notifications — only ever the people involved.** One kind,
+  `private_activity_invite` (in-app on by default, phone push opt-in via `PushToggle`
+  + both mini senders' pushable sets), fired ONLY when the organizer ticks "🔔 Let
+  them know" on create (or adding a member with notify). The tournament's own
+  `tournament_published/match_ready/champion` pings are already participant-scoped,
+  so they stay private too; their deep-link now resolves via `_tournament_deep_link`
+  to `/events?activity=<id>` for a private activity.
+- **Archive + delete.** A host can **🗄️ Archive** a finished game (tucks it under a
+  collapsed "Finished & archived" disclosure in the Events list, still deletable) or
+  **Delete** it outright (cascades to roster + tournament).
+- **Client:** seam [`lib/privateActivities.ts`](lib/privateActivities.ts) (degrades
+  to none on 42P01), hook `usePrivateActivities()` in [`lib/hooks.ts`](lib/hooks.ts)
+  (uid-scoped SWR `privateActivities.<uid>` + realtime), UI
+  [`PrivateActivityComposer`](components/PrivateActivityComposer.tsx) +
+  [`PrivateActivitySheet`](components/PrivateActivitySheet.tsx), listed + created on
+  [`app/events/page.tsx`](app/events/page.tsx) (deep-link `?activity=<id>`).
+- 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**

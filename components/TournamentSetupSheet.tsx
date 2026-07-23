@@ -5,8 +5,8 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { useSheetDismiss } from "@/lib/hooks";
 import {
-  createTournament,
-  importEntrantsFromSignups,
+  createTournamentForHost,
+  importEntrantsForHost,
   generateTeams,
   ungroupTeams,
   generateBracket,
@@ -20,6 +20,7 @@ import {
   bracketSummary,
   firstRoundPreview,
   type Tournament,
+  type TournamentHost,
   type EntrantType,
   type ByeStrategy,
   type TournamentFormat,
@@ -34,13 +35,13 @@ import {
  */
 export function TournamentSetupSheet({
   tournament,
-  scheduleItemId,
+  host,
   itemTitle,
   onChanged,
   onClose,
 }: {
   tournament: Tournament | null;
-  scheduleItemId: string;
+  host: TournamentHost;
   itemTitle: string;
   onChanged: () => Promise<void> | void;
   onClose: () => void;
@@ -97,13 +98,11 @@ export function TournamentSetupSheet({
       }
       setBusy(true);
       setError(null);
-      const { error: err } = await createTournament({
-        scheduleItemId,
+      const { error: err } = await createTournamentForHost(host, {
         title: title.trim(),
         format,
         entrantType,
         teamSize: entrantType === "team" ? teamSize : null,
-        byeStrategy: "byes",
       });
       if (err) {
         setError(err);
@@ -253,12 +252,12 @@ export function TournamentSetupSheet({
             type="button"
             disabled={busy}
             onClick={() => run(async () => {
-              const { count, error: err } = await importEntrantsFromSignups(tournament.id);
-              return err ? { error: err } : (setNote(`Imported ${count ?? 0} from sign-ups`), {});
+              const { count, error: err } = await importEntrantsForHost(host, tournament.id);
+              return err ? { error: err } : (setNote(`Imported ${count ?? 0} ${host.kind === "activity" ? "from the guest list" : "from sign-ups"}`), {});
             })}
             className="w-full rounded-xl bg-card py-2.5 text-sm font-medium ring-1 ring-border"
           >
-            ⬇︎ Pull in everyone who signed up
+            {host.kind === "activity" ? "⬇︎ Add everyone in this activity" : "⬇︎ Pull in everyone who signed up"}
           </button>
           {isTeam && (
             <div className="flex gap-2">

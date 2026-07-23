@@ -62,9 +62,16 @@ export interface TournamentMatch {
   reminderMinutes: number[];
 }
 
+/** Where a tournament hangs — a Family Fest activity (fest_schedule_items) or a
+ *  member-created private activity (private_activities, migration 0150). */
+export type TournamentHost = { kind: "schedule"; id: string } | { kind: "activity"; id: string };
+
 export interface Tournament {
   id: string;
-  scheduleItemId: string;
+  /** The fest activity this hangs off, or null for a private-activity tournament. */
+  scheduleItemId: string | null;
+  /** The private activity this hangs off, or null for a fest tournament. */
+  privateActivityId: string | null;
   title: string;
   format: TournamentFormat;
   entrantType: EntrantType;
@@ -130,7 +137,8 @@ interface MatchRow {
 }
 interface TournamentRow {
   id: string;
-  schedule_item_id: string;
+  schedule_item_id: string | null;
+  private_activity_id: string | null;
   title: string;
   format: TournamentFormat;
   entrant_type: EntrantType;
@@ -203,7 +211,8 @@ function assemble(row: TournamentRow): Tournament {
     .sort((a, b) => a.round - b.round || a.position - b.position);
   return {
     id: row.id,
-    scheduleItemId: row.schedule_item_id,
+    scheduleItemId: row.schedule_item_id ?? null,
+    privateActivityId: row.private_activity_id ?? null,
     title: row.title,
     format: row.format,
     entrantType: row.entrant_type,
@@ -246,6 +255,31 @@ export async function fetchTournamentsForItem(scheduleItemId: string): Promise<T
   } catch {
     return [];
   }
+}
+
+/** Every tournament on a private activity (migration 0150), fully assembled. */
+export async function fetchTournamentsForActivity(privateActivityId: string): Promise<Tournament[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb || !privateActivityId) return [];
+  try {
+    const { data, error } = await sb
+      .from("tournaments")
+      .select(SELECT)
+      .eq("private_activity_id", privateActivityId)
+      .order("created_at", { ascending: true });
+    if (error) {
+      if (!isMissingTable(error)) console.warn("fetchTournamentsForActivity: read error", error.message);
+      return [];
+    }
+    return ((data ?? []) as unknown as TournamentRow[]).map(assemble);
+  } catch {
+    return [];
+  }
+}
+
+/** Tournaments for whichever host (fest activity or private activity). */
+export function fetchTournamentsForHost(host: TournamentHost): Promise<Tournament[]> {
+  return host.kind === "schedule" ? fetchTournamentsForItem(host.id) : fetchTournamentsForActivity(host.id);
 }
 
 /** One tournament by id (used by the notification deep-link). */
@@ -558,6 +592,55 @@ export async function createTournament(input: CreateTournamentInput): Promise<Id
   });
   if (error) return { error: error.message };
   return { id: data as string };
+}
+
+export interface CreateActivityTournamentInput {
+  privateActivityId: string;
+  title: string;
+  format?: TournamentFormat;
+  entrantType?: EntrantType;
+  teamSize?: number | null;
+}
+/** Create a tournament on a private activity (migration 0150). */
+export async function createActivityTournament(input: CreateActivityTournamentInput): Promise<IdRes> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("create_activity_tournament", {
+    p_activity: input.privateActivityId,
+    p_title: input.title,
+    p_format: input.format ?? "single_elim",
+    p_entrant_type: input.entrantType ?? "individual",
+    p_team_size: input.teamSize ?? null,
+    p_bye_strategy: "byes",
+  });
+  if (error) return { error: error.message };
+  return { id: data as string };
+}
+
+/** Create a tournament on whichever host. */
+export function createTournamentForHost(
+  host: TournamentHost,
+  input: { title: string; format?: TournamentFormat; entrantType?: EntrantType; teamSize?: number | null },
+): Promise<IdRes> {
+  return host.kind === "schedule"
+    ? createTournament({ scheduleItemId: host.id, ...input })
+    : createActivityTournament({ privateActivityId: host.id, ...input });
+}
+
+/** Seed a private-activity tournament's pool from its roster. */
+export async function importEntrantsFromActivityMembers(id: string): Promise<{ count?: number; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("import_entrants_from_activity_members", { p_tournament: id });
+  if (error) return { error: error.message };
+  return { count: (data as number) ?? 0 };
+}
+
+/** Import entrants from whichever host (sign-ups, or the activity roster). */
+export function importEntrantsForHost(host: TournamentHost, tournamentId: string): Promise<{ count?: number; error?: string }> {
+  return host.kind === "schedule"
+    ? importEntrantsFromSignups(tournamentId)
+    : importEntrantsFromActivityMembers(tournamentId);
 }
 
 export interface UpdateTournamentInput {

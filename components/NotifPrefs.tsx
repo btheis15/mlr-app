@@ -53,6 +53,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     title: "Events",
     rows: [
       { value: "event_rsvp", icon: "📅", label: "Event RSVPs", desc: "When a member marks themselves going to an event" },
+      { value: "private_activity_invite", icon: "🎉", label: "Invited to an activity", desc: "When someone adds you to a private activity or game they're setting up" },
     ],
   },
   {
