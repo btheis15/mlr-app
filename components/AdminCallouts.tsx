@@ -226,19 +226,39 @@ function CalloutSheet({
     eventId: draft?.eventId ?? null,
     excludeNotAttending: draft?.excludeNotAttending ?? true,
   });
-  // Link a "Sign up" button to a schedule event that's taking sign-ups
-  // (migration 0137). Distinct from eventTarget above (which only targets/hides).
+  // Link this callout to a Family Fest ACTIVITY — an individual agenda item
+  // (a dinner, a concert, a scavenger hunt — a fest_schedule_items row), as
+  // opposed to eventTarget above which links to a whole EVENT (the resort
+  // calendar, e.g. the Family Fest week itself) purely for RSVP-based
+  // show/hide targeting. Picking an activity here does two things: (1) pulls
+  // its photo/details/links into this card as a starting point (tweak
+  // anything afterward — re-picking a different activity re-pulls fresh
+  // content, since that's the point of linking one), and (2) — unchanged from
+  // migration 0137 — if that activity takes sign-ups, adds a "📝 Sign up"
+  // button. Stored in the same `signupItemId` column; the column's original,
+  // narrower name stuck since it still drives the Sign-up button, but the
+  // picker itself is no longer limited to sign-up-enabled activities.
   const [signupItemId, setSignupItemId] = useState<string | null>(draft?.signupItemId ?? null);
-  const [signupOptions, setSignupOptions] = useState<ScheduleEvent[]>([]);
+  const [activityOptions, setActivityOptions] = useState<ScheduleEvent[]>([]);
   useEffect(() => {
     let alive = true;
     fetchFestContent().then((c) => {
-      if (alive) setSignupOptions(c.schedule.filter((e) => e.signupEnabled));
+      if (alive) setActivityOptions(c.schedule);
     });
     return () => {
       alive = false;
     };
   }, []);
+  const onPickActivity = (id: string) => {
+    setSignupItemId(id || null);
+    if (!id) return; // clearing the link shouldn't wipe content already on the card
+    const picked = activityOptions.find((e) => e.id === id);
+    if (!picked) return;
+    setTitle(`${picked.emoji ?? ""} ${picked.title}`.trim());
+    setBody(picked.description ?? "");
+    setImageUrl(picked.imageUrl ?? null);
+    setLinks(picked.links?.length ? picked.links.map((l) => ({ href: l.href, label: l.label ?? "" })) : []);
+  };
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -383,6 +403,39 @@ function CalloutSheet({
       header={<h2 id="callout-sheet" className="text-lg font-bold">{draft ? "✏️ Edit callout" : "📣 New callout"}</h2>}
       footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} />}
     >
+      <div className="space-y-2 rounded-xl bg-background px-3 py-2.5 ring-1 ring-border">
+        <p className="text-xs font-semibold text-foreground/70">🔗 Link this callout (optional)</p>
+        <Field label="To a Family Fest activity">
+          <select
+            value={signupItemId ?? ""}
+            onChange={(e) => onPickActivity(e.target.value)}
+            className={`${FIELD} w-full`}
+          >
+            <option value="">No specific activity</option>
+            {/* Keep the current pick selectable even if it's not in the list
+                (e.g. a private event, or the schedule hasn't loaded yet). */}
+            {signupItemId && !activityOptions.some((e) => e.id === signupItemId) && (
+              <option value={signupItemId}>Linked activity</option>
+            )}
+            {activityOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                🎟 {e.emoji ? `${e.emoji} ` : ""}{e.title} — {e.anytime ? "Anytime" : formatDate(`${e.day}T00:00:00`)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+            A single item on the agenda — a dinner, a concert, a scavenger hunt. Picking one pulls
+            its photo, details, and links into this card below (tweak anything after); if it's
+            taking sign-ups, this also adds a &ldquo;📝 Sign up&rdquo; button.
+          </p>
+        </Field>
+        <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
+        <p className="px-0.5 text-xs text-foreground/50">
+          The whole event on the resort calendar (e.g. Family Fest week itself, or Work Weekend) —
+          this only controls who <em>sees</em> the callout (RSVP &ldquo;can&rsquo;t make it&rdquo; hides
+          it), separate from the activity link above.
+        </p>
+      </div>
       <Field label="Title (optional)">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. T-shirt orders due soon" className={`${FIELD} w-full`} />
       </Field>
@@ -474,30 +527,6 @@ function CalloutSheet({
         <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
           The actual due-by moment (e.g. "order by Friday 5pm") — separate from the show
           window above. Reminders below count down to this.
-        </p>
-      </Field>
-      <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
-      <Field label="Link to an event's sign-up (optional)">
-        <select
-          value={signupItemId ?? ""}
-          onChange={(e) => setSignupItemId(e.target.value || null)}
-          className={`${FIELD} w-full`}
-        >
-          <option value="">No sign-up button</option>
-          {/* Keep the current pick selectable even if it's not in the list
-              (e.g. a private event, or the schedule hasn't loaded yet). */}
-          {signupItemId && !signupOptions.some((e) => e.id === signupItemId) && (
-            <option value={signupItemId}>Linked event</option>
-          )}
-          {signupOptions.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.title} — {formatDate(`${e.day}T00:00:00`)}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
-          Adds a &ldquo;📝 Sign up&rdquo; button that opens that event&rsquo;s sign-up sheet. Only events
-          with sign-ups turned on appear here.
         </p>
       </Field>
       {draft && (
