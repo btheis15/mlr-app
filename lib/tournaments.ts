@@ -233,8 +233,13 @@ function assemble(row: TournamentRow): Tournament {
   };
 }
 
+// `tournaments` has TWO relationships to `tournament_entrants` — the normal
+// child FK, and `tournaments_winner_fk` (winner_entrant_id → the champion). So
+// the entrants embed MUST name the child FK explicitly, or PostgREST 300s with
+// PGRST201 ("more than one relationship found") and the whole fetch fails →
+// empty. (matches/participants have only one relationship each, so they're fine.)
 const SELECT =
-  "*, tournament_entrants(*), tournament_matches(*), tournament_participants(*)";
+  "*, tournament_entrants!tournament_entrants_tournament_id_fkey(*), tournament_matches(*), tournament_participants(*)";
 
 /** Every tournament on an activity (usually one), fully assembled. Empty with no
  *  backend, pre-migration (42P01), or on any read failure — never throws. */
