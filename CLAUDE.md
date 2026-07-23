@@ -836,6 +836,36 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   the callout's `event_id`** (migration 0096, targeting only — hide from
   non-attendees): a callout can be linked to Family Fest 2026 for targeting AND
   carry a Sign up button to a specific schedule item at the same time.
+- **Headcount mode + teams (migration 0143, schedule events only — not
+  mirrored to `fest_activities`).** A third `signup_mode = 'headcount'` has no
+  time dimension at all — just a running count against `signup_capacity`
+  (nullable in this mode ⇒ no cap, just track who's coming; interval/slots
+  still require a real number). It reuses `fest_schedule_signups` with both
+  `slot_start` and `slot_id` null — the item's one "no slot" bucket, resolved
+  client-side by `resolveSlotViews()` as a single `SlotView` with an empty
+  `label` (the card's own "Sign up" heading covers it) and server-side by a
+  third branch in `sign_up_for_schedule_slot()`. Separately,
+  `fest_schedule_items.signup_team_size` (null/1 = individual) lets the
+  creator require signing up in a **fixed-size team** — e.g. 2 for baggo
+  doubles — in **any** mode, not just headcount: one sign-up action resolves
+  every member (linked or typed, same as today) and inserts all of their rows
+  together, sharing a generated `team_id` + optional `team_name`
+  (`fest_schedule_signups.team_id`/`.team_name`). Capacity math is
+  **unchanged** — still a plain people-count, so a team of 2 just consumes 2
+  seats; the RPC's single capacity check covers the whole team atomically (no
+  race where two teams grab the last few spots). `ScheduleSignupSlots`' `SlotCard`
+  groups signups by `team_id` for display (a "🤝 {team name}" sub-heading over
+  its members) and swaps the individual add form for `TeamSignupForm` (one
+  name/link picker per member) whenever `signupTeamSize > 1`; the roster sheet
+  gets a "Team" column under the same condition. `SignupConfigEditor` only
+  offers the headcount mode option and the team-size field when
+  `kind === "schedule"` — activities keep exactly the interval/slots choice
+  they've always had (`activitySignupPayload()` is a type-safety backstop that
+  can never actually receive "headcount" at runtime, since the UI never offers
+  it there). Also fixed in this migration: `fest_schedule_signups.slot_start`
+  was still `not null` from 0135, but 0136's insert can leave it `NULL` for a
+  `slots`-mode row — so "Specific times" sign-ups had been failing outright
+  since 0136 shipped; column is now nullable.
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 

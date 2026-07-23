@@ -30,6 +30,15 @@ import {
 } from "@/lib/scheduleSignups";
 import type { SignupField } from "@/lib/types";
 
+/** `capacity: null` (headcount mode with no cap set) ⇒ never full, shown as
+ *  a plain count with no "/Y". */
+function isFull(count: number, capacity: number | null): boolean {
+  return capacity != null && count >= capacity;
+}
+function capacityLabel(count: number, capacity: number | null): string {
+  return capacity != null ? `${count}/${capacity}` : String(count);
+}
+
 export function ScheduleSignupSlots({
   target,
   kind = "schedule",
@@ -86,7 +95,9 @@ export function ScheduleSignupSlots({
   return (
     <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Sign up for a time slot</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">
+          {target.signupMode === "headcount" ? "Sign up" : "Sign up for a time slot"}
+        </p>
         {/* Organizer/crew get a consolidated view of every slot + row in one place. */}
         {canManage && (
           <button
@@ -110,6 +121,7 @@ export function ScheduleSignupSlots({
             view={view}
             signups={signups.filter((s) => view.matches(s))}
             fields={fields}
+            teamSize={target.signupTeamSize && target.signupTeamSize > 1 ? target.signupTeamSize : 1}
             userId={userId}
             canManage={canManage}
             busy={busyKey === view.key}
@@ -134,6 +146,16 @@ export function ScheduleSignupSlots({
                   forUserId: payload.forUserId,
                   name: payload.forUserId ? undefined : payload.name,
                   fields: payload.fields,
+                }),
+              )
+            }
+            onAddTeam={(payload) =>
+              runAction(view.key, () =>
+                signUpForSlot(kind, target.id, {
+                  slotId: view.slotId,
+                  slotStart: view.slotId ? null : view.slotStart,
+                  teamMembers: payload.members,
+                  teamName: payload.teamName,
                 }),
               )
             }
@@ -189,8 +211,8 @@ function SignupRosterSheet({
             <div key={view.key} className="rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
                 <p className="text-sm font-semibold">{view.label}</p>
-                <span className={`text-xs ${rows.length >= view.capacity ? "text-accent" : "text-foreground/50"}`}>
-                  {rows.length}/{view.capacity}
+                <span className={`text-xs ${isFull(rows.length, view.capacity) ? "text-accent" : "text-foreground/50"}`}>
+                  {capacityLabel(rows.length, view.capacity)}
                 </span>
               </div>
               {rows.length === 0 ? (
@@ -202,6 +224,7 @@ function SignupRosterSheet({
                       <tr className="text-foreground/50">
                         <th className="px-3 py-1.5 font-medium">#</th>
                         <th className="px-3 py-1.5 font-medium">Name</th>
+                        {rows.some((s) => s.teamId) && <th className="px-3 py-1.5 font-medium">Team</th>}
                         {fields.map((f) => (
                           <th key={f.id} className="px-3 py-1.5 font-medium">{f.label}</th>
                         ))}
@@ -214,6 +237,11 @@ function SignupRosterSheet({
                           <td className="px-3 py-1.5 font-medium">
                             <PrivateName name={s.name} />
                           </td>
+                          {rows.some((r) => r.teamId) && (
+                            <td className="px-3 py-1.5 text-foreground/70">
+                              {s.teamId ? s.teamName?.trim() || "Team" : "—"}
+                            </td>
+                          )}
                           {fields.map((f) => (
                             <td key={f.id} className="px-3 py-1.5 text-foreground/70">
                               {s.fields?.[f.id]?.trim() || "—"}
@@ -233,10 +261,39 @@ function SignupRosterSheet({
   );
 }
 
+/** Groups a slot's flat signup rows by team_id (migration 0143) — a solo
+ *  sign-up is its own one-member "group" so the render below doesn't need a
+ *  separate code path. */
+interface SignupGroup {
+  key: string;
+  teamId: string | null;
+  teamName: string | null;
+  members: ScheduleSignup[];
+}
+function groupSignups(signups: ScheduleSignup[]): SignupGroup[] {
+  const groups: SignupGroup[] = [];
+  const indexByTeam = new Map<string, number>();
+  for (const s of signups) {
+    if (s.teamId) {
+      const idx = indexByTeam.get(s.teamId);
+      if (idx != null) {
+        groups[idx].members.push(s);
+        continue;
+      }
+      indexByTeam.set(s.teamId, groups.length);
+      groups.push({ key: s.teamId, teamId: s.teamId, teamName: s.teamName, members: [s] });
+    } else {
+      groups.push({ key: s.id, teamId: null, teamName: null, members: [s] });
+    }
+  }
+  return groups;
+}
+
 function SlotCard({
   view,
   signups,
   fields,
+  teamSize,
   userId,
   canManage,
   busy,
@@ -244,12 +301,16 @@ function SlotCard({
   ensureMembers,
   onJoin,
   onAdd,
+  onAddTeam,
   onRemove,
   requireSignIn,
 }: {
   view: SlotView;
   signups: ScheduleSignup[];
   fields: SignupField[];
+  /** ≥2 ⇒ every sign-up here is a fixed-size team (migration 0143); 1 (or
+   *  unset) ⇒ the original one-person-per-row behavior, unchanged. */
+  teamSize: number;
   userId: string | null;
   canManage: boolean;
   busy: boolean;
@@ -257,62 +318,81 @@ function SlotCard({
   ensureMembers: () => Promise<void>;
   onJoin: () => void;
   onAdd: (payload: { forUserId?: string; name: string; fields: Record<string, string> }) => Promise<boolean>;
+  onAddTeam: (payload: { teamName: string; members: TeamMemberInput[] }) => Promise<boolean>;
   onRemove: (id: string) => void;
   requireSignIn: () => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const full = signups.length >= view.capacity;
+  const full = isFull(signups.length, view.capacity);
+  const spotsLeft = view.capacity != null ? view.capacity - signups.length : Infinity;
+  const roomForTeam = spotsLeft >= teamSize;
   const mine = userId ? signups.some((s) => s.userId === userId) : false;
   const hasFields = fields.length > 0;
+  const groups = groupSignups(signups);
 
   return (
     <div className="rounded-xl bg-background p-2.5 ring-1 ring-border/60">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">{view.label}</p>
-        <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
-          {signups.length}/{view.capacity} filled
-        </span>
-      </div>
+      {view.label && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">{view.label}</p>
+          <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
+            {capacityLabel(signups.length, view.capacity)} filled
+          </span>
+        </div>
+      )}
+      {!view.label && signups.length > 0 && (
+        <div className="flex items-center justify-end">
+          <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
+            {capacityLabel(signups.length, view.capacity)} signed up
+          </span>
+        </div>
+      )}
 
-      {signups.length > 0 && (
+      {groups.length > 0 && (
         <ul className="mt-1.5 space-y-1">
-          {signups.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-start justify-between gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
-            >
-              <div className="min-w-0">
-                <p className="font-semibold">
-                  <PrivateName name={s.name} />
+          {groups.map((g) => (
+            <li key={g.key} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+              {g.teamId && (
+                <p className="mb-1 font-semibold uppercase tracking-wide text-primary/70">
+                  🤝 {g.teamName?.trim() || "Team"}
                 </p>
-                {fields.length > 0 && (
-                  <p className="mt-0.5 text-primary/70">
-                    {fields
-                      .map((f) => `${f.label}: ${s.fields?.[f.id]?.trim() || "—"}`)
-                      .join(" · ")}
-                  </p>
-                )}
-              </div>
-              {(s.userId === userId || s.addedBy === userId || canManage) && (
-                <button
-                  type="button"
-                  onClick={() => onRemove(s.id)}
-                  disabled={busy}
-                  aria-label={`Remove ${s.name} from this slot`}
-                  className="press mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-primary/70 hover:text-primary"
-                >
-                  ✕
-                </button>
               )}
+              <div className="space-y-1">
+                {g.members.map((s) => (
+                  <div key={s.id} className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">
+                        <PrivateName name={s.name} />
+                      </p>
+                      {fields.length > 0 && (
+                        <p className="mt-0.5 text-primary/70">
+                          {fields.map((f) => `${f.label}: ${s.fields?.[f.id]?.trim() || "—"}`).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                    {(s.userId === userId || s.addedBy === userId || canManage) && (
+                      <button
+                        type="button"
+                        onClick={() => onRemove(s.id)}
+                        disabled={busy}
+                        aria-label={`Remove ${s.name}`}
+                        className="press mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </li>
           ))}
         </ul>
       )}
 
-      {!full && !adding && (
+      {!full && roomForTeam && !adding && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {/* Fast self-join only when there are no extra columns to fill. */}
-          {!mine && !hasFields && (
+          {/* Fast self-join only for an individual sign-up with no extra columns. */}
+          {teamSize <= 1 && !mine && !hasFields && (
             <button
               type="button"
               onClick={onJoin}
@@ -334,12 +414,30 @@ function SlotCard({
             disabled={busy}
             className="press rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-foreground/70 ring-1 ring-border disabled:opacity-50"
           >
-            {hasFields ? "+ Sign up" : "+ Add someone"}
+            {teamSize > 1 ? `+ Sign up a team of ${teamSize}` : hasFields ? "+ Sign up" : "+ Add someone"}
           </button>
         </div>
       )}
+      {!full && !roomForTeam && (
+        <p className="mt-2 text-xs text-foreground/45">Not enough spots left for a full team.</p>
+      )}
 
-      {adding && (
+      {adding && teamSize > 1 && (
+        <TeamSignupForm
+          teamSize={teamSize}
+          fields={fields}
+          members={members}
+          myUserId={userId}
+          ensureMembers={ensureMembers}
+          busy={busy}
+          onCancel={() => setAdding(false)}
+          onSubmit={async (payload) => {
+            const ok = await onAddTeam(payload);
+            if (ok) setAdding(false);
+          }}
+        />
+      )}
+      {adding && teamSize <= 1 && (
         <AddSignupForm
           fields={fields}
           members={members}
@@ -467,6 +565,149 @@ function AddSignupForm({
 
       {picking && (
         <MemberPickerSheet members={members} onPick={linkMember} onClose={() => setPicking(false)} />
+      )}
+    </div>
+  );
+}
+
+interface TeamMemberInput {
+  forUserId?: string;
+  name: string;
+  fields: Record<string, string>;
+}
+
+/** Commits a whole team (migration 0143) in one submission — one name/link
+ *  picker per member, plus an optional team name, sharing one team_id server-
+ *  side. Mirrors AddSignupForm's picker, repeated `teamSize` times. */
+function TeamSignupForm({
+  teamSize,
+  fields,
+  members,
+  myUserId,
+  ensureMembers,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  teamSize: number;
+  fields: SignupField[];
+  members: FestMemberOption[];
+  myUserId: string | null;
+  ensureMembers: () => Promise<void>;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: { teamName: string; members: TeamMemberInput[] }) => void;
+}) {
+  const [teamName, setTeamName] = useState("");
+  const [names, setNames] = useState<string[]>(() => Array(teamSize).fill(""));
+  const [forUserIds, setForUserIds] = useState<(string | null)[]>(() => Array(teamSize).fill(null));
+  const [values, setValues] = useState<Record<string, string>[]>(() => Array.from({ length: teamSize }, () => ({})));
+  const [pickingIndex, setPickingIndex] = useState<number | null>(null);
+
+  const setField = (i: number, id: string, v: string) =>
+    setValues((prev) => prev.map((row, j) => (j === i ? { ...row, [id]: v } : row)));
+  const allFieldsFilled = values.every((row) => fields.every((f) => (row[f.id] ?? "").trim()));
+  const canSubmit = names.every((n) => n.trim()) && allFieldsFilled && !busy;
+
+  const linkMember = (i: number, m: FestMemberOption) => {
+    setForUserIds((prev) => prev.map((id, j) => (j === i ? m.id : id)));
+    setNames((prev) => prev.map((n, j) => (j === i ? m.name : n)));
+    setPickingIndex(null);
+  };
+
+  return (
+    <div className="mt-2 space-y-3 rounded-xl bg-card p-2.5 ring-1 ring-border">
+      <label className="block">
+        <span className="mb-1 block text-[11px] font-medium text-foreground/50">Team name (optional)</span>
+        <input
+          value={teamName}
+          onChange={(e) => setTeamName(e.target.value)}
+          placeholder="e.g. The Sharks"
+          className="w-full rounded-lg bg-background px-2.5 py-1.5 text-sm ring-1 ring-border"
+        />
+      </label>
+
+      {Array.from({ length: teamSize }, (_, i) => (
+        <div key={i} className="space-y-2 rounded-lg bg-background p-2 ring-1 ring-border/60">
+          <span className="mb-1 block text-[11px] font-medium text-foreground/50">Person {i + 1}</span>
+          <input
+            value={names[i]}
+            onChange={(e) => {
+              setNames((prev) => prev.map((n, j) => (j === i ? e.target.value : n)));
+              setForUserIds((prev) => prev.map((id, j) => (j === i ? null : id))); // typing over a link unlinks it
+            }}
+            placeholder="Type a name"
+            className="w-full rounded-lg bg-card px-2.5 py-1.5 text-sm ring-1 ring-border"
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {forUserIds[i] && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                🔗 linked account
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await ensureMembers();
+                setPickingIndex(i);
+              }}
+              className="press rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-foreground/70 ring-1 ring-border"
+            >
+              Link a member
+            </button>
+            {myUserId && !forUserIds.includes(myUserId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const me = members.find((m) => m.id === myUserId);
+                  setForUserIds((prev) => prev.map((id, j) => (j === i ? myUserId : id)));
+                  setNames((prev) => prev.map((n, j) => (j === i ? me?.name ?? "Me" : n)));
+                }}
+                className="press rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-foreground/70 ring-1 ring-border"
+              >
+                It&rsquo;s me
+              </button>
+            )}
+          </div>
+          {fields.map((f) => (
+            <label key={f.id} className="block">
+              <span className="mb-1 block text-[11px] font-medium text-foreground/50">{f.label}</span>
+              <input
+                value={values[i]?.[f.id] ?? ""}
+                onChange={(e) => setField(i, f.id, e.target.value)}
+                placeholder={f.label}
+                className="w-full rounded-lg bg-card px-2.5 py-1.5 text-sm ring-1 ring-border"
+              />
+            </label>
+          ))}
+        </div>
+      ))}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            onSubmit({
+              teamName: teamName.trim(),
+              members: names.map((n, i) => ({ forUserId: forUserIds[i] ?? undefined, name: n.trim(), fields: values[i] ?? {} })),
+            })
+          }
+          disabled={!canSubmit}
+          className="press rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          Sign up team
+        </button>
+        <button type="button" onClick={onCancel} className="press rounded-lg px-2 text-xs font-medium text-foreground/50">
+          Cancel
+        </button>
+      </div>
+
+      {pickingIndex != null && (
+        <MemberPickerSheet
+          members={members}
+          onPick={(m) => linkMember(pickingIndex, m)}
+          onClose={() => setPickingIndex(null)}
+        />
       )}
     </div>
   );

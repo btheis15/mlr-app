@@ -374,8 +374,10 @@ export interface ScheduleEvent {
   signupEndTime?: string | null;
   /** "interval" = derive slots from the start/end + minutes above (migration
    *  0135). "slots" = arbitrary, independent slots listed in `fest_schedule_slots`
-   *  (migration 0136), each with its own day/time and no shared increment. */
-  signupMode?: "interval" | "slots" | null;
+   *  (migration 0136), each with its own day/time and no shared increment.
+   *  "headcount" (migration 0143) = no time dimension at all — just a running
+   *  count against `signupCapacity` (nullable in this mode ⇒ no cap). */
+  signupMode?: "interval" | "slots" | "headcount" | null;
   /** Free-text instructions the creator writes for people signing up. */
   signupInstructions?: string | null;
   /** Extra columns required on every person's sign-up row (e.g. "Character").
@@ -384,6 +386,11 @@ export interface ScheduleEvent {
   /** Lead times (minutes before a slot) at which everyone signed up gets a
    *  reminder push (migration 0140), e.g. [120, 60, 15]. */
   signupReminderMinutes?: number[] | null;
+  /** Sign up as a fixed-size team instead of individually (migration 0143) —
+   *  e.g. 2 for baggo doubles. Null/1 = individual, the default. Applies in
+   *  any signup mode; capacity math is unchanged (still a plain people-count,
+   *  so a team of 2 just consumes 2 seats). */
+  signupTeamSize?: number | null;
 }
 
 /** One admin-defined extra column on a sign-up (migration 0136). `id` is a
