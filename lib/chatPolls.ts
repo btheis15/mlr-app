@@ -1,5 +1,5 @@
 // Client helpers for "quick polls" in committee/house chat rooms (migration
-// 0147). Any room member can start one: a question, 2-10 options (single- or
+// 0149). Any room member can start one: a question, 2-10 options (single- or
 // multi-select), an optional write-in "Other", and a choice of anonymous
 // (counts only) or attributed (counts + who picked what) results.
 //
@@ -12,7 +12,7 @@
 // vote rows. Writes go through set_chat_poll_votes/create_chat_poll/etc.
 //
 // Everything degrades to safe no-ops with no backend, and a missing table/
-// function (42P01/42883 — the 0147 migration hasn't run yet) reads as "no
+// function (42P01/42883 — the 0149 migration hasn't run yet) reads as "no
 // polls" — the same idiom as lib/meetings.ts / lib/polls.ts.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -68,7 +68,7 @@ export interface CreateChatPollInput {
 
 type PgError = { code?: string; message?: string } | null;
 
-/** Missing relation/function ⇒ the 0147 migration hasn't run yet. */
+/** Missing relation/function ⇒ the 0149 migration hasn't run yet. */
 function isMissingTable(error: PgError): boolean {
   if (!error) return false;
   return (

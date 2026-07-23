@@ -1,4 +1,4 @@
--- 0147_chat_polls.sql
+-- 0149_chat_polls.sql
 -- "Quick polls" for committee/house chat rooms (everything except the
 -- resort-wide Main Feed) — an iMessage/Messenger-style poll anyone in the room
 -- can drop in: a question, 2-10 options (single- or multi-select), an
@@ -19,7 +19,7 @@
 -- from denormalized counts on chat_polls/chat_poll_options (kept current by a
 -- trigger), which ARE safely readable + realtime-able.
 --
--- Apply in the Supabase SQL editor after 0146.
+-- Apply in the Supabase SQL editor after 0148.
 
 -- ── 1. Tables ────────────────────────────────────────────────────────────────
 

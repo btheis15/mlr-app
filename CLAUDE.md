@@ -1532,7 +1532,7 @@ becomes a real row on the resort calendar rather than a Meet link.
   has an `eventId`), so an admin can retime, edit, or cancel the auto-queued one,
   or add their own, exactly like any other event reminder.
 
-## Quick polls in chat (migration 0147)
+## Quick polls in chat (migration 0149)
 
 An iMessage/Messenger-style poll any member can drop into a **committee or
 house chat** (not the Main Feed, which isn't a chat room at all) — a

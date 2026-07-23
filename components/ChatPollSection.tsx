@@ -16,7 +16,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useCachedResource } from "@/lib/swrCache";
 
 // The poll bar pinned at the top of a committee/house chat room (migration
-// 0147), alongside MeetingSection. Unlike MeetingSection's "one featured
+// 0149), alongside MeetingSection. Unlike MeetingSection's "one featured
 // meeting," polls are lighter-weight and more frequent, so every OPEN poll
 // gets its own tappable pill — nothing is silently hidden — plus a collapsed
 // "Past polls" disclosure for closed ones (same idiom as the app's existing

@@ -7,7 +7,7 @@ import { createChatPoll, type ChatPollScope } from "@/lib/chatPolls";
 import { toISODate } from "@/lib/festSeason";
 
 // Bottom-sheet composer for a quick poll in a committee/house chat (migration
-// 0147) — question, 2–10 options (add/remove rows, same UX as the family
+// 0149) — question, 2–10 options (add/remove rows, same UX as the family
 // PollComposer), single- vs multi-select, an optional "Other" write-in slot,
 // an anonymous-results toggle, and an optional closes-on date. Any room member
 // can start one (the family-polls doctrine, not the meeting-organizer one).
