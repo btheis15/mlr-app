@@ -168,6 +168,7 @@ interface ScheduleRow {
   signup_instructions: string | null;
   signup_fields: SignupField[] | null;
   signup_reminder_minutes: number[] | null;
+  signup_team_size: number | null;
 }
 interface DinnerRow {
   id: string;
@@ -268,10 +269,11 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupSlotMinutes: r.signup_slot_minutes,
     signupStartTime: r.signup_start_time,
     signupEndTime: r.signup_end_time,
-    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupMode: (r.signup_mode as "interval" | "slots" | "headcount" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupTeamSize: r.signup_team_size,
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -356,7 +358,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -493,10 +495,11 @@ export interface ScheduleInput {
   signupSlotMinutes: number | null;
   signupStartTime: string | null;
   signupEndTime: string | null;
-  signupMode: "interval" | "slots";
+  signupMode: "interval" | "slots" | "headcount";
   signupInstructions: string | null;
   signupFields: SignupField[];
   signupReminderMinutes: number[];
+  signupTeamSize: number | null;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -526,6 +529,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_instructions: i.signupInstructions,
     signup_fields: i.signupFields,
     signup_reminder_minutes: i.signupReminderMinutes,
+    signup_team_size: i.signupTeamSize,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -858,7 +862,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -887,10 +891,11 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupSlotMinutes: r.signup_slot_minutes,
     signupStartTime: r.signup_start_time,
     signupEndTime: r.signup_end_time,
-    signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
+    signupMode: (r.signup_mode as "interval" | "slots" | "headcount" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupTeamSize: r.signup_team_size,
   }));
 }
 

@@ -45,9 +45,14 @@ export interface SignupTarget {
   signupSlotMinutes?: number | null;
   signupStartTime?: string | null;
   signupEndTime?: string | null;
-  signupMode?: "interval" | "slots" | null;
+  /** "headcount" (schedule events only, migration 0143) has no time
+   *  dimension — see resolveSlotViews. */
+  signupMode?: "interval" | "slots" | "headcount" | null;
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
+  /** Sign up as a fixed-size team instead of individually (migration 0143,
+   *  schedule events only). Null/1 = individual. */
+  signupTeamSize?: number | null;
 }
 
 export interface ScheduleSignup {
@@ -58,6 +63,10 @@ export interface ScheduleSignup {
   name: string;
   addedBy: string | null;
   fields: Record<string, string>;
+  /** Shared by every row of one team sign-up; null for an individual (schedule
+   *  events only, migration 0143). */
+  teamId: string | null;
+  teamName: string | null;
 }
 
 interface ScheduleSignupRow {
@@ -68,6 +77,8 @@ interface ScheduleSignupRow {
   name: string;
   added_by: string | null;
   fields: Record<string, string> | null;
+  team_id?: string | null;
+  team_name?: string | null;
 }
 
 export interface ScheduleSlot {
@@ -114,13 +125,17 @@ export function computeSlots(config: SignupConfig): string[] {
   return out;
 }
 
-/** A slot the UI renders + signs up against, normalized across both modes. */
+/** A slot the UI renders + signs up against, normalized across all modes.
+ *  `capacity: null` ⇒ no cap (headcount mode only, when the creator left it
+ *  blank) — just a running count, never "full". */
 export interface SlotView {
   key: string;
   slotId: string | null;
   slotStart: string | null;
+  /** Empty for the single headcount bucket — there's no time/label to show,
+   *  the UI's own "Sign up" heading covers it. */
   label: string;
-  capacity: number;
+  capacity: number | null;
   matches: (s: ScheduleSignup) => boolean;
 }
 
@@ -130,9 +145,23 @@ function slotLabel(day: string | null | undefined, start: string, end: string | 
   return day ? `${formatDate(day)} · ${time}` : time;
 }
 
-/** The list of slots to render for a target, in either mode. */
+/** The list of slots to render for a target, in any mode. Headcount mode
+ *  (migration 0143) always resolves to exactly one view — the event's single
+ *  "no slot" bucket — with no time dimension at all. */
 export function resolveSlotViews(target: SignupTarget, slots: ScheduleSlot[]): SlotView[] {
   const defaultCap = target.signupCapacity ?? 0;
+  if (target.signupMode === "headcount") {
+    return [
+      {
+        key: "headcount",
+        slotId: null,
+        slotStart: null,
+        label: "",
+        capacity: target.signupCapacity ?? null,
+        matches: (s) => !s.slotId && !s.slotStart,
+      },
+    ];
+  }
   if (target.signupMode === "slots") {
     return slots.map((sl) => ({
       key: sl.id,
@@ -158,12 +187,19 @@ export async function fetchScheduleSignups(kind: SignupKind, parentId: string): 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   const src = SOURCES[kind];
+  // team_id/team_name (migration 0143) only exist on fest_schedule_signups —
+  // activities weren't extended with headcount/teams (see scheduleSignups.ts
+  // header + the migration's own scoping note).
+  const columns =
+    kind === "schedule"
+      ? "id, slot_start, slot_id, user_id, name, added_by, fields, team_id, team_name"
+      : "id, slot_start, slot_id, user_id, name, added_by, fields";
   const { data } = await sb
     .from(src.signups)
-    .select("id, slot_start, slot_id, user_id, name, added_by, fields")
+    .select(columns)
     .eq(src.parentCol, parentId)
     .order("created_at");
-  return ((data ?? []) as ScheduleSignupRow[]).map((r) => ({
+  return ((data ?? []) as unknown as ScheduleSignupRow[]).map((r) => ({
     id: r.id,
     slotStart: r.slot_start,
     slotId: r.slot_id,
@@ -171,12 +207,25 @@ export async function fetchScheduleSignups(kind: SignupKind, parentId: string): 
     name: r.name,
     addedBy: r.added_by,
     fields: r.fields ?? {},
+    teamId: r.team_id ?? null,
+    teamName: r.team_name ?? null,
   }));
 }
 
-/** Sign someone up for a slot. Pass `slotId` (slots mode) or `slotStart`
- *  (interval mode). Link a member with `forUserId`, or type a `name`; neither
- *  ⇒ the caller. `fields` carries the custom-column values. */
+/** One member of a team sign-up (migration 0143, schedule events only) —
+ *  link a member with `forUserId`, or type a `name`; neither ⇒ the caller. */
+export interface TeamMember {
+  forUserId?: string;
+  name?: string;
+  fields?: Record<string, string>;
+}
+
+/** Sign someone up for a slot. Pass `slotId` (slots mode), `slotStart`
+ *  (interval mode), or neither (headcount mode's single bucket). Link a
+ *  member with `forUserId`, or type a `name`; neither ⇒ the caller. `fields`
+ *  carries the custom-column values. Pass `teamMembers` (schedule events
+ *  only) instead of `forUserId`/`name`/`fields` to sign up a whole team at
+ *  once, sharing an optional `teamName`. */
 export async function signUpForSlot(
   kind: SignupKind,
   parentId: string,
@@ -186,10 +235,21 @@ export async function signUpForSlot(
     forUserId?: string;
     name?: string;
     fields?: Record<string, string>;
+    teamMembers?: TeamMember[];
+    teamName?: string | null;
   } = {},
 ): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
+  const teamParams =
+    kind === "schedule"
+      ? {
+          p_team_members: opts.teamMembers?.length
+            ? opts.teamMembers.map((m) => ({ for_user: m.forUserId ?? null, name: m.name ?? null, fields: m.fields ?? {} }))
+            : null,
+          p_team_name: opts.teamName?.trim() || null,
+        }
+      : {};
   const { error } = await sb.rpc(SOURCES[kind].signRpc, {
     p_item: parentId,
     p_slot: opts.slotStart ?? null,
@@ -197,6 +257,7 @@ export async function signUpForSlot(
     p_name: opts.name ?? null,
     p_slot_id: opts.slotId ?? null,
     p_fields: opts.fields ?? {},
+    ...teamParams,
   });
   return error ? { error: error.message } : {};
 }

@@ -720,7 +720,9 @@ export function ScheduleSheet({
 /** The editor's working copy of an item's sign-up config (strings for inputs). */
 export interface SignupDraft {
   enabled: boolean;
-  mode: "interval" | "slots";
+  mode: "interval" | "slots" | "headcount";
+  /** Blank = no cap (only meaningful in headcount mode — interval/slots
+   *  require a real number, enforced by signupIsValid). */
   capacity: string;
   slotMinutes: string;
   startTime: string;
@@ -728,12 +730,15 @@ export interface SignupDraft {
   instructions: string;
   fields: SignupField[];
   reminderMinutes: number[];
+  /** Blank/"1" = individual. "2"+ = sign up in fixed-size teams (migration
+   *  0143) — applies in any mode. */
+  teamSize: string;
 }
 
 /** Seed a SignupDraft from an item draft's persisted signup* fields. */
 export function signupDraft(src?: {
   signupEnabled?: boolean;
-  signupMode?: "interval" | "slots" | null;
+  signupMode?: "interval" | "slots" | "headcount" | null;
   signupCapacity?: number | null;
   signupSlotMinutes?: number | null;
   signupStartTime?: string | null;
@@ -741,30 +746,36 @@ export function signupDraft(src?: {
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
   signupReminderMinutes?: number[] | null;
+  signupTeamSize?: number | null;
 }): SignupDraft {
   return {
     enabled: src?.signupEnabled ?? false,
     mode: src?.signupMode ?? "interval",
-    capacity: String(src?.signupCapacity ?? 4),
+    capacity: src?.signupCapacity != null ? String(src.signupCapacity) : src ? "" : "4",
     slotMinutes: String(src?.signupSlotMinutes ?? 60),
     startTime: toTimeInputValue(src?.signupStartTime) || "12:00",
     endTime: toTimeInputValue(src?.signupEndTime) || "16:00",
     instructions: src?.signupInstructions ?? "",
     fields: src?.signupFields ?? [],
     reminderMinutes: src?.signupReminderMinutes ?? [],
+    teamSize: src?.signupTeamSize && src.signupTeamSize > 1 ? String(src.signupTeamSize) : "",
   };
 }
 
-/** Interval mode needs a valid time range; slots mode validates per-slot. */
+/** Interval mode needs a valid time range and a real capacity; slots mode
+ *  validates per-slot; headcount mode's capacity is optional (blank = no
+ *  cap). Team size, if set, must be a whole number ≥ 2. */
 export function signupIsValid(v: SignupDraft): boolean {
+  if (!v.enabled) return true;
+  if (v.teamSize.trim() && !(Number(v.teamSize) >= 2 && Number.isInteger(Number(v.teamSize)))) return false;
+  if (v.mode === "headcount") return !v.capacity.trim() || Number(v.capacity) > 0;
+  if (v.mode === "slots") return true;
   return (
-    !v.enabled ||
-    v.mode === "slots" ||
-    (Number(v.capacity) > 0 &&
-      Number(v.slotMinutes) > 0 &&
-      v.startTime.length > 0 &&
-      v.endTime.length > 0 &&
-      v.startTime < v.endTime)
+    Number(v.capacity) > 0 &&
+    Number(v.slotMinutes) > 0 &&
+    v.startTime.length > 0 &&
+    v.endTime.length > 0 &&
+    v.startTime < v.endTime
   );
 }
 
@@ -773,14 +784,35 @@ export function signupPayload(v: SignupDraft) {
   return {
     signupEnabled: v.enabled,
     signupMode: v.mode,
-    signupCapacity: v.enabled ? Number(v.capacity) : null,
-    // Interval config only applies to interval mode; slots mode ignores it.
+    // Headcount mode alone allows a blank ⇒ null (no cap); interval/slots
+    // always have a real number here (enforced by signupIsValid).
+    signupCapacity: v.enabled ? (v.capacity.trim() ? Number(v.capacity) : null) : null,
+    // Interval config only applies to interval mode; slots/headcount ignore it.
     signupSlotMinutes: v.enabled && v.mode === "interval" ? Number(v.slotMinutes) : null,
     signupStartTime: v.enabled && v.mode === "interval" ? v.startTime : null,
     signupEndTime: v.enabled && v.mode === "interval" ? v.endTime : null,
     signupInstructions: v.enabled ? orNull(v.instructions) : null,
     signupFields: v.enabled ? v.fields.map((f) => ({ id: f.id, label: f.label.trim() })).filter((f) => f.label) : [],
     signupReminderMinutes: v.enabled ? [...v.reminderMinutes].sort((a, b) => b - a) : [],
+    signupTeamSize: v.enabled && v.teamSize.trim() ? Number(v.teamSize) : null,
+  };
+}
+
+/** Activities (unlike schedule events) don't get headcount mode or teams —
+ *  SignupConfigEditor only offers those when `kind === "schedule"`, so this
+ *  is a type-safety backstop only, never actually exercised at runtime. */
+export function activitySignupPayload(v: SignupDraft) {
+  const p = signupPayload(v);
+  return {
+    signupEnabled: p.signupEnabled,
+    signupMode: p.signupMode === "headcount" ? ("interval" as const) : p.signupMode,
+    signupCapacity: p.signupCapacity,
+    signupSlotMinutes: p.signupSlotMinutes,
+    signupStartTime: p.signupStartTime,
+    signupEndTime: p.signupEndTime,
+    signupInstructions: p.signupInstructions,
+    signupFields: p.signupFields,
+    signupReminderMinutes: p.signupReminderMinutes,
   };
 }
 
@@ -932,12 +964,27 @@ function SignupConfigEditor({
     if (Number.isFinite(m) && m > 0 && !value.reminderMinutes.includes(m)) set({ reminderMinutes: [...value.reminderMinutes, m] });
     setCustomMin("");
   };
+  // Headcount mode + teams are schedule-events-only (migration 0143) — kept
+  // out of the activity flavor's UI entirely (see activitySignupPayload()).
+  const modeOptions =
+    kind === "schedule"
+      ? ([
+          ["headcount", "Just a headcount", "No time — just who's coming"],
+          ["interval", "By time range", "Even slots, one length"],
+          ["slots", "Specific times", "Pick each slot yourself"],
+        ] as const)
+      : ([
+          ["interval", "By time range", "Even slots, one length"],
+          ["slots", "Specific times", "Pick each slot yourself"],
+        ] as const);
   return (
-    <Field label="Limited sign-up">
+    <Field label="Sign-ups">
       <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
         <span className="min-w-0">
-          <span className="text-sm">Take sign-ups for time slots</span>
-          <span className="block text-xs text-foreground/50">e.g. 4 people per slot, every hour from noon to 4pm</span>
+          <span className="text-sm">Take sign-ups</span>
+          <span className="block text-xs text-foreground/50">
+            {kind === "schedule" ? "A headcount, time slots, or both" : "e.g. 4 people per slot, every hour from noon to 4pm"}
+          </span>
         </span>
         <input
           type="checkbox"
@@ -949,13 +996,8 @@ function SignupConfigEditor({
       {value.enabled && (
         <div className="space-y-3">
           {/* How the slots are defined. */}
-          <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border">
-            {(
-              [
-                ["interval", "By time range", "Even slots, one length"],
-                ["slots", "Specific times", "Pick each slot yourself"],
-              ] as const
-            ).map(([val, label, hint]) => (
+          <div className={`grid gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border ${modeOptions.length === 3 ? "grid-cols-1" : "grid-cols-2"}`}>
+            {modeOptions.map(([val, label, hint]) => (
               <button
                 key={val}
                 type="button"
@@ -974,18 +1016,39 @@ function SignupConfigEditor({
 
           <label className="block">
             <span className="mb-1 block text-xs text-foreground/50">
-              People per slot{value.mode === "slots" ? " (default)" : ""}
+              {value.mode === "headcount" ? "Max people (optional)" : `People per slot${value.mode === "slots" ? " (default)" : ""}`}
             </span>
             <input
               type="number"
               min={1}
               value={value.capacity}
               onChange={(e) => set({ capacity: e.target.value })}
+              placeholder={value.mode === "headcount" ? "No limit" : undefined}
               className={`${FIELD} w-full`}
             />
           </label>
 
-          {value.mode === "interval" ? (
+          {kind === "schedule" && (
+            <label className="block">
+              <span className="mb-1 block text-xs text-foreground/50">Sign up in teams of (optional)</span>
+              <input
+                type="number"
+                min={2}
+                value={value.teamSize}
+                onChange={(e) => set({ teamSize: e.target.value })}
+                placeholder="Individual sign-ups"
+                className={`${FIELD} w-full`}
+              />
+              <span className="mt-1 block text-[11px] text-foreground/45">
+                Leave blank to sign up individually. Set e.g. 2 for baggo doubles — one sign-up commits a whole team at once.
+              </span>
+              {value.teamSize.trim() && !(Number(value.teamSize) >= 2 && Number.isInteger(Number(value.teamSize))) && (
+                <p className="mt-1 text-xs font-medium text-accent">Team size must be a whole number of 2 or more.</p>
+              )}
+            </label>
+          )}
+
+          {value.mode === "headcount" ? null : value.mode === "interval" ? (
             <div className="space-y-2">
               <label className="block">
                 <span className="mb-1 block text-xs text-foreground/50">Minutes per slot</span>
@@ -1069,7 +1132,9 @@ function SignupConfigEditor({
             </p>
           </div>
 
-          {/* Reminder push notifications before each slot. */}
+          {/* Reminder push notifications before each slot — meaningless in
+              headcount mode, which has no time to count down from. */}
+          {value.mode !== "headcount" && (
           <div>
             <span className="mb-1 block text-xs text-foreground/50">Remind people before their slot (push)</span>
             <div className="flex flex-wrap gap-1.5">
@@ -1131,6 +1196,7 @@ function SignupConfigEditor({
               fires for slots that have a set date &amp; time.
             </p>
           </div>
+          )}
         </div>
       )}
     </Field>
@@ -1779,7 +1845,7 @@ export function ActivitySheet({
         leadPhone: orNull(leadPhone),
         crewUserIds,
         position: draft?.position ?? nextPosition,
-        ...signupPayload(signup),
+        ...activitySignupPayload(signup),
       });
       if (error) return error;
       const slotErr = await flushPendingSlots("activity", draft?.id, id, pendingSlots);
