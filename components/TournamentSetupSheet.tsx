@@ -17,6 +17,7 @@ import {
   removeEntrant,
   updateTournament,
   generatePools,
+  setTournamentFormat,
   bracketSummary,
   firstRoundPreview,
   type Tournament,
@@ -249,6 +250,31 @@ export function TournamentSetupSheet({
       }
     >
       <div className="space-y-5">
+        {/* Format — switchable while still in setup (before generating). */}
+        {tournament.status === "setup" && (
+          <section className="space-y-2">
+            <SectionLabel>Format</SectionLabel>
+            <SegmentedControl<TournamentFormat>
+              segments={[
+                { value: "single_elim", label: "Bracket" },
+                { value: "round_robin", label: "Round-robin" },
+                { value: "pools_bracket", label: "Pools" },
+              ]}
+              value={tournament.format}
+              onChange={(f) => {
+                if (f !== tournament.format) void run(() => setTournamentFormat(tournament.id, f));
+              }}
+            />
+            <p className="text-xs text-foreground/50">
+              {isRR
+                ? "Everyone plays everyone; ranked by a standings table."
+                : isPools
+                  ? "Group play in pools, then the top of each pool advance to a knockout."
+                  : "Single elimination — lose and you're out."}
+            </p>
+          </section>
+        )}
+
         {/* Players. For a private activity the roster IS the player list (auto-added
             on creation) — this button just re-syncs if you added people since. */}
         <section className="space-y-2">
