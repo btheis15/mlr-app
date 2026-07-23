@@ -226,10 +226,10 @@ function TournamentCard({
               )}
 
               {effTab === "pools" && (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {poolLabels(tournament).map((pl) => (
-                    <div key={pl}>
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent">Pool {pl}</p>
+                    <div key={pl} className="rounded-2xl bg-background p-3 ring-1 ring-border">
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">Pool {pl}</p>
                       <TournamentStandings tournament={tournament} pool={pl} />
                     </div>
                   ))}
