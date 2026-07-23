@@ -167,6 +167,7 @@ interface ScheduleRow {
   signup_mode: string | null;
   signup_instructions: string | null;
   signup_fields: SignupField[] | null;
+  signup_reminder_minutes: number[] | null;
 }
 interface DinnerRow {
   id: string;
@@ -213,6 +214,7 @@ interface ActivityRow {
   signup_mode: string | null;
   signup_instructions: string | null;
   signup_fields: SignupField[] | null;
+  signup_reminder_minutes: number[] | null;
 }
 interface CalloutRow {
   id: string;
@@ -270,6 +272,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
+    signupReminderMinutes: r.signup_reminder_minutes ?? [],
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -320,6 +323,7 @@ function mapActivity(r: ActivityRow): FestActivity {
     signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
+    signupReminderMinutes: r.signup_reminder_minutes ?? [],
   };
 }
 function mapCallout(r: CalloutRow): HomeCallout {
@@ -353,7 +357,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -369,7 +373,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
       sb
         .from("fest_activities")
-        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields")
+        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes")
         .eq("fest_year", FEST_YEAR)
         .order("position"),
       sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
@@ -489,6 +493,7 @@ export interface ScheduleInput {
   signupMode: "interval" | "slots";
   signupInstructions: string | null;
   signupFields: SignupField[];
+  signupReminderMinutes: number[];
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -518,6 +523,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_mode: i.signupMode,
     signup_instructions: i.signupInstructions,
     signup_fields: i.signupFields,
+    signup_reminder_minutes: i.signupReminderMinutes,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -684,6 +690,7 @@ export interface ActivityInput {
   signupMode: "interval" | "slots";
   signupInstructions: string | null;
   signupFields: SignupField[];
+  signupReminderMinutes: number[];
 }
 export const saveActivity = (i: ActivityInput) =>
   writeRow("fest_activities", i.id, {
@@ -705,6 +712,7 @@ export const saveActivity = (i: ActivityInput) =>
     signup_mode: i.signupMode,
     signup_instructions: i.signupInstructions,
     signup_fields: i.signupFields,
+    signup_reminder_minutes: i.signupReminderMinutes,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
 
@@ -850,7 +858,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, link_url, link_label, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -883,6 +891,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
+    signupReminderMinutes: r.signup_reminder_minutes ?? [],
   }));
 }
 
@@ -960,7 +969,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_activities")
-    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, position")
+    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
@@ -983,6 +992,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
     signupMode: (r.signup_mode as "interval" | "slots" | null) ?? "interval",
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
+    signupReminderMinutes: r.signup_reminder_minutes ?? [],
   }));
 }
 

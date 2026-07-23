@@ -305,14 +305,17 @@ async function start() {
     "meeting_proposed", "meeting_scheduled",
     // Cabin guest message (migration 0120).
     "cabin_message",
+    // Sign-up slot reminder (migration 0140) — override push, like help_urgent.
+    "signup_reminder",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;
     if (!once(`notif:${n.id}`)) return;
     const { data: prof } = await sb.from("profiles").select("push_types").eq("id", n.recipient_id).maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    // help_urgent overrides per-category picks (buzz anyone with push on).
-    if (n.type === "help_urgent") { if (pushTypes.length === 0) return; }
+    // help_urgent + signup_reminder override per-category picks (buzz anyone
+    // with push on) — see push-sender.js for the rationale.
+    if (n.type === "help_urgent" || n.type === "signup_reminder") { if (pushTypes.length === 0) return; }
     else if (!pushTypes.includes(n.type)) return;
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
