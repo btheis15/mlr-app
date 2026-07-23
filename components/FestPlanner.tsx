@@ -1123,13 +1123,19 @@ function SignupSlotsEditor({
     }
     setBusy(true);
     setError(null);
-    const { error } = await createScheduleSlot(kind, parentId!, { ...slot, label: null, position: saved.length });
-    if (error) setError(error);
-    else {
-      clearInputs();
-      await reload();
+    try {
+      const { error } = await createScheduleSlot(kind, parentId!, { ...slot, label: null, position: saved.length });
+      if (error) setError(error);
+      else {
+        clearInputs();
+        await reload();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add that slot.");
+    } finally {
+      // Always clear busy — otherwise a rejected fetch leaves the button stuck gray.
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const remove = async (key: string) => {
@@ -1139,10 +1145,15 @@ function SignupSlotsEditor({
     }
     setBusy(true);
     setError(null);
-    const { error } = await deleteScheduleSlot(kind, key);
-    if (error) setError(error);
-    else await reload();
-    setBusy(false);
+    try {
+      const { error } = await deleteScheduleSlot(kind, key);
+      if (error) setError(error);
+      else await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't remove that slot.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

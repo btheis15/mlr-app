@@ -434,7 +434,12 @@ export async function canEditFest(): Promise<boolean> {
 async function currentUid(): Promise<string | null> {
   const sb = supabase;
   if (!sb) return null;
-  return (await sb.auth.getUser()).data.user?.id ?? null;
+  // Read the uid from the LOCAL session, not auth.getUser() — getUser() makes a
+  // network round-trip to the auth server that can stall on a flaky/blocked
+  // mobile connection, hanging every fest write (the "Saving…" button never
+  // resolves) even though reads work off the cached session. `updated_by` is
+  // just an audit stamp (RLS is the real gate), so the local session is fine.
+  return (await sb.auth.getSession()).data.session?.user?.id ?? null;
 }
 
 /** Write a row to one fest table — insert when `id` is absent, else update.
