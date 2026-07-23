@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useSaveStatus } from "@/lib/hooks";
@@ -9,6 +9,9 @@ import { postAnnouncement, sendActivityNotification } from "@/lib/broadcast";
 import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPicker";
 import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
 import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
+import { fetchFestContent } from "@/lib/festContent";
+import { activityReminderDefaults, FAMILY_FEST_EVENT_ID } from "@/lib/activityNotify";
+import type { ScheduleEvent } from "@/lib/types";
 
 /** How long the banner stays up before it auto-hides (people can still
  *  dismiss it sooner with ✕). Irrelevant when "Show as a banner" is off. */
@@ -74,12 +77,38 @@ export function AdminBroadcastComposer() {
   const [feedUrl, setFeedUrl] = useState("");
   const [feedExpiryHours, setFeedExpiryHours] = useState<number | null>(null);
 
+  // Link to a Family Fest activity → autofill the message from it (title +
+  // when/where), tap-through to it, and target Family Fest attendees.
+  const [activityOptions, setActivityOptions] = useState<ScheduleEvent[]>([]);
+  const [activityLinkId, setActivityLinkId] = useState<string>("");
+  useEffect(() => {
+    let alive = true;
+    fetchFestContent().then((c) => {
+      if (alive) setActivityOptions(c.schedule);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const onPickActivity = (id: string) => {
+    setActivityLinkId(id);
+    if (!id) return; // clearing the link leaves whatever's already typed
+    const picked = activityOptions.find((e) => e.id === id);
+    if (!picked) return;
+    const d = activityReminderDefaults(picked);
+    setTitle(d.title);
+    setBody(d.body);
+    setFeedUrl(d.url);
+    setSendToFeed(true); // so tapping the Activity entry opens the activity
+    setEventTarget({ eventId: FAMILY_FEST_EVENT_ID, excludeNotAttending: true });
+  };
+
   const { pending: sending, status, show, run } = useSaveStatus();
 
   const anyChannel = showBanner || sendEmail || sendToFeed;
 
   const reset = () => {
-    setTitle(""); setBody(""); setFeedUrl("");
+    setTitle(""); setBody(""); setFeedUrl(""); setActivityLinkId("");
     setEmailAudience("all"); setBannerExpiryHours(DEFAULT_BANNER_EXPIRY_HOURS); setFeedExpiryHours(null);
     setEventTarget({ eventId: null, excludeNotAttending: true });
     setScheduleAt(null);
@@ -171,6 +200,30 @@ export function AdminBroadcastComposer() {
       <p className="text-xs text-foreground/60">
         Pick one or more places this shows up — a top-of-app banner, recipients&rsquo; Activity tab, and/or an email.
       </p>
+
+      {activityOptions.length > 0 && (
+        <div className="rounded-xl bg-background px-3 py-2 ring-1 ring-border">
+          <label className="block text-xs font-medium text-foreground/60">Remind about an activity (autofills)</label>
+          <select
+            value={activityLinkId}
+            onChange={(e) => onPickActivity(e.target.value)}
+            className="mt-1 w-full rounded-lg bg-card px-2 py-2 text-sm ring-1 ring-border"
+          >
+            <option value="">None — write my own</option>
+            {activityOptions.map((a) => (
+              <option key={a.id} value={a.id}>
+                {`${a.emoji ?? ""} ${a.title}`.trim()}
+              </option>
+            ))}
+          </select>
+          {activityLinkId && (
+            <p className="mt-1 text-[11px] text-foreground/50">
+              Filled from the activity + links to it. Goes to everyone at Family Fest (skips those not coming). Edit anything below.
+            </p>
+          )}
+        </div>
+      )}
+
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}

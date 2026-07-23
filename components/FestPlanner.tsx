@@ -18,6 +18,8 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
+import { ChangeNotifyEditor, emptyChangeNotify, type ChangeNotifyState } from "@/components/ChangeNotifyEditor";
+import { sendActivityNotify, changeMessageDefault } from "@/lib/activityNotify";
 import { useFestContent } from "@/lib/useFestContent";
 import { formatDate, formatDateLong, formatTime, toTimeInputValue } from "@/lib/format";
 import {
@@ -489,6 +491,8 @@ export function ScheduleSheet({
   // yet) — persisted right after the first save. See SignupConfigEditor.
   const [pendingSlots, setPendingSlots] = useState<PendingSlot[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const { isAdmin } = useIdentity();
+  const [notify, setNotify] = useState<ChangeNotifyState>(emptyChangeNotify);
 
   const canSave = title.trim().length > 0 && (anytime || day.length > 0) && signupIsValid(signup) && !save.pending;
 
@@ -534,6 +538,14 @@ export function ScheduleSheet({
       if (error) return error;
       const slotErr = await flushPendingSlots("schedule", draft?.id, id, pendingSlots);
       if (slotErr) return slotErr;
+      if (notify.enabled && isAdmin) {
+        const r = await sendActivityNotify({
+          title: notify.message,
+          channels: notify.channels,
+          scheduleItemId: draft?.id ?? id ?? null,
+        });
+        if (r.error) return `Saved — but the notification didn't send: ${r.error}`;
+      }
       onSaved();
       return null;
     });
@@ -700,6 +712,14 @@ export function ScheduleSheet({
           className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
         />
       </label>
+
+      {isAdmin && draft && (
+        <ChangeNotifyEditor
+          value={notify}
+          onChange={setNotify}
+          defaultMessage={changeMessageDefault(title, hasTime ? startTime : null)}
+        />
+      )}
 
       <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
         <span className="min-w-0">
@@ -1461,6 +1481,8 @@ export function DinnerSheet({
   const [prepTime, setPrepTime] = useState(toTimeInputValue(draft?.prepTime));
   const [prepLocation, setPrepLocation] = useState(draft?.prepLocation ?? "");
   const [picking, setPicking] = useState(false);
+  const { isAdmin } = useIdentity();
+  const [notify, setNotify] = useState<ChangeNotifyState>(emptyChangeNotify);
 
   // Default the title to "{Day} Dinner" once a day is chosen and title is blank.
   useEffect(() => {
@@ -1492,6 +1514,10 @@ export function DinnerSheet({
         position: draft?.position ?? nextPosition,
       });
       if (error) return error;
+      if (notify.enabled && isAdmin) {
+        const r = await sendActivityNotify({ title: notify.message, channels: notify.channels });
+        if (r.error) return `Saved — but the notification didn't send: ${r.error}`;
+      }
       onSaved();
       return null;
     });
@@ -1576,6 +1602,14 @@ export function DinnerSheet({
           <input value={prepLocation} onChange={(e) => setPrepLocation(e.target.value)} placeholder="Location" className={FIELD} />
         </div>
       </Field>
+
+      {isAdmin && draft && (
+        <ChangeNotifyEditor
+          value={notify}
+          onChange={setNotify}
+          defaultMessage={changeMessageDefault(title, servedTime || null)}
+        />
+      )}
 
       {picking && (
         <MemberPickerSheet
