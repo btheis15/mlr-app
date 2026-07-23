@@ -39,6 +39,57 @@ import type {
 } from "@/lib/types";
 
 /**
+ * A `setInterval` that PAUSES while the tab/PWA is backgrounded and resumes
+ * (firing `fn` immediately) when it returns to the foreground. Battery-friendly:
+ * app-wide pollers (version check, expiry re-render, countdown tick) otherwise
+ * keep firing — and, worse, keep hitting the network — while nobody's looking.
+ *
+ * - `fn` is kept in a ref, so callers don't need to memoize it.
+ * - `delayMs = null` disables the interval entirely (e.g. a demo-date freeze).
+ * - `runOnResume` (default true) fires `fn` once the moment the app is revealed,
+ *   so the first thing a returning user sees is fresh — no wait for the next tick.
+ */
+export function useVisibleInterval(
+  fn: () => void,
+  delayMs: number | null,
+  runOnResume = true,
+) {
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  useEffect(() => {
+    if (delayMs == null) return;
+    let id: number | null = null;
+    const tick = () => fnRef.current();
+    const start = () => {
+      if (id == null) id = window.setInterval(tick, delayMs);
+    };
+    const stop = () => {
+      if (id != null) {
+        window.clearInterval(id);
+        id = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (runOnResume) tick();
+        start();
+      } else {
+        stop();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    // Start only if we're currently visible (a tab opened in the background
+    // shouldn't begin polling until it's actually shown).
+    if (document.visibilityState === "visible") start();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
+  }, [delayMs, runOnResume]);
+}
+
+/**
  * The dismiss pattern shared by every sheet/overlay: flip `closing` so the
  * panel plays its -close animation, then call `onClose` once it finishes;
  * Escape closes too. Honors the OS reduce-motion toggle by closing

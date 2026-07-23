@@ -98,6 +98,25 @@ can view the photos).
 `npm start`). Nothing here needs a new env var to work — `ALLOWED_ORIGINS` and
 `MAX_MB` in an existing `.env` still take precedence over the new defaults.
 
+## Stability & resource limits (24/7 mini)
+
+- **Process crash guards.** `server.js` installs top-level `unhandledRejection`
+  (log only) + `uncaughtException` (log then `exit(1)`) handlers. One Node
+  process hosts uploads AND all the side-jobs, so an unguarded throw used to take
+  everything down; combined with launchd `KeepAlive` that risked a ~10s
+  crash-loop. Now a stray rejection can't kill the process, and a fatal error
+  restarts cleanly on a known boundary.
+- **Bounded media concurrency.** ffmpeg transcodes + `sharp`/frame-sample
+  moderation run inline on `/upload`; several simultaneous video uploads used to
+  spawn unbounded parallel encoders and peg every core. A small in-process
+  limiter (`concurrency.js`) caps concurrent heavy media work — default **2**,
+  override with `MEDIA_CONCURRENCY` in `.env`. Excess uploads queue (FIFO); the
+  15-min ffmpeg SIGKILL is unchanged.
+- **Push senders self-heal.** `push-sender.js` and `apns-sender.js` used to
+  handle only `SUBSCRIBED` on their realtime channel — a silent `CHANNEL_ERROR`/
+  `TIMED_OUT`/`CLOSED` stopped ALL push until a manual restart. Both now
+  resubscribe (guarded 5s) on a dropped channel, matching `alert-mailer.js`.
+
 ## Setup on the mini
 
 **1. Get the code + Node 18+.**

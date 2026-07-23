@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { toISODate } from "@/lib/festSeason";
+import { useVisibleInterval } from "@/lib/hooks";
 
 const KEY = "mlr-demo-date";
 
@@ -45,10 +46,12 @@ export function DemoDateProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     setMounted(true);
-    // With no override, refresh hourly so a long-open tab rolls over days.
-    const id = setInterval(() => force((n) => n + 1), 60 * 60 * 1000);
-    return () => clearInterval(id);
   }, []);
+
+  // With no override, refresh hourly so a long-open tab rolls over days. Paused
+  // while backgrounded; fires on resume so a day that rolled over while the app
+  // was hidden is reflected the moment it's foregrounded.
+  useVisibleInterval(() => force((n) => n + 1), 60 * 60 * 1000);
 
   const setDemoDate = (d: string | null) => {
     setState(d);

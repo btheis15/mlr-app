@@ -37,8 +37,27 @@ const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
+const { createLimiter } = require("./concurrency");
 
 const SERVER_STARTED_AT = new Date().toISOString();
+
+// Process-level crash guards. This one Node process hosts the upload server AND
+// seven long-lived side-jobs (mailer, push/apns senders, search indexer, etc.),
+// so a single unguarded rejection/throw would take everything down. launchd's
+// KeepAlive then relaunches within ~10s — a deterministic trigger (poison
+// realtime payload, boot-time failure) becomes a 24/7 crash-loop.
+//   - unhandledRejection: log only. A stray rejected promise (a transient
+//     network/RPC blip in a side-job) must not kill uploads + all senders.
+//   - uncaughtException: log, then exit cleanly so KeepAlive restarts on a known
+//     boundary rather than continuing in a corrupt state.
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] unhandledRejection:", (reason && reason.stack) || reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[server] uncaughtException — exiting for a clean restart:", (err && err.stack) || err);
+  process.exit(1);
+});
+
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -59,6 +78,12 @@ if (!ALLOWED.length) {
   ALLOWED.push(...DEFAULT_ALLOWED_ORIGINS);
 }
 const MAX_MB = Number(process.env.MAX_MB || 256); // per-file cap (MB); your disk is the real limit
+
+// Cap concurrent CPU-heavy media work (ffmpeg transcode/frame-sample + sharp).
+// Excess uploads queue instead of spawning unbounded parallel encoders that
+// would peg every core. Override with MEDIA_CONCURRENCY (default 2).
+const MEDIA_CONCURRENCY = Math.max(1, Number(process.env.MEDIA_CONCURRENCY || 2));
+const heavyMediaWork = createLimiter(MEDIA_CONCURRENCY);
 const MEDIA_DIR = process.env.MEDIA_DIR || path.join(__dirname, "media");
 const LEGACY_DIR = path.join(MEDIA_DIR, "posts", "legacy");
 
@@ -636,7 +661,7 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     let served = req.file.path;
     if (isMedia) {
       try {
-        const r = await maybeTranscode(req.file.path, req.file.mimetype);
+        const r = await heavyMediaWork(() => maybeTranscode(req.file.path, req.file.mimetype));
         served = r.path;
         if (r.transcoded) console.log(`[transcode] ${req.file.filename} → ${path.basename(served)}`);
         else if (r.reason) console.log(`[transcode] kept original (${r.reason})`);
@@ -670,7 +695,7 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     if (MOD_ENABLED && isMedia) {
       if (category === "chat") {
         // Fire-and-forget — never blocks the upload response.
-        moderateMedia(served, kind)
+        heavyMediaWork(() => moderateMedia(served, kind))
           .then((v) => {
             if (v && v.flagged) {
               console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
@@ -688,7 +713,7 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
           .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
       } else {
         try {
-          const v = await moderateMedia(served, kind);
+          const v = await heavyMediaWork(() => moderateMedia(served, kind));
           if (v) {
             console.log(`[moderate] ${rel} → ${v.flagged ? `FLAGGED ${v.category} (${v.reason})` : "ok"} via ${v.model}`);
             if (v.flagged) {

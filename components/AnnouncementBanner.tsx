@@ -5,7 +5,7 @@ import type { Announcement } from "@/lib/types";
 import { timeAgo } from "@/lib/format";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { LOCAL_ANNOUNCEMENTS_KEY, loadLocalAnnouncements } from "@/lib/localAnnouncements";
-import { useEvents } from "@/lib/hooks";
+import { useEvents, useVisibleInterval } from "@/lib/hooks";
 import { isHiddenForEventTarget } from "@/lib/eventTargeting";
 
 const DISMISSED_KEY = "mlr-dismissed-announcements";
@@ -106,11 +106,10 @@ export function AnnouncementBanner({ items }: { items: Announcement[] }) {
 
   // Tick every 60s so `now` below gets re-evaluated on its own — an alert
   // that expires mid-session disappears within a minute instead of sitting
-  // there until some unrelated state change happens to re-render this.
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // there until some unrelated state change happens to re-render this. Paused
+  // while backgrounded (nothing to re-render for a hidden banner) and fires once
+  // on resume so a since-expired alert is gone the moment you're back.
+  useVisibleInterval(() => setTick((t) => t + 1), 60_000);
 
   const dismiss = (id: string) => {
     const next = [...dismissed, id];
