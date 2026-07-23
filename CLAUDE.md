@@ -803,7 +803,9 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   slots have no moment to count down to and are skipped. The recipient is the
   linked member, or — for a free-text **write-in** row (no account) — whoever
   **added** it (`coalesce(user_id, added_by)`), so a coordinator who signed a
-  guest up still gets the nudge (worded "{guest}'s slot starts …"). The push is an
+  guest up still gets the nudge (worded "{guest}'s slot starts …"). When 2+ people
+  share the slot the body also lists the whole group by name ("In this slot:
+  Alice, Bob, …") — names only, linked or write-in, no custom-field data. The push is an
   **override** (like `help_urgent`): anyone with phone push on gets it, since they
   chose to sign up — added to both mini senders' pushable sets. `signup_reminder`
   is a `NotifType`, on by default, mutable in Profile → Notifications → Family Fest.

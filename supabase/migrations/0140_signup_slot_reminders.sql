@@ -76,6 +76,16 @@ begin
              i.title, i.signup_reminder_minutes as mins,
              coalesce(sl.day, i.day::text) as day,
              coalesce(sl.start_time, s.slot_start) as start_time,
+             -- Everyone else sharing this same slot (family event — say who
+             -- they're with). Just the names, linked or write-in; no field data.
+             (select count(*) from public.fest_schedule_signups o
+                where o.schedule_item_id = s.schedule_item_id
+                  and ((s.slot_id is not null and o.slot_id = s.slot_id)
+                    or (s.slot_id is null and o.slot_id is null and o.slot_start = s.slot_start))) as slot_count,
+             (select string_agg(o.name, ', ' order by o.created_at) from public.fest_schedule_signups o
+                where o.schedule_item_id = s.schedule_item_id
+                  and ((s.slot_id is not null and o.slot_id = s.slot_id)
+                    or (s.slot_id is null and o.slot_id is null and o.slot_start = s.slot_start))) as slot_names,
              '/family-fest/schedule/' || i.id::text as url
       from public.fest_schedule_signups s
       join public.fest_schedule_items i on i.id = s.schedule_item_id
@@ -91,6 +101,14 @@ begin
              a.title, a.signup_reminder_minutes as mins,
              sl.day as day,                        -- activities have no own day
              coalesce(sl.start_time, s.slot_start) as start_time,
+             (select count(*) from public.fest_activity_signups o
+                where o.activity_id = s.activity_id
+                  and ((s.slot_id is not null and o.slot_id = s.slot_id)
+                    or (s.slot_id is null and o.slot_id is null and o.slot_start = s.slot_start))) as slot_count,
+             (select string_agg(o.name, ', ' order by o.created_at) from public.fest_activity_signups o
+                where o.activity_id = s.activity_id
+                  and ((s.slot_id is not null and o.slot_id = s.slot_id)
+                    or (s.slot_id is null and o.slot_id is null and o.slot_start = s.slot_start))) as slot_names,
              '/family-fest' as url
       from public.fest_activity_signups s
       join public.fest_activities a on a.id = s.activity_id
@@ -124,10 +142,13 @@ begin
           perform public._notify(
             r.recipient, 'signup_reminder', null,
             'Sign-up reminder: ' || r.title,
-            case when r.is_write_in
+            (case when r.is_write_in
               then r.who || '''s ' || r.title || ' time slot starts ' || public._humanize_minutes(m) || '.'
               else 'Your ' || r.title || ' time slot starts ' || public._humanize_minutes(m) || '.'
-            end,
+            end)
+            -- Family event: list everyone in the same slot (names only) so they
+            -- know who they're with. Skipped when they're the only one in it.
+            || case when r.slot_count > 1 then ' In this slot: ' || r.slot_names || '.' else '' end,
             r.url, r.kind, r.signup_id, v_when + interval '1 hour');
           insert into public.fest_signup_reminders_sent (signup_id, minutes, kind)
           values (r.signup_id, m, r.kind)
