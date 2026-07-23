@@ -7,7 +7,7 @@ import { useSheetDismiss } from "@/lib/hooks";
 import { fetchChatPollVoters, type ChatPoll, type ChatPollVoter } from "@/lib/chatPolls";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 
-// Vote + results sheet for one quick poll (migration 0147). Option rows reuse
+// Vote + results sheet for one quick poll (migration 0149). Option rows reuse
 // PollsView's PollCard bar-fill visual (a live %-fill behind each option),
 // extended for multi-select (every tap toggles that option, immediately
 // submitted — no separate "Submit" step) and an inline text field for the
