@@ -319,6 +319,14 @@ export interface Chef {
   phone?: string;
 }
 
+/** One click-through link on a schedule event (migration 0142) — mirrors
+ *  `CalloutLink` (lib/festContent.ts), same `{href, label}` shape, kept as a
+ *  separate type so lib/types.ts doesn't depend on lib/festContent.ts. */
+export interface EventLink {
+  href: string;
+  label: string | null;
+}
+
 /** A single timed item on the week's agenda. */
 export interface ScheduleEvent {
   id: string;
@@ -351,10 +359,10 @@ export interface ScheduleEvent {
   anytime?: boolean;
   /** Optional cover photo (site-assets URL). */
   imageUrl?: string | null;
-  /** Optional click-through link — a Google Doc/Sheet, sign-up form, or any
-   *  web page for this event. `linkLabel` is the button text shown for it. */
-  linkUrl?: string | null;
-  linkLabel?: string | null;
+  /** Optional click-through links — a Google Doc/Sheet, sign-up form, or any
+   *  web page for this event (migration 0142). More than one is allowed (e.g.
+   *  a sign-up form AND a separate info doc); each renders as its own button. */
+  links?: EventLink[];
   /** Limited sign-up time slots (e.g. "4 people per hour, noon–4pm") — see
    *  lib/scheduleSignups.ts for the slot list + capacity math. */
   signupEnabled?: boolean;

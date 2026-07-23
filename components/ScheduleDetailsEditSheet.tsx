@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ScheduleEvent } from "@/lib/types";
 import { updateScheduleDetails } from "@/lib/festContent";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
+import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 
 /**
@@ -28,8 +29,7 @@ export function ScheduleDetailsEditSheet({
   const [location, setLocation] = useState(event.location === "TBD" ? "" : event.location);
   const [description, setDescription] = useState(event.description);
   const [bring, setBring] = useState(event.bring ?? "");
-  const [linkUrl, setLinkUrl] = useState(event.linkUrl ?? "");
-  const [linkLabel, setLinkLabel] = useState(event.linkLabel ?? "");
+  const [links, setLinks] = useState(toEditableLinks(event.links));
 
   const submit = () =>
     save.run(async () => {
@@ -37,8 +37,7 @@ export function ScheduleDetailsEditSheet({
         location: location.trim() || null,
         description: description.trim() || null,
         bring: bring.trim() || null,
-        linkUrl: linkUrl.trim() || null,
-        linkLabel: linkLabel.trim() || null,
+        links: cleanLinks(links),
       });
       if (error) return error;
       onSaved();
@@ -99,23 +98,11 @@ export function ScheduleDetailsEditSheet({
         />
       </div>
       <div className="space-y-2">
-        <SectionLabel>Link (optional)</SectionLabel>
+        <SectionLabel>Links (optional)</SectionLabel>
         <p className="text-xs text-foreground/50">
-          A Google Doc/Sheet, sign-up form, or any web page for this event.
+          A Google Doc/Sheet, sign-up form, or any web page for this event — add more than one if you need to.
         </p>
-        <input
-          value={linkUrl}
-          onChange={(e) => setLinkUrl(e.target.value)}
-          placeholder="https://…"
-          inputMode="url"
-          className={`${FIELD} w-full`}
-        />
-        <input
-          value={linkLabel}
-          onChange={(e) => setLinkLabel(e.target.value)}
-          placeholder="Button text, e.g. Sign up sheet"
-          className={`${FIELD} w-full`}
-        />
+        <LinksEditor links={links} onChange={setLinks} />
       </div>
       {save.status && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{save.status}</p>
