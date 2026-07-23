@@ -834,6 +834,90 @@ async function flushPendingSlots(
   return null;
 }
 
+// ── Cross-platform time picker (hour · minute · AM/PM dropdowns) ─────────────
+// A native <input type="time"> renders as an iOS wheel but a free-type field on
+// Android/desktop — where the value stays empty until AM/PM is picked, so a
+// "must be filled" button won't enable. Three <select>s instead: a real scroll
+// wheel on iOS, a proper pick-list on Android/desktop, never a partial value.
+// Reads/writes 24h "HH:MM".
+const TIME_HOURS = Array.from({ length: 12 }, (_, i) => (i === 0 ? 12 : i)); // 12,1..11
+const TIME_MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,…,55
+
+function parse12(hhmm: string): { h: number; m: number; ap: "AM" | "PM" } | null {
+  const mm = /^(\d{1,2}):(\d{2})$/.exec(hhmm ?? "");
+  if (!mm) return null;
+  const h24 = Number(mm[1]);
+  const m = Number(mm[2]);
+  if (h24 > 23 || m > 59) return null;
+  const ap: "AM" | "PM" = h24 >= 12 ? "PM" : "AM";
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return { h, m, ap };
+}
+function build24(h: number, m: number, ap: "AM" | "PM"): string {
+  let h24 = h % 12;
+  if (ap === "PM") h24 += 12;
+  return `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function TimeSelect({
+  value,
+  onChange,
+  optional,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  /** Show a blank "—" option and allow clearing back to "". */
+  optional?: boolean;
+  ariaLabel?: string;
+}) {
+  const p = parse12(value);
+  const h = p?.h ?? 12;
+  const m = p?.m ?? 0;
+  const ap = p?.ap ?? "AM";
+  const empty = optional && !value;
+  // Keep any odd saved minute (e.g. an old :58) selectable so editing never loses it.
+  const minutes = TIME_MINUTES.includes(m) ? TIME_MINUTES : [...TIME_MINUTES, m].sort((a, b) => a - b);
+  const cls = `${FIELD} px-1.5`;
+  return (
+    <div className="flex items-center gap-1" aria-label={ariaLabel}>
+      <select
+        value={empty ? "" : String(h)}
+        onChange={(e) => (e.target.value === "" ? onChange("") : onChange(build24(Number(e.target.value), m, ap)))}
+        className={cls}
+        aria-label="Hour"
+      >
+        {optional && <option value="">—</option>}
+        {TIME_HOURS.map((x) => (
+          <option key={x} value={x}>{x}</option>
+        ))}
+      </select>
+      <span className="text-foreground/50">:</span>
+      <select
+        value={empty ? "" : String(m)}
+        onChange={(e) => (e.target.value === "" ? onChange("") : onChange(build24(h, Number(e.target.value), ap)))}
+        className={cls}
+        aria-label="Minute"
+      >
+        {optional && <option value="">—</option>}
+        {minutes.map((x) => (
+          <option key={x} value={x}>{String(x).padStart(2, "0")}</option>
+        ))}
+      </select>
+      <select
+        value={empty ? "" : ap}
+        onChange={(e) => (e.target.value === "" ? onChange("") : onChange(build24(h, m, e.target.value as "AM" | "PM")))}
+        className={cls}
+        aria-label="AM or PM"
+      >
+        {optional && <option value="">—</option>}
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+}
+
 function SignupConfigEditor({
   kind,
   parentId,
@@ -930,11 +1014,11 @@ function SignupConfigEditor({
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs text-foreground/50">First slot starts</span>
-                  <input type="time" value={value.startTime} onChange={(e) => set({ startTime: e.target.value })} className={FIELD} />
+                  <TimeSelect value={value.startTime} onChange={(v) => set({ startTime: v })} ariaLabel="First slot starts" />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs text-foreground/50">Last slot ends by</span>
-                  <input type="time" value={value.endTime} onChange={(e) => set({ endTime: e.target.value })} className={FIELD} />
+                  <TimeSelect value={value.endTime} onChange={(v) => set({ endTime: v })} ariaLabel="Last slot ends by" />
                 </label>
               </div>
               {!signupIsValid(value) && (
@@ -1087,7 +1171,7 @@ function SignupSlotsEditor({
   const live = Boolean(parentId);
   const [saved, setSaved] = useState<ScheduleSlot[]>([]);
   const [day, setDay] = useState("");
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("12:00"); // pre-filled so "Add this slot" is enabled by default
   const [endTime, setEndTime] = useState("");
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1106,7 +1190,7 @@ function SignupSlotsEditor({
     : pending.map((s, i) => ({ key: String(i), ...s }));
 
   const clearInputs = () => {
-    setTime("");
+    setTime("12:00");
     setEndTime("");
     setCap("");
   };
@@ -1199,11 +1283,11 @@ function SignupSlotsEditor({
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] text-foreground/50">Start time</span>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={FIELD} />
+          <TimeSelect value={time} onChange={setTime} ariaLabel="Slot start time" />
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] text-foreground/50">End time (optional)</span>
-          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={FIELD} />
+          <TimeSelect value={endTime} onChange={setEndTime} optional ariaLabel="Slot end time" />
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] text-foreground/50">People (optional)</span>
