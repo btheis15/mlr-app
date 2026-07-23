@@ -2,38 +2,41 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "@/components/Avatar";
-import { Sheet, FIELD } from "@/components/Sheet";
-import { useSheetDismiss } from "@/lib/hooks";
+import { FIELD } from "@/components/Sheet";
 import { fetchChatPollVoters, type ChatPoll, type ChatPollVoter } from "@/lib/chatPolls";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { formatClock } from "@/lib/format";
 
-// Vote + results sheet for one quick poll (migration 0149). Option rows reuse
-// PollsView's PollCard bar-fill visual (a live %-fill behind each option),
-// extended for multi-select (every tap toggles that option, immediately
-// submitted — no separate "Submit" step) and an inline text field for the
-// "Other" write-in. When the poll isn't anonymous, a row of small avatars
-// under each option shows who picked it (fetched on open via
-// chat_poll_voters, which itself refuses to return anything for an anonymous
-// poll — this sheet never has to trust its own anonymous check).
+// An interactive poll card, rendered INLINE in the message timeline
+// (CommitteeChat/HouseChat interleave these with real messages by
+// createdAt) — not a pinned bar and not a sheet you have to open. Tapping an
+// option votes immediately, same as texting-app polls (iMessage/Messenger).
+// Option rows reuse PollsView's PollCard bar-fill visual (a live %-fill
+// behind each option), extended for multi-select (every tap toggles that
+// option, immediately submitted) and an inline text field for the "Other"
+// write-in. When the poll isn't anonymous, a row of small avatars under each
+// option shows who picked it (fetched once per card via chat_poll_voters,
+// which itself refuses to return anything for an anonymous poll — this card
+// never has to trust its own anonymous check).
 
-export function ChatPollSheet({
+export function ChatPollCard({
   poll,
+  creatorName,
   canManage,
-  onClose,
   onVote,
   onClosePoll,
   onDeletePoll,
 }: {
   poll: ChatPoll;
+  /** Resolved from the room roster; falls back to "Someone". */
+  creatorName: string;
   canManage: boolean;
-  onClose: () => void;
   /** Full-replace my selection; otherText only matters when the Other option
    *  is included in optionIds. */
   onVote: (optionIds: string[], otherText: string | null) => void;
   onClosePoll: () => void;
   onDeletePoll: () => void;
 }) {
-  const { closing, close } = useSheetDismiss(onClose);
   const [voters, setVoters] = useState<ChatPollVoter[]>([]);
   const [otherOpen, setOtherOpen] = useState(false);
   const [otherDraft, setOtherDraft] = useState(poll.myOtherText ?? "");
@@ -94,24 +97,18 @@ export function ChatPollSheet({
   const votesLabel = `${poll.respondentCount} ${poll.respondentCount === 1 ? "response" : "responses"}`;
 
   return (
-    <Sheet
-      closing={closing}
-      onDismiss={close}
-      labelledBy="chat-poll-title"
-      header={
-        <div className="pr-10">
-          <h2 id="chat-poll-title" className="text-lg font-bold leading-snug">
-            🗳️ {poll.question}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">
-            {votesLabel}
-            {poll.allowMultiple ? " · pick any number" : " · pick one"}
-            {poll.anonymous ? " · anonymous" : ""}
-            {poll.isClosed ? " · closed" : ""}
-          </p>
-        </div>
-      }
-    >
+    <div className="w-full space-y-3 rounded-2xl bg-card p-3.5 ring-1 ring-border">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">🗳️ Poll · {creatorName}</p>
+        <h3 className="mt-0.5 text-base font-bold leading-snug text-foreground">{poll.question}</h3>
+        <p className="mt-0.5 text-xs text-muted">
+          {votesLabel}
+          {poll.allowMultiple ? " · pick any number" : " · pick one"}
+          {poll.anonymous ? " · anonymous" : ""}
+          {poll.isClosed ? " · closed" : ""} · {formatClock(poll.createdAt)}
+        </p>
+      </div>
+
       <div className="space-y-2">
         {poll.options
           .filter((o) => !o.isOther)
@@ -207,7 +204,9 @@ export function ChatPollSheet({
               </div>
             )}
             {poll.anonymous && !otherSelected && otherOption.voteCount > 0 && (
-              <p className="px-1 text-xs text-muted">{otherOption.voteCount} write-in {otherOption.voteCount === 1 ? "answer" : "answers"} (anonymous)</p>
+              <p className="px-1 text-xs text-muted">
+                {otherOption.voteCount} write-in {otherOption.voteCount === 1 ? "answer" : "answers"} (anonymous)
+              </p>
             )}
             {otherOpen && !poll.isClosed && (
               <div className="flex gap-2 px-1">
@@ -260,6 +259,6 @@ export function ChatPollSheet({
           </button>
         </div>
       )}
-    </Sheet>
+    </div>
   );
 }
