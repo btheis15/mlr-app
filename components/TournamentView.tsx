@@ -43,7 +43,7 @@ export function TournamentSection({
    *  organizer turned "🏆 Tournament" on in the activity editor. */
   enabled: boolean;
 }) {
-  const guest = useGuest();
+  const { guest } = useGuest();
   const isDbItem = host.kind === "activity" || UUID_RE.test(host.id);
   const active = enabled && isDbItem && !guest;
   const { tournaments, loading, recordResult, reload } = useTournament(active ? host : null);
