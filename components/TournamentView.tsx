@@ -8,7 +8,15 @@ import { TournamentSetupSheet } from "@/components/TournamentSetupSheet";
 import { MatchResultSheet, labelForMatch } from "@/components/MatchResultSheet";
 import { useTournament } from "@/lib/hooks";
 import { useGuest } from "@/components/Guard";
-import { swapMatchEntrants, type Tournament, type TournamentMatch } from "@/lib/tournaments";
+import {
+  swapMatchEntrants,
+  generateBracketFromPools,
+  poolLabels,
+  poolStageComplete,
+  hasKnockoutBracket,
+  type Tournament,
+  type TournamentMatch,
+} from "@/lib/tournaments";
 
 // A tournament attaches to a real DB activity (fest_schedule_items, a uuid) — the
 // only kind that can carry sign-ups. In-code SEED schedule events have slug ids
@@ -102,7 +110,9 @@ function TournamentCard({
   reload: () => Promise<void>;
 }) {
   const isRR = tournament.format === "round_robin";
-  const [tab, setTab] = useState<string>(isRR ? "standings" : "now");
+  const isPools = tournament.format === "pools_bracket";
+  const [tab, setTab] = useState<string>(isRR ? "standings" : isPools ? "pools" : "now");
+  const [advancing, setAdvancing] = useState(false);
   const [managing, setManaging] = useState(false);
   const [openMatch, setOpenMatch] = useState<TournamentMatch | null>(null);
   const [rearranging, setRearranging] = useState(false);
@@ -173,57 +183,112 @@ function TournamentCard({
                 { value: "standings", label: "Standings" },
                 { value: "games", label: "Games" },
               ]
-            : [
-                { value: "now", label: "Now" },
-                { value: "bracket", label: "Bracket" },
-              ];
-          // Single-elim collapses to the bracket once complete; round-robin keeps
-          // its Standings/Games tabs so the final table stays readable.
-          const showTabs = isRR || !isComplete;
-          const effTab = !isRR && isComplete ? "bracket" : tab;
+            : isPools
+              ? [
+                  { value: "pools", label: "Pools" },
+                  { value: "games", label: "Games" },
+                  { value: "bracket", label: "Bracket" },
+                ]
+              : [
+                  { value: "now", label: "Now" },
+                  { value: "bracket", label: "Bracket" },
+                ];
+          // Single-elim collapses to the bracket once complete; round-robin/pools
+          // keep their tabs so the final tables stay readable.
+          const showTabs = isRR || isPools || !isComplete;
+          const effTab = !isRR && !isPools && isComplete ? "bracket" : tab;
+          const knockoutReady = hasKnockoutBracket(tournament);
+          const canRearrange = effTab === "bracket" && !isRR && (!isPools || knockoutReady);
           return (
             <div className="mt-3 space-y-3">
               {showTabs && (
                 <SegmentedControl<string> size="sm" segments={tabs} value={effTab} onChange={setTab} />
               )}
+
               {effTab === "standings" && (
                 <TournamentStandings tournament={tournament} leaderId={tournament.winnerEntrantId} />
               )}
-              {effTab === "now" && !isComplete && <NowView tournament={tournament} nameFor={nameFor} />}
-              {(effTab === "bracket" || effTab === "games") && (
-                <>
-                  {canManage && !isRR && (
-                    <div className="flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRearranging((v) => !v);
-                          setSelected(null);
-                        }}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
-                          rearranging ? "bg-accent/10 text-accent ring-accent/30" : "text-foreground/60 ring-border"
-                        }`}
-                      >
-                        {rearranging ? "Done rearranging" : "⇄ Rearrange"}
-                      </button>
-                      {rearranging && (
-                        <span className="text-[11px] text-foreground/50">
-                          {selected ? "Tap a spot to move/swap" : "Tap a team to move it"}
-                        </span>
-                      )}
+
+              {effTab === "pools" && (
+                <div className="space-y-4">
+                  {poolLabels(tournament).map((pl) => (
+                    <div key={pl}>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent">Pool {pl}</p>
+                      <TournamentStandings tournament={tournament} pool={pl} />
                     </div>
+                  ))}
+                  {canManage && !knockoutReady && poolStageComplete(tournament) && (
+                    <button
+                      type="button"
+                      disabled={advancing}
+                      onClick={async () => {
+                        setAdvancing(true);
+                        await generateBracketFromPools(tournament.id);
+                        await reload();
+                        setAdvancing(false);
+                        setTab("bracket");
+                      }}
+                      className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                    >
+                      Generate knockout bracket →
+                    </button>
                   )}
-                  <TournamentBracket
-                    tournament={tournament}
-                    nameFor={nameFor}
-                    canManage={canManage}
-                    onOpenMatch={(m) => setOpenMatch(m)}
-                    rearranging={rearranging && !isRR}
-                    selected={selected}
-                    onSlotTap={onSlotTap}
-                  />
-                </>
+                  {!knockoutReady && !poolStageComplete(tournament) && (
+                    <p className="text-xs text-foreground/50">The knockout bracket seeds once every pool game is played.</p>
+                  )}
+                </div>
               )}
+
+              {effTab === "now" && !isComplete && <NowView tournament={tournament} nameFor={nameFor} />}
+
+              {effTab === "games" && (
+                <TournamentBracket
+                  tournament={tournament}
+                  nameFor={nameFor}
+                  canManage={canManage}
+                  onOpenMatch={(m) => setOpenMatch(m)}
+                  stageFilter={isPools ? "pool" : undefined}
+                />
+              )}
+
+              {effTab === "bracket" &&
+                (isPools && !knockoutReady ? (
+                  <p className="text-sm text-foreground/60">The bracket appears once pool play is done.</p>
+                ) : (
+                  <>
+                    {canManage && canRearrange && (
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRearranging((v) => !v);
+                            setSelected(null);
+                          }}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                            rearranging ? "bg-accent/10 text-accent ring-accent/30" : "text-foreground/60 ring-border"
+                          }`}
+                        >
+                          {rearranging ? "Done rearranging" : "⇄ Rearrange"}
+                        </button>
+                        {rearranging && (
+                          <span className="text-[11px] text-foreground/50">
+                            {selected ? "Tap a spot to move/swap" : "Tap a team to move it"}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <TournamentBracket
+                      tournament={tournament}
+                      nameFor={nameFor}
+                      canManage={canManage}
+                      onOpenMatch={(m) => setOpenMatch(m)}
+                      stageFilter={isPools ? "bracket" : undefined}
+                      rearranging={rearranging && canRearrange}
+                      selected={selected}
+                      onSlotTap={onSlotTap}
+                    />
+                  </>
+                ))}
             </div>
           );
         })()

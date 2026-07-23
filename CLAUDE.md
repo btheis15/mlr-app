@@ -908,7 +908,15 @@ resolves the item and defers to that existing predicate.
   **format-aware** (0145): a round-robin game just records (no propagation), and once
   every game is complete the standings leader is crowned. Managers also get a
   **⇄ Rearrange** mode on a single-elim bracket (tap a team, tap a spot to move/swap).
-  Pools→bracket is Phase C against the same tables.
+- **Pools → bracket (Phase C, migration 0146)** — `generate_pools` snakes entrants
+  into `pool_count` pools by seed, each a round-robin (`stage='pool'`, `pool='A'…`).
+  Once every pool game is complete, `generate_bracket_from_pools` takes the top
+  `advance_per_pool` of each pool and seeds a single-elim knockout via the shared
+  `_tournament_build_bracket` helper, **cross-seeded** (global seed =
+  `(pool_rank-1)*pool_count + pool_index + 1`) so pool winners meet only late.
+  Pool games record without propagating (the format-aware `record_match_result`);
+  the knockout crowns the champion like single_elim. UI: a **Pools / Games / Bracket**
+  tab set, with a manager "Generate knockout bracket" button once pools finish.
 - **Scoring is one tap: pick the winner; scores are OPTIONAL** (`record_match_result(
   p_match, p_winner, p_score1 default null, p_score2 default null)` — winner alone is a
   complete result). It propagates the winner into `next_match`; changing a decided

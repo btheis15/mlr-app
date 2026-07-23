@@ -163,11 +163,12 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   sign-ups into a live **tournament**: seed/hand-arrange entrants (teams or
   individuals, incl. account-less typed-in names), pick a bye/play-in strategy, and
   record results with one tap (winner required, scores optional) that auto-advance the
-  bracket. Any member watches it update live. Run by the activity's lead/crew. Single-
-  elimination ships first; round-robin (standings + tie-breakers + stats) and
-  pools→bracket follow. Migration
-  [`0144_tournaments.sql`](supabase/migrations/0144_tournaments.sql), seam
-  [`lib/tournaments.ts`](lib/tournaments.ts), UI
+  bracket. Any member watches it update live. Run by the activity's lead/crew. Three
+  formats: **single-elimination** (byes/play-in + post-generation rearrange),
+  **round-robin** (standings table + tie-breakers + stats), and **pools → bracket**
+  (group play seeds a cross-seeded knockout). Migrations
+  [`0144`](supabase/migrations/0144_tournaments.sql)–[`0146`](supabase/migrations/0146_tournament_pools.sql),
+  seam [`lib/tournaments.ts`](lib/tournaments.ts), UI
   [`TournamentView`](components/TournamentView.tsx). See CLAUDE.md → **Tournament
   brackets**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,

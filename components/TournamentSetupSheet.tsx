@@ -16,6 +16,7 @@ import {
   removeParticipant,
   removeEntrant,
   updateTournament,
+  generatePools,
   bracketSummary,
   firstRoundPreview,
   type Tournament,
@@ -54,6 +55,8 @@ export function TournamentSetupSheet({
   const [format, setFormat] = useState<TournamentFormat>(tournament?.format ?? "single_elim");
   const [entrantType, setEntrantType] = useState<EntrantType>(tournament?.entrantType ?? "individual");
   const [teamSize, setTeamSize] = useState<number>(tournament?.teamSize ?? 2);
+  const [poolCount, setPoolCount] = useState<number>(tournament?.poolCount ?? 2);
+  const [advance, setAdvance] = useState<number>(tournament?.advancePerPool ?? 1);
 
   // manage-mode fields
   const [byeStrategy, setByeStrategy] = useState<ByeStrategy>(tournament?.byeStrategy ?? "byes");
@@ -142,6 +145,7 @@ export function TournamentSetupSheet({
               segments={[
                 { value: "single_elim", label: "Bracket" },
                 { value: "round_robin", label: "Round-robin" },
+                { value: "pools_bracket", label: "Pools" },
               ]}
               value={format}
               onChange={setFormat}
@@ -149,7 +153,9 @@ export function TournamentSetupSheet({
             <p className="mt-1 text-xs text-foreground/50">
               {format === "single_elim"
                 ? "Single elimination — lose and you're out."
-                : "Everyone plays everyone; ranked by a standings table."}
+                : format === "round_robin"
+                  ? "Everyone plays everyone; ranked by a standings table."
+                  : "Group play in pools, then the top of each pool advance to a knockout."}
             </p>
           </div>
           <div>
@@ -185,6 +191,7 @@ export function TournamentSetupSheet({
   // ── Manage mode (setup status) ──────────────────────────────────────────────
   const isTeam = tournament.entrantType === "team";
   const isRR = tournament.format === "round_robin";
+  const isPools = tournament.format === "pools_bracket";
   const entrantsById = new Map(tournament.entrants.map((e) => [e.id, e]));
   const orderedEntrants = order.map((id) => entrantsById.get(id)).filter(Boolean) as Tournament["entrants"];
   const n = orderedEntrants.length;
@@ -202,7 +209,13 @@ export function TournamentSetupSheet({
 
   const doGenerate = async () => {
     const seed = order.length === n && n > 1 ? order : null;
-    const ok = await run(() => (isRR ? generateRoundRobin(tournament.id, seed) : generateBracket(tournament.id, seed)));
+    const ok = await run(() =>
+      isPools
+        ? generatePools(tournament.id, poolCount, advance, seed)
+        : isRR
+          ? generateRoundRobin(tournament.id, seed)
+          : generateBracket(tournament.id, seed),
+    );
     if (ok) close();
   };
 
@@ -227,7 +240,7 @@ export function TournamentSetupSheet({
             onClick={doGenerate}
             className="w-full rounded-2xl bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
           >
-            {n < 2 ? "Add at least 2 entrants" : isRR ? "Generate schedule" : "Generate bracket"}
+            {n < 2 ? "Add at least 2 entrants" : isPools ? "Generate pools" : isRR ? "Generate schedule" : "Generate bracket"}
           </button>
         </div>
       }
@@ -343,8 +356,31 @@ export function TournamentSetupSheet({
           </section>
         )}
 
+        {/* Pools config */}
+        {n >= 2 && isPools && (
+          <section className="space-y-2">
+            <SectionLabel>Pools</SectionLabel>
+            <div className="flex items-center gap-3">
+              <span className="w-28 text-sm text-foreground/60">Number of pools</span>
+              <button type="button" onClick={() => setPoolCount((c) => Math.max(2, c - 1))} className="grid h-8 w-8 place-items-center rounded-full bg-card text-lg ring-1 ring-border">−</button>
+              <span className="w-6 text-center font-bold tabular-nums">{poolCount}</span>
+              <button type="button" onClick={() => setPoolCount((c) => Math.min(8, c + 1))} className="grid h-8 w-8 place-items-center rounded-full bg-card text-lg ring-1 ring-border">+</button>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-28 text-sm text-foreground/60">Advance per pool</span>
+              <button type="button" onClick={() => setAdvance((a) => Math.max(1, a - 1))} className="grid h-8 w-8 place-items-center rounded-full bg-card text-lg ring-1 ring-border">−</button>
+              <span className="w-6 text-center font-bold tabular-nums">{advance}</span>
+              <button type="button" onClick={() => setAdvance((a) => a + 1)} className="grid h-8 w-8 place-items-center rounded-full bg-card text-lg ring-1 ring-border">+</button>
+            </div>
+            <p className="text-xs text-foreground/60">
+              {n} entrants → {poolCount} pools of ~{Math.floor(n / poolCount)}; top {advance} of each ({poolCount * advance} total)
+              advance to a knockout.
+            </p>
+          </section>
+        )}
+
         {/* Bye framing + preview (single-elim) */}
-        {n >= 2 && !isRR && (
+        {n >= 2 && !isRR && !isPools && (
           <section className="space-y-2">
             <SectionLabel>Uneven bracket</SectionLabel>
             <SegmentedControl<ByeStrategy>
