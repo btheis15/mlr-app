@@ -163,13 +163,17 @@ function BracketMatchCard({
       {row(match.slot1EntrantId, match.slot1Score, 1)}
       <div className="h-px bg-border" />
       {row(match.slot2EntrantId, match.slot2Score, 2)}
-      {(match.isPlayIn || match.status === "ready") && (
-        <div className="flex items-center justify-between bg-card px-3 py-1">
-          {match.isPlayIn ? (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-accent">Play-in</span>
-          ) : (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Ready</span>
-          )}
+      {(match.isPlayIn || match.status === "ready" || match.scheduledAt) && (
+        <div className="flex items-center justify-between gap-2 bg-card px-3 py-1">
+          <span className="flex items-center gap-2">
+            {match.isPlayIn && <span className="text-[10px] font-semibold uppercase tracking-wide text-accent">Play-in</span>}
+            {!match.isPlayIn && match.status === "ready" && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Ready</span>
+            )}
+            {match.scheduledAt && match.status !== "complete" && (
+              <span className="text-[10px] font-medium text-foreground/50">🕒 {fmtMatchTime(match.scheduledAt)}</span>
+            )}
+          </span>
           {tappable && match.status !== "complete" && (
             <span className="text-[10px] font-medium text-foreground/40">Tap to score</span>
           )}
@@ -177,6 +181,15 @@ function BracketMatchCard({
       )}
     </Tag>
   );
+}
+
+/** A scheduled match time as a short local clock label ("3:15 PM"). */
+export function fmtMatchTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
 
 /** Short pager label: Play-in / QF / SF / Final / R{n}. */
