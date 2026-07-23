@@ -106,7 +106,7 @@ export function PrivateActivitySheet({
       onDismiss={close}
       labelledBy="activity-detail-title"
       header={
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 pr-10">
           <div className="min-w-0">
             <h2 id="activity-detail-title" className="truncate text-lg font-bold">
               {activity.emoji ? `${activity.emoji} ` : ""}{activity.title}
