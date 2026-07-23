@@ -763,7 +763,11 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     need to share a length or increment ("Mon 10:50am, Wed 1:48pm, …"). Stored as
     `fest_schedule_slots` rows (public-read; writes RLS-gated to the same manage
     predicate via `_can_manage_item_signups(item_id)`). The Planner's inline
-    `SignupSlotsEditor` adds/removes them. When editing an **existing** item it
+    `SignupSlotsEditor` adds/removes them. Times use a `TimeSelect` (hour · minute
+    · AM/PM `<select>`s — an iOS wheel, a real pick-list on Android/desktop)
+    rather than a native `<input type=time>`, which on Android/desktop left the
+    value empty until AM/PM was chosen (so "Add this slot" stayed disabled); the
+    slot start is pre-filled to noon. When editing an **existing** item it
     writes live; on a **brand-new** item (no id yet) it stages slots in the sheet
     and `flushPendingSlots()` creates them right after the first save (so you can
     build the slots while creating the event — `writeRow` now returns the new id).
