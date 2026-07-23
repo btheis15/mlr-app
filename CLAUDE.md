@@ -1546,12 +1546,20 @@ question, 2–10 options (single- or multi-select), an optional write-in
   `framer-motion` spring-in menu (adapted from the message long-press
   reaction tray's absolute-positioned/transform-origin pattern) with **Photo
   Library** (`accept="image/*,video/*"`), **Take Photo**
-  (`accept="image/*" capture="environment"` — a best-effort native-picker
-  steer, not a custom camera UI), **Document** (unrestricted `accept`), and
-  **Poll**. All three file inputs still route through the existing
-  `pickFiles`/`pendingFromFile` classification — only how the file dialog
-  opens changed. Same change in both `CommitteeChat.tsx` and `HouseChat.tsx`
-  (near-duplicate composer code, per **Houses**).
+  (`accept="image/*" capture="environment"` — genuinely skips iOS's own
+  picker sheet straight to the camera), and **Document** (`accept` listing
+  common non-media document types/MIME types, e.g. `.pdf,.doc,.docx,...` —
+  since iOS Safari's file-input action sheet only offers Photo Library/Take
+  Photo alongside Browse when the accept value COULD match a photo, excluding
+  image/video types makes it skip straight to Files). **Photo Library** has
+  no such shortcut — any generic (non-`capture`) file input that could match
+  a photo always shows iOS's "Photo Library / Take Photo or Video / Choose
+  File" sheet first; there's no HTML attribute to suppress that, so tapping
+  it there is an unavoidable extra native step, not a bug (three menu items
+  route through the existing `pickFiles`/`pendingFromFile` classification
+  either way; only how the file dialog opens changed). Same change in both
+  `CommitteeChat.tsx` and `HouseChat.tsx` (near-duplicate composer code, per
+  **Houses**).
 - **Data model:** `chat_polls` / `chat_poll_options` / `chat_poll_votes`,
   scoped and read-gated exactly like `meetings` (0116) —
   `can_access_committee_area()` (0063) / `is_house_member()` (0064). All

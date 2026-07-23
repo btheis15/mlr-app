@@ -980,7 +980,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
               )}
               <input ref={libraryFileRef} type="file" multiple accept="image/*,video/*" onChange={pickFiles} className="hidden" />
               <input ref={cameraFileRef} type="file" accept="image/*" capture="environment" onChange={pickFiles} className="hidden" />
-              <input ref={documentFileRef} type="file" multiple onChange={pickFiles} className="hidden" />
+              <input ref={documentFileRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.pages,.numbers,.key,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,application/rtf,application/zip" onChange={pickFiles} className="hidden" />
             </div>
           )}
           <textarea
