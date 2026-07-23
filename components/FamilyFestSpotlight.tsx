@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatDateRange, formatTime, plural } from "@/lib/format";
+import { formatDateRange, formatTime, formatEventTime, plural } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -115,7 +115,7 @@ export function FamilyFestSpotlight({
                         {item.event.emoji} {item.event.title}
                       </span>
                       <span className="shrink-0 text-xs font-medium text-foreground/60">
-                        {formatTime(item.event.start)}
+                        {formatEventTime(item.event)}
                         {item.event.end ? `–${formatTime(item.event.end)}` : ""}
                       </span>
                     </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
-import { formatDateLong, formatTime } from "@/lib/format";
+import { formatDateLong, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
 import { Protected, PrivateName } from "@/components/Guard";
@@ -255,7 +255,7 @@ function EventRow({
         <span className="text-lg">{event.emoji}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{event.title}</p>
-          <p className="text-xs text-foreground/50">{formatTime(event.start)}</p>
+          <p className="text-xs text-foreground/50">{formatEventTime(event)}</p>
         </div>
         <RowChevron open={open} />
       </button>

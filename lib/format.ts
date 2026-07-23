@@ -62,6 +62,17 @@ export function formatTime(input?: string): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+/** Like formatTime, but for a schedule event: an "Anytime all week" event
+ *  (migration 0139) with no time set is a deliberate choice — there's no
+ *  slot to decide, so it reads as "No specific time" rather than "TBD",
+ *  which otherwise implies someone still needs to pin one down. A day-locked
+ *  event with a missing time is the genuinely-still-pending case and keeps
+ *  reading as "TBD". */
+export function formatEventTime(event: { anytime?: boolean; start?: string }): string {
+  if (!event.start || !event.start.trim()) return event.anytime ? "No specific time" : "TBD";
+  return formatTime(event.start);
+}
+
 /** Normalizes either time format to zero-padded 24h "HH:MM" for an
  *  `<input type="time">` value — "" (not "TBD") when unset/unparseable, since
  *  that's what the native time input expects for "no value". */
