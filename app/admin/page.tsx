@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { AdminGuard } from "@/app/admin/AdminGuard";
 import { BackLink } from "@/components/BackLink";
+import { useIdentity } from "@/components/IdentityProvider";
+import { isOwner } from "@/lib/owner";
 
 /**
  * Admin dashboard — the front door for everything that used to be buried in
@@ -16,6 +20,8 @@ const CARDS: {
   tile: string;
   title: string;
   sub: string;
+  /** Hidden from every admin except lib/owner.ts's OWNER_EMAIL — see there. */
+  ownerOnly?: boolean;
 }[] = [
   { href: "/admin/members", emoji: "🧑‍🤝‍🧑", tile: "bg-lake/12", title: "Members", sub: "Directory · promote admins · edit a member's info" },
   { href: "/admin/invite", emoji: "💌", tile: "bg-lake/12", title: "Invite people", sub: "Branded welcome email · signs them straight in" },
@@ -26,11 +32,13 @@ const CARDS: {
   { href: "/admin/cabins", emoji: "🏡", tile: "bg-lake/12", title: "Cabin requests", sub: "Approve room stay requests" },
   { href: "/admin/help-contact", emoji: "☎️", tile: "bg-campfire/12", title: "Help contact", sub: "Who the Help page says to text or call" },
   { href: "/admin/signins", emoji: "🔐", tile: "bg-dusk/12", title: "Sign-ins", sub: "Who joined & recent sign-ins" },
-  { href: "/admin/system", emoji: "🖥️", tile: "bg-primary/12", title: "Media server", sub: "Pull latest code & restart the mac mini" },
+  { href: "/admin/system", emoji: "🖥️", tile: "bg-primary/12", title: "Media server", sub: "Pull latest code & restart the mac mini", ownerOnly: true },
   { href: "/admin/preview", emoji: "👁️", tile: "bg-sun/12", title: "View as", sub: "Preview the app as a member or guest" },
 ];
 
 export default function AdminPage() {
+  const { user } = useIdentity();
+  const cards = CARDS.filter((c) => !c.ownerOnly || isOwner(user?.email));
   return (
     <AdminGuard>
       <div className="space-y-4 pt-2">
@@ -44,7 +52,7 @@ export default function AdminPage() {
         </header>
 
         <div className="grid grid-cols-2 gap-3">
-          {CARDS.map((c) => (
+          {cards.map((c) => (
             <Link
               key={c.href}
               href={c.href}
