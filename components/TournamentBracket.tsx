@@ -168,6 +168,8 @@ function BracketMatchCard({
 
 /** Short pager label: Play-in / QF / SF / Final / R{n}. */
 function shortRoundLabel(t: Tournament, round: number, maxRound: number): string {
+  // Round-robin (no progression pointers) has no "final" — just numbered rounds.
+  if (t.matches.every((m) => !m.nextMatchId)) return `R${round}`;
   if (t.matches.some((m) => m.round === round && m.isPlayIn)) return "Play-in";
   const fromFinal = maxRound - round;
   if (fromFinal === 0) return "Final";

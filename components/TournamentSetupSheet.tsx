@@ -10,6 +10,7 @@ import {
   generateTeams,
   ungroupTeams,
   generateBracket,
+  generateRoundRobin,
   resetBracket,
   addParticipant,
   removeParticipant,
@@ -20,6 +21,7 @@ import {
   type Tournament,
   type EntrantType,
   type ByeStrategy,
+  type TournamentFormat,
 } from "@/lib/tournaments";
 
 /**
@@ -49,6 +51,7 @@ export function TournamentSetupSheet({
 
   // create-mode fields
   const [title, setTitle] = useState(tournament?.title ?? `${itemTitle} tournament`);
+  const [format, setFormat] = useState<TournamentFormat>(tournament?.format ?? "single_elim");
   const [entrantType, setEntrantType] = useState<EntrantType>(tournament?.entrantType ?? "individual");
   const [teamSize, setTeamSize] = useState<number>(tournament?.teamSize ?? 2);
 
@@ -94,7 +97,7 @@ export function TournamentSetupSheet({
       const { error: err } = await createTournament({
         scheduleItemId,
         title: title.trim(),
-        format: "single_elim",
+        format,
         entrantType,
         teamSize: entrantType === "team" ? teamSize : null,
         byeStrategy: "byes",
@@ -134,6 +137,22 @@ export function TournamentSetupSheet({
             <input className={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Cornhole tournament" />
           </div>
           <div>
+            <SectionLabel>Format</SectionLabel>
+            <SegmentedControl<TournamentFormat>
+              segments={[
+                { value: "single_elim", label: "Bracket" },
+                { value: "round_robin", label: "Round-robin" },
+              ]}
+              value={format}
+              onChange={setFormat}
+            />
+            <p className="mt-1 text-xs text-foreground/50">
+              {format === "single_elim"
+                ? "Single elimination — lose and you're out."
+                : "Everyone plays everyone; ranked by a standings table."}
+            </p>
+          </div>
+          <div>
             <SectionLabel>Who competes</SectionLabel>
             <SegmentedControl<EntrantType>
               segments={[
@@ -165,6 +184,7 @@ export function TournamentSetupSheet({
 
   // ── Manage mode (setup status) ──────────────────────────────────────────────
   const isTeam = tournament.entrantType === "team";
+  const isRR = tournament.format === "round_robin";
   const entrantsById = new Map(tournament.entrants.map((e) => [e.id, e]));
   const orderedEntrants = order.map((id) => entrantsById.get(id)).filter(Boolean) as Tournament["entrants"];
   const n = orderedEntrants.length;
@@ -181,7 +201,8 @@ export function TournamentSetupSheet({
   };
 
   const doGenerate = async () => {
-    const ok = await run(() => generateBracket(tournament.id, order.length === n && n > 1 ? order : null));
+    const seed = order.length === n && n > 1 ? order : null;
+    const ok = await run(() => (isRR ? generateRoundRobin(tournament.id, seed) : generateBracket(tournament.id, seed)));
     if (ok) close();
   };
 
@@ -206,7 +227,7 @@ export function TournamentSetupSheet({
             onClick={doGenerate}
             className="w-full rounded-2xl bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
           >
-            {n < 2 ? "Add at least 2 entrants" : "Generate bracket"}
+            {n < 2 ? "Add at least 2 entrants" : isRR ? "Generate schedule" : "Generate bracket"}
           </button>
         </div>
       }
@@ -311,8 +332,19 @@ export function TournamentSetupSheet({
           {isTeam && <p className="text-[11px] text-foreground/40">Added people join the pool — tap &ldquo;Auto-make teams&rdquo; to pair everyone up.</p>}
         </section>
 
-        {/* Bye framing + preview */}
-        {n >= 2 && (
+        {/* Round-robin summary (no bracket/byes) */}
+        {n >= 2 && isRR && (
+          <section className="space-y-1">
+            <SectionLabel>Schedule</SectionLabel>
+            <p className="text-xs text-foreground/60">
+              Everyone plays everyone once — {n} entrants → {(n * (n - 1)) / 2} games. Ranked by a standings table
+              ({tournament.tiebreakers.map((t) => t.replace(/_/g, " ")).join(" → ")}).
+            </p>
+          </section>
+        )}
+
+        {/* Bye framing + preview (single-elim) */}
+        {n >= 2 && !isRR && (
           <section className="space-y-2">
             <SectionLabel>Uneven bracket</SectionLabel>
             <SegmentedControl<ByeStrategy>

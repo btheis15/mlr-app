@@ -898,8 +898,17 @@ resolves the item and defers to that existing predicate.
   sizes to the next power of two, and auto-resolves **byes** (a round-1 match with one
   null slot, completed at generation). `bye_strategy`: **byes** (top seeds rest — falls
   out of fold-seeding) or **play_in** (same graph, round-1 real games flagged/labeled
-  play-in) — random seeding naturally scatters byes ("random byes"). Round-robin +
-  pools→bracket are later migrations against the same tables (Phase B/C).
+  play-in) — random seeding naturally scatters byes ("random byes").
+- **Round-robin (Phase B, migration 0145)** — `generate_round_robin` schedules every
+  pair once via the circle method (odd count → a phantom bye that round). Standings are
+  computed **client-side** (`computeStandings` in `lib/tournaments.ts`) by the ordered
+  `tiebreakers` (win% → head-to-head → point diff → points-for), rendered by
+  [`TournamentStandings`](components/TournamentStandings.tsx); PF/PA/Diff columns only
+  appear once a score is entered (scores stay optional). `record_match_result` is
+  **format-aware** (0145): a round-robin game just records (no propagation), and once
+  every game is complete the standings leader is crowned. Managers also get a
+  **⇄ Rearrange** mode on a single-elim bracket (tap a team, tap a spot to move/swap).
+  Pools→bracket is Phase C against the same tables.
 - **Scoring is one tap: pick the winner; scores are OPTIONAL** (`record_match_result(
   p_match, p_winner, p_score1 default null, p_score2 default null)` — winner alone is a
   complete result). It propagates the winner into `next_match`; changing a decided

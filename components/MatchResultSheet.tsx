@@ -195,6 +195,8 @@ export function MatchResultSheet({
 
 /** "Final", "Semifinal", "Play-in", or "Round N · Game M". */
 export function labelForMatch(t: Tournament, m: TournamentMatch): string {
+  // Round-robin (no progression pointers): just numbered rounds.
+  if (t.matches.every((x) => !x.nextMatchId)) return `Round ${m.round} · Game ${m.position + 1}`;
   if (m.isPlayIn) return "Play-in";
   const maxRound = t.matches.reduce((n, x) => Math.max(n, x.round), 0);
   const fromFinal = maxRound - m.round; // 0 = final
