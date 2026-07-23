@@ -1532,6 +1532,68 @@ becomes a real row on the resort calendar rather than a Meet link.
   has an `eventId`), so an admin can retime, edit, or cancel the auto-queued one,
   or add their own, exactly like any other event reminder.
 
+## Quick polls in chat (migration 0147)
+
+An iMessage/Messenger-style poll any member can drop into a **committee or
+house chat** (not the Main Feed, which isn't a chat room at all) — a
+question, 2–10 options (single- or multi-select), an optional write-in
+"Other", and a choice of **anonymous** (counts only) or **attributed**
+(counts + little avatar icons of who picked what) results.
+
+- **Entry point is the composer's "+" menu, not the ⋯ member sheet.** The old
+  📎 paperclip (`onClick={() => fileRef.current?.click()}` next to one
+  generic `<input type="file">`) is now a `+` button that pops a small
+  `framer-motion` spring-in menu (adapted from the message long-press
+  reaction tray's absolute-positioned/transform-origin pattern) with **Photo
+  Library** (`accept="image/*,video/*"`), **Take Photo**
+  (`accept="image/*" capture="environment"` — a best-effort native-picker
+  steer, not a custom camera UI), **Document** (unrestricted `accept`), and
+  **Poll**. All three file inputs still route through the existing
+  `pickFiles`/`pendingFromFile` classification — only how the file dialog
+  opens changed. Same change in both `CommitteeChat.tsx` and `HouseChat.tsx`
+  (near-duplicate composer code, per **Houses**).
+- **Data model:** `chat_polls` / `chat_poll_options` / `chat_poll_votes`,
+  scoped and read-gated exactly like `meetings` (0116) —
+  `can_access_committee_area()` (0063) / `is_house_member()` (0064). All
+  writes go through `SECURITY DEFINER` RPCs: `create_chat_poll` (any room
+  member — the family-polls doctrine, not the meeting-organizer one; refuses
+  in an archived committee area), `set_chat_poll_votes` (full-replace of the
+  caller's own votes in one call — handles single/multi/"Other" text),
+  `close_chat_poll` / `delete_chat_poll` (creator or admin).
+- **Anonymity is enforced in SQL, not trusted to the client.**
+  `chat_poll_votes` gets **no select grant at all** — RLS is enabled with
+  zero policies, so nobody (including the voter's own devtools) can read a
+  raw vote row, the same "deny-all" doctrine as `content_embeddings` (0129).
+  Live tallies instead come from denormalized `chat_poll_options.vote_count`
+  / `chat_polls.respondent_count`, kept current by an insert/delete trigger —
+  both safely readable + realtime-able. `fetch_chat_polls_for_room()` returns
+  a room's polls with counts + the caller's OWN selections (safe — it's
+  their own vote); `chat_poll_voters()` is the one place identity is ever
+  revealed, and it returns nothing at all when `chat_polls.anonymous` is
+  true — enforced server-side, called only when a poll's results sheet
+  opens.
+- **Client:** [`lib/chatPolls.ts`](lib/chatPolls.ts) (mirrors
+  `lib/meetings.ts`'s degrade-to-empty-on-missing-table idiom).
+  [`ChatPollSection`](components/ChatPollSection.tsx) is the pinned bar
+  (mounted alongside `MeetingSection` in `CommitteeChat`/`HouseChat`) — unlike
+  `MeetingSection`'s "one featured meeting," it shows **every** open poll as
+  its own pill (polls are lighter-weight/more frequent than meetings) plus a
+  collapsed "Past polls" disclosure for closed ones. Own realtime channel
+  (`chat_polls` + `chat_poll_options`, not `chat_poll_votes`) + SWR cache key
+  `chatPolls.<uid>.<roomKey>`. [`ChatPollComposer`](components/ChatPollComposer.tsx)
+  is the creation sheet (mounted from the "+" menu, not `FeedView`'s
+  `ChatMembersSheet`). [`ChatPollSheet`](components/ChatPollSheet.tsx) is the
+  vote/results sheet — option rows reuse `PollsView.tsx`'s `PollCard`
+  bar-fill visual, extended for multi-select and an inline "Other" text
+  field, with a row of `Avatar`s per option (from `chat_poll_voters`) when
+  the poll isn't anonymous.
+- **Notifications:** one kind, `chat_poll_created` (mirrors
+  `meeting_proposed`) — default on, off by default for phone push (opt in via
+  `PushToggle`, same as meetings). No notification on vote/close, mirroring
+  family polls.
+- 📱 **No iOS parity yet** — web-only; shared schema/RPCs if the native app
+  adds it later.
+
 ## Cabin stays
 
 "Request a Cabin Stay" (`/request-stay`) — members request a room in one of

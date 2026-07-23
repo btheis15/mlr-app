@@ -37,6 +37,7 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   house_stay_created: "🏡",
   meeting_proposed: "📅",
   meeting_scheduled: "✅",
+  chat_poll_created: "🗳️",
   signup_reminder: "⏰",
   tournament_published: "🏆",
   tournament_match_ready: "🎯",

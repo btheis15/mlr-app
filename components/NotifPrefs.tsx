@@ -70,10 +70,11 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
-    title: "Meetings",
+    title: "Meetings & Polls",
     rows: [
       { value: "meeting_proposed", icon: "📅", label: "New meeting to schedule", desc: "When someone proposes a meeting in a committee or house you’re in — pick when you’re free" },
       { value: "meeting_scheduled", icon: "✅", label: "Meeting set", desc: "When a proposed meeting is locked to a time (with the join link)" },
+      { value: "chat_poll_created", icon: "🗳️", label: "New quick poll", desc: "When someone starts a poll in a committee or house chat you’re in" },
     ],
   },
   {

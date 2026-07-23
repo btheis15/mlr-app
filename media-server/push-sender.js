@@ -325,6 +325,10 @@ async function start() {
     // "meeting set" with the join link. Both relay to a phone push, gated on
     // push_types (off by default — opt in via Profile → Notifications).
     "meeting_proposed", "meeting_scheduled",
+    // A quick poll started in a committee/house chat (migration 0147) — relay to
+    // a phone push, gated on push_types (off by default — opt in via Profile →
+    // Notifications).
+    "chat_poll_created",
     // A note from whoever runs a place to its current/upcoming guests (migration
     // 0120) — relay to a phone push, gated on push_types.
     "cabin_message",

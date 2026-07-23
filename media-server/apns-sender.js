@@ -303,6 +303,8 @@ async function start() {
     "work_item_created", "house_stay_created",
     // Meeting scheduling (migration 0116) — proposal + finalized, same gating.
     "meeting_proposed", "meeting_scheduled",
+    // Quick poll started in a committee/house chat (migration 0147), same gating.
+    "chat_poll_created",
     // Cabin guest message (migration 0120).
     "cabin_message",
     // Sign-up slot reminder (migration 0140) — override push, like help_urgent.

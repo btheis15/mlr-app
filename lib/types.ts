@@ -64,6 +64,7 @@ export type PushType =
   | "house_stay_created"
   | "meeting_proposed"
   | "meeting_scheduled"
+  | "chat_poll_created"
   | "tournament_published"
   | "tournament_match_ready"
   | "tournament_champion";
@@ -112,6 +113,7 @@ export type NotifType =
   | "house_stay_created"
   | "meeting_proposed"
   | "meeting_scheduled"
+  | "chat_poll_created"
   | "signup_reminder"
   | "tournament_published"
   | "tournament_match_ready"
@@ -148,6 +150,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "house_stay_created",
   "meeting_proposed",
   "meeting_scheduled",
+  "chat_poll_created",
   "signup_reminder",
   "tournament_published",
   "tournament_match_ready",
