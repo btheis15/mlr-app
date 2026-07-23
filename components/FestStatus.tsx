@@ -9,7 +9,7 @@ import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatTime, plural } from "@/lib/format";
+import { formatTime, formatEventTime, plural } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
@@ -243,7 +243,7 @@ function TodayEvent({
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-sm font-semibold">{e.title}</h3>
             <span className="shrink-0 text-xs font-medium text-accent">
-              {formatTime(e.start)}
+              {formatEventTime(e)}
               {e.end ? `–${formatTime(e.end)}` : ""}
             </span>
           </div>

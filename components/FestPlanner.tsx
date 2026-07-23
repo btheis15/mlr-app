@@ -407,7 +407,10 @@ function ScheduleEditor({
               <RowCard
                 key={it.id}
                 title={`${it.emoji ?? ""} ${it.title}`.trim()}
-                subtitle={[it.startTime ? formatTime(it.startTime) : "Time TBD", it.location || "Location TBD"].join(" · ")}
+                subtitle={[
+                  it.startTime ? formatTime(it.startTime) : it.anytime ? "No specific time" : "Time TBD",
+                  it.location || "Location TBD",
+                ].join(" · ")}
                 onEdit={() => setEditing(it)}
                 onDelete={() => confirmDelete(it.title, () => deleteScheduleItem(it.id), onChanged)}
               />

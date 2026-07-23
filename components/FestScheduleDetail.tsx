@@ -8,7 +8,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { useCachedResource } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
 import { useFestContent } from "@/lib/useFestContent";
-import { formatDateLong, formatTime } from "@/lib/format";
+import { formatDateLong, formatTime, formatEventTime } from "@/lib/format";
 import type { ScheduleEvent } from "@/lib/types";
 
 /**
@@ -51,7 +51,7 @@ export function FestScheduleDetail({ id, fallback }: { id: string; fallback: Sch
 
       <header className="space-y-1">
         <p className="text-xs text-foreground/50">
-          {event.anytime ? "Anytime all week" : formatDateLong(event.day)} · {formatTime(event.start)}
+          {event.anytime ? "Anytime all week" : formatDateLong(event.day)} · {formatEventTime(event)}
           {event.end ? `–${formatTime(event.end)}` : ""}
         </p>
         <h1 className="text-2xl font-bold tracking-tight">

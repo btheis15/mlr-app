@@ -324,7 +324,9 @@ export interface ScheduleEvent {
   id: string;
   /** ISO date, YYYY-MM-DD. */
   day: string;
-  /** 24h time, "HH:MM". Omitted when the time isn't set yet (renders "TBD"). */
+  /** 24h time, "HH:MM". Omitted when the time isn't set yet — renders "TBD"
+   *  for a day-locked event, or "No specific time" for an `anytime` one (see
+   *  `formatEventTime` in lib/format.ts). */
   start?: string;
   end?: string;
   title: string;
