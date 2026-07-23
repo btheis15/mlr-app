@@ -670,6 +670,12 @@ export function deleteTournament(id: string): Promise<Res> {
   return rpc("delete_tournament", { p_tournament: id });
 }
 
+/** Switch the format (single-elim / round-robin / pools) — allowed only while the
+ *  tournament is still in setup (before a bracket/schedule is generated). */
+export function setTournamentFormat(id: string, format: TournamentFormat): Promise<Res> {
+  return rpc("set_tournament_format", { p_tournament: id, p_format: format });
+}
+
 /** Pull entrants from the activity's sign-ups. Returns the count, or an error. */
 export async function importEntrantsFromSignups(id: string): Promise<{ count?: number; error?: string }> {
   const sb = supabase;
