@@ -194,6 +194,10 @@ export function TournamentSetupSheet({
   const entrantsById = new Map(tournament.entrants.map((e) => [e.id, e]));
   const orderedEntrants = order.map((id) => entrantsById.get(id)).filter(Boolean) as Tournament["entrants"];
   const n = orderedEntrants.length;
+  // Individuals sit in the POOL until "Generate" promotes each to a solo entrant
+  // (server-side, all three formats do this). So the number that will actually
+  // compete = entrants + pool for individuals; for teams only formed teams count.
+  const readyCount = tournament.entrantType === "individual" ? n + tournament.pool.length : n;
   const preview = firstRoundPreview(orderedEntrants.map((e) => e.displayName), byeStrategy);
 
   const move = (idx: number, dir: -1 | 1) => {
@@ -235,29 +239,33 @@ export function TournamentSetupSheet({
           {note && <p className="text-center text-sm text-primary">{note}</p>}
           <button
             type="button"
-            disabled={busy || n < 2}
+            disabled={busy || readyCount < 2}
             onClick={doGenerate}
             className="w-full rounded-2xl bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
           >
-            {n < 2 ? "Add at least 2 entrants" : isPools ? "Generate pools" : isRR ? "Generate schedule" : "Generate bracket"}
+            {readyCount < 2 ? "Add at least 2 players" : isPools ? "Generate pools" : isRR ? "Generate schedule" : "Generate bracket"}
           </button>
         </div>
       }
     >
       <div className="space-y-5">
-        {/* Pull from sign-ups */}
+        {/* Players. For a private activity the roster IS the player list (auto-added
+            on creation) — this button just re-syncs if you added people since. */}
         <section className="space-y-2">
-          <SectionLabel>Entrants</SectionLabel>
+          <SectionLabel>Players</SectionLabel>
+          {host.kind === "activity" && (
+            <p className="text-[11px] text-foreground/45">Everyone in this activity is already a player. Added someone since? Re-sync below.</p>
+          )}
           <button
             type="button"
             disabled={busy}
             onClick={() => run(async () => {
               const { count, error: err } = await importEntrantsForHost(host, tournament.id);
-              return err ? { error: err } : (setNote(`Imported ${count ?? 0} ${host.kind === "activity" ? "from the guest list" : "from sign-ups"}`), {});
+              return err ? { error: err } : (setNote(`${host.kind === "activity" ? "Synced" : "Imported"} ${count ?? 0} ${host.kind === "activity" ? "from the activity" : "from sign-ups"}`), {});
             })}
             className="w-full rounded-xl bg-card py-2.5 text-sm font-medium ring-1 ring-border"
           >
-            {host.kind === "activity" ? "⬇︎ Add everyone in this activity" : "⬇︎ Pull in everyone who signed up"}
+            {host.kind === "activity" ? "↻ Re-sync players from activity" : "⬇︎ Pull in everyone who signed up"}
           </button>
           {isTeam && (
             <div className="flex gap-2">
