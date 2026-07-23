@@ -800,7 +800,10 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   slot's absolute instant (day + "HH:MM" at `America/Chicago`) and dedupes via the
   `fest_signup_reminders_sent` ledger. Only fires for slots with a real date/time
   (a schedule event's day, or any slot with a day) — activity-interval / day-less
-  slots have no moment to count down to and are skipped. The push is an
+  slots have no moment to count down to and are skipped. The recipient is the
+  linked member, or — for a free-text **write-in** row (no account) — whoever
+  **added** it (`coalesce(user_id, added_by)`), so a coordinator who signed a
+  guest up still gets the nudge (worded "{guest}'s slot starts …"). The push is an
   **override** (like `help_urgent`): anyone with phone push on gets it, since they
   chose to sign up — added to both mini senders' pushable sets. `signup_reminder`
   is a `NotifType`, on by default, mutable in Profile → Notifications → Family Fest.

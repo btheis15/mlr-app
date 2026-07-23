@@ -64,11 +64,15 @@ declare
   m      int;
 begin
   -- One unified pass over both signup flavors. Each row already resolves its
-  -- slot's day + start time and its parent's title/reminder list; we only keep
-  -- rows that have an account to notify, a real day, and at least one lead time.
+  -- slot's day + start time and its parent's title/reminder list. The recipient
+  -- is the linked member (user_id) OR, for a free-text write-in row, whoever
+  -- ADDED it (added_by) — so a coordinator who signed a guest up still gets the
+  -- nudge. We keep rows that have SOMEONE to notify, a real day, and a lead time.
   for r in
     with sched as (
-      select s.id as signup_id, 'schedule' as kind, s.user_id,
+      select s.id as signup_id, 'schedule' as kind,
+             coalesce(s.user_id, s.added_by) as recipient,
+             (s.user_id is null) as is_write_in, s.name as who,
              i.title, i.signup_reminder_minutes as mins,
              coalesce(sl.day, i.day::text) as day,
              coalesce(sl.start_time, s.slot_start) as start_time,
@@ -76,12 +80,14 @@ begin
       from public.fest_schedule_signups s
       join public.fest_schedule_items i on i.id = s.schedule_item_id
       left join public.fest_schedule_slots sl on sl.id = s.slot_id
-      where s.user_id is not null
+      where coalesce(s.user_id, s.added_by) is not null
         and i.signup_enabled
         and array_length(i.signup_reminder_minutes, 1) > 0
     ),
     act as (
-      select s.id as signup_id, 'activity' as kind, s.user_id,
+      select s.id as signup_id, 'activity' as kind,
+             coalesce(s.user_id, s.added_by) as recipient,
+             (s.user_id is null) as is_write_in, s.name as who,
              a.title, a.signup_reminder_minutes as mins,
              sl.day as day,                        -- activities have no own day
              coalesce(sl.start_time, s.slot_start) as start_time,
@@ -89,7 +95,7 @@ begin
       from public.fest_activity_signups s
       join public.fest_activities a on a.id = s.activity_id
       left join public.fest_activity_slots sl on sl.id = s.slot_id
-      where s.user_id is not null
+      where coalesce(s.user_id, s.added_by) is not null
         and a.signup_enabled
         and array_length(a.signup_reminder_minutes, 1) > 0
     )
@@ -116,9 +122,12 @@ begin
       then
         begin
           perform public._notify(
-            r.user_id, 'signup_reminder', null,
+            r.recipient, 'signup_reminder', null,
             'Sign-up reminder: ' || r.title,
-            'Your ' || r.title || ' time slot starts ' || public._humanize_minutes(m) || '.',
+            case when r.is_write_in
+              then r.who || '''s ' || r.title || ' time slot starts ' || public._humanize_minutes(m) || '.'
+              else 'Your ' || r.title || ' time slot starts ' || public._humanize_minutes(m) || '.'
+            end,
             r.url, r.kind, r.signup_id, v_when + interval '1 hour');
           insert into public.fest_signup_reminders_sent (signup_id, minutes, kind)
           values (r.signup_id, m, r.kind)
