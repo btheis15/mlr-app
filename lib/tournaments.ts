@@ -383,6 +383,104 @@ export function bracketSummary(n: number, strategy: ByeStrategy): string {
   return `${n} entrants · ${b}-team bracket · ${byes} bye${byes === 1 ? "" : "s"} (top seeds rest)`;
 }
 
+// ── Standings (round-robin / pools — computed client-side) ────────────────────
+
+export interface Standing {
+  entrantId: string;
+  name: string;
+  played: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  diff: number;
+  rank: number;
+}
+
+/** Whether any score has been entered (drives showing the PF/PA/Diff columns —
+ *  scores are optional, so a winner-only round-robin hides them). */
+export function hasAnyScores(t: Tournament): boolean {
+  return t.matches.some((m) => m.slot1Score != null || m.slot2Score != null);
+}
+
+/**
+ * Standings for a round-robin (or one pool), ranked by the tournament's ordered
+ * `tiebreakers` (win_pct → head_to_head → point_diff → points_for by default).
+ * Pass `pool` to rank just that pool's entrants; omit for the whole field.
+ */
+export function computeStandings(t: Tournament, pool: string | null = null): Standing[] {
+  const entrants = t.entrants.filter((e) => !e.withdrawnAt && (pool == null || e.pool === pool));
+  const byId = new Map(entrants.map((e) => [e.id, e]));
+  const rows = new Map<string, Standing>();
+  for (const e of entrants) {
+    rows.set(e.id, {
+      entrantId: e.id,
+      name: e.displayName,
+      played: 0,
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      pointsFor: 0,
+      pointsAgainst: 0,
+      diff: 0,
+      rank: 0,
+    });
+  }
+  const completed = t.matches.filter(
+    (m) => m.status === "complete" && m.slot1EntrantId && m.slot2EntrantId && byId.has(m.slot1EntrantId) && byId.has(m.slot2EntrantId!),
+  );
+  for (const m of completed) {
+    const a = rows.get(m.slot1EntrantId!)!;
+    const b = rows.get(m.slot2EntrantId!)!;
+    a.played++;
+    b.played++;
+    const s1 = m.slot1Score ?? 0;
+    const s2 = m.slot2Score ?? 0;
+    a.pointsFor += s1;
+    a.pointsAgainst += s2;
+    b.pointsFor += s2;
+    b.pointsAgainst += s1;
+    if (!m.winnerEntrantId) {
+      a.ties++;
+      b.ties++;
+    } else if (m.winnerEntrantId === a.entrantId) {
+      a.wins++;
+      b.losses++;
+    } else {
+      b.wins++;
+      a.losses++;
+    }
+  }
+  for (const r of rows.values()) r.diff = r.pointsFor - r.pointsAgainst;
+
+  const winPct = (r: Standing) => (r.played ? (r.wins + 0.5 * r.ties) / r.played : 0);
+  const h2h = (x: Standing, y: Standing): number => {
+    const m = completed.find(
+      (mm) =>
+        (mm.slot1EntrantId === x.entrantId && mm.slot2EntrantId === y.entrantId) ||
+        (mm.slot1EntrantId === y.entrantId && mm.slot2EntrantId === x.entrantId),
+    );
+    if (!m || !m.winnerEntrantId) return 0;
+    return m.winnerEntrantId === x.entrantId ? -1 : 1;
+  };
+  const seedOf = (id: string) => byId.get(id)?.seed ?? byId.get(id)?.position ?? 1e9;
+
+  const sorted = Array.from(rows.values()).sort((x, y) => {
+    for (const tb of t.tiebreakers) {
+      let d = 0;
+      if (tb === "win_pct") d = winPct(y) - winPct(x);
+      else if (tb === "point_diff") d = y.diff - x.diff;
+      else if (tb === "points_for") d = y.pointsFor - x.pointsFor;
+      else if (tb === "head_to_head") d = h2h(x, y);
+      if (d !== 0) return d;
+    }
+    return seedOf(x.entrantId) - seedOf(y.entrantId);
+  });
+  sorted.forEach((r, i) => (r.rank = i + 1));
+  return sorted;
+}
+
 /** Random-pair a name list into teams of `size` for the setup preview (the real
  *  teaming is server-side in generate_teams). Returns { teams, leftover }. */
 export function formTeamsPreview(
@@ -513,6 +611,10 @@ export function ungroupTeams(id: string): Promise<Res> {
 /** Generate the bracket. `seedOrderIds` = entrant ids in seed order (null = random). */
 export function generateBracket(id: string, seedOrderIds: string[] | null = null): Promise<Res> {
   return rpc("generate_bracket", { p_tournament: id, p_seed_order: seedOrderIds });
+}
+/** Generate a round-robin schedule (every entrant plays every other once). */
+export function generateRoundRobin(id: string, seedOrderIds: string[] | null = null): Promise<Res> {
+  return rpc("generate_round_robin", { p_tournament: id, p_seed_order: seedOrderIds });
 }
 export function resetBracket(id: string): Promise<Res> {
   return rpc("reset_bracket", { p_tournament: id });
