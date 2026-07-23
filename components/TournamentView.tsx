@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SegmentedControl } from "@/components/SegmentedControl";
-import { TournamentBracket } from "@/components/TournamentBracket";
+import { TournamentBracket, fmtMatchTime } from "@/components/TournamentBracket";
 import { TournamentStandings } from "@/components/TournamentStandings";
 import { TournamentSetupSheet } from "@/components/TournamentSetupSheet";
 import { MatchResultSheet, labelForMatch } from "@/components/MatchResultSheet";
@@ -351,7 +351,9 @@ function NowView({ tournament, nameFor }: { tournament: Tournament; nameFor: (id
             {ready.map((m) => (
               <li key={m.id} className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
                 <span className="truncate text-sm">{nameFor(m.slot1EntrantId)} <span className="text-foreground/30">vs</span> {nameFor(m.slot2EntrantId)}</span>
-                <span className="shrink-0 text-[10px] font-medium text-foreground/40">{labelForMatch(tournament, m)}</span>
+                <span className="shrink-0 text-[10px] font-medium text-foreground/40">
+                  {m.scheduledAt ? `🕒 ${fmtMatchTime(m.scheduledAt)}` : labelForMatch(tournament, m)}
+                </span>
               </li>
             ))}
           </ul>

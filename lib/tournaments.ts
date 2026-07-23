@@ -56,6 +56,10 @@ export interface TournamentMatch {
   nextSlot: 1 | 2 | null;
   isPlayIn: boolean;
   status: MatchStatus;
+  /** Scheduled start (ISO), or null. */
+  scheduledAt: string | null;
+  /** Lead times (minutes before scheduledAt) at which players get a reminder. */
+  reminderMinutes: number[];
 }
 
 export interface Tournament {
@@ -121,6 +125,8 @@ interface MatchRow {
   next_slot: 1 | 2 | null;
   is_play_in: boolean;
   status: MatchStatus;
+  scheduled_at: string | null;
+  reminder_minutes: number[] | null;
 }
 interface TournamentRow {
   id: string;
@@ -190,6 +196,8 @@ function assemble(row: TournamentRow): Tournament {
         nextSlot: m.next_slot,
         isPlayIn: m.is_play_in,
         status: m.status,
+        scheduledAt: m.scheduled_at,
+        reminderMinutes: m.reminder_minutes ?? [],
       }),
     )
     .sort((a, b) => a.round - b.round || a.position - b.position);
@@ -678,4 +686,15 @@ export function recordMatchResult(
 }
 export function clearMatchResult(matchId: string): Promise<Res> {
   return rpc("clear_match_result", { p_match: matchId });
+}
+
+/** Set (or clear, with null) a match's scheduled time + reminder lead-times. */
+export function scheduleMatch(matchId: string, atISO: string | null, reminderMinutes: number[] = []): Promise<Res> {
+  return rpc("schedule_match", { p_match: matchId, p_at: atISO, p_reminders: reminderMinutes });
+}
+
+/** Send an immediate matchup push. `when` is the trailing phrase, e.g.
+ *  "is up next!" or "is in about 15 minutes". */
+export function notifyMatch(matchId: string, when: string): Promise<Res> {
+  return rpc("notify_match", { p_match: matchId, p_when: when });
 }

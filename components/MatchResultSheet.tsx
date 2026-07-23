@@ -3,8 +3,20 @@
 import { useMemo, useState } from "react";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
-import { clearMatchResult } from "@/lib/tournaments";
+import { clearMatchResult, notifyMatch, scheduleMatch } from "@/lib/tournaments";
 import type { Tournament, TournamentMatch } from "@/lib/tournaments";
+
+/** A timestamptz ISO ⇄ the value a <input type="datetime-local"> wants. */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+function fromLocalInput(v: string): string | null {
+  if (!v) return null;
+  const t = new Date(v);
+  return isNaN(t.getTime()) ? null : t.toISOString();
+}
 
 /**
  * Record (or change) a match result. The PRIMARY interaction is one tap: pick
@@ -37,8 +49,30 @@ export function MatchResultSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Schedule + notify (only meaningful while the match is still to be played).
+  const bothSet = !!match.slot1EntrantId && !!match.slot2EntrantId;
+  const [when, setWhen] = useState<string>(toLocalInput(match.scheduledAt));
+  const [remind, setRemind] = useState<boolean>((match.reminderMinutes ?? []).length > 0);
+  const [notice, setNotice] = useState<string | null>(null);
+
   const e1 = match.slot1EntrantId;
   const e2 = match.slot2EntrantId;
+
+  const sendNotify = async (phrase: string) => {
+    setBusy(true);
+    setNotice(null);
+    const { error: err } = await notifyMatch(match.id, phrase);
+    setBusy(false);
+    setNotice(err ? err : "Sent ✓");
+  };
+  const saveSchedule = async () => {
+    setBusy(true);
+    setNotice(null);
+    const iso = fromLocalInput(when);
+    const { error: err } = await scheduleMatch(match.id, iso, iso && remind ? [15] : []);
+    setBusy(false);
+    setNotice(err ? err : iso ? "Scheduled ✓" : "Cleared ✓");
+  };
 
   // Downstream matches that currently hold a result derived from this one — they
   // get reset if the winner changes. Walk the next_match chain forward.
@@ -188,6 +222,64 @@ export function MatchResultSheet({
         >
           {showScores ? "Hide scores" : "Add scores (optional)"}
         </button>
+
+        {bothSet && match.status !== "complete" && (
+          <div className="mt-2 space-y-3 border-t border-border pt-4">
+            <div>
+              <SectionLabel>Notify the players</SectionLabel>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => sendNotify("is up next!")}
+                  className="flex-1 rounded-xl bg-primary/10 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20 disabled:opacity-40"
+                >
+                  📣 Up next
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => sendNotify("is in about 15 minutes")}
+                  className="flex-1 rounded-xl bg-primary/10 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20 disabled:opacity-40"
+                >
+                  📣 In ~15 min
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-foreground/40">
+                Pushes each side &ldquo;Your matchup against {"{the other team}"} …&rdquo; (players on the app only).
+              </p>
+            </div>
+
+            <div>
+              <SectionLabel>Schedule (optional)</SectionLabel>
+              <input
+                type="datetime-local"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border"
+              />
+              <label className="mt-2 flex items-center gap-2 text-sm text-foreground/70">
+                <input
+                  type="checkbox"
+                  checked={remind}
+                  disabled={!when}
+                  onChange={(e) => setRemind(e.target.checked)}
+                  className="h-4 w-4 accent-[var(--color-primary)]"
+                />
+                Auto-remind players 15 min before
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={saveSchedule}
+                className="mt-2 w-full rounded-xl bg-card py-2.5 text-sm font-medium ring-1 ring-border disabled:opacity-40"
+              >
+                {when ? "Save time" : "Clear time"}
+              </button>
+            </div>
+            {notice && <p className="text-center text-sm text-primary">{notice}</p>}
+          </div>
+        )}
       </div>
     </Sheet>
   );
