@@ -95,7 +95,18 @@ export function HomeSpotlight() {
     .map((c) => ({
       id: c.dismissId,
       swipeable: true,
-      node: <CalloutCard callout={c} onMarkDone={() => onMarkDone(c.id)} marking={marking === c.id} />,
+      // The "📝 Sign up" button only shows when the linked activity actually
+      // takes sign-ups — a callout can be linked to any activity just to borrow
+      // its content. Resolve from the same fest schedule fetch (no extra
+      // round-trip); an unresolved/non-signup link simply hides the button.
+      node: (
+        <CalloutCard
+          callout={c}
+          onMarkDone={() => onMarkDone(c.id)}
+          marking={marking === c.id}
+          signupEnabled={c.signupItemId ? !!schedule.find((s) => s.id === c.signupItemId)?.signupEnabled : false}
+        />
+      ),
     }));
 
   // The permanent base — never swipeable, so something always sits here.

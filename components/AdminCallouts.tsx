@@ -598,7 +598,10 @@ function CalloutSheet({
 
       {hasContent && (
         <Field label="Preview">
-          <CalloutCard callout={preview} />
+          <CalloutCard
+            callout={preview}
+            signupEnabled={signupItemId ? !!activityOptions.find((e) => e.id === signupItemId)?.signupEnabled : false}
+          />
         </Field>
       )}
     </Sheet>
