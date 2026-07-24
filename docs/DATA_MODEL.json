@@ -1,0 +1,508 @@
+{
+  "$schema": "mlr-app exhaustive data model + permissions reference — ground truth extracted by reading all 158 files in supabase/migrations/*.sql directly (not summarized from prose docs). Companion to docs/ARCHITECTURE.json, which stays at the feature-map level; THIS file is where every column, every RLS predicate, and every RPC signature actually live.",
+  "meta": {
+    "generated": "2026-07-24",
+    "method": "8 parallel Explore-style passes each read a contiguous slice of supabase/migrations/*.sql in order (chunks: 0001-0022, 0022-0040, 0041-0059, 0060-0079, 0080-0099, 0100-0116, 0117-0136, 0137-0154) and reported every CREATE/ALTER TABLE, every CREATE POLICY (verbatim USING/WITH CHECK), every CREATE FUNCTION (full signature + body gate logic), and every GRANT/REVOKE. This file synthesizes those 8 passes into final/current state per table and function — migrations are cumulative (many tables/functions are touched 3-6 times across the range via ALTER/DROP+CREATE POLICY/CREATE OR REPLACE), and the entry below reflects the LAST migration that touched each object, in filename order (0001 -> 0154), not the original.",
+    "caveats": [
+      "158 migration files exist for numbers 0001-0154 because several numbers were used twice by different files (e.g. two files both named 0034_*, two named 0058_*, two named 0108_*) — application order for same-numbered files was not independently re-verified beyond filename lexical order; a handful of column/policy states could theoretically be swapped if the actual apply order differed. Flagged inline where a same-number collision occurred.",
+      "Some functions are 'plain SQL' (language sql) with no explicit SECURITY DEFINER/INVOKER keyword shown in the source snippet an agent captured — these default to INVOKER per Postgres semantics; called out as 'INVOKER (implicit)' below rather than assumed DEFINER.",
+      "This file does not re-verify against the live Supabase project — it is a static read of the migration files in this git checkout. If a migration was edited/hotfixed directly in the SQL editor without a matching file update, this file would miss that.",
+      "'Client-writable columns' on profiles/etc. are derived from explicit GRANT UPDATE (col list) statements found; a column's absence from that list does not necessarily mean it's unwritable if a later, unread GRANT exists outside the observed migrations — cross-check against lib/*.ts write calls if in doubt."
+    ]
+  },
+
+  "globalPatterns": {
+    "adminCheck": "Inlined everywhere (no single is_admin() helper exists): `exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_admin)`. Every SECURITY DEFINER function/RLS policy that says 'admin-only' below uses this exact shape unless noted.",
+    "coreAccessPredicates": [
+      "is_committee_member(cid) — admin OR committee_roster row (via committees.slug) linked_user_id = auth.uid(). (Redefined in 0057 to key off the roster, not committee_members.)",
+      "is_committee_lead(cid) — admin OR committee_members row for cid with role='Lead'.",
+      "can_access_committee_area(cid, area) — admin OR (roster-linked member AND (area IS NULL i.e. General, OR caller holds that role/'role · Lead' in committee_roster.roles)). Foundational for chat, meetings, chat_polls, search.",
+      "is_house_member(hid) — admin OR profiles.house_id = hid. Foundational for house chat, house-scoped work items, house_stays, meetings(house scope), chat_polls(house scope), search.",
+      "can_edit_fest() — admin OR committee_roster row for slug='family-fest' with linked_user_id = auth.uid(). Gates all fest_* content tables.",
+      "is_cabin_approver(cabin_id) — admin OR cabins.approver_user_id = auth.uid(). Gates cabin request review/edit/cancel/room-assign/messaging for a specific place.",
+      "can_organize_meeting(scope, committee_id, area, house_id) — admin (any scope) OR committee Lead (roster role ends '· Lead') for committee scope. House and family scopes are admin-only (no Lead concept).",
+      "_can_manage_schedule_signups(item) / _can_manage_activity_signups(act) — can_edit_fest() OR item.lead_user_id = auth.uid() OR auth.uid() = any(item.crew_user_ids). The 0110 self-edit predicate, reused by sign-ups (0135/0138) and tournaments (is_tournament_manager).",
+      "is_private_activity_member(activity) / is_private_activity_host(activity) — creator OR admin OR roster row (host role required for the 'host' variant). Private-activity-specific, mirrors the houses/cabin-approver pattern.",
+      "is_tournament_manager(t) — resolves whether the tournament hangs off a fest schedule item or a private activity, then defers to the matching predicate above. No separate tournament-organizer role exists."
+    ],
+    "writeDoctrine": "Every business-rule write goes through a SECURITY DEFINER RPC that re-derives its own gate (never trusts RLS alone for INSERT/UPDATE/DELETE authorization on shared tables). Plain own-row tables (reactions, home_callout_completions, apns/push_subscriptions, committee/house/committee_area reads, house rules-via-RPC) allow direct client writes gated purely by `user_id = auth.uid()` RLS. Two tables (`content_embeddings`, `chat_poll_votes`) are 'deny-all': RLS enabled, ZERO policies of any kind — not even the owner can SELECT their own row directly; access exists ONLY through a SECURITY DEFINER RPC that re-derives visibility as the caller.",
+    "escalationGuards": [
+      "profiles.is_admin: never in any client UPDATE GRANT column list; INSERT policy additionally pins `is_admin = false`; only set_admin(target,value) RPC (admin-only, can't remove own admin) can change it.",
+      "profiles.house_id: never in any client UPDATE GRANT column list; only set_member_house(target,hid) RPC (admin-only) can change it.",
+      "committee_roster.linked_user_id: never directly client-writable; changes only via the bidirectional auto-link triggers (email match) or admin-driven RPCs (review_join_request, set_committee_areas, etc.).",
+      "admin_override / admin_override_votes: zero RLS policies (deny-all); a two-admin-vote 'break glass' RPC flow (request_admin_override/admin_override_status/cancel_admin_override) is the only path to a temporary is_override_unlocked() window, itself only consumable by the mac-mini via a service_role-only RPC."
+    ]
+  },
+
+  "tables": {
+    "identity": {
+      "profiles": {
+        "columns": [
+          "id uuid PK -> auth.users(id) ON DELETE CASCADE",
+          "display_name text", "avatar_url text (PHOTO)", "full_name text", "household text", "bio text",
+          "email_alerts boolean DEFAULT true — gates ONLY the broadcast alerts/notifications email channel (alert_recipients), never transactional email (meetings/cabin-messages override it per 0132/0133)",
+          "is_admin boolean DEFAULT false — NEVER CLIENT-WRITABLE, only via set_admin() RPC",
+          "include_in_directory boolean DEFAULT true",
+          "created_at timestamptz DEFAULT now()", "updated_at timestamptz DEFAULT now()",
+          "phone text", "contact_email text (the account-linking key for committee_roster/family_roster)",
+          "venmo text", "zelle text", "cashapp text", "paypal text", "apple_cash boolean DEFAULT false",
+          "pay_preferred text", "contact_preferred text",
+          "push_level text DEFAULT 'off' — legacy (all|mentions|alerts|off), superseded by push_types but column retained",
+          "push_types text[] DEFAULT '{}'", "push_self_notify boolean DEFAULT false", "push_prompted boolean DEFAULT false",
+          "birthday date", "address text",
+          "notify_new_members boolean DEFAULT true",
+          "notif_types text[] DEFAULT (a long, incrementally-appended list — see functions.notifTypesEvolution) — every notification kind is opt-out per member here",
+          "willing_to_help boolean DEFAULT false",
+          "intro_seen boolean DEFAULT false — false for brand-new signups, backfilled true for pre-existing members at migration time",
+          "joined_at timestamptz — NULL means an unverified/abandoned OTP signup stub; set on first email verification",
+          "house_id uuid -> houses(id) ON DELETE SET NULL — NEVER CLIENT-WRITABLE, only via set_member_house() RPC",
+          "invited_via text — tags accounts created via the admin invite-link flow, e.g. 'invite_link'",
+          "mjt_dues_paid_year integer",
+          "beta_tester boolean — ADDED 0029, DROPPED 0100 (concept fully removed; column no longer exists)"
+        ],
+        "clientWritableColumns": "display_name, avatar_url, full_name, household, bio, email_alerts, include_in_directory, phone, contact_email, venmo, zelle, cashapp, paypal, apple_cash, pay_preferred, contact_preferred, push_level, push_types, push_self_notify, push_prompted, birthday, address, notif_types, willing_to_help, intro_seen, mjt_dues_paid_year — all via column-level GRANT UPDATE, still scoped to own row by the 'profiles: update own' RLS policy.",
+        "neverClientWritable": "id, is_admin, house_id, joined_at, invited_via, notify_new_members, created_at, updated_at",
+        "rls": [
+          "SELECT \"profiles: member read\" USING (auth.uid() is not null) — tightened 0081 from an original public-read policy",
+          "INSERT \"profiles: insert own\" WITH CHECK (auth.uid() = id AND is_admin = false) — the 0010 escalation guard",
+          "UPDATE \"profiles: update own\" USING (auth.uid() = id) — column-restricted entirely via GRANT, not a narrower USING clause"
+        ],
+        "realtime": true,
+        "notes": "handle_new_user() (auth.users AFTER INSERT trigger) seeds display_name/contact_email/invited_via, but SKIPS creating a profile row entirely if email_confirmed_at is null (OTP not yet verified) — handle_user_email_confirmed() (AFTER UPDATE on auth.users) creates/upserts the row on first verification instead, stamping joined_at."
+      },
+      "public_profiles": {
+        "kind": "VIEW (not a table)",
+        "columns": [
+          "id", "display_name — FIRST NAME ONLY: split_part(trim(coalesce(nullif(display_name,''), full_name, '')), ' ', 1), masked server-side for guests",
+          "avatar_url (PHOTO)"
+        ],
+        "definition": "created WITH (security_invoker = off) — runs as the view owner, deliberately bypassing profiles RLS so guests can see a masked directory without a sign-in-gated row.",
+        "grants": "revoke all from public/anon/authenticated, then GRANT SELECT ONLY to anon AND authenticated (select-only; write-through stripped by the revoke-then-grant pattern)."
+      },
+      "push_subscriptions": {
+        "columns": ["id uuid PK", "user_id uuid -> profiles(id) cascade", "endpoint text UNIQUE", "p256dh text", "auth text", "user_agent text", "created_at timestamptz", "last_seen_at timestamptz"],
+        "rls": ["SELECT/INSERT/UPDATE/DELETE all scoped to `user_id = auth.uid()`"],
+        "notes": "Mini's push-sender uses the service-role key, which bypasses RLS entirely."
+      },
+      "apns_subscriptions": {
+        "columns": ["user_id uuid -> profiles(id) cascade", "device_token text", "environment text DEFAULT 'production' CHECK (sandbox|production)", "created_at timestamptz", "updated_at timestamptz", "PK (user_id, device_token)"],
+        "rls": ["SELECT/INSERT/UPDATE/DELETE all scoped to `user_id = auth.uid()`, role authenticated"]
+      },
+      "admin_override": {
+        "columns": ["id int PK DEFAULT 1 CHECK (id=1) — singleton", "unlocked_until timestamptz", "opened_by uuid -> auth.users set null"],
+        "rls": "enabled, ZERO policies — deny-all to every client role; only SECURITY DEFINER RPCs (request_admin_override/admin_override_status/cancel_admin_override, all admin-gated) and service_role touch it."
+      },
+      "admin_override_votes": {
+        "columns": ["admin_id uuid PK -> auth.users cascade", "voted_at timestamptz DEFAULT now()"],
+        "rls": "enabled, ZERO policies — same deny-all doctrine as admin_override."
+      }
+    },
+
+    "social": {
+      "posts": {
+        "columns": [
+          "id uuid PK", "author_id uuid -> profiles(id) cascade", "text text",
+          "image_path text (PHOTO, legacy single-image field, pre-post_media)",
+          "created_at timestamptz", "occurred_at timestamptz DEFAULT now() (user-editable 'when this happened' date, distinct from created_at)",
+          "album_id uuid -> albums(id) set null",
+          "status text DEFAULT 'visible' CHECK (visible|pending|hidden) — moderation state, 0040"
+        ],
+        "rls": [
+          "SELECT \"posts: member read\" USING (auth.uid() is not null AND (status='visible' OR author_id=auth.uid() OR admin)) — final form per 0081+0040 combined",
+          "INSERT \"posts: insert own\" WITH CHECK (auth.uid() = author_id)",
+          "UPDATE \"posts: update own or admin\" USING/CHECK (author_id=auth.uid() OR admin)",
+          "DELETE \"posts: delete own or admin\" USING (author_id=auth.uid() OR admin)"
+        ],
+        "realtime": true,
+        "notes": "create_post() RPC (0080) is the real write path — atomically inserts the post + post_media rows + post_tags rows in one transaction so a partial post never lands in the feed; p_held mirrors client-side text moderation to land pending vs visible."
+      },
+      "post_media": { "columns": ["id uuid PK", "post_id uuid -> posts cascade", "storage_path text (PHOTO/VIDEO)", "media_type text DEFAULT 'image' CHECK (image|video)", "position int"], "rls": ["SELECT \"media: member read\" USING (auth.uid() is not null) — tightened 0081", "INSERT/DELETE scoped to the post's own author or admin"], "realtime": true, "notes": "Trigger hold_post_on_flagged_media() (0043, bugfixed 0128) sets the parent post to status='pending' when an async media_moderation verdict flags this row's storage_path." },
+      "post_comments": { "columns": ["id uuid PK", "post_id uuid -> posts cascade", "author_id uuid -> profiles cascade", "text text", "created_at timestamptz", "status text DEFAULT 'visible' CHECK (visible|pending|hidden)"], "rls": ["SELECT member+status-aware (0081+0040 combined, same shape as posts)", "INSERT own", "DELETE own or admin"], "realtime": true },
+      "post_reactions": { "columns": ["post_id uuid -> posts cascade", "user_id uuid -> profiles cascade", "emoji text", "created_at timestamptz", "PK (post_id,user_id)"], "rls": ["SELECT member-only (0081)", "INSERT/UPDATE/DELETE own row"], "realtime": true },
+      "post_tags": { "columns": ["post_id uuid -> posts cascade", "tagged_user_id uuid -> profiles cascade", "created_at timestamptz", "PK (post_id,tagged_user_id)"], "rls": ["SELECT member-only (0081)", "INSERT on own post", "DELETE by poster, taggee, or admin"], "realtime": true },
+      "post_comment_mentions": { "columns": ["comment_id uuid -> post_comments cascade", "mentioned_user_id uuid -> profiles cascade", "created_at timestamptz", "PK (comment_id,mentioned_user_id)"], "rls": ["SELECT member-only (0081)", "INSERT on own comment", "DELETE own comment or admin"], "realtime": true },
+      "albums": { "columns": ["id uuid PK", "name text", "created_by uuid -> profiles cascade", "created_at timestamptz"], "rls": ["SELECT member-only (0081)", "INSERT own", "DELETE own or admin"], "realtime": true },
+
+      "committee_messages": {
+        "columns": [
+          "id uuid PK", "committee_id uuid -> committees cascade", "author_id uuid -> profiles cascade", "text text",
+          "reply_to_id uuid -> committee_messages set null", "created_at timestamptz", "edited_at timestamptz", "deleted_at timestamptz (soft-delete, 0023)",
+          "area text (0063 — NULL = General channel)",
+          "status text DEFAULT 'visible' CHECK (visible|pending|hidden) (0128)"
+        ],
+        "rls": [
+          "SELECT \"cmsg: member read\" USING (can_access_committee_area(committee_id, area) AND (status='visible' OR author_id=auth.uid() OR admin)) — final form, 0063+0128",
+          "INSERT \"cmsg: member insert own\" WITH CHECK (author_id=auth.uid() AND can_access_committee_area(committee_id,area) AND NOT is_committee_area_archived(committee_id,area)) — final form, 0063+0112",
+          "UPDATE \"cmsg: author edit/delete 24h or admin\" USING/CHECK ((author_id=auth.uid() AND created_at > now()-24h) OR admin) — 0023",
+          "DELETE \"cmsg: admin hard delete\" USING (admin) — 0023"
+        ],
+        "realtime": true
+      },
+      "committee_message_media": { "columns": ["id uuid PK", "message_id uuid -> committee_messages cascade", "storage_path text (PHOTO/VIDEO/FILE)", "media_type text CHECK (image|video|sticker|gif|file — 'file' added 0074)", "width int", "height int", "position int", "created_at timestamptz", "file_name text (added 0074)"], "rls": ["SELECT scoped to can_access_committee_area via parent message (0063)", "INSERT on own message", "DELETE own or admin"], "realtime": true },
+      "committee_message_reactions": { "columns": ["message_id uuid -> committee_messages cascade", "user_id uuid -> profiles cascade", "emoji text", "created_at timestamptz", "PK (message_id,user_id)"], "rls": ["SELECT/INSERT scoped via can_access_committee_area (0063)", "UPDATE/DELETE own row"], "realtime": true },
+      "committee_message_mentions": { "columns": ["message_id uuid -> committee_messages cascade", "mentioned_user_id uuid -> profiles cascade", "created_at timestamptz", "PK (message_id,mentioned_user_id)"], "rls": ["SELECT scoped via can_access_committee_area (0063)", "INSERT WITH CHECK — author of the message AND (mentioned user is a committee_members row for this committee OR is admin) (0024)"], "realtime": true },
+      "committee_reads": { "columns": ["committee_id uuid -> committees cascade", "user_id uuid -> profiles cascade", "last_read_at timestamptz", "PK (committee_id,user_id)"], "rls": ["own-row SELECT/INSERT/UPDATE"] },
+      "committee_area_reads": { "columns": ["committee_id uuid -> committees cascade", "user_id uuid -> profiles cascade", "area text DEFAULT '' (empty stands in for General/NULL)", "last_read_at timestamptz", "muted boolean DEFAULT false", "PK (committee_id,user_id,area)"], "rls": ["own-row SELECT/INSERT/UPDATE (0063)"] },
+
+      "house_messages": { "columns": ["id uuid PK", "house_id uuid -> houses cascade", "author_id uuid -> profiles cascade", "text text", "reply_to_id uuid -> house_messages set null", "created_at timestamptz", "edited_at timestamptz", "deleted_at timestamptz", "status text DEFAULT 'visible' CHECK (visible|pending|hidden) (0128)"], "rls": ["SELECT \"hmsg: member read\" USING (is_house_member(house_id) AND (status='visible' OR author_id=auth.uid() OR admin)) — final form 0065+0128", "INSERT own + is_house_member", "UPDATE author 24h-or-admin", "DELETE admin-only"], "realtime": true, "notes": "1:1 mirror of committee_messages minus area sub-scoping." },
+      "house_message_media": { "columns": ["id uuid PK", "message_id uuid -> house_messages cascade", "storage_path text (PHOTO/VIDEO/FILE)", "media_type text CHECK (image|video|sticker|gif|file)", "width int", "height int", "position int", "created_at timestamptz", "file_name text"], "rls": ["SELECT scoped via is_house_member", "INSERT own message", "DELETE own or admin"], "realtime": true },
+      "house_message_reactions": { "columns": ["message_id uuid -> house_messages cascade", "user_id uuid -> profiles cascade", "emoji text", "created_at timestamptz", "PK (message_id,user_id)"], "rls": ["SELECT scoped via is_house_member", "INSERT/UPDATE/DELETE own row"], "realtime": true },
+      "house_message_mentions": { "columns": ["message_id uuid -> house_messages cascade", "mentioned_user_id uuid -> profiles cascade", "created_at timestamptz", "PK (message_id,mentioned_user_id)"], "rls": ["SELECT scoped via is_house_member", "INSERT WITH CHECK — author AND (mentioned user shares the house OR is admin)"], "realtime": true },
+      "house_reads": { "columns": ["house_id uuid -> houses cascade", "user_id uuid -> profiles cascade", "last_read_at timestamptz", "PK (house_id,user_id)"], "rls": ["own-row SELECT/INSERT/UPDATE"] },
+
+      "chat_polls": { "columns": ["id uuid PK", "scope_type text CHECK (committee|house)", "committee_id/committee_slug/area (committee scope)", "house_id (house scope)", "question text", "allow_multiple boolean", "anonymous boolean", "allow_other boolean", "created_by uuid -> profiles set null", "created_at timestamptz", "closes_on date", "is_closed boolean", "respondent_count int (trigger-maintained)"], "rls": ["SELECT room-scoped via can_access_committee_area / is_house_member (0149) — no client write policy, RPC-only"], "realtime": true },
+      "chat_poll_options": { "columns": ["id uuid PK", "poll_id uuid -> chat_polls cascade", "label text", "position int", "is_other boolean — the write-in slot", "vote_count int (trigger-maintained)"], "rls": ["SELECT room-scoped via parent poll"], "realtime": true },
+      "chat_poll_votes": { "columns": ["poll_id/option_id/user_id (composite PK)", "other_text text", "created_at timestamptz"], "rls": "ENABLED, ZERO POLICIES — confirmed deny-all (matches content_embeddings' doctrine). Not even the voter can SELECT their own row directly. NOT added to the realtime publication (nothing safe to broadcast). All access via fetch_chat_polls_for_room() (own votes only) and chat_poll_voters() (returns [] if the poll is anonymous)." }
+    },
+
+    "committees": {
+      "committees": { "columns": ["id uuid PK", "slug text UNIQUE (immutable)", "name text", "emoji text DEFAULT '🌲'", "description text", "position int", "created_at timestamptz", "archived_at timestamptz (0112)", "archived_by uuid -> profiles set null (0112)"], "rls": ["SELECT public read (true) — never tightened, deliberately public per 0081's own header", "ALL admin write"] },
+      "committee_members": { "columns": ["committee_id uuid -> committees cascade", "user_id uuid -> profiles cascade", "role text (e.g. 'Lead'; null=regular)", "joined_at timestamptz", "areas text[] DEFAULT '{}' (0051)", "PK (committee_id,user_id)"], "rls": ["SELECT is_committee_member(committee_id) — no client insert/update/delete, RPC-only"] },
+      "committee_join_requests": { "columns": ["id uuid PK", "committee_id uuid -> committees cascade", "user_id uuid -> profiles cascade", "message text", "status text DEFAULT 'pending' CHECK (pending|approved|rejected)", "created_at timestamptz", "reviewed_by uuid -> profiles", "reviewed_at timestamptz", "requested_area text (legacy, 0051)", "requested_areas text[] DEFAULT '{}' (0061)", "UNIQUE (committee_id,user_id)"], "rls": ["SELECT self or lead (0015: `user_id=auth.uid() or is_committee_lead(committee_id)`)", "DELETE self or lead"] },
+      "committee_roster": { "columns": ["id uuid PK", "committee_slug text", "name text", "email text (account-link key)", "phone text", "roles text[] DEFAULT '{}' (a trailing ' · Lead' marks a lead)", "position int", "linked_user_id uuid -> profiles set null (bidirectional auto-link, 0056/0060)", "updated_at/updated_by", "UNIQUE (committee_slug,name)"], "rls": ["SELECT member-only (`auth.uid() is not null`) — tightened 0081 from public read", "ALL admin write"], "realtime": true },
+      "committee_areas": { "columns": ["committee_slug text", "area text", "archived_at timestamptz (0112)", "archived_by uuid -> profiles set null (0112)", "PK (committee_slug,area)"], "rls": "no explicit `enable row level security`/policy statement found in any read chunk — flagged as unclear whether RLS was ever turned on for this table (worth confirming directly against the live project); CLAUDE.md describes it as public-read like committees." }
+    },
+
+    "houses": {
+      "houses": { "columns": ["id uuid PK", "slug text UNIQUE", "name text", "emoji text DEFAULT '🏠'", "description text", "position int", "created_at timestamptz", "rules text DEFAULT '' (0072, up to 20000 chars, last-write-wins via set_house_rules RPC)"], "rls": ["SELECT member-only (`auth.uid() is not null`) — tightened 0081 from public read", "ALL admin write"] },
+      "house_stays": { "columns": ["id uuid PK", "house_id uuid -> houses cascade", "created_by uuid -> profiles cascade", "title text", "start_date date", "end_date date (inclusive, CHECK end>=start)", "guest_names text[] DEFAULT '{}' (account-less free list, cleaned via _clean_guest_names — trim/cap 80 chars/max 40 entries)", "note text", "created_at/updated_at"], "rls": ["SELECT is_house_member(house_id) — no client write, RPC-only"], "realtime": true }
+    },
+
+    "workItems": {
+      "work_items": { "columns": ["id uuid PK", "title text", "notes text", "category text", "status text DEFAULT 'open' CHECK (open|done)", "created_by uuid -> profiles set null", "created_at/updated_at", "house_id uuid -> houses cascade (0066 — NULL = MLR-wide, even for guests)", "people_needed int CHECK (>0) (0049)", "urgency text CHECK (asap|this_year|nice_to_have) (0069)", "completed_by uuid -> profiles set null (0088)", "completed_at timestamptz (0088)"], "rls": ["SELECT \"work_items: member scoped read\" USING (auth.uid() is not null AND (house_id is null OR is_house_member(house_id))) — final form 0066+0081 (the MLR branch was public until 0081 tightened it)"] , "realtime": true },
+      "event_work_items": { "columns": ["event_id text (NOT an FK — supports seed/synthesized events)", "work_item_id uuid -> work_items cascade", "added_by uuid -> profiles set null", "added_at timestamptz", "PK (event_id,work_item_id)"], "rls": ["SELECT public read (true) — never tightened; not in 0081's members-only list"], "realtime": true },
+      "work_item_media": { "columns": ["id uuid PK", "work_item_id uuid -> work_items cascade", "storage_path text (PHOTO/VIDEO)", "media_type text DEFAULT 'image' CHECK (image|video — NO sticker/gif/file, simpler shape than chat media)", "position int", "created_at timestamptz"], "rls": ["SELECT scoped via parent item's house visibility", "INSERT/DELETE via add_work_item_media/remove_work_item_media RPCs (item's created_by OR admin)"], "realtime": true, "notes": "No width/height columns, unlike house_message_media." },
+      "work_item_comments": { "columns": ["id uuid PK", "work_item_id uuid -> work_items cascade", "author_id uuid -> profiles cascade", "text text CHECK (1-2000 chars)", "created_at timestamptz"], "rls": ["SELECT scoped via parent item's house visibility", "INSERT own + scoped", "DELETE own or admin"] },
+      "work_item_comment_mentions": { "columns": ["comment_id uuid -> work_item_comments cascade", "mentioned_user_id uuid -> profiles cascade", "created_at timestamptz", "PK (comment_id,mentioned_user_id)"], "rls": ["SELECT/INSERT scoped — mentioned user must share the item's house scope or be admin"] }
+    },
+
+    "cabins": {
+      "cabins": { "columns": ["id uuid PK", "slug text UNIQUE", "name text", "room_count int CHECK (>0)", "sort_order int", "active boolean DEFAULT true", "created_at timestamptz", "bed_count int (0089)", "notes text (0089, member-facing heads-up)", "kind text DEFAULT 'cabin' CHECK (cabin|house) (0114)", "approver_user_id uuid -> profiles set null (0114)"], "rls": ["SELECT public read (true) — never tightened by 0081", "INSERT admin-only (0114)", "UPDATE admin-only (0089)"] },
+      "cabin_rooms": { "columns": ["id uuid PK", "cabin_id uuid -> cabins cascade", "name text", "beds int DEFAULT 1", "active boolean DEFAULT true", "sort_order int", "created_at/updated_at", "description text (0094, member-facing note)", "UNIQUE (cabin_id,name)"], "rls": ["SELECT public read (true)", "ALL admin write"] },
+      "cabin_bookings": { "columns": ["id uuid PK", "cabin_id uuid -> cabins cascade", "user_id uuid -> profiles cascade", "check_in date", "check_out date CHECK (>check_in)", "guests int CHECK (>=1)", "notes text", "status text DEFAULT 'pending' CHECK (pending|approved|denied|cancelled)", "reviewed_by/reviewed_at/review_note", "decision_email_sent_at timestamptz (email-claim)", "created_at/updated_at", "booked_by uuid -> profiles set null (0087, admin-on-behalf-of)", "edit_notify_requested_at / edit_email_sent_at (0105)", "request_notify boolean DEFAULT true (0108)", "cancelled_by uuid -> profiles set null (0109)", "cancel_email_sent_at timestamptz (0109)"], "rls": ["SELECT \"own or is_cabin_approver\" USING (user_id=auth.uid() OR is_cabin_approver(cabin_id)) — final form 0114, widened from admin-only", "no client insert/update/delete — RPC-only"], "realtime": true },
+      "cabin_booking_rooms": { "columns": ["id uuid PK", "booking_id uuid -> cabin_bookings cascade", "room_id uuid -> cabin_rooms cascade", "created_at timestamptz", "UNIQUE (booking_id,room_id)"], "rls": ["SELECT own-booking-or-is_cabin_approver, via join to cabin_bookings — final form 0114"], "realtime": true },
+      "cabin_messages": { "columns": ["id uuid PK", "cabin_id uuid -> cabins cascade", "sender_id uuid -> profiles set null", "subject text", "body text (2000-char cap enforced in RPC)", "notify_email boolean DEFAULT false", "email_sent_at timestamptz (claim)", "created_at timestamptz"], "rls": ["SELECT is_cabin_approver(cabin_id) only — no client write, send_cabin_message() RPC only"], "realtime": true }
+    },
+
+    "help": {
+      "help_requests": { "columns": ["id uuid PK", "user_id uuid -> profiles cascade", "description text", "category text", "where_text text", "lat/lng double precision", "needed_at timestamptz DEFAULT now()", "needed_count int DEFAULT 1", "status text DEFAULT 'open' CHECK (open|resolved|cancelled)", "fulfilled_at timestamptz", "audience text DEFAULT 'present' CHECK (present|all_willing)", "eligible_event_ids text[]", "strict_event_ids text[]", "today_key text", "notified_count int", "resolved_by/resolved_at", "created_at/updated_at", "expires_at timestamptz", "work_item_id uuid -> work_items set null (0058/59)", "followup_at timestamptz (0058/59)", "followup_sent boolean (0058/59)", "reminder_sent_at timestamptz (0039)"], "rls": ["SELECT members-only (`auth.uid() is not null`)"], "realtime": true },
+      "help_responses": { "columns": ["request_id uuid -> help_requests cascade", "user_id uuid -> profiles cascade", "note text", "created_at timestamptz", "PK (request_id,user_id)"], "rls": ["SELECT members-only"], "realtime": true },
+      "help_request_items": { "columns": ["id uuid PK", "request_id uuid -> help_requests cascade", "label text", "position int", "claimed_by uuid -> profiles set null", "claimed_at timestamptz", "created_at timestamptz"], "rls": ["SELECT members-only — no client write, claim_help_item() RPC only"], "realtime": true }
+    },
+
+    "moderation": {
+      "moderation_blocklist": { "columns": ["id uuid PK", "pattern text UNIQUE", "note text", "created_by uuid -> profiles set null", "created_at timestamptz"], "rls": ["SELECT/INSERT/DELETE admin-only (no UPDATE policy)"] },
+      "content_reports": { "columns": ["id uuid PK", "entity_type text CHECK (post|comment)", "entity_id uuid", "reporter_id uuid -> profiles cascade", "reason text", "created_at timestamptz", "UNIQUE (entity_type,entity_id,reporter_id)"], "rls": ["SELECT admin-only — no client insert policy, report_content() RPC only"] },
+      "content_moderation_events": { "columns": ["id uuid PK", "entity_type text", "entity_id uuid (polymorphic, no FK)", "action text CHECK (flagged|approved|removed)", "reason text", "severity text (auto|manual)", "actor_id uuid -> profiles set null", "created_at timestamptz"], "rls": ["SELECT admin-only — no client write, trigger/RPC only"] },
+      "media_moderation": { "columns": ["storage_path text PK (== post_media/chat media's storage_path)", "flagged boolean DEFAULT true", "category text", "reason text", "model text", "created_at timestamptz"], "rls": "enabled, ZERO policies — deny-all; only service-role (the mini's AI check) and triggers touch it." }
+    },
+
+    "broadcasts": {
+      "announcements": { "columns": ["id uuid PK", "author_id uuid -> profiles set null", "title text", "body text", "severity text DEFAULT 'alert' CHECK (info|alert)", "notify_email boolean DEFAULT true", "created_at timestamptz", "expires_at timestamptz DEFAULT now()+6h (0022)", "email_sent_at timestamptz (claim)", "email_audience text DEFAULT 'all' CHECK (all|admins) (0017)", "event_id text (0096)", "exclude_not_attending boolean DEFAULT true (0096)", "show_banner boolean DEFAULT true (0126 — lets a send email without painting the banner)"], "rls": ["SELECT public read (true) — deliberately public per 0081's own header", "INSERT posters only (can_post_alerts() — narrowed to admin-only in 0016)", "UPDATE/DELETE author or admin"], "realtime": true },
+      "notifications": { "columns": ["id uuid PK", "recipient_id uuid -> profiles cascade", "type text", "actor_id uuid -> profiles set null", "title text", "body text", "url text", "entity_type text", "entity_id uuid", "created_at timestamptz", "seen_at timestamptz (drives badge)", "read_at timestamptz (drives per-item bold)", "expires_at timestamptz (drops from badge, stays in list)"], "rls": ["SELECT own only (`recipient_id=auth.uid()`)", "DELETE own only", "NO INSERT/UPDATE policy at all — every row is written by a trigger or _notify()/send_broadcast_notification() RPC, never a raw client insert"], "realtime": true },
+      "scheduled_broadcasts": { "columns": ["id uuid PK", "kind text CHECK (announcement|notification)", "payload jsonb (mirrors composer fields incl. eventId/excludeNotAttending/onlyUnconfirmed/sourceType/sourceId/sourceLabel/excludeCalloutDone/showBanner)", "scheduled_at timestamptz", "created_by uuid -> profiles set null", "sent_at timestamptz (claim)", "cancelled_at timestamptz", "error text (failure record)", "created_at timestamptz"], "rls": ["ALL admin-only"], "realtime": true, "notes": "Fired by pg_cron job run_scheduled_broadcasts() every minute, wrapped per-row in exception handling so one bad payload can't sink the queue." }
+    },
+
+    "polls": {
+      "polls": { "columns": ["id uuid PK", "question text", "created_by uuid -> profiles set null", "created_at timestamptz", "closes_on date", "is_closed boolean DEFAULT false"], "rls": ["SELECT members-only — no client write, RPC-only"], "realtime": true },
+      "poll_options": { "columns": ["id uuid PK", "poll_id uuid -> polls cascade", "label text", "position int"], "rls": ["SELECT members-only"] },
+      "poll_votes": { "columns": ["poll_id uuid -> polls cascade", "option_id uuid -> poll_options cascade", "user_id uuid -> profiles cascade", "created_at timestamptz", "PK (poll_id,user_id) — enforces exactly one vote per member per poll"], "rls": ["SELECT members-only"], "realtime": true }
+    },
+
+    "meetings": {
+      "meetings": { "columns": ["id uuid PK", "scope_type text CHECK (committee|house|family — family added 0122)", "committee_id/committee_slug/area", "house_id", "title text", "description text", "created_by uuid -> profiles set null", "created_at timestamptz", "respond_by date", "status text DEFAULT 'open' CHECK (open|scheduled|cancelled)", "chosen_slot_id uuid -> meeting_slots set null", "meet_url text (LINK)", "finalized_at/finalized_by", "notify_email boolean DEFAULT false (0117)", "proposal_email_sent_at timestamptz (0117)", "confirm_email_sent_at timestamptz (0118)", "created_event_id uuid -> events set null (0122)"], "rls": ["SELECT room-scoped: committee->can_access_committee_area, house->is_house_member, family(0122)->auth.uid() is not null. No client write policy anywhere — every mutation is a SECURITY DEFINER RPC."], "realtime": true },
+      "meeting_slots": { "columns": ["id uuid PK", "meeting_id uuid -> meetings cascade", "starts_at timestamptz", "duration_min int DEFAULT 60", "position int", "ends_at timestamptz (0122 — non-null makes it a date-range slot)"], "rls": ["SELECT room-scoped via parent meeting"], "realtime": true },
+      "meeting_availability": { "columns": ["meeting_id uuid -> meetings cascade", "slot_id uuid -> meeting_slots cascade", "user_id uuid -> profiles cascade", "status text CHECK (yes|if_need_be|no)", "updated_at timestamptz", "PK (slot_id,user_id)"], "rls": ["SELECT room-scoped via parent meeting"], "realtime": true }
+    },
+
+    "fest": {
+      "fest_config": { "columns": ["fest_year int PK", "name text", "tagline text", "start_date/end_date date", "updated_at/updated_by"], "rls": ["SELECT public read", "ALL can_edit_fest() write"] },
+      "fest_dues": { "columns": ["id uuid PK", "fest_year int DEFAULT 2026", "label text", "amount int (null=TBD)", "note text", "position int", "updated_at/updated_by", "per_day boolean DEFAULT false (0078)"], "rls": ["SELECT public read", "ALL can_edit_fest() write"] },
+      "fest_schedule_items": { "columns": [
+          "id uuid PK", "fest_year int DEFAULT 2026", "day date", "start_time/end_time text", "title text", "emoji text", "location text", "description text", "bring text", "is_private boolean DEFAULT false",
+          "lead_user_id uuid -> profiles set null", "lead_name text", "lead_phone text",
+          "position int", "updated_at/updated_by",
+          "crew_user_ids uuid[] DEFAULT '{}' (0110)",
+          "signup_enabled boolean DEFAULT false, signup_capacity int, signup_slot_minutes int, signup_start_time/end_time text (0135)",
+          "signup_mode text DEFAULT 'interval' CHECK (interval|slots|headcount — headcount added 0143), signup_instructions text, signup_fields jsonb DEFAULT '[]' (0136)",
+          "anytime boolean DEFAULT false (0139)",
+          "signup_reminder_minutes int[] DEFAULT '{}' (0140)",
+          "source_activity_id uuid (0141, provenance from the fest_activities merge, no FK)",
+          "links jsonb DEFAULT '[]' — ordered [{href,label}] (0142, REPLACES the earlier single link_url/link_label pair which was itself added+dropped within 0134/0142)",
+          "image_url text (PHOTO — cover image, 0134, still present; NOT replaced by 0142, which only touched the link fields)",
+          "signup_team_size int (0143 — null/1=individual, e.g. 2 for pair sign-ups)",
+          "tournament_enabled boolean DEFAULT false (0147)"
+        ], "rls": [
+          "SELECT public read (true)",
+          "ALL can_edit_fest() write (blanket, from an earlier chunk not directly re-read but referenced throughout)",
+          "UPDATE \"fest_schedule_items: lead or crew self-edit\" USING/CHECK (lead_user_id=auth.uid() OR auth.uid()=any(crew_user_ids)) (0110) — a SECOND, narrower permissive policy layered on top of the blanket ALL policy; Postgres ORs them, so a lead/crew member who isn't on the Family Fest committee can still UPDATE the row at the RLS layer (the app's narrower updateScheduleDetails() call is what actually restricts which columns get submitted, not this policy)."
+        ], "realtime": true, "notes": "OBJECT DIMENSIONS ANSWER: a schedule event/activity carries exactly ONE optional cover photo (image_url, plain text URL into the public site-assets bucket) and a MULTI-LINK array (links jsonb, [{href,label}] — NOT a single link) as of migration 0142. Earlier (0134) it had a single link_url/link_label pair; that was migrated into links[0] and dropped." },
+      "fest_schedule_slots": { "columns": ["id uuid PK", "schedule_item_id uuid -> fest_schedule_items cascade", "day text (ISO date, null=event's own day)", "start_time text", "end_time text", "label text", "capacity int (null falls back to item's signup_capacity)", "position int", "created_at timestamptz"], "rls": ["SELECT public read", "INSERT/UPDATE/DELETE gated on _can_manage_item_signups(schedule_item_id)"], "realtime": true },
+      "fest_schedule_signups": { "columns": ["id uuid PK", "schedule_item_id uuid -> fest_schedule_items cascade", "slot_start text (interval mode; NULLABLE since 0143, was buggy not-null before)", "slot_id uuid -> fest_schedule_slots cascade (slots mode)", "user_id uuid -> profiles set null (null=account-less typed name)", "name text", "added_by uuid -> profiles set null", "created_at timestamptz", "fields jsonb DEFAULT '{}' (custom field answers, 0136)", "team_id uuid (0143, shared by every row of one team sign-up)", "team_name text (0143)"], "rls": ["SELECT public read — no client write, sign_up_for_schedule_slot()/remove_schedule_signup() RPCs only"], "realtime": true },
+      "fest_dinners": { "columns": ["id uuid PK", "fest_year int DEFAULT 2026", "day date", "title text", "emoji text", "chef_user_id uuid -> profiles set null", "chef_name text", "chef_phone text", "houses text[] DEFAULT '{}'", "menu text", "served_time/served_location text", "prep_time/prep_location text", "position int", "updated_at/updated_by", "crew_user_ids uuid[] DEFAULT '{}' (0099)"], "rls": ["SELECT public read", "ALL can_edit_fest() write", "UPDATE \"fest_dinners: chef or crew self-edit\" USING/CHECK (chef_user_id=auth.uid() OR auth.uid()=any(crew_user_ids)) (0099) — same OR-layered pattern as schedule items"] },
+      "fest_payees": { "columns": ["id uuid PK", "fest_year int DEFAULT 2026", "name text", "role text", "venmo/zelle/applecash/paypal text", "amount int", "note text", "position int", "updated_at/updated_by"], "rls": ["SELECT public read", "ALL can_edit_fest() write"] },
+      "fest_activities": { "columns": ["id uuid PK", "fest_year int DEFAULT 2026", "title text", "emoji text", "blurb text", "details text", "location text", "position int", "updated_at/updated_by", "lead_user_id/lead_name/lead_phone/crew_user_ids (0110, first lead/crew concept added — this table originally had NONE)", "signup_enabled/signup_capacity/signup_slot_minutes/signup_start_time/signup_end_time/signup_mode/signup_instructions/signup_fields (0138, mirrors fest_schedule_items)", "signup_reminder_minutes int[] DEFAULT '{}' (0140)"], "rls": ["SELECT public read", "ALL can_edit_fest() write", "UPDATE lead-or-crew self-edit (0110), same OR-layered pattern"], "notes": "⚠️ LEGACY as of 0141 (web retired the standalone 'anytime activities' concept in favor of anytime-flagged fest_schedule_items) — table + rows deliberately LEFT IN PLACE, not dropped, because iOS still reads it. A web edit to a converted event will NOT reflect back onto the untouched fest_activities row." },
+      "fest_activity_slots": { "columns": ["id uuid PK", "activity_id uuid -> fest_activities cascade", "day text", "start_time text", "end_time text", "label text", "capacity int", "position int", "created_at timestamptz"], "rls": ["SELECT public read", "INSERT/UPDATE/DELETE gated on _can_manage_activity_item_signups(activity_id)"], "realtime": true, "notes": "Parallel, fully isolated implementation of fest_schedule_slots for the legacy activities path (0138 mirrors 0135/0136)." },
+      "fest_activity_signups": { "columns": ["id uuid PK", "activity_id uuid -> fest_activities cascade", "slot_start text", "slot_id uuid -> fest_activity_slots cascade", "user_id uuid -> profiles set null", "name text", "added_by uuid -> profiles set null", "fields jsonb DEFAULT '{}'", "created_at timestamptz"], "rls": ["SELECT public read — RPC-only writes (sign_up_for_activity_slot/remove_activity_signup)"], "realtime": true },
+      "fest_signup_reminders_sent": { "columns": ["signup_id uuid", "minutes int", "kind text", "sent_at timestamptz", "PK (signup_id,minutes)"], "rls": "enabled, ZERO policies — cron/owner-only dedupe ledger." }
+    },
+
+    "tournaments": {
+      "tournaments": { "columns": [
+          "id uuid PK", "schedule_item_id uuid -> fest_schedule_items cascade (made NULLABLE in 0150)", "title text",
+          "format text DEFAULT 'single_elim' CHECK (single_elim|round_robin|pools_bracket)",
+          "entrant_type text DEFAULT 'individual' CHECK (individual|team)", "team_size int",
+          "bye_strategy text DEFAULT 'byes' CHECK (byes|play_in)", "pool_count int", "advance_per_pool int",
+          "tiebreakers text[] DEFAULT '{win_pct,head_to_head,point_diff,points_for}'",
+          "target_score int", "win_by int", "allow_ties boolean DEFAULT false",
+          "status text DEFAULT 'setup' CHECK (setup|live|complete)", "created_by uuid -> profiles set null",
+          "winner_entrant_id uuid -> tournament_entrants set null", "created_at/updated_at",
+          "private_activity_id uuid -> private_activities cascade (0150, polymorphic host)",
+          "CHECK tournaments_one_host: num_nonnulls(schedule_item_id, private_activity_id) = 1"
+        ], "rls": [
+          "SELECT \"tournaments: member read\" USING (auth.uid() is not null AND (private_activity_id is null OR is_private_activity_member(private_activity_id))) — final form 0150. A fest-activity tournament stays members-only as before; a private-activity tournament is visible ONLY to that activity's roster.",
+          "no client insert/update/delete — every mutation is a SECURITY DEFINER RPC (create/update/delete_tournament, generate_bracket/round_robin/pools, record_match_result, etc.)"
+        ], "realtime": true, "notes": "UNIQUE INDEX tournaments_one_per_activity on (private_activity_id) where not null (0151) + idempotent create_activity_tournament() — a repeated 'Create tournament' tap can never stack duplicates." },
+      "tournament_entrants": { "columns": ["id uuid PK", "tournament_id uuid -> tournaments cascade", "seed int (null until bracket generated)", "display_name text", "team_name text", "pool text ('A'/'B'/… pools format)", "signup_team_id uuid (back-link to fest_schedule_signups.team_id)", "position int", "withdrawn_at timestamptz", "created_at timestamptz"], "rls": ["SELECT member-read, scoped through parent tournament's private_activity_id visibility (0150)"] },
+      "tournament_participants": { "columns": ["id uuid PK", "tournament_id uuid -> tournaments cascade", "entrant_id uuid -> tournament_entrants set null (NULL = the pre-team pool)", "user_id uuid -> profiles set null (NULL = account-less typed name)", "name text", "position int", "created_at timestamptz", "UNIQUE (tournament_id,user_id) where user_id not null — one app user can't be entered twice"], "rls": ["SELECT member-read, scoped via parent tournament (0150)"] },
+      "tournament_matches": { "columns": ["id uuid PK", "tournament_id uuid -> tournaments cascade", "stage text DEFAULT 'bracket' CHECK (pool|bracket)", "pool text", "round int", "position int", "slot1_entrant_id/slot2_entrant_id -> tournament_entrants set null", "slot1_score/slot2_score int", "winner_entrant_id -> tournament_entrants set null", "next_match_id -> tournament_matches set null", "next_slot int CHECK (1|2)", "is_play_in boolean DEFAULT false", "ready_notified boolean DEFAULT false", "status text DEFAULT 'pending' CHECK (pending|ready|in_progress|complete)", "created_at/updated_at", "scheduled_at timestamptz (0148)", "reminder_minutes int[] DEFAULT '{}' (0148)", "UNIQUE (tournament_id,stage,coalesce(pool,''),round,position)"], "rls": ["SELECT member-read, scoped via parent tournament (0150)"] },
+      "tournament_match_reminders_sent": { "columns": ["match_id uuid", "minutes int", "sent_at timestamptz", "PK (match_id,minutes)"], "rls": "enabled, ZERO policies — cron/owner-only." }
+    },
+
+    "privateActivities": {
+      "private_activities": { "columns": ["id uuid PK", "title text", "emoji text", "description text", "location text", "starts_at timestamptz (null='sometime'/TBD)", "ends_at timestamptz", "tournament_enabled boolean DEFAULT false", "archived_at timestamptz", "created_by uuid -> profiles cascade", "created_at/updated_at"], "rls": ["SELECT is_private_activity_member(id) — no client write, RPC-only"], "realtime": true },
+      "private_activity_members": { "columns": ["id uuid PK", "activity_id uuid -> private_activities cascade", "user_id uuid -> profiles set null (null=typed name)", "name text", "role text DEFAULT 'player' CHECK (host|player)", "rsvp text CHECK (going|maybe|out)", "added_by uuid -> profiles set null", "created_at timestamptz", "UNIQUE (activity_id,user_id) where user_id not null"], "rls": ["SELECT is_private_activity_member(activity_id)"], "realtime": true }
+    },
+
+    "search": {
+      "content_embeddings": { "columns": ["source_type text CHECK (post|post_comment|committee_message|house_message)", "source_id uuid", "content_hash text", "embedding vector(512)", "updated_at timestamptz", "PK (source_type,source_id)"], "rls": "ENABLED, ZERO POLICIES — confirmed deny-all; `revoke all from anon,authenticated` + `grant all to service_role` explicitly. Only reachable via the search_conversations() SECURITY DEFINER RPC (re-derives caller-specific visibility) or the mini's service-role indexer directly.", "notes": "HNSW vector index present but effectively unused at current scale — search ranking is keyword-first (see functions.search)." }
+    },
+
+    "events": {
+      "events": { "columns": ["id uuid PK", "slug text UNIQUE", "kind text DEFAULT 'custom' CHECK (family_fest|work_weekend|holiday|custom)", "title text", "emoji text", "description text", "location text", "start_date date", "end_date date (null=single-day)", "day_rsvp boolean DEFAULT false", "source text DEFAULT 'admin' CHECK (admin|gcal|meeting — 'meeting' added 0122)", "created_by uuid -> profiles set null", "created_at/updated_at", "start_time time (0101)", "source_meeting_id uuid -> meetings set null (0122)"], "rls": ["SELECT public read — deliberately never tightened by 0081", "no client write — RPC-only (create_event/update_event/delete_event)"], "realtime": true },
+      "event_attendance": { "columns": ["event_id text (NOT an FK — stable uuid-as-text or seed slug like 'family-fest-2026')", "user_id uuid -> profiles cascade", "status text CHECK (going|maybe|not_going)", "days jsonb (per-day RSVP map for Family Fest)", "created_at/updated_at", "confirmed boolean DEFAULT true (0122 — false only when carried over unconfirmed from a finalized family-wide meeting poll)", "PK (event_id,user_id)"], "rls": ["SELECT members-only (`auth.uid() is not null`) — tightened 0081 from public read; `events` itself stayed public"], "realtime": true }
+    },
+
+    "config": {
+      "resort_config": { "columns": ["id boolean PK DEFAULT true (singleton, CHECK id)", "help_contact_name/phone/email text", "resort_address/resort_phone text (legacy, unused per CLAUDE.md)", "wifi_note/checkin_note text (legacy, unused)", "updated_at/updated_by"], "rls": ["SELECT public read (true) — DELIBERATE, it's the sign-in escape hatch, never gate this", "ALL admin write"] },
+      "app_images": { "columns": ["key text PK", "url text (PHOTO)", "updated_at/updated_by"], "rls": ["SELECT public read", "ALL can_edit_fest() write"] },
+      "home_callouts": { "columns": ["id uuid PK", "title text", "body text", "image_url text (PHOTO — the flyer image)", "starts_on/ends_on date (show window)", "dismiss_id text (versioned, session-dismissal key)", "position int", "is_active boolean DEFAULT true", "created_at/created_by", "link_href/link_label text — ADDED 0083, DROPPED 0093 (migrated into links[0] first)", "links jsonb DEFAULT '[]' — ordered [{href,label}] (0093, MULTI-LINK, replaces the single-link pair)", "event_id text (0096)", "exclude_not_attending boolean DEFAULT true (0096)", "deadline_at timestamptz (0101 — distinct from starts_on/ends_on, an actual 'due by' reminder anchor)", "signup_item_id text (0137 — a fest_schedule_items id, deep-links a 'Sign up' button)"], "rls": ["SELECT public read", "ALL can_edit_fest() write"], "realtime": true, "notes": "OBJECT DIMENSIONS: one optional cover photo (image_url) + a MULTI-link array (links, [{href,label}]) — same jsonb-array-of-link-objects shape later reused for fest_schedule_items.links (0142)." },
+      "home_callout_completions": { "columns": ["callout_id uuid -> home_callouts cascade", "user_id uuid -> profiles cascade", "completed_at timestamptz", "PK (callout_id,user_id)"], "rls": ["ALL own-row (`user_id = auth.uid()`) — plain RLS, no RPC needed"] },
+      "family_roster": { "columns": ["id uuid PK", "name text", "email text (UNIQUE on lower(email) where not null)", "phone text", "house_id uuid -> houses set null", "position int", "linked_user_id uuid -> profiles set null (auto-linked both directions)", "updated_at/updated_by"], "rls": ["SELECT members-only (`auth.uid() is not null`)", "ALL admin write"] }
+    }
+  },
+
+  "functions": {
+    "note": "Grouped by domain. Every function not marked otherwise is `plpgsql` or `sql`, `SECURITY DEFINER`, `set search_path = ''`. GATE describes the runtime permission check inside the function body (separate from, and often stricter than, the Postgres-level GRANT EXECUTE, which is noted separately only when it differs from the default 'revoke all from public/anon, grant execute to authenticated').",
+
+    "identityAdmin": {
+      "handle_new_user() [trigger, auth.users AFTER INSERT]": "Seeds a profiles row from signup metadata (display_name, contact_email, invited_via) — SKIPS entirely if email not yet confirmed (OTP path defers to handle_user_email_confirmed).",
+      "handle_user_email_confirmed() [trigger, auth.users AFTER UPDATE]": "Creates/upserts the profiles row on first email verification, stamping joined_at.",
+      "set_updated_at() [trigger, reused by ~15 tables]": "Generic `NEW.updated_at = now()` before-update trigger.",
+      "admin_members()": "GATE: admin-only. Returns the full member directory incl. auth.users.email + house_id/house_name (widened over time; beta_tester column added 0029, removed 0100).",
+      "set_admin(target, value)": "GATE: admin-only; additionally blocks removing your OWN admin access.",
+      "delete_member(target)": "GATE: admin-only; blocks deleting yourself or another admin. Hard-deletes via `delete from auth.users` (cascades everywhere via FK). Storage files NOT cleaned up.",
+      "recent_signins(limit_n default 50)": "GATE: admin-only. Reads auth.audit_log_entries, excludes token_refreshed/logout, caps at 200.",
+      "admin_set_member_profile(target, patch jsonb)": "GATE: admin-only AND admin_override.unlocked_until > now() (the two-admin-vote 'break glass' window). Writes only an explicit allow-list of profile fields — never id/is_admin/push prefs/email_alerts.",
+      "request_admin_override() / admin_override_status() / cancel_admin_override()": "GATE: admin-only. Two-admin-vote flow to open/inspect/cancel the 24h admin_override.unlocked_until window (stale votes purged after 30 min).",
+      "is_override_unlocked()": "GATE: none in body — locked down entirely via GRANT (service_role ONLY, not even authenticated). The mac-mini calls this before writing a member's email via the GoTrue admin API.",
+      "set_member_house(target, hid)": "GATE: admin-only. The ONLY write path to profiles.house_id (column itself is never client-writable).",
+      "mark_notifications_seen() / mark_notification_read(id) / mark_all_notifications_read()": "GATE: implicit — all scoped to `recipient_id = auth.uid()`.",
+      "send_broadcast_notification(title, body, url, audience, expires_at, event_id, exclude_not_attending)": "GATE: admin-only. audience in ('everyone','admins') — the original 'beta' option was dropped along with the Beta Tester concept (0100). Excludes anyone with event_attendance.status='not_going' on event_id when exclude_not_attending is true.",
+      "_notify(recipient, type, actor, title, ...)": "Internal fan-out primitive — GRANT: revoked from EVERY role including authenticated (callable only from other DEFINER functions). No-ops on self-notify or on a recipient's notif_types opt-out — EXCEPT type='help_urgent', which is hard-coded non-suppressible (0047)."
+    },
+
+    "committees": {
+      "is_committee_member(cid)": "Central read-gate predicate — see globalPatterns.coreAccessPredicates.",
+      "is_committee_lead(cid)": "admin OR committee_members.role='Lead' for cid.",
+      "can_access_committee_area(cid, area)": "Central chat/meeting/search access predicate — see globalPatterns.",
+      "request_to_join(cid, msg, requested_areas[])": "GATE: signed-in only; rejects the removed 'Committee Admin' role (mentions_removed_admin_role, 0076) and invalid areas (valid_committee_areas, 0073); no-ops if already a member via committee_members OR an already-linked roster slot (0090).",
+      "review_join_request(req_id, approve)": "GATE: is_committee_lead(committee_id). On approve: upserts committee_members (preserving existing areas if the request carried none, 0075 bugfix) AND links/creates a committee_roster row, preferring an unlinked email match then a fuzzy name match (0090).",
+      "set_committee_member(cid, target, is_member)": "GATE: is_committee_lead(cid); a non-admin Lead cannot remove another Lead.",
+      "set_committee_lead(cid, target, is_lead)": "GATE: is_committee_lead(cid) — widened in 0051 from admin-only to any existing Lead.",
+      "set_committee_areas(cid, target, areas[])": "GATE: is_committee_lead(cid) + valid_committee_areas + rejects the removed Admin role.",
+      "set_my_committee_areas(cid, areas[])": "GATE: signed-in AND already is_committee_member(cid) (self-service, no approval needed) — cannot self-appoint '· Lead'.",
+      "leave_committee(cid)": "GATE: signed-in only, unrestricted otherwise (anyone including a Lead can remove themself). Also unlinks the caller's committee_roster row (0073 fix) so leaving actually revokes roster-gated chat access.",
+      "valid_committee_areas(cid, areas[])": "Pure validator (not an access gate) — rejects null/blank/'general' (case-insensitive); strips '· Lead' suffix before checking the committee_areas allow-list.",
+      "mentions_removed_admin_role(areas[])": "Pure validator — flags 'admin'/'admins'/'committee admin(s)' as an invalid, retired role.",
+      "create_committee(name, emoji, description)": "GATE: admin-only. Auto-slugs via slugify() + numeric-suffix dedup loop.",
+      "update_committee(cid, name, emoji, description, position)": "GATE: admin-only. Slug is immutable — never touched.",
+      "archive_committee(cid) / restore_committee(cid)": "GATE: admin-only. Soft-delete via archived_at/archived_by.",
+      "add_committee_area(cid, area)": "GATE: admin-only. Upsert-style — re-adding a previously archived area un-archives it.",
+      "rename_committee_area(cid, old, new)": "GATE: admin-only. Cascades through 7 places in ONE transaction: committee_areas, committee_roster.roles[], committee_members.areas[], committee_messages.area, committee_area_reads.area, committee_join_requests (both columns), and meetings.area (the 7th, added 0121).",
+      "archive_committee_area(cid, area) / restore_committee_area(cid, area)": "GATE: admin-only. Does NOT strip the area from anyone's roles[] on archive.",
+      "is_committee_area_archived(cid, area)": "Predicate — used as an INSERT guard so an archived committee/role's chat goes read-only (reads still work via the separate, untouched SELECT policy)."
+    },
+
+    "houses": {
+      "is_house_member(hid)": "Central access predicate — see globalPatterns.",
+      "set_house_rules(hid, rules)": "GATE: is_house_member(hid) — ANY house member (or admin) can overwrite the shared rules doc, last-write-wins, 20000-char cap. Bypasses the houses table's admin-only write RLS via SECURITY DEFINER.",
+      "create_house_stay / update_house_stay / delete_house_stay": "GATE: create — is_house_member(house); update/delete — author OR admin.",
+      "_clean_guest_names(names[])": "Pure helper (NOT SECURITY DEFINER, plain `language sql immutable`) — trims/caps names to 80 chars, drops blanks, caps list to 40."
+    },
+
+    "workItems": {
+      "create_work_item(title, notes, category, people_needed, house_id, urgency)": "GATE: signed-in only for MLR (house_id null); is_house_member(house_id) required for a house-scoped item. (Signature accreted across 0048->0049->0066->0069, each an explicit drop+recreate of the prior arity.)",
+      "update_work_item(id, title, notes, category, status, people_needed, house_id, urgency)": "GATE: admin-only through 0069; WIDENED in 0079 to admin OR the item's own created_by. House-move still requires admin OR is_house_member(new house).",
+      "mark_work_item_done(id)": "GATE: signed-in only (never admin-gated) + is_house_member(house) if the item is house-scoped. Stamps completed_by/completed_at (0088); only transitions status='open' rows.",
+      "delete_work_item(id)": "GATE: admin-only (never widened to author).",
+      "sync_event_work_items(event_id, item_ids[])": "GATE: admin-only. Idempotent full-replace of an event's linked work items.",
+      "add_work_item_to_event(event_id, item_id)": "GATE: signed-in only. Additive single link, `on conflict do nothing`.",
+      "add_work_item_media(item_id, url, media_type, position) / remove_work_item_media(id)": "GATE: item's created_by OR admin.",
+      "notif_on_work_item_comment / notif_on_work_item_mention [triggers]": "Notify item creator + prior commenters / @mentioned member."
+    },
+
+    "cabins": {
+      "is_cabin_approver(cabin_id)": "Central access predicate for a specific place — see globalPatterns. Introduced 0114, retrofit as the new gate onto 5 pre-existing admin-only functions.",
+      "create_cabin(name, kind, room_count, bed_count, notes, approver_user_id)": "GATE: admin-only. Auto-slugs (mirrors create_committee).",
+      "request_cabin_stay(cabin, check_in, check_out, guests, notes, for_user, room_ids[], notify)": "GATE: signed-in; booking-for-someone-else requires admin. Canonicalized in 0115 after two 7-arg overloads (room-picking 0092, notify-toggle 0108) silently coexisted and the client always hit 0092's (meaning notify:false never worked pre-0115).",
+      "review_cabin_stay(booking, approve, note, notify)": "GATE: is_cabin_approver(cabin) — widened 0114 from admin-only. notify=false pre-stamps decision_email_sent_at so the mailer silently skips.",
+      "cancel_cabin_stay(booking, notify)": "GATE: booking's own user_id OR is_cabin_approver(cabin). Requester-cancels-own-booking OR notify=false both pre-stamp cancel_email_sent_at.",
+      "admin_update_cabin_booking(booking, check_in, check_out, guests, notes, notify)": "GATE: is_cabin_approver(cabin) — widened 0114 from admin-only. notify defaults FALSE (most edits are small corrections).",
+      "set_booking_rooms(booking, room_ids[])": "GATE: booking's own user_id (self-service since 0106) OR is_cabin_approver(cabin) (widened 0114 from admin-only).",
+      "cabin_room_availability / cabin_availability(check_in, check_out)": "GATE: none explicit (any authenticated caller); pure read computation, room-based math when the cabin has named rooms, else legacy cabin-wide room_count math. Now also accounts for beds (0111) and unassigned/room-less approved bookings (0108).",
+      "cabin_booking_notification(booking) / cabin_message_recipients(message)": "GATE: none in body — locked to service_role ONLY via GRANT (the mac-mini's mailer/push senders).",
+      "send_cabin_message(cabin, subject, body, email)": "GATE: is_cabin_approver(cabin)."
+    },
+
+    "help": {
+      "_help_recipients(eligible[], strict[], today, audience, exclude)": "GATE: none client-facing — REVOKED from public/anon/AUTHENTICATED (internal-only, called only by other DEFINER functions). Filters on willing_to_help + notif_types + presence (event_attendance day-aware OR approved cabin_bookings) or all_willing.",
+      "request_help(description, category, ..., items[], work_item_id, followup_at)": "GATE: signed-in; description/today required; <10 open requests; presence check UNLESS caller is admin (bypass added 0038) — the Beta Tester gate that existed 0037-0099 was removed in 0100.",
+      "respond_to_help(request, note) / withdraw_help(request)": "GATE: signed-in; request must be status='open' for respond.",
+      "claim_help_item(item, claim)": "GATE: signed-in; race-safe conditional update (own claim or currently unclaimed); claiming also inserts a help_response.",
+      "set_help_status(request, status)": "GATE: the request's own user_id OR admin.",
+      "process_help_reminders()": "GATE: none client-facing (revoked from all client roles) — pg_cron tick every minute for scheduled (not-yet-due-reminder) requests."
+    },
+
+    "moderation": {
+      "moderate_content_text() [trigger, posts/comments/committee_messages/house_messages]": "Length caps + blocklist whole-word/phrase matching -> auto-sets status='pending'; a member changing status on UPDATE gets it silently pinned back (anti-self-unhide), except when the transaction-local GUC mlr.mod_bypass='1' is set (0128 — lets the moderation triggers themselves hold content without being reverted by this same guard).",
+      "apply_content_report() [trigger, content_reports AFTER INSERT]": "At >=2 distinct reporters, auto-holds the parent post/comment.",
+      "hold_post_on_flagged_media() / hold_chat_message_on_flagged_media() [triggers]": "Retroactively hold a post or chat message when its media_moderation verdict comes back flagged (chat posts optimistically, so this fires a few seconds after the message is already visible).",
+      "hold_content_on_media_verdict() [trigger, media_moderation AFTER INSERT/UPDATE]": "Fan-out version of the above across posts + both chat tables by matching storage_path.",
+      "report_content(entity_type, entity_id, reason)": "GATE: signed-in only. Upserts caller's own report.",
+      "set_content_status(entity_type, entity_id, status)": "GATE: admin-only. status in ('visible','hidden'). Covers post/comment/committee_message/house_message (chat added 0128).",
+      "moderation_queue()": "GATE: admin-only. Unified pending-or-reported queue across all 4 moderatable entity types."
+    },
+
+    "broadcastsAndScheduling": {
+      "can_post_alerts()": "Churned 0015 (admin OR Family-Fest Lead) -> 0016 (admin-only, final).",
+      "alert_recipients(audience, event_id, exclude_not_attending)": "GATE: none in body — GRANT restricted to service_role ONLY. Signature grew twice (0015 zero-arg -> 0017 audience-arg -> 0127 event-targeting args), each an explicit DROP FUNCTION first to avoid overload collision.",
+      "schedule_broadcast(kind, payload, scheduled_at) / cancel_scheduled_broadcast(id) / update_scheduled_broadcast(id, payload, scheduled_at)": "GATE: admin-only for all three; update/cancel are no-ops once the row has already fired.",
+      "run_scheduled_broadcasts()": "GATE: none client-facing — REVOKED from public/anon/AUTHENTICATED entirely, runs ONLY as the pg_cron job owner. Fires due rows one at a time (per-row exception handling); honors excludeNotAttending, onlyUnconfirmed (0122), excludeCalloutDone (0102/0103 toggle), and showBanner (0126)."
+    },
+
+    "polls": {
+      "create_poll(question, options[], closes_on)": "GATE: ANY signed-in member (not admin-gated — the polls doctrine every later member-createable feature reuses).",
+      "cast_poll_vote(poll, option)": "GATE: signed-in; poll must be open. One vote per member (PK-enforced), changeable any time.",
+      "close_poll(poll) / delete_poll(poll)": "GATE: poll's own created_by OR admin."
+    },
+
+    "meetings": {
+      "can_organize_meeting(scope, committee_id, area, house_id)": "Central organize-gate — see globalPatterns. House and family scopes fall straight to admin-only.",
+      "create_meeting(scope, committee_id, area, house_id, title, description, slots[], respond_by)": "GATE: can_organize_meeting(...). Scope grew to include 'family' in 0122. A short-lived p_email param (0117) was dropped again in the same-migration-range 0122 rework.",
+      "set_my_availability(meeting, answers jsonb)": "GATE: signed-in + meeting open + caller independently re-passes the room-access check (not trusting RLS). Bulk upserts the caller's OWN answers only.",
+      "finalize_meeting(meeting, slot, meet_url)": "GATE: meeting's created_by OR admin. Posts a join-link chat message into the room; notifies meeting_scheduled.",
+      "finalize_meeting_as_event(meeting, slot, kind, title, description, location)": "GATE: meeting's created_by OR admin. Creates a real events row (source='meeting'), carries Yes/If-need-be voters into event_attendance with confirmed=false, auto-queues a 14-day-before reminder with onlyUnconfirmed:true.",
+      "cancel_meeting(meeting) / delete_meeting(meeting)": "GATE: meeting's created_by OR admin.",
+      "create_scheduled_meeting(scope, ..., starts_at, duration_min, meet_url, ends_at)": "GATE: can_organize_meeting(...). One-shot — skips voting, immediately finalizes.",
+      "meeting_proposal_email(meeting) / meeting_confirmed_email(meeting)": "GATE: none in body — service_role ONLY via GRANT. Recipient set widened over 3 migrations (0117 email_alerts-filtered members-only -> 0123 add account-less committee_roster/family_roster UNION branches -> 0132 drop the email_alerts filter entirely, since these are transactional, not opted-out-able -> 0133 re-restore the 0123 UNION branches that 0132 had accidentally dropped)."
+    },
+
+    "fest": {
+      "can_edit_fest()": "Central write-gate for all fest_* content — see globalPatterns. Redefined 0057 from committee_members-based to committee_roster.linked_user_id-based.",
+      "sync_fest_lead_names() [trigger, profiles AFTER UPDATE OF display_name]": "Rewrites the denormalized lead_name/chef_name snapshot on every fest row that person leads/cooks, matched ONLY by *_user_id (never free-text name) — an account-less lead is untouched.",
+      "_can_manage_schedule_signups(item) / _can_manage_activity_signups(act)": "The 0110 self-edit predicate, reused as the sign-up 'organizer' gate — see globalPatterns.",
+      "sign_up_for_schedule_slot(item, slot, for_user, name, slot_id, fields, team_members, team_name)": "GATE: signed-in only — the ORIGINAL 0135 version required _can_manage_schedule_signups to add someone else; 0136 DROPPED that organizer requirement entirely (any signed-in member may sign anyone up). 0143 added team support (shared team_id) and headcount mode (no slot dimension at all).",
+      "remove_schedule_signup(signup)": "GATE: the row's OWN linked user, its adder (added_by, widened 0136), OR an organizer (_can_manage_schedule_signups).",
+      "sign_up_for_activity_slot / remove_activity_signup": "Parallel, isolated mirror of the schedule-item versions for the legacy fest_activities path (0138) — same open-to-anyone sign-up gate, same self/adder/organizer removal gate.",
+      "run_signup_reminders()": "GATE: none client-facing (cron-only). Per-slot reminder push, dedup via fest_signup_reminders_sent."
+    },
+
+    "tournaments": {
+      "is_tournament_manager(t)": "Resolves the tournament's host (fest schedule item vs private activity, 0150) and defers to the matching manage-predicate — no separate organizer role.",
+      "create_tournament(item, title, format, entrant_type, team_size, bye_strategy)": "GATE: _can_manage_item_signups(item) (checked directly since no tournament exists yet to authorize against).",
+      "update_tournament / delete_tournament": "GATE: is_tournament_manager(t). Structural fields (e.g. bye_strategy) freeze once status <> 'setup'.",
+      "import_entrants_from_signups(t)": "GATE: is_tournament_manager + status='setup'. Groups by fest_schedule_signups.team_id for teams; individuals -> pool.",
+      "add_participant / remove_participant / add_entrant / remove_entrant": "GATE: is_tournament_manager throughout; remove_entrant blocked once status<>'setup'.",
+      "generate_teams(t) / ungroup_teams(t)": "GATE: is_tournament_manager + status='setup' + entrant_type='team'. Uses pg_advisory_xact_lock(tournament_id) to serialize concurrent manager edits.",
+      "generate_bracket(t, seed_order[])": "GATE: is_tournament_manager + format='single_elim'. Fold-seeds, sizes to next power of two, auto-resolves byes, sets status='live', notifies tournament_published.",
+      "generate_round_robin(t, seed_order[])": "GATE: is_tournament_manager + format='round_robin'. Circle-method scheduling (phantom bye for odd counts); all matches immediately status='ready' (no propagation graph).",
+      "generate_pools(t, pool_count, advance, seed_order[])": "GATE: is_tournament_manager + format='pools_bracket'. Snakes entrants into pools by seed, builds a round-robin per pool.",
+      "generate_bracket_from_pools(t)": "GATE: is_tournament_manager + format='pools_bracket' + every pool match complete. Cross-seeds pool winners so they meet only late.",
+      "record_match_result(match, winner, score1, score2)": "GATE: is_tournament_manager. Format-aware since 0145: single_elim/pools propagate via _tournament_advance + crown champion at the final; round_robin just records, crowns the standings leader once every game is complete. Winner alone is a complete result — scores are always optional. Ties only allowed for round_robin when allow_ties.",
+      "clear_match_result / set_match_entrant / swap_match_entrants / reset_bracket": "GATE: is_tournament_manager throughout. set_match_entrant/clear cascade a recursive stale-downstream-result clear (_tournament_advance) when a decided match's composition changes.",
+      "schedule_match(match, at, reminders[]) / notify_match(match, when)": "GATE: is_tournament_manager. Resets the fired-reminder ledger on reschedule.",
+      "run_tournament_match_reminders()": "GATE: none client-facing (cron-only, pg_cron 'run-tournament-match-reminders').",
+      "set_tournament_format(t, format)": "GATE: is_tournament_manager + status='setup' (must reset an already-generated bracket first). Added 0154 to un-freeze format choice.",
+      "create_activity_tournament / import_entrants_from_activity_members": "GATE: is_private_activity_host(activity). Idempotent since 0151 (returns the existing tournament rather than duplicating). Auto-seeds tournament_participants straight from the activity roster since 0152; individual-entrant_type tournaments get real tournament_entrants rows immediately (not just pool participants) since 0153."
+    },
+
+    "privateActivities": {
+      "is_private_activity_member(activity) / is_private_activity_host(activity)": "Central predicates — see globalPatterns.",
+      "create_private_activity(title, ..., members jsonb, notify)": "GATE: ANY signed-in member (no admin/role gate — mirrors the polls/work-items member-createable doctrine). Creator auto-added as host, RSVP'd going.",
+      "update_private_activity / delete_private_activity / set_private_activity_archived": "GATE: is_private_activity_host.",
+      "add_private_activity_member / set_private_activity_member_role": "GATE: is_private_activity_host.",
+      "remove_private_activity_member": "GATE: is_private_activity_host OR the member removing THEMSELF (self-leave allowed); the creator's own host row can never be removed by anyone.",
+      "set_private_activity_rsvp(activity, rsvp)": "GATE: is_private_activity_member(activity) — sets only the CALLER's own row.",
+      "_notify_private_activity_invite(activity, only_user)": "Internal (owner-only GRANT) — the ONLY notification this feature ever sends, fired only when the organizer opts in ('🔔 Let them know')."
+    },
+
+    "search": {
+      "search_conversations(query_embedding, query_text, match_count)": "GATE: signed-in only; guests get nothing. Per-source-type visibility is RE-DERIVED inside the function from the CALLING member's auth.uid() (posts/comments: visible-or-own-or-admin; committee_message: can_access_committee_area + not-deleted + status check; house_message: is_house_member + same checks) — never trusts a pre-computed grant. Ranking evolved across 3 migrations: 0129 pure cosine similarity -> 0130 hybrid but with a ranking BUG (`ts_rank(...) > 0` leaked non-matches, since ts_rank returns a tiny non-zero epsilon even for non-matching multi-word queries) -> 0131 FIXED by filtering with the boolean `@@` operator instead, so a no-keyword-match query now correctly returns zero rows; embedding similarity is a tie-breaker ONLY among keyword-matched rows, never a standalone threshold."
+    },
+
+    "events": {
+      "create_event / update_event / delete_event": "GATE: admin-only throughout. delete_event also cleans up event_attendance rows by the same stable text id.",
+      "set_event_attendance(event, status, days, title)": "GATE: signed-in only; upserts ONLY the caller's own row. Stamps confirmed=true on every self-write (0122) — the mechanism by which 'reconfirming' a meeting-carried-over RSVP is just re-tapping the existing control. First-time transition into 'going' optionally broadcasts an opt-in 'event_rsvp' notification (0036).",
+      "clear_event_attendance(event)": "GATE: signed-in only; deletes only the caller's own row."
+    },
+
+    "emailPools": {
+      "all_member_recipients()": "GATE evolved: 0028 admin-only -> 0031 admin OR any committee member -> 0123 also unions in account-less family_roster people.",
+      "committee_member_recipients(cid)": "GATE evolved: 0028 is_committee_lead-only -> 0031 is_committee_member (any member) -> 0124 also returns each person's roles[] for the 'By Role' picker.",
+      "directory_recipients()": "GATE: any signed-in member (0031); 0123 also unions in account-less family_roster people.",
+      "admin_recipients()": "GATE: any signed-in member may call it (0124), but it only ever RETURNS admins — a targeting pool, not a privilege escalation.",
+      "house_member_recipients(hid)": "GATE: is_house_member(hid) (0123). Unions account members + account-less family_roster people assigned to that house."
+    }
+  },
+
+  "accessMatrix": {
+    "legend": "Per feature: who can READ, who can CREATE, who can EDIT (their own vs anyone's), who can ARCHIVE/DELETE. 'Member' = any signed-in profile. 'Guest' = unauthenticated browse.",
+    "posts": { "read": "Member (status=visible; own/admin also see pending/hidden)", "create": "Member (own author_id only)", "edit": "Author or admin", "delete": "Author or admin", "moderate": "Admin (approve/hide via set_content_status); auto-hold at >=2 reports or a blocklist/AI hit" },
+    "committeeChat": { "read": "Roster-linked committee member (per-area) or admin", "create": "Same (message insert); blocked in an archived committee/role", "edit": "Author within 24h, or admin anytime", "delete": "Admin only (soft-delete/tombstone)", "moderate": "Same status model as posts, extended in 0128" },
+    "houseChat": { "read": "Member of that house (profiles.house_id match) or admin", "create": "Same", "edit": "Author within 24h, or admin anytime", "delete": "Admin only" },
+    "committees": { "read": "Public (committee list); roster is members-only since 0081", "create": "Admin only (create_committee)", "edit": "Admin only (update_committee, rename_committee_area); Lead can set areas/lead status for their own committee", "archive/delete": "Admin only, and it's always an archive (archived_at), never destructive" },
+    "committeeMembership": { "join": "Any member requests via request_to_join; Lead or admin approves", "selfServiceAreas": "A current member can add/remove their OWN areas with no approval (set_my_committee_areas); cannot self-appoint Lead", "removeSelf": "Any member (leave_committee)", "promoteLead": "Existing Lead or admin (set_committee_lead)" },
+    "houses": { "read": "Public list of houses; membership (house_id) is admin-only to assign", "create/edit": "Admin only", "assignMembers": "Admin only (set_member_house)", "houseRules": "ANY house member (or admin) can overwrite the shared rules text" },
+    "houseStays": { "read": "House members", "create": "Any house member, own stay only", "edit/delete": "Stay's own author, or admin, anytime" },
+    "workItems": { "read": "MLR items: any signed-in member; house items: that house's members (or admin)", "create": "Any signed-in member (house items require membership in that house)", "edit": "Item's own creator or admin", "markDone": "Any member with visibility (not admin-gated)", "delete": "Admin only" },
+    "cabins": { "read": "Public place list; bookings visible to the requester or that place's approver/admin", "create/edit places": "Admin only (create_cabin, room CRUD, cabin details)", "requestStay": "Any signed-in member (admin can book on someone's behalf)", "reviewRequests": "Admin OR that place's designated approver (is_cabin_approver) — the approver need NOT be an app admin", "cancelRequest": "The requester, or admin/approver", "messageGuests": "Admin or that place's approver only" },
+    "events": { "read": "Public (events table always public)", "rsvp": "Any signed-in member, own RSVP only", "create/edit/delete": "Admin only", "proposeDates(familyMeetingPoll)": "Admin only, open to every member to vote" },
+    "helpRequests": { "read": "Any signed-in member", "create": "Any signed-in member who is 'present' at the resort (admins bypass the presence check); urgent category bypasses willing/present targeting entirely and reaches everyone", "respond": "Any signed-in member", "resolve/cancel": "The requester or admin" },
+    "polls (family)": { "read": "Any signed-in member", "create": "Any signed-in member", "vote": "Any signed-in member, one changeable vote", "close/delete": "Creator or admin" },
+    "quickPollsInChat": { "read": "Room members (committee area or house)", "create": "Any room member (not organizer-gated)", "vote": "Any room member, own selection only", "close/delete": "Creator or admin", "seeWhoVoted": "Nobody, if the poll is anonymous — enforced at the SQL/RLS layer, not just UI" },
+    "meetings": { "read": "Room members (committee/house scope) or any member (family scope)", "propose": "Admin (any room), or a committee Lead for their own committee; houses and family scope are admin-only", "vote (availability)": "Any room member, own answers only", "finalize": "The meeting's creator or admin" },
+    "familyFestContent": { "read": "Public (all fest_* tables are public-read)", "editAll": "Admin OR Family Fest committee member (can_edit_fest)", "editOwnItemOnly": "A dinner/event/activity's assigned chef/lead/crew can edit that ONE item's operational details, even without full committee access" },
+    "signUpsAndTeams": { "read": "Public", "manage(config/slots)": "can_edit_fest() OR that item's own lead/crew", "signSomeoneUp": "ANY signed-in member (organizer gate was deliberately dropped, migration 0136) — can sign up self, another member, or a typed non-account name", "removeSignup": "The linked person, whoever added the row, or a manager" },
+    "tournaments": { "read": "Any signed-in member IF they can see the host activity/private-activity", "manage(seed/score/bracket)": "The host activity's lead/crew (or private-activity host), or admin — no separate tournament role" },
+    "privateActivities": { "read": "Creator, roster members, or admin ONLY — never public, never all-members", "create": "Any signed-in member", "manage(roster/edit/archive)": "A host (creator or admin, or anyone promoted to role='host')", "rsvp": "Any roster member, own RSVP only", "leave": "Any roster member may remove themselves; the creator's own host row can never be removed" },
+    "conversationSearch": { "read/query": "Any signed-in member — results are silently scoped to exactly what that member could already see in Posts/committee chat/house chat; guests get nothing" },
+    "broadcastsAndAlerts": { "read(banner)": "Public", "post": "Admin only", "scheduleForLater": "Admin only", "activityTabNotification": "Admin only, targeted Everyone or Admins" },
+    "adminDashboard": { "access": "profiles.is_admin only, enforced server-side via RLS/RPC gates everywhere — the UI gate (AdminGuard) is a courtesy, not the real wall", "mediaServerRestart": "Narrower still — a single hardcoded owner email (lib/owner.ts), not the general is_admin flag" }
+  },
+
+  "objectDimensions": {
+    "note": "Direct answer to 'what dimensions like photos/links exist on events or activities' — every media/photo/link/URL-bearing column found across all 158 migrations, by object.",
+    "posts": "Multiple photos/videos via post_media (storage_path + media_type image|video + position, ordered carousel) — NOT limited to one image. Legacy single-field post.image_path predates post_media and is superseded.",
+    "committeeChatMessage / houseChatMessage": "Multiple attachments via committee_message_media / house_message_media — media_type image|video|sticker|gif|file (the widest type set of any media table in the app, 0074 added 'file'), plus width/height (for aspect-ratio reservation) and file_name (for the 'file' type).",
+    "workItem": "Multiple photos/videos via work_item_media — media_type image|video ONLY (no sticker/gif/file, no width/height) — the simplest media shape in the app.",
+    "resortEvent (events table)": "NO photo/media/link column at all — resort events carry only text/emoji/location, no image or URL field.",
+    "festScheduleItemOrActivity (fest_schedule_items / fest_activities)": "ONE optional cover photo (image_url, plain text URL into the public site-assets bucket) PLUS a MULTI-link array (links jsonb, ordered [{href,label}] — introduced 0142 for schedule items, replacing an earlier single link_url/link_label pair from 0134; fest_activities never got the multi-link upgrade before being superseded by the 0141 merge). So: yes, an event/activity CAN carry a photo and link(s), but it's one photo + N links, not a gallery.",
+    "homeCallout": "ONE optional cover photo (image_url) PLUS a MULTI-link array (links jsonb, ordered [{href,label}], 0093) — the ORIGINAL precedent for the fest_schedule_items.links shape above. Also has deadline_at (a reminder anchor, not media) and signup_item_id (a deep-link reference to a fest_schedule_items row, not media either).",
+    "meeting": "ONE link field only — meet_url (a plain-text Google Meet URL), no photo.",
+    "cabinMessage": "NO media/link fields — text-only (subject + body).",
+    "profile": "ONE photo — avatar_url. Plus a full set of payment-app handles (venmo/zelle/cashapp/paypal/apple_cash) which are identifiers, not links/media.",
+    "appImages / resortConfig": "app_images.url is a single admin-managed site image per named key (e.g. the Home logo, Family Fest cover) — a small fixed set of site-wide images, not a per-object gallery.",
+    "privateActivity / tournament / poll / helpRequest / workItem-comment / chat-poll": "NO photo/media/link columns on any of these objects themselves — purely text/structured data. (A private activity's tournament and a work item's comments are attached to objects that DO carry media elsewhere in the graph, but the rows themselves don't.)"
+  }
+}
