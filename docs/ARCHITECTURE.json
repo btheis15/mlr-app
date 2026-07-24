@@ -1,15 +1,16 @@
 {
-  "$schema": "mlr-app architecture map — a single reference artifact for AI agents working on this codebase",
+  "$schema": "mlr-app architecture map — a single reference artifact for AI agents and developers working on this codebase (web + the native iOS client)",
   "meta": {
     "app": "mlr-app",
     "displayName": "Muskellunge Lake Resort (MLR)",
-    "generated": "2026-07-22",
-    "generatedBy": "Claude architecture-mapping pass (6 parallel subagents + direct reads)",
-    "purpose": "A private, family-only PWA for a small family lake resort/club near Tomahawk, WI (EST 1987). NOT a commercial booking product — it is closed-community social software: browse public, verified email unlocks interaction (posts/chat/RSVP/polls/etc).",
+    "generated": "2026-07-24",
+    "generatedBy": "Full-refresh pass (superseding the 2026-07-22 version, which had drifted materially — see changeLog) — direct reads of CLAUDE.md, package.json, supabase/migrations/*.sql filenames, components/*.tsx, lib/*.ts, app/**/page.tsx, plus an Explore-agent survey of the mlr-app-ios repo",
+    "purpose": "A private, family-only PWA for a small family lake resort/club near Tomahawk, WI (EST 1987). NOT a commercial booking product — closed-community social software: browse public, verified email unlocks interaction (posts/chat/RSVP/polls/tournaments/etc).",
     "audience": "An extended family of mixed ages and technical ability, organized into 'houses' (family branches) and volunteer 'committees'. Admins are promoted family members, not staff.",
-    "howToUse": "Sections under `architecture` map the app as-is. `designSystem` + `motionKitToPort` describe the current look/motion and the target polish (ported from the sibling stock-game app). `hardConstraints` are rules that must never be broken. `improvementOpportunities` is an actionable backlog (tunnels, workflows, efficiencies, product, ui/ux-motion, chatUpgrade) — each item is scoped for a single focused PR and names the files it touches. `implementationPlan` orders them into waves. A cheaper model can safely execute a single opportunity item by reading the files it references plus the relevant architecture + constraints sections.",
-    "twoClients": "One Supabase backend serves TWO clients: this Next.js web PWA (Vercel) AND a native SwiftUI iOS app (mlr-app-ios, iOS 26). Any schema/RPC/realtime change must preserve parity — a web-only change can silently break iOS.",
-    "keyDocs": ["CLAUDE.md (authoritative, ~130KB)", "README.md", "docs/content-moderation.md", "docs/professional-app-plan.md (2026-07-12 audit, partially stale — verify against CLAUDE.md)", "NEXT-STEPS.md (superseded)", "media-server/README.md"]
+    "howToUse": "`architecture` maps the app as-is (routes, nav, providers, data layer, ~65-table data model, components, backend, chat internals). `majorFeatures` documents every substantial feature area added since the last architecture pass, each tagged with its iOS-parity status. `iosParity` is the payload built specifically for opening Xcode on mlr-app-ios — repo structure, what's built, what's a confirmed gap, and doc-vs-reality drift to watch for. `designSystem` + `motionKit` describe the current (now-shipped) look/motion. `hardConstraints` are rules that must never be broken. `improvementOpportunities` is the remaining backlog (many prior items shipped — see status field on each).",
+    "twoClients": "One Supabase backend (project vrksrpzlslrcjvbzchfg) serves TWO clients: this Next.js web PWA (Vercel) AND a native SwiftUI iOS app (mlr-app-ios, iOS 18 minimum deployment, iOS 26 Liquid Glass features gated behind availability checks). Any schema/RPC/realtime change must preserve parity — a web-only change can silently break iOS, and vice versa. There is no separate iOS database.",
+    "changeLog": "Since the 2026-07-22 pass: framer-motion actually shipped (was 'planned', now installed ^12.42.2 + MotionProvider/AnimatedNumber/AnimatedList/SegmentedControl/Celebration/TypingIndicator all live); chat became optimistic with typing indicators (many prior 'high severity' chat gaps are now closed); component count grew 147 -> 168; migrations grew to 0154; five entire feature areas were undocumented and are now added: event sign-up slots, tournament brackets, private activities, quick polls in chat, meeting scheduling, conversation search, plus places-to-stay approver delegation and cabin guest messaging.",
+    "keyDocs": ["CLAUDE.md (authoritative, this file's primary source)", "README.md", "docs/content-moderation.md", "NEXT-STEPS.md (superseded)", "media-server/README.md", "docs/ios-parity-2026-07.md / ios-committee-taxonomy-parity.md / ios-swiftui-strategy.md (iOS-repo-facing notes, see iosParity)"]
   },
 
   "stack": {
@@ -17,34 +18,38 @@
     "styling": "Tailwind v4 (CSS-variable theme tokens in app/globals.css @theme block)",
     "language": "TypeScript (tsc --noEmit is the only static check; no ESLint — next lint removed in Next 16)",
     "backend": "Supabase (Postgres + RLS + Realtime + Auth email-OTP + Storage)",
-    "mediaBackend": "Node/Express media-server on Brian's Mac mini (uploads, transcode, push, APNs, mailer, AI moderation) — NOT Vercel",
-    "motion": "CURRENTLY: 100% CSS keyframes/transitions (globals.css). framer-motion is named in README but NOT installed and NOT used. The polish upgrade ADDS framer-motion ^12.",
+    "mediaBackend": "Node/Express media-server on Brian's Mac mini (uploads, transcode, push, APNs, mailer, AI moderation, on-device semantic-search embeddings) — NOT Vercel",
+    "motion": "SHIPPED (was planned as of 2026-07-22, now live): framer-motion ^12.42.2 is the physics layer on top of the CSS motion tokens in globals.css. One global MotionProvider (components/MotionProvider.tsx, reducedMotion=\"user\") wraps the app in layout.tsx. Primitives: AnimatedNumber (rAF count-up), AnimatedList (FLIP reorder), SegmentedControl (+ FamilyFestNav layoutId pill), Celebration (confetti), TypingIndicator. Wide-gamut P3/HDR color layer (@supports color(display-p3 …)) enriches the accent palette; sRGB stays source of truth. Haptics via lib/haptics.ts (Android-only, no-op on iOS — Safari has no Vibration API).",
     "install": "npm install relies on .npmrc legacy-peer-deps=true",
     "pathAlias": "@/* -> repo root",
     "pwa": "public/sw.js is push-only (NO caching SW). UpdateBanner polls public/version.json for new builds.",
-    "featureFlag": "lib/features.ts READ_ONLY=true is VESTIGIAL — only referenced in a doc comment, gates nothing; chat/RSVP/etc are fully live. Most features gate on isSupabaseConfigured + per-migration existence checks instead."
+    "featureFlag": "lib/features.ts READ_ONLY=true is VESTIGIAL — only referenced in a doc comment, gates nothing; features check isSupabaseConfigured + per-migration existence instead."
   },
 
   "deployTopology": {
     "nextApp": { "host": "Vercel (mlr-app-omega.vercel.app)", "deploy": "PR -> merge to main -> Vercel auto-deploy. Cache-Control must-revalidate on every route so PWAs pick up fresh builds; version.json + UpdateBanner nudge stale installs.", "buildId": "next.config.ts stamps NEXT_PUBLIC_BUILD_ID from VERCEL_GIT_COMMIT_SHA and writes public/version.json from the same source." },
-    "mediaServer": { "host": "Mac mini, launchd com.mlr.media-server, caffeinate-wrapped", "port": "8790 (8787 is owned by an unrelated Innjoy process — do not collide)", "exposure": "Tailscale Funnel 443 -> 127.0.0.1:8790", "storage": "local filesystem MEDIA_DIR (Supabase never holds media bytes)", "deploy": "PR -> merge -> git pull on mini -> npm install if deps changed -> launchctl kickstart -k gui/<uid>/com.mlr.media-server -> verify logs for '[push]/[apns] listening'. In-process senders don't show in ps.", "companion": "com.mlr.fm-service (Swift/Vapor 'MLR Assistant', 127.0.0.1:8788) + Apple `fm serve` CLI (127.0.0.1:8799 for moderation) run alongside." },
-    "database": { "host": "Supabase cloud (project vrksrpzlslrcjvbzchfg)", "migrations": "hand-applied SQL files in supabase/migrations/*.sql pasted into the Supabase SQL editor per-file. DB changes are handed to Brian as SQL, NOT run autonomously (standing rule).", "note": "several duplicate-numbered migration files exist; ordering is not strictly by filename." }
+    "mediaServer": { "host": "Mac mini, launchd com.mlr.media-server, caffeinate-wrapped", "port": "8790 (8787 is owned by an unrelated Innjoy process — do not collide)", "exposure": "Tailscale Funnel 443 -> 127.0.0.1:8790", "storage": "local filesystem MEDIA_DIR (Supabase never holds media bytes)", "deploy": "PR -> merge -> git pull on mini -> npm install if deps changed -> launchctl kickstart -k gui/<uid>/com.mlr.media-server -> verify logs. In-process senders don't show in ps. Owner-only remote restart is available in-app (Admin -> Media server).", "companions": "com.mlr.fm-service (Swift/Vapor 'MLR Assistant', 127.0.0.1:8788), Apple `fm serve` CLI (127.0.0.1:8799, AI moderation), com.mlr.embed-service (Swift/Vapor, 127.0.0.1:8786, NaturalLanguage text embeddings for semantic search)." },
+    "database": { "host": "Supabase cloud (project vrksrpzlslrcjvbzchfg)", "migrations": "hand-applied SQL files in supabase/migrations/*.sql (158 files as of this pass, numbered 0001-0154 with some duplicate numbering) pasted into the Supabase SQL editor per-file. DB changes are handed to Brian as SQL, NOT run autonomously (standing rule). pg_cron is enabled and drives scheduled broadcasts + fest sign-up reminders — no external cron needed." }
   },
 
   "domainGlossary": {
     "MLR": "Muskellunge Lake Resort — the umbrella app/brand. Forest-green cabin-in-the-pines logo, light-mode only, EST 1987. The universal baseline: everyone is always MLR.",
     "Family Fest": "The one-week annual family gathering — a built-in section at /family-fest/* with its own Renaissance/parchment theme (Cinzel font) + sub-nav. Has a 4-phase 'season' (off-season -> planning -> live -> wrap) from lib/festSeason.ts, mirrored byte-for-byte in the retiring standalone family-fest repo.",
     "House": "A family-branch group (e.g. 'MJT House'). Admin-assigned, at most one per member (profiles.house_id FK). Gets private chat, scoped work items, a shared stay calendar, and a House Hub (/house).",
-    "Committee": "A volunteer group (e.g. Beautification, Family Fest). Static display roster (lib/data.ts) + DB membership (committee_roster/committee_members) that gates chat. Family Fest members have 'roles[]' = areas, each its own chat channel. Admins create/rename/archive ('delete'=archive).",
+    "Committee": "A volunteer group (e.g. Beautification, Family Fest). Admin-managed taxonomy (create/rename/archive committees + roles, migration 0112) with a DB roster (committee_roster) + DB membership (committee_members) that gates chat. Family Fest members have 'roles[]' = areas, each its own chat channel.",
     "Committee Lead": "A role suffix ' · Lead' — can organize meetings and edit their own fest items.",
     "Work item / Work Checklist": "A to-do list (WorkChecklist.tsx), MLR-wide or house-scoped, each with urgency (asap/this_year/nice_to_have), optional media + comment thread.",
-    "Work Weekend": "A real-world resort maintenance event type (seed event). Distinct from the generic work-item feature.",
-    "Cabin / 'place to stay'": "A bookable lodging unit (cabins table), kind cabin|house, optional named rooms, per-place approver (need not be an admin).",
+    "Cabin / 'place to stay'": "A bookable lodging unit (cabins table), kind cabin|house, optional named rooms, per-place approver (need not be an admin, migration 0114), owner-to-guest messaging (migration 0120).",
     "Tee times": "A hand-off (not in-app booking) from Local Places to Inshalla CC's foreUP booking via /tee-times.",
     "Dues": "Family Fest payment tiers (flat or per-day), calculated by FestDuesCalculator, paid via Venmo/Zelle/etc deep links in PayView. No payment processor.",
     "Ask for Help": "A member at the resort posts a request; willing+present members get pinged. 'At the resort' presence is inferred (no GPS) from event RSVPs ±2 days or approved cabin stays. Urgent bypasses targeting.",
-    "Family polls": "Any signed-in member can create a poll (2-10 options); one changeable vote each.",
-    "Meeting scheduler": "Doodle/when2meet-style tool pinned to a committee/house chat, or family-wide, finalizing into a Google Meet link or a real calendar Event.",
+    "Family polls": "Any signed-in member can create a poll (2-10 options); one changeable vote each. Distinct from 'quick polls in chat' (below), which live inline in a chat room's timeline.",
+    "Quick polls in chat": "iMessage-style single/multi-select polls any member can drop into a committee/house chat message stream (migration 0149) — anonymous or attributed results, SQL-enforced anonymity (chat_poll_votes has zero read grants).",
+    "Meeting scheduler": "Doodle/when2meet-style tool pinned to a committee/house chat, or family-wide, finalizing into a Google Meet link or a real calendar Event (migrations 0116-0122).",
+    "Event sign-up slots": "Limited-capacity time-slot sign-ups on a schedule event or anytime activity — interval, arbitrary slots, or headcount mode, with optional fixed-size teams (migrations 0135-0143).",
+    "Tournament brackets": "Single-elim / round-robin / pools-then-bracket competition running on top of an activity's sign-ups or a private activity's roster (migrations 0144-0154).",
+    "Private activities": "A member-created, invite-only one-off get-together in the Events tab, visible only to invited people, optionally with its own tournament (migration 0150-0151).",
+    "Conversation search": "On-device semantic + keyword search across every conversation a member can see (Feed, committee/area chats, house chat), RLS-scoped per searcher (migrations 0129-0131).",
     "Home callouts": "Admin-managed temporary swipe-away announcement cards on Home (home_callouts), distinct from the permanent Family Fest spotlight and the Announcement banner.",
     "Announcement banner": "Admin notices at the top of the app, auto-expiring; unified with push/email/Activity under AdminBroadcastComposer.",
     "Preview As / View As": "Admin-only, device-local, UI-only role override to check the privacy wall as a member/guest. Never touches the real session, never persists."
@@ -53,35 +58,45 @@
   "architecture": {
     "routes": [
       { "path": "/", "file": "app/page.tsx", "purpose": "Home — lean priority-ordered feed + always-visible quick-actions grid", "auth": "public; cards self-hide", "renders": "see homeComposition" },
-      { "path": "/posts", "file": "app/posts/page.tsx -> FeedView", "purpose": "Feed tab — resort Posts feed + committee/house chat list switched by internal state (NOT sub-routes)", "auth": "SignInWall (members)", "deepLinks": "?post=<id>, ?c=<slug>&area=<area>, ?house=<slug>, ?m=<messageId> read client-side to pick the initial pane" },
-      { "path": "/family-fest", "file": "app/family-fest/page.tsx (layout adds .ff-section)", "purpose": "Family Fest overview — season hero + week accordion", "auth": "public browse", "renders": "FestCover, FestStatus, FestRsvp, FestDuesCallout, FestCommitteesLink, FestWeek" },
+      { "path": "/posts", "file": "app/posts/page.tsx -> FeedView", "purpose": "Feed tab — resort Posts feed + committee/house chat list + conversation search, switched by internal state (NOT sub-routes)", "auth": "SignInWall (members)", "deepLinks": "?post=<id>, ?c=<slug>&area=<area>, ?house=<slug>, ?m=<messageId>, ?meeting=<id> read client-side to pick the initial pane" },
+      { "path": "/family-fest", "file": "app/family-fest/page.tsx (layout adds .ff-section)", "purpose": "Family Fest overview — season hero + week accordion (incl. anytime events + inline tournament sections)", "auth": "public browse", "renders": "FestCover, FestStatus, FestRsvp, FestDuesCallout, FestCommitteesLink, FestWeek" },
       { "path": "/family-fest/dinners", "file": "app/family-fest/dinners/page.tsx", "purpose": "Dinners index — reads like a weekly menu, no click-through", "auth": "public; edit needs canEditFest or chef/crew" },
       { "path": "/family-fest/dinners/[id]", "file": "FestDinnerDetail", "purpose": "Standalone dinner detail — ORPHANED (nothing links here), kept for legacy links", "auth": "public" },
       { "path": "/family-fest/pay", "file": "app/family-fest/pay/page.tsx", "purpose": "Dues calculator + Venmo/PayPal hand-off", "auth": "SignInWall" },
-      { "path": "/family-fest/planner", "file": "FestPlanner (tabbed)", "purpose": "Admin/committee editor — schedule, dinners, dues, callouts", "auth": "canEditFest / RLS" },
+      { "path": "/family-fest/planner", "file": "FestPlanner (tabbed)", "purpose": "Admin/committee editor — schedule, dinners, dues, callouts, sign-ups, tournaments", "auth": "canEditFest / RLS" },
       { "path": "/family-fest/master", "file": "FestPlanner (page variant)", "purpose": "Desktop master editor opened from iOS app — BARE ROUTE (app chrome suppressed via lib/bareRoutes.ts)", "auth": "canEditFest / RLS" },
       { "path": "/family-fest/schedule", "file": "app/family-fest/schedule/page.tsx", "purpose": "Full-week schedule — ORPHANED from FamilyFestNav (Overview shows same accordion), still directly reachable", "auth": "public" },
-      { "path": "/family-fest/schedule/[id]", "file": "FestScheduleDetail", "purpose": "Standalone schedule-event detail — ORPHANED, no edit affordance", "auth": "public" },
+      { "path": "/family-fest/schedule/[id]", "file": "FestScheduleDetail", "purpose": "Standalone schedule-event detail incl. sign-up slots + tournament section", "auth": "public" },
       { "path": "/notifications", "file": "NotificationsView", "purpose": "Activity tab — durable feed of everything involving you, deep-links out", "auth": "SignInWall" },
       { "path": "/profile", "file": "app/profile/page.tsx", "purpose": "Identity, avatar, contact/pay, notif prefs, text size, sign out; Admin RowLink if admin", "auth": "public shell" },
-      { "path": "/events", "file": "app/events/page.tsx", "purpose": "Full resort calendar + RSVP + family-wide date polling", "auth": "public browse; RSVP needs sign-in; create/propose admin-only" },
+      { "path": "/events", "file": "app/events/page.tsx", "purpose": "Full resort calendar + RSVP + family-wide date polling ('Propose dates') + private-activity list/create", "auth": "public browse; RSVP/create-activity needs sign-in; propose-family-poll/create-event admin-only", "deepLinks": "?activity=<id> opens a private activity" },
       { "path": "/committees", "file": "CommitteeList", "purpose": "Committees index", "auth": "public" },
       { "path": "/committees/[slug]", "file": "CommitteeDetail", "purpose": "One committee: roster + chat entry + meeting scheduler", "auth": "public shell; contacts gated", "params": "slug — generateStaticParams unions seed ∪ DB; dynamicParams=true" },
-      { "path": "/committees/[slug]/chat", "file": "CommitteeChatRoute -> CommitteeChat", "purpose": "Standalone full-screen committee General chat (a real direct 'tunnel' — good precedent)", "auth": "membership-gated", "params": "slug, dynamicParams=true" },
+      { "path": "/committees/[slug]/chat", "file": "CommitteeChatRoute -> CommitteeChat", "purpose": "Standalone full-screen committee General chat", "auth": "membership-gated", "params": "slug, dynamicParams=true" },
       { "path": "/people", "file": "PeopleDirectory + EmailMembersSection", "purpose": "Member directory + email-a-group", "auth": "SignInWall (self-wrapped)" },
-      { "path": "/polls", "file": "PollsView + PollComposer", "purpose": "Family voting booth", "auth": "SignInWall" },
+      { "path": "/polls", "file": "PollsView + PollComposer", "purpose": "Family voting booth (distinct from in-chat quick polls)", "auth": "SignInWall" },
       { "path": "/house", "file": "HouseHub", "purpose": "House Hub — calendar/chat/to-do for the viewer's house", "auth": "is_house_member gate", "params": "reads ?house=<slug> client-side (NOT a route segment)" },
       { "path": "/house/calendar", "file": "HouseCalendarScreen", "purpose": "Full house calendar (month grid + agenda + resort-event overlay)", "auth": "house-member", "params": "?house=<slug>" },
       { "path": "/house/dues", "file": "MjtHouseDuesScreen", "purpose": "MJT House's own fest-dues screen", "auth": "house-scoped", "params": "?house=<slug>" },
       { "path": "/help-requests", "file": "HelpRequestsView", "purpose": "Ask for Help log", "auth": "public browse; post/respond needs sign-in" },
-      { "path": "/request-stay", "file": "app/request-stay/page.tsx", "purpose": "Request a cabin/house stay; admin book-on-behalf; approver review inline", "auth": "public browse; booking needs sign-in" },
+      { "path": "/request-stay", "file": "app/request-stay/page.tsx", "purpose": "Request a cabin/house stay; admin book-on-behalf; approver review inline; message-guests entry point", "auth": "public browse; booking needs sign-in" },
       { "path": "/local-places", "file": "LocalPlaceCard groups", "purpose": "Nearby businesses w/ quick action pills", "auth": "public" },
       { "path": "/tee-times", "file": "TeeTimesView", "purpose": "In-app Inshalla CC tee-time hand-off", "auth": "public; force-static" },
       { "path": "/guide", "file": "app/guide/page.tsx", "purpose": "'Take the tour' — plain-English guide w/ jump pills", "auth": "public" },
       { "path": "/help", "file": "app/help/page.tsx", "purpose": "Help & how-to — human escape hatch + FAQ + install + text-size", "auth": "public" },
       { "path": "/work-weekends", "file": "app/work-weekends/page.tsx", "purpose": "Placeholder — dates coming soon, links to Resort Maintenance committee", "auth": "public" },
       { "path": "/admin", "file": "app/admin/page.tsx", "purpose": "Admin dashboard — 10-card grid + Family Fest Planner + Google Form banner", "auth": "AdminGuard" },
-      { "path": "/admin/*", "file": "alerts, cabins, committees, content-review, help-contact, houses, invite, members, preview, signins", "purpose": "One admin tool per sub-page, each wrapped in AdminGuard", "auth": "AdminGuard (profiles.is_admin)" }
+      { "path": "/admin/members", "file": "AdminMembers + AdminProfileOverride", "purpose": "Member directory admin: promote/demote, remove, override profile", "auth": "AdminGuard" },
+      { "path": "/admin/alerts", "file": "AdminBroadcastComposer + AdminCallouts", "purpose": "Merged banner/Activity/email composer + scheduled queue + Home callout cards", "auth": "AdminGuard" },
+      { "path": "/admin/content-review", "file": "AdminModeration", "purpose": "Report/moderation queue for posts, comments, and chat", "auth": "AdminGuard" },
+      { "path": "/admin/committees", "file": "AdminCommittees", "purpose": "Committee/role taxonomy CRUD + join-request queues", "auth": "AdminGuard" },
+      { "path": "/admin/houses", "file": "AdminHouses", "purpose": "House CRUD + member assignment", "auth": "AdminGuard" },
+      { "path": "/admin/cabins", "file": "AdminCabinBookings + AdminCabinDetails", "purpose": "Cabin/place booking queue + place/room CRUD + guest messaging", "auth": "AdminGuard" },
+      { "path": "/admin/help-contact", "file": "AdminHelpContact", "purpose": "Edit the public help-contact singleton (resort_config)", "auth": "AdminGuard" },
+      { "path": "/admin/signins", "file": "AdminSignins", "purpose": "Recent sign-in audit log", "auth": "AdminGuard" },
+      { "path": "/admin/system", "file": "AdminMediaServer", "purpose": "Owner-only mac-mini media-server status + remote pull-and-restart", "auth": "AdminGuard + owner-only (lib/owner.ts)" },
+      { "path": "/admin/preview", "file": "PreviewAs", "purpose": "Device-local 'view as member/guest' override", "auth": "AdminGuard" },
+      { "path": "/admin/invite", "file": "AdminInviteEmails", "purpose": "Pre-create an account + send a branded magiclink for someone who isn't signed up yet", "auth": "AdminGuard" }
     ],
 
     "navigation": {
@@ -90,14 +105,16 @@
       "backNav": { "components": ["BackLink.tsx (Link, '‹ Label')", "BackButton (button-twin in FeedView for in-place chat close)"], "notes": "ScrollReset resets #app-scroll on every route change. Chat rooms in FeedView are NOT routes — 'Back' is a state transition (active->'list') animated via chat-push/chat-pop CSS." },
       "keyNavEdges": [
         "TabBar -> /, /posts, /family-fest, /notifications, /profile",
-        "Home HouseHubCard -> /house  (then HouseHub 'House chat' card -> /posts?house=<slug>)  [TWO HOPS to house chat — the tunnel gap]",
+        "Home HouseHubCard -> /house  (then HouseHub 'House chat' card -> /posts?house=<slug>)  [TWO HOPS to house chat — still the open tunnel gap]",
         "Home AdminDashboardCard -> /admin",
         "Home HomeQuickActions -> /events, /committees, /people, /help-requests, /local-places, /request-stay",
         "Home ActivePollCard -> /polls; OnThisDayCard -> /posts?post=<id>; BirthdaysCard -> /?member=<id> (MemberSheet)",
         "/committees/[slug] ChatEntryButton -> /committees/[slug]/chat  [GOOD direct tunnel precedent]",
         "/house HubCard -> /posts?house=<slug> (FeedView boot effect opens the room directly), and -> /house/calendar?house=<slug>",
-        "/notifications rows -> /posts?post=, /posts?c=&area=, /posts?house=&m=, /?work=<id>, /admin/committees, /request-stay, /help-requests",
-        "FeedView Chats list -> in-place house/committee chat (URL unchanged); ⋯ -> ChatMembersSheet -> MeetingComposer / ChatEmailSheet",
+        "/notifications rows -> /posts?post=, /posts?c=&area=, /posts?house=&m=, /?work=<id>, /admin/committees, /request-stay, /help-requests, /events?activity=<id>",
+        "FeedView Chats list -> in-place house/committee chat (URL unchanged); ⋯ -> ChatMembersSheet -> MeetingComposer / ChatEmailSheet; '+' composer menu -> ChatPollComposer",
+        "/events 'Create an activity' -> PrivateActivityComposer -> PrivateActivitySheet -> optional TournamentSetupSheet",
+        "A CalloutCard's 'Sign up' button -> /family-fest/schedule/<id> (ScheduleSignupSlots)",
         "/admin cards -> /admin/{members,alerts,committees,houses,cabins,content-review,help-contact,signins,preview,invite}; every sub-page BackLink -> /admin",
         "any route ?member=<id> -> MemberSheet (MemberSheetHost, mounted app-wide)"
       ]
@@ -105,7 +122,8 @@
 
     "providers": [
       { "name": "DemoDateProvider", "file": "lib/DemoDateProvider.tsx", "purpose": "Device-local 'pretend today is X' override for testing fest-season phases + all 'today' filters. Returns null now/today until mounted (SSR-safe).", "wraps": "outermost, entire app" },
-      { "name": "IdentityProvider", "file": "components/IdentityProvider.tsx", "purpose": "Passwordless Supabase email-OTP identity. Exposes { user, userId, isAdmin, authReady, previewAsId, updateUser, promptSignIn, needsIntro, completeIntro, signOut }. Hosts InstallFirstNudge, SignInGate, WelcomeIntro overlays. Implements admin Preview-As (UI-only, never touches real session).", "wraps": "everything below DemoDateProvider" },
+      { "name": "MotionProvider", "file": "components/MotionProvider.tsx", "purpose": "framer-motion MotionConfig(reducedMotion=\"user\") — the physics-motion opt-out umbrella for the whole app, mounted once in layout.tsx.", "wraps": "app content, below DemoDateProvider" },
+      { "name": "IdentityProvider", "file": "components/IdentityProvider.tsx", "purpose": "Passwordless Supabase email-OTP identity. Exposes { user, userId, isAdmin, authReady, previewAsId, updateUser, promptSignIn, needsIntro, completeIntro, signOut }. Hosts InstallFirstNudge, SignInGate, WelcomeIntro overlays. Implements admin Preview-As (UI-only, never touches real session).", "wraps": "everything below MotionProvider" },
       { "name": "Guard (useGuest/PrivateName/Protected/SignInWall)", "file": "components/Guard.tsx", "purpose": "Privacy-wall layer (consumes IdentityProvider). SignInWall = whole-screen member gate; Protected = inline '🔒 Sign in' chip; PrivateName = first-name-only for guests; useGuest()=isSupabaseConfigured && !user.", "wraps": "individual screens/fields" },
       { "name": "AdminGuard", "file": "app/admin/AdminGuard.tsx", "purpose": "Per-route admin gate: skeleton while authReady false, 'Admins only' card for non-admins, else children.", "wraps": "each /admin/* page individually" },
       { "name": "appReady", "file": "lib/appReady.ts", "purpose": "First-paint readiness registry — markPending on cold loads, onQuietOnce holds the splash until it drains (or 4.5s cap).", "wraps": "n/a (global signal)" },
@@ -114,7 +132,7 @@
 
     "homeComposition": [
       "WeatherCard (Open-Meteo, self-hides)", "WelcomeCard (once/device)", "HomeSignInCTA (guests)",
-      "HomeSpotlight = CalloutStack (swipeable admin home_callouts) over permanent FamilyFestSpotlight (season-aware)",
+      "HomeSpotlight = CalloutStack (swipeable admin home_callouts, each optionally carrying a Sign-up deep-link) over permanent FamilyFestSpotlight (season-aware)",
       "UpcomingEvents (nearest event + inline RSVP; skips Family Fest during its takeover)",
       "HouseHubCard (-> /house; self-hides off-house)", "AdminDashboardCard (-> /admin; admins only)",
       "WorkChecklist (collapsed; MLR + house sections, urgency-sorted)",
@@ -128,45 +146,56 @@
         { "module": "supabase", "file": "lib/supabase.ts", "exports": "supabase, isSupabaseConfigured (null when env unset -> app builds read-only)" },
         { "module": "data", "file": "lib/data.ts", "exports": "RESORT, FAMILY_FEST, RESORT_EVENTS, SCHEDULE, THINGS_TO_DO, DINNERS, PAYEES, COMMITTEES, FAMILY_FEST_AREAS, POSTS — client-only seed/offline fallback, never the only source once a table exists. NO PII (names/roles only)." },
         { "module": "swrCache", "file": "lib/swrCache.ts", "exports": "useCachedResource(key, empty, fetcher, {persist?, ttlMs?}), readPersisted, writePersisted, removePersisted, clearAllCaches — THE loading-stability primitive (memory Map + optional localStorage/sessionStorage, prefix mlr.cache.v1., 24h TTL, 200KB cap, in-flight dedup)." },
-        { "module": "hooks", "file": "lib/hooks.ts", "exports": "useSheetDismiss, useBusyAction, useDebouncedCallback, useSaveStatus, useMediaPicker, useUnreadNotifications, useManagedCommittee, useEvents, useHelpRequests, useResolvedHouse, useHouseCalendar" },
+        { "module": "hooks", "file": "lib/hooks.ts", "exports": "useSheetDismiss, useBusyAction, useDebouncedCallback, useSaveStatus, useMediaPicker, useUnreadNotifications, useManagedCommittee, useEvents, useHelpRequests, useResolvedHouse, useHouseCalendar, useCanEditFest (cached fest-edit affordance, un-flickers nav-gated states), useTypingChannel (chat typing on its own realtime channel), useTournament (per-item, uid-scoped SWR + realtime over 4 tables), usePrivateActivities (uid-scoped SWR + realtime)" },
         { "module": "types", "file": "lib/types.ts", "exports": "User, House, HouseStay, WorkItem, Post, ResortEvent, EventAttendance, HelpRequest, Cabin, CabinBooking, PushType, NotifType, DEFAULT_PUSH_TYPES, DEFAULT_NOTIF_TYPES" },
         { "module": "format", "file": "lib/format.ts", "exports": "formatDate, formatDateLong, formatTime, timeAgo, formatDateRange, relativeDays, phoneDigits, formatPhoneNational, plural, groupByDay — the ONE place formatting lives" },
         { "module": "roles", "file": "lib/roles.ts", "exports": "getCurrentUserId, fetchProfiles, fetchGuestProfiles (public_profiles view), fetchJoinState, fetchMyAreas, fetchMyCommitteeRole — App Admin > Committee Lead > Member tiers" },
         { "module": "resortConfig", "file": "lib/resortConfig.ts", "exports": "fetchResortConfig, RESORT_CONFIG_FALLBACK — help-contact singleton, public-read by design" },
         { "module": "privacy", "file": "lib/privacy.ts", "exports": "firstName(name)" },
         { "module": "admin", "file": "lib/admin.ts", "exports": "inviteMember, setMemberEmail, inviteByEmailLink — proxy the mini for service-role actions" },
+        { "module": "haptics", "file": "lib/haptics.ts", "exports": "tap/select/etc wrappers over navigator.vibrate — Android-only progressive enhancement, no-op on iOS (no Vibration API in Safari)" },
+        { "module": "tournaments", "file": "lib/tournaments.ts", "exports": "types, pure bracket math (bracketSize/seedOrder/firstRoundPreview/bracketSummary/computeStandings), fetch+RPC wrappers, applyMatchResult optimistic transform, fetchTournamentsForHost/createTournamentForHost/importEntrantsForHost (polymorphic TournamentHost = {kind:'schedule'|'activity', id})" },
+        { "module": "privateActivities", "file": "lib/privateActivities.ts", "exports": "CRUD + roster + RSVP wrappers for private_activities/private_activity_members, degrades to none on 42P01" },
+        { "module": "chatPolls", "file": "lib/chatPolls.ts", "exports": "useChatPolls(scope) hook, create/vote/close/delete wrappers, mirrors lib/meetings.ts's degrade-to-empty idiom" },
+        { "module": "search", "file": "lib/search.ts", "exports": "client seam for the mini's POST /search (semantic + keyword conversation search)" },
+        { "module": "scheduleSignups", "file": "lib/scheduleSignups.ts", "exports": "interval/slots/headcount sign-up config + RPC wrappers, shared by schedule events and (interval/slots only) activities" },
+        { "module": "meetings", "file": "lib/meetings.ts", "exports": "fetchMeetingsForRoom, applyMyAvailability optimistic transform, createMeeting/setMyAvailability/finalizeMeeting/cancelMeeting/deleteMeeting, fetchCanOrganize, googleCalendarCreateUrl + looksLikeMeetLink" },
+        { "module": "committeeAdmin", "file": "lib/committeeAdmin.ts", "exports": "fetchCommittees/fetchCommitteeAreas — DB-driven taxonomy, replacing the old hardcoded FAMILY_FEST_AREAS reads" },
         { "module": "features", "file": "lib/features.ts", "exports": "READ_ONLY (vestigial)" }
       ],
       "conventions": {
-        "caching": "useCachedResource everywhere. FOUR HARD RULES: (1) memory seeds read sync in useState initializers; persisted seeds ONLY inside post-mount effects (else hydration mismatch). (2) user-scoped keys embed the auth uid (e.g. feed.<uid>, events.<uid|guest>, chatRoom.<uid>.<slug>|<area>); pass key=null while uid unresolved. (3) Preview mode never persists (persist: undefined, preview id in a memory-only key). (4) signOut() calls clearAllCaches().",
+        "caching": "useCachedResource everywhere. FOUR HARD RULES: (1) memory seeds read sync in useState initializers; persisted seeds ONLY inside post-mount effects (else hydration mismatch). (2) user-scoped keys embed the auth uid (e.g. feed.<uid>, events.<uid|guest>, chatRoom.<uid>.<slug>|<area>, tournament.<uid>.<itemId>, privateActivities.<uid>); pass key=null while uid unresolved. (3) Preview mode never persists (persist: undefined, preview id in a memory-only key). (4) signOut() calls clearAllCaches().",
         "reads": "Direct supabase.from(table).select() from domain modules, guarded by RLS. Every module degrades (never throws): no config -> seed/empty; 42P01 missing table / PGRST202 missing RPC -> seed/[]/false. Several features merge a live DB read with the lib/data.ts seed.",
-        "writes": "Auth-sensitive / business-rule writes go through SECURITY DEFINER RPCs, never raw client insert (set_event_attendance, request_cabin_stay, create_committee, cast_poll_vote, create_meeting, send_broadcast_notification, mark_work_item_done). Simple own-row tables (reactions, home_callout_completions, work_item_comments) write directly (RLS is the gate). Service-role actions (invite, set-email) proxy the mini.",
-        "roles": "Three tiers server-enforced: App Admin (profiles.is_admin — DB is single source of truth, NO client allow-list, column-level GRANT blocks self-escalation) > Committee Lead (committee_members.role='Lead' or roster roles[] ending ' Lead', scoped) > Member. Houses have no Lead. Cabin approver (cabins.approver_user_id) is a narrow non-admin delegation.",
+        "writes": "Auth-sensitive / business-rule writes go through SECURITY DEFINER RPCs, never raw client insert (set_event_attendance, request_cabin_stay, create_committee, cast_poll_vote, create_meeting, send_broadcast_notification, mark_work_item_done, record_match_result, create_private_activity). Simple own-row tables (reactions, home_callout_completions, work_item_comments) write directly (RLS is the gate). Service-role actions (invite, set-email) proxy the mini.",
+        "roles": "Three tiers server-enforced: App Admin (profiles.is_admin — DB is single source of truth, NO client allow-list, column-level GRANT blocks self-escalation) > Committee Lead (committee_members.role='Lead' or roster roles[] ending ' Lead', scoped) > Member. Houses have no Lead. Cabin approver (cabins.approver_user_id) and tournament/sign-up managers (lead/crew predicates) are narrow non-admin delegations.",
         "tenantConfig": "Single-tenant. resort_config = admin-editable help contact (public-read). Broader identity is lib/data.ts seed, progressively made live via fest_* content tables + home_callouts + app_images (read via festContent.ts / appImages.ts, always seed-fallback)."
       },
       "domainModules": [
-        "announcements (legacy seam, superseded by live announcements table)", "broadcast (postAnnouncement / sendActivityNotification)", "cabins (stay requests, rooms, approvers, messaging guests)", "committees (nameMatches auto-link helper)", "committeeAdmin (taxonomy RPCs)", "committeeRoster (DB roster + account linking)", "contact (tap-to-call/text/pay action lists)", "emailBlast (recipient pools + mailto)", "eventTargeting (isHiddenForEventTarget)", "events (calendar + RSVP merge/RPCs)", "familyRoster (not-yet-signed-up relatives)", "festContent (fest_* + home_callouts, seed-fallback)", "festSeason (getFestSeason date math)", "help (neutral placeholder)", "helpRequests (presence + request RPCs)", "houseCalendar (stays)", "houses (fetch/assign/CRUD + house rules)", "install (requestInstall bridge)", "localAnnouncements (localStorage refresh signal)", "media (uploadToMini, compressImage, moderatePostText — talks to mini)", "meetings (scheduler RPCs + Google Meet helpers)", "moderation (report_content + client pre-checks)", "places (static Local Places)", "polls (create/vote/close)", "presence (who's-at-the-resort-today)", "push (SW register + subscribe)", "reactions (toggleReaction generic table+idColumn)", "schedule (fest week selectors)", "scheduledBroadcasts (pg_cron queue CRUD)", "workItems (checklist CRUD + comments + event linking)", "calloutCompletions (permanent 'I did this')", "appImages (admin site images)"
+        "announcements (legacy seam, superseded by live announcements table)", "broadcast (postAnnouncement / sendActivityNotification)", "cabins (stay requests, rooms, approvers, messaging guests)", "committees (nameMatches auto-link helper)", "committeeAdmin (taxonomy RPCs)", "committeeRoster (DB roster + account linking)", "contact (tap-to-call/text/pay action lists)", "emailBlast (recipient pools + mailto)", "eventTargeting (isHiddenForEventTarget)", "events (calendar + RSVP merge/RPCs)", "familyRoster (not-yet-signed-up relatives)", "festContent (fest_* + home_callouts, seed-fallback)", "festSeason (getFestSeason date math)", "haptics (Android-only vibration wrappers)", "help (neutral placeholder)", "helpRequests (presence + request RPCs)", "houseCalendar (stays)", "houses (fetch/assign/CRUD + house rules)", "install (requestInstall bridge)", "localAnnouncements (localStorage refresh signal)", "media (uploadToMini, compressImage, moderatePostText — talks to mini)", "meetings (scheduler RPCs + Google Meet helpers)", "moderation (report_content + client pre-checks)", "places (static Local Places)", "polls (create/vote/close)", "presence (who's-at-the-resort-today)", "privateActivities (invite-only one-off get-togethers + polymorphic tournament host)", "push (SW register + subscribe)", "reactions (toggleReaction generic table+idColumn)", "schedule (fest week selectors)", "scheduleSignups (interval/slots/headcount sign-up config + RPCs)", "scheduledBroadcasts (pg_cron queue CRUD)", "search (semantic + keyword conversation search, mini proxy)", "tournaments (bracket math + RPC wrappers, polymorphic host)", "chatPolls (in-chat quick polls)", "workItems (checklist CRUD + comments + event linking)", "calloutCompletions (permanent 'I did this')", "appImages (admin site images)"
       ]
     },
 
     "components": {
-      "note": "147 components total. Grouped by domain. Shared-UI primitives are the reuse foundation. Chat = HouseChat + CommitteeChat (near-duplicated, ~1000 lines of overlap — extraction candidate).",
+      "note": "168 components total (grew from 147 since the last pass). Grouped by domain. Shared-UI primitives are the reuse foundation. Chat = HouseChat + CommitteeChat remain separate, though shared HOOKS (useTypingChannel, useCanEditFest) now cross-cut both — full extraction into one shared chat core is still open (see improvementOpportunities W1).",
       "home": ["ActivePollCard", "BirthdaysCard", "CalloutCard", "CalloutStack", "HomePreFestCards", "HomeQuickActions", "HomeSignInCTA", "HomeSpotlight", "OnThisDayCard", "WeatherCard", "WelcomeCard", "WhosUpNorthCard"],
       "house": ["HouseCalendar", "HouseCalendarScreen", "HouseChat", "HouseHub", "HouseHubCard", "HouseStayComposer", "HouseStaySheet", "MjtHouseDuesCard", "MjtHouseDuesScreen"],
       "committees": ["ChatEntryButton", "CommitteeChat", "CommitteeChatRoute", "CommitteeDetail", "CommitteeEmailMembers", "CommitteeJoin", "CommitteeList", "CommitteeMemberContact", "CommitteeMembers", "CommitteeRoster"],
-      "family-fest": ["ActivityDetailsEditSheet", "DinnerDetailsEditSheet", "FamilyFestNav", "FamilyFestSpotlight", "FestCommitteesLink", "FestCover", "FestDinnerDetail", "FestDuesCalculator", "FestDuesCallout", "FestPlanner", "FestRsvp", "FestScheduleDetail", "FestStatus", "FestThemeSync", "FestWeek", "PayView", "ScheduleDetailsEditSheet"],
+      "family-fest": ["ActivityDetailsEditSheet", "DinnerDetailsEditSheet", "FamilyFestNav", "FamilyFestSpotlight", "FestCommitteesLink", "FestCover", "FestDinnerDetail", "FestDuesCalculator", "FestDuesCallout", "FestPlanner", "FestRsvp", "FestScheduleDetail", "FestStatus", "FestThemeSync", "FestWeek", "PayView", "ScheduleDetailsEditSheet", "ScheduleSignupSlots", "SignupRosterSheet"],
+      "tournaments": ["TournamentView", "TournamentSection", "TournamentBracket", "TournamentStandings", "MatchResultSheet", "TournamentSetupSheet"],
+      "private-activities": ["PrivateActivityComposer", "PrivateActivitySheet"],
       "events": ["AttendanceControl", "EventCard", "EventComposer", "EventSheet", "MeetingComposer", "MeetingSchedulerSheet", "MeetingSection", "UpcomingEvents"],
-      "polls": ["PollComposer", "PollsView"],
-      "posts": ["FeedView", "PostsView", "ReportButton"],
+      "polls": ["PollComposer", "PollsView", "ChatPollComposer", "ChatPollCard"],
+      "posts": ["FeedView", "PostsView", "ReportButton", "ConversationSearch"],
       "people": ["EmailMembers", "EmailMembersComposer", "EmailMembersSection", "MemberSheet", "MemberSheetHost", "PeopleDirectory"],
       "help": ["AskForHelpSheet", "HelpRequestsView"],
-      "admin": ["AdminBroadcastComposer", "AdminCabinBookings", "AdminCabinDetails", "AdminCallouts", "AdminCommittees", "AdminDashboardCard", "AdminEditMember", "AdminFamilyRoster", "AdminHelpContact", "AdminHouses", "AdminInviteEmails", "AdminJoinRequests", "AdminMembers", "AdminModeration", "AdminProfileOverride", "AdminScheduledBroadcasts", "AdminSignins", "PreviewAs", "PreviewBanner"],
+      "admin": ["AdminBroadcastComposer", "AdminCabinBookings", "AdminCabinDetails", "AdminCallouts", "AdminCommittees", "AdminDashboardCard", "AdminEditMember", "AdminFamilyRoster", "AdminHelpContact", "AdminHouses", "AdminInviteEmails", "AdminJoinRequests", "AdminMediaServer", "AdminMembers", "AdminModeration", "AdminProfileOverride", "AdminScheduledBroadcasts", "AdminSignins", "PreviewAs", "PreviewBanner"],
       "cabins": ["CabinMessageSheet", "CabinRequestSheet", "CabinRoomPicker", "EditBookingSheet", "PickMyRoomSheet"],
       "notifications": ["AnnouncementBanner", "EventTargetPicker", "NotifPrefs", "NotificationsView", "ReminderScheduler", "ScheduleSendPicker"],
       "profile-settings": ["AvatarCropper", "ChangeEmail", "ContactPaySettings", "DemoDateControl", "EditDisplayName", "TextSizeControl", "WelcomeIntro", "WillingToHelpToggle"],
       "push-install": ["InstallButton", "InstallFirstNudge", "InstallHint", "PushKeepAlive", "PushPrompt", "PushToggle", "ShareApp", "UpdateBanner"],
       "places": ["LocalPlaceCard", "TeeTimesView"],
       "work-items": ["WorkChecklist", "WorkItemComposer", "WorkItemSheet"],
+      "motion-kit": ["MotionProvider", "AnimatedNumber", "AnimatedList", "SegmentedControl", "Celebration", "TypingIndicator"],
       "shared-ui-primitives": ["AddressEditor", "AppHeader", "Avatar", "BackLink", "BirthdayPicker", "CallTextButtons", "ChunkErrorRecovery", "CollapsibleSection", "ComingSoonCTA", "Countdown", "Guard", "Icon", "IdentityProvider", "Lightbox", "MediaGrid", "MigrationHint", "PhoneInput", "RowLink", "ScrollReset", "SettingsGroup", "SettingsRow", "Sheet", "Skeleton", "SplashIntro", "Stickers", "Switch", "TabBar"]
     },
 
@@ -177,15 +206,18 @@
           "GET /health (public)", "GET /geocode (requireUser, 30/min — Census/Nominatim proxy)", "GET /f/<path> (public static media, 365d immutable, Range support)", "GET /assets/<path> (pay logos)", "GET /privacy",
           "POST /upload?category=posts|chat|work&room=<slug> (requireUser, 30/hr — multer -> magic-byte sniff -> transcode video -> Tier-2 AI moderation -> {url,name,type,path,moderation})",
           "POST /moderate/text (requireUser, 60/min, fail-open)",
-          "POST /admin/invite (requireAdmin — pre-create user + OTP code)", "POST /admin/set-email (requireAdmin + is_override_unlocked)", "POST /admin/invite-link (requireAdmin, 20/hr — branded magiclink email)"
+          "POST /search (requireUser — embeds the query on the mini, calls search_conversations RPC as the caller so RLS scopes results, no service-role for search)",
+          "POST /admin/invite (requireAdmin — pre-create user + OTP code)", "POST /admin/set-email (requireAdmin + is_override_unlocked)", "POST /admin/invite-link (requireAdmin, 20/hr — branded magiclink email)",
+          "POST /admin/restart-media-server (requireOwner — fast-forward git merge + conditional npm install + process.exit; launchd KeepAlive relaunches)", "GET /admin/media-server-status (requireOwner)"
         ],
         "senders": "push-sender.js (web-push/VAPID -> push_subscriptions), apns-sender.js (raw HTTP/2 ES256 -> apns_subscriptions), alert-mailer.js (nodemailer SMTP/Gmail), birthday-notifier.js + work-followup.js (reuse apns delivery). All run IN-PROCESS inside the one node PID; verify via log lines, not ps. All listen on Supabase Realtime with the service-role key.",
-        "moderation": "moderation.js -> local `fm serve` (127.0.0.1:8799), MOD_MODELS='pcc,system'. sharp downscales a COPY to <=1024px before base64 (fixes 413). Video: ffmpeg samples up to 6 frames. FAIL-OPEN everywhere; Report + admin queue are the backstop. Flagged verdict -> media_moderation table -> trigger holds parent post.",
-        "note": "media-server/fm-service/ is a SEPARATE Swift/Vapor 'MLR Assistant' (127.0.0.1:8788, /assistant + /assistant/stream) whose header references lib/assistant/generate.ts which does NOT exist in this checkout — looks unwired/removed. Distinct from the `fm serve` moderation mechanism. Worth asking Brian about."
+        "moderation": "moderation.js -> local `fm serve` (127.0.0.1:8799), MOD_MODELS='pcc,system'. sharp downscales a COPY to <=1024px before base64 (fixes 413). Video: ffmpeg samples up to 6 frames. FAIL-OPEN everywhere; Report + admin queue are the backstop. Flagged verdict -> media_moderation table -> trigger holds parent post OR chat message (0128).",
+        "search": "embed-service (Swift/Vapor, NLContextualEmbedding, 512-d L2-normalized vectors, loopback :8786, separate process from fm-service so an FM SIGTRAP can't take search down) + search-indexer.js (reconciles content_embeddings every ~2 min, indexes ALL statuses — search-time RLS is the only scoping).",
+        "note": "media-server/fm-service/ is a SEPARATE Swift/Vapor 'MLR Assistant' (127.0.0.1:8788) whose referenced lib/assistant/generate.ts does NOT exist in this checkout — looks unwired/removed, distinct from the `fm serve` moderation mechanism."
       },
       "apiRoutes": "NONE. `find app -name route.ts` is empty. All backend I/O is (a) direct Supabase client calls under RLS, or (b) browser fetch() to the mini's REST endpoints. The Next app has no server API surface.",
       "dataModel": {
-        "note": "~55 tables. Writes almost always via SECURITY DEFINER RPCs. Migration 0081 = the RLS lockdown (many tables went members-only). Guests read a masked public_profiles view (first-name only).",
+        "note": "~65 tables (grew from ~55). Writes almost always via SECURITY DEFINER RPCs. Migration 0081 = the RLS lockdown (many tables went members-only). Guests read a masked public_profiles view (first-name only). 158 migration files as of this pass (0001-0154, with some duplicate numbering — ordering is not strictly by filename).",
         "identity": [
           "profiles (id=auth.users FK; display_name, avatar_url, phone, contact_email, venmo/zelle/cashapp/paypal/apple_cash, pay_preferred, contact_preferred, push_types[], notif_types[], is_admin, house_id, birthday, address, intro_seen, joined_at, mjt_dues_paid_year) — members-only read (0081); is_admin/house_id NEVER client-writable (column GRANT + insert guard)",
           "public_profiles (VIEW — id, first-name-only, avatar_url; security_invoker off so guests bypass profiles RLS by design)",
@@ -194,65 +226,170 @@
         ],
         "social": [
           "posts (status visible|pending|hidden; members-only read filtered by status; status not self-escalatable)", "post_comments", "post_reactions (composite PK, own row)", "post_media (trigger holds post if media_moderation flags)", "post_tags", "albums", "post_comment_mentions",
-          "committee_messages (area NULL=General; reply_to_id; deleted_at soft-delete; 24h author edit / admin anytime enforced in RLS)", "committee_message_media/_reactions/_mentions", "committee_reads", "committee_area_reads (per-channel + muted)",
+          "committee_messages (area NULL=General; reply_to_id; deleted_at soft-delete; status visible|pending|hidden 0128; 24h author edit / admin anytime enforced in RLS)", "committee_message_media/_reactions/_mentions", "committee_reads", "committee_area_reads (per-channel + muted)",
           "house_messages (+ _media/_reactions/_mentions, house_reads) — mirror committee_message_* 1:1, gated on is_house_member()",
+          "chat_polls / chat_poll_options / chat_poll_votes (inline in-chat quick polls; votes table has NO select grant at all — deny-all RLS, tallies come from denormalized vote_count/respondent_count columns)",
           "reactions tables are generic (toggleReaction takes table+idColumn)"
         ],
-        "committees": ["committees (slug immutable, archived_at)", "committee_members (composite PK, role)", "committee_join_requests (requested_areas[])", "committee_roster (name/email/phone/roles[]/linked_user_id, bidirectional auto-link trigger)", "committee_areas (allow-list)"],
+        "committees": ["committees (slug immutable, archived_at)", "committee_members (composite PK, role)", "committee_join_requests (requested_areas[])", "committee_roster (name/email/phone/roles[]/linked_user_id, bidirectional auto-link trigger)", "committee_areas (allow-list, admin-managed taxonomy)"],
         "houses": ["houses (slug, emoji)", "house_stays (start/end_date, guest_names[], note — is_house_member read, create/update/delete RPCs)"],
-        "events": ["events (stable TEXT id or seed slug; kind, day_rsvp, start_time, source_meeting_id; public read; admin RPCs)", "event_attendance (event_id text; status, days jsonb, confirmed 0122; members read; set_event_attendance upsert own row)", "event_work_items (m2m)"],
+        "events": ["events (stable TEXT id or seed slug; kind, day_rsvp, start_time, source, source_meeting_id; public read; admin RPCs)", "event_attendance (event_id text; status, days jsonb, confirmed 0122; members read; set_event_attendance upsert own row)", "event_work_items (m2m)"],
         "workItems": ["work_items (house_id null=MLR-public even to guests; urgency; completed_by/at)", "work_item_media", "work_item_comments / _mentions"],
-        "cabins": ["cabins (kind, approver_user_id 0114)", "cabin_bookings (status, decision/edit/cancel email-claim cols, booked_by, request_notify; RPC-only writes; REPLICA IDENTITY FULL)", "cabin_rooms", "cabin_booking_rooms", "cabin_messages"],
+        "cabins": ["cabins (kind, approver_user_id 0114)", "cabin_bookings (status, decision/edit/cancel email-claim cols, booked_by, request_notify; RPC-only writes; REPLICA IDENTITY FULL)", "cabin_rooms", "cabin_booking_rooms", "cabin_messages (owner-to-guest broadcast, 0120)"],
         "help": ["help_requests (presence-derived targeting snapshot, work_item_id link, followup)", "help_responses (race-safe)", "help_request_items (claim race-safe)"],
         "moderation": ["moderation_blocklist (admin-only)", "content_reports (>=2 auto-hold)", "content_moderation_events (audit)", "media_moderation (zero policies — mini service-role + trigger)"],
-        "broadcasts": ["announcements (severity, show_banner 0126, event_id/exclude_not_attending, email_sent_at claim; public read; alert_recipients RPC service-role)", "notifications (recipient_id; NO client insert — trigger/RPC only; seen_at/read_at/expires_at)", "scheduled_broadcasts (kind, payload jsonb, fired by pg_cron run_scheduled_broadcasts)"],
+        "broadcasts": ["announcements (severity, show_banner 0126, event_id/exclude_not_attending, email_sent_at claim; public read; alert_recipients RPC service-role)", "notifications (recipient_id; NO client insert — trigger/RPC only; seen_at/read_at/expires_at)", "scheduled_broadcasts (kind, payload jsonb incl. reminder sourceType/sourceId/onlyUnconfirmed/excludeCalloutDone, fired by pg_cron run_scheduled_broadcasts)"],
         "polls": ["polls (members-only read)", "poll_options", "poll_votes (composite PK — one vote/member; cast_poll_vote RPC)"],
-        "meetings": ["meetings (scope committee|house|family; status; meet_url; created_event_id; can_organize_meeting gate)", "meeting_slots (ends_at nullable = date-range)", "meeting_availability (composite PK; set_my_availability bulk upsert)"],
-        "fest": ["fest_config (year-keyed)", "fest_dues (per_day)", "fest_schedule_items (lead_user_id/crew_user_ids[], self-edit RLS)", "fest_dinners (chef_user_id/crew_user_ids[], self-edit RLS)", "fest_payees", "fest_activities (lead/crew)"],
-        "config": ["resort_config (help contact, PUBLIC read by design)", "app_images (admin site images; site-assets bucket)", "home_callouts (links jsonb, dismiss_id, deadline_at, event_id)", "home_callout_completions (permanent 'done')", "family_roster (not-yet-account relatives, auto-link)"]
+        "meetings": ["meetings (scope committee|house|family; status; meet_url; created_event_id; notify_email/proposal_email_sent_at/confirm_email_sent_at; can_organize_meeting gate)", "meeting_slots (ends_at nullable = date-range)", "meeting_availability (composite PK; set_my_availability bulk upsert)"],
+        "fest": ["fest_config (year-keyed)", "fest_dues (per_day)", "fest_schedule_items (lead_user_id/crew_user_ids[], self-edit RLS, anytime flag, signup_mode/signup_capacity/signup_team_size, tournament_enabled)", "fest_schedule_slots / fest_schedule_signups (team_id/team_name, custom signup_fields jsonb)", "fest_dinners (chef_user_id/crew_user_ids[], self-edit RLS)", "fest_payees", "fest_activities (lead/crew — LEGACY: web-retired 0141 in favor of anytime fest_schedule_items, but table is left in place and iOS STILL reads it — see iosParity driftRisks)", "fest_activity_slots / fest_activity_signups (parallel isolated implementation of the schedule sign-up tables, for the legacy activities path)", "fest_signup_reminders_sent (dedupe ledger for per-slot reminder pushes)"],
+        "tournaments": ["tournaments (polymorphic: schedule_item_id XOR private_activity_id; format single_elim|round_robin|pools_bracket; status setup|live|complete; tiebreakers[])", "tournament_entrants (solo or team; seed, pool, signup_team_id back-link)", "tournament_participants (entrant_id null=pre-team pool; user_id null=account-less typed name)", "tournament_matches (round/position, next_match_id+next_slot progression pointer, stage pool|bracket)"],
+        "privateActivities": ["private_activities (title/emoji/description/location, starts_at, tournament_enabled, archived_at, created_by)", "private_activity_members (roster: user_id null=typed name, role host|player, optional rsvp)"],
+        "search": ["content_embeddings (locked — no anon/authenticated grant, deny-all RLS; search_conversations() SECURITY DEFINER RPC is the only access path, re-applies can_access_committee_area/is_house_member/status/deleted_at gates as the calling member)"],
+        "config": ["resort_config (help contact, PUBLIC read by design)", "app_images (admin site images; site-assets bucket)", "home_callouts (links jsonb, dismiss_id, deadline_at, event_id, signup_item_id 0137)", "home_callout_completions (permanent 'done')", "family_roster (not-yet-account relatives, auto-link)"]
       },
       "clientBackendBridge": [
         "lib/push.ts -> browser Push API + push_subscriptions table (delivery is on the mini)",
         "lib/moderation.ts -> report_content RPC (client Tier-0/1 only; mini does Tier-2 AI separately)",
         "lib/broadcast.ts -> announcements insert + send_broadcast_notification RPC (mini mailer/senders pick up via Realtime)",
         "lib/scheduledBroadcasts.ts -> scheduled_broadcasts CRUD (pg_cron fires; mini + app are bystanders)",
-        "lib/media.ts -> mini /upload, /moderate/text; lib/admin.ts -> mini /admin/*"
+        "lib/media.ts -> mini /upload, /moderate/text; lib/admin.ts -> mini /admin/*",
+        "lib/search.ts -> mini POST /search (embeds query -> calls search_conversations as the caller)"
       ],
       "envKeys": {
         "nextApp": ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_MEDIA_URL", "NEXT_PUBLIC_TENOR_KEY", "NEXT_PUBLIC_VAPID_PUBLIC_KEY", "NEXT_PUBLIC_BUILD_ID", "NEXT_PUBLIC_GOOGLE_CALENDAR_ICS_URL (planned)"],
-        "mini": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PORT", "MEDIA_DIR", "MAX_MB", "ALLOWED_ORIGINS", "PUBLIC_URL", "VAPID_*", "APNS_* (KEY_PATH/ID/TEAM_ID/BUNDLE_ID/ENV)", "SMTP_*/GMAIL_*", "MOD_* (ENABLED/MODELS/MAX_DIM/…)", "FM_* (HOST/PORT/SHARED_SECRET/USE_PCC)", "VIDEO_* (transcode)"]
+        "mini": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PORT", "MEDIA_DIR", "MAX_MB", "ALLOWED_ORIGINS", "PUBLIC_URL", "VAPID_*", "APNS_* (KEY_PATH/ID/TEAM_ID/BUNDLE_ID/ENV)", "SMTP_*/GMAIL_*", "MOD_* (ENABLED/MODELS/MAX_DIM/…)", "FM_* (HOST/PORT/SHARED_SECRET/USE_PCC)", "VIDEO_* (transcode)", "EMBED_SHARED_SECRET / EMBED_URL (semantic search)"]
       }
     },
 
     "chat": {
-      "summary": "The make-or-break feature. Two rooms — HouseChat + CommitteeChat — are NEAR-DUPLICATED (share MessageRow/MessageText/ChatShell pattern, not code). Hosted by FeedView (Feed tab) inside a viewport-pinned, keyboard-aware fixed container with chat-push/chat-pop slide. Feature-rich (media/reactions/@mentions/replies/24h edit+soft-delete/unread/meeting bar) but under-animated vs iMessage.",
+      "summary": "The make-or-break feature. Two rooms — HouseChat + CommitteeChat — remain separate components (not yet extracted into one shared core — see improvementOpportunities W1) but now share cross-cutting hooks (useTypingChannel, useCanEditFest). Hosted by FeedView (Feed tab) inside a viewport-pinned, keyboard-aware fixed container with chat-push/chat-pop slide, plus a chat-unmask hold-then-fade cover masking the room-open paint on mobile. Feature-rich: media/reactions/@mentions/replies/24h edit+soft-delete/unread/meeting bar/quick polls, NOW WITH optimistic send + typing indicators + smart scroll.",
       "dataFlow": {
-        "storage": "house_messages / committee_messages (+ _media/_reactions/_mentions) + house_reads/committee_area_reads (room-level read marker only).",
-        "initialLoad": "refetchMessages() runs SEQUENTIALLY: select messages -> Promise.all(media, reactions, mentions, ALL profiles UNFILTERED, roster) -> join client-side -> setMessages -> snapshot (last 30) to memory Map + localStorage -> mark_*_read RPC.",
-        "liveUpdates": "Supabase Realtime postgres_changes '*' on all 4 tables -> debounceRefetch(120ms) -> the SAME full-pipeline refetch. NO incremental patch — every change replaces the whole array.",
-        "send": "NOT optimistic. Uploads files serially -> insert message -> insert media/mentions -> clear composer -> await full refetch before the bubble appears. Perceived latency = full round trip.",
-        "reactions": "long-press 420ms tray -> toggleReaction upsert/delete -> full refetch (no optimistic pill). Tapping a pill toggles a client-only 'who reacted' expansion.",
-        "readReceipts": "room-level only (house_reads/committee_area_reads last_read_at) — drives Feed unread badge. No per-message Read/Delivered, no unread divider.",
-        "typing": "NONE. lib/presence.ts is a different feature (resort-wide, not chat)."
+        "storage": "house_messages / committee_messages (+ _media/_reactions/_mentions) + house_reads/committee_area_reads (room-level read marker only). chat_polls merge into the same timeline client-side.",
+        "send": "OPTIMISTIC as of this pass (previously NOT optimistic — CONFIRMED FIXED): instant send, the bubble appears immediately with a spring-in animation, reconciled against the realtime echo. A jump pill handles 'new message while scrolled up'.",
+        "typing": "SHIPPED (previously 'NONE' — CONFIRMED FIXED): useTypingChannel (lib/hooks.ts) drives a TypingIndicator component over its own Supabase Realtime broadcast channel, separate from the message tables.",
+        "liveUpdates": "Supabase Realtime postgres_changes on the message/media/reaction/mention tables feeds the room; the exact patch-vs-full-refetch strategy post-optimistic-send rework was not re-verified line-by-line this pass — treat improvementOpportunities W3 (incremental realtime patching) as UNCONFIRMED rather than assume it's fixed alongside send/typing.",
+        "readReceipts": "room-level only (house_reads/committee_area_reads last_read_at) — drives Feed unread badge. No per-message Read/Delivered confirmed; unread-divider status also unconfirmed this pass (see improvementOpportunities P2)."
       },
-      "painPoints": [
-        { "severity": "high", "gap": "No optimistic send — bubble appears only after upload+insert+full refetch", "where": "HouseChat.tsx:411-470, CommitteeChat.tsx:492-555" },
-        { "severity": "high", "gap": "Every mutation (even one reaction) triggers a full refetch incl. the ENTIRE unfiltered profiles table", "where": "HouseChat.tsx:225-316 (profiles at :255 no .in()/.limit()), CommitteeChat.tsx:272-371 (:308)" },
-        { "severity": "high", "gap": "No message-appear spring/fade — bubbles snap in (the app's own .rise/.pop utilities are unused here)", "where": "HouseChat MessageRow, CommitteeChat MessageRow; globals.css:277-284" },
-        { "severity": "high", "gap": "No typing indicator", "where": "absent (confirmed)" },
-        { "severity": "high", "gap": "No haptics anywhere (note: iOS Safari has no Vibration API — Android-only progressive enhancement)", "where": "absent" },
-        { "severity": "medium", "gap": "Scroll-to-bottom on new msg / keyboard is an instant jump, not smooth", "where": "HouseChat.tsx:318-328, CommitteeChat.tsx:373-407" },
-        { "severity": "medium", "gap": "No scroll-to-bottom pill/FAB when scrolled up and a new message arrives", "where": "atBottomRef gates silently" },
-        { "severity": "medium", "gap": "No unread divider inside a room", "where": "only day headers exist" },
-        { "severity": "medium", "gap": "Realtime full-refetch behind flat 120ms debounce — bursts = repeated full reloads", "where": "HouseChat.tsx:196-211" },
-        { "severity": "medium", "gap": "No skeleton for the message list once access is known but messages still loading", "where": "HouseChat.tsx:526-532/582-584" },
-        { "severity": "medium", "gap": "No upload-progress UI (uploadToMini supports onProgress; composers don't wire it)", "where": "lib/media.ts:54-86; composers call without onProgress" },
-        { "severity": "medium", "gap": "Chat attachments stack vertically instead of reusing MediaGrid carousel; videos don't open Lightbox", "where": "HouseChat.tsx:860-882, CommitteeChat.tsx:1003-1025" },
-        { "severity": "medium", "gap": "Standalone ChatShell (CommitteeChatRoute / non-embedded) has NO entrance animation, unlike FeedView's chat-push", "where": "HouseChat.tsx:715-746, CommitteeChat.tsx:847-883" },
-        { "severity": "low", "gap": "Long-press reaction tray has no open/close transition (Lightbox-style pop-panel exists)", "where": "HouseChat.tsx:920-929" },
-        { "severity": "low", "gap": "Swipe-to-reply is linear 1:1 with a hard cutoff — no rubber-band, no progressive icon ramp", "where": "HouseChat.tsx:795-811" },
-        { "severity": "low", "gap": "Composer textarea height snaps (no transition); delete uses native window.confirm; images have no aspect-ratio reservation (pop-in shift)", "where": "HouseChat.tsx:339-350/482/876-879" }
+      "confirmedFixedSinceLastPass": [
+        "No optimistic send -> FIXED (instant send + spring-in bubbles)",
+        "No message-appear spring/fade -> FIXED (spring-in bubbles)",
+        "No typing indicator -> FIXED (useTypingChannel + TypingIndicator)",
+        "Scroll-to-bottom on new msg was an instant jump -> FIXED ('smart scroll + jump pill' per CLAUDE.md)",
+        "No haptics -> FIXED for Android (lib/haptics.ts), correctly remains a no-op on iOS Safari"
+      ],
+      "stillOpenOrUnconfirmed": [
+        { "gap": "HouseChat + CommitteeChat are still two near-duplicated components, not a shared chat core", "improvementId": "W1" },
+        { "gap": "Every mutation possibly still triggers a broader-than-necessary refetch (incl. the profiles table) — not re-verified this pass", "improvementId": "W3 / E1" },
+        { "gap": "No unread divider inside a room confirmed shipped", "improvementId": "P2" },
+        { "gap": "No draft persistence per room confirmed shipped", "improvementId": "P4" },
+        { "gap": "Chat attachments possibly still stack vertically instead of reusing MediaGrid carousel", "improvementId": "P5" },
+        { "gap": "No 1:1 direct messages — only group rooms (committee/house)", "improvementId": "P6" },
+        { "gap": "In-room-only message search is superseded by the broader Conversation search feature (0129-0131), which searches across ALL rooms a member can see — treat P7 as satisfied by a bigger feature, not literally built as originally scoped", "improvementId": "P7 (superseded)" }
       ]
+    }
+  },
+
+  "majorFeatures": {
+    "note": "Substantial feature areas that either didn't exist or weren't documented as of the last architecture pass (2026-07-22). Each entry names its migrations, key files, and iOS-parity status (cross-referenced against the iosParity section's Explore-agent findings, not just CLAUDE.md's own annotations — see driftRisks where they disagree).",
+    "eventSignupSlots": {
+      "migrations": ["0135_schedule_signup_slots", "0136_schedule_signup_custom", "0137_callout_signup_link", "0138_activity_signup_slots", "0139_schedule_item_anytime", "0140_signup_slot_reminders", "0141_merge_activities_into_anytime_events", "0142_schedule_item_multi_link", "0143_signup_headcount_and_teams"],
+      "summary": "A schedule event or anytime activity can take limited sign-ups for time slots — three modes (interval/derived, slots/arbitrary list, headcount/no time dimension), optional fixed-size teams, custom required fields, per-slot reminder pushes via pg_cron.",
+      "keyFiles": ["components/ScheduleSignupSlots.tsx", "components/SignupRosterSheet.tsx", "lib/scheduleSignups.ts", "components/FestPlanner.tsx (SignupConfigEditor, SignupSlotsEditor)"],
+      "iosParity": "web-only, shared schema/RPCs — CONFIRMED zero iOS presence (no MeetingScheduler-style false-negative here; the iOS repo has no sign-up UI at all)."
+    },
+    "tournamentBrackets": {
+      "migrations": ["0144_tournaments", "0145_tournament_round_robin", "0146_tournament_pools", "0147_schedule_item_tournament_flag", "0148_tournament_match_scheduling", "0151_one_tournament_per_activity", "0152_activity_tournament_autoseed", "0153_activity_individual_entrants", "0154_set_tournament_format"],
+      "summary": "Single-elimination / round-robin / pools-then-bracket tournaments attached to a fest activity OR a private activity, drawing entrants from that item's sign-ups/roster. Winner-only scoring (scores optional), recursive advance-cascade on result changes, advisory-lock-serialized manager edits.",
+      "keyFiles": ["lib/tournaments.ts", "components/TournamentView.tsx", "components/TournamentBracket.tsx", "components/TournamentStandings.tsx", "components/MatchResultSheet.tsx", "components/TournamentSetupSheet.tsx"],
+      "iosParity": "CONFIRMED zero iOS presence — grep across the entire mlr-app-ios repo for 'tournament'/'Tournament' returns no matches. No Models/Services/Views exist."
+    },
+    "privateActivities": {
+      "migrations": ["0150_private_activities"],
+      "summary": "Member-created, invite-only one-off get-togethers in the Events tab — private RLS (creator/roster/admin only), reuse the polymorphic tournament system, notify only opted-in invitees.",
+      "keyFiles": ["lib/privateActivities.ts", "components/PrivateActivityComposer.tsx", "components/PrivateActivitySheet.tsx"],
+      "iosParity": "CONFIRMED zero iOS presence — grep for 'PrivateActivity'/'private_activit' returns no matches. Activities/ folder in iOS only has a thin 94-line generic ActivitiesView, unrelated to this feature."
+    },
+    "quickPollsInChat": {
+      "migrations": ["0149_chat_polls"],
+      "summary": "iMessage-style single/multi-select polls droppable into a committee/house chat's message timeline (not a pinned bar) via the composer's '+' menu; anonymous or attributed results, SQL-enforced anonymity (chat_poll_votes has zero SELECT grant, tallies via denormalized trigger-maintained counters).",
+      "keyFiles": ["lib/chatPolls.ts", "components/ChatPollComposer.tsx", "components/ChatPollCard.tsx"],
+      "iosParity": "CONFIRMED zero iOS presence — grep for 'ChatPoll'/'chat_poll' returns no matches. iOS Polls/ folder implements only the separate family-polls feature (351-line PollsView.swift)."
+    },
+    "meetingScheduling": {
+      "migrations": ["0116_meetings", "0117_meeting_proposal_email", "0118_meeting_confirmed_email", "0119_create_scheduled_meeting", "0121_rename_area_meetings", "0122_family_polls_and_event_creation"],
+      "summary": "Doodle/when2meet-style scheduler pinned to a committee/house chat room's ⋯ menu, or family-wide from /events ('Propose dates', admin-only). Proposes slots -> members vote Yes/If-need-be/No -> organizer finalizes to a Google Meet link (guided, no OAuth) or creates a real calendar Event with unconfirmed-carried-over RSVPs.",
+      "keyFiles": ["lib/meetings.ts", "components/MeetingComposer.tsx", "components/MeetingSchedulerSheet.tsx", "components/MeetingSection.tsx"],
+      "iosParity": "BUILT, NOT A GAP — see iosParity.docVsRealityDrift: CLAUDE.md and the web repo's own docs/ios-parity-2026-07.md both describe this as 'planned follow-up' / 'entirely missing (P0)' on iOS, but the Explore-agent survey found MeetingComposer.swift (401 lines), MeetingSchedulerSheet.swift (495 lines), MeetingSectionBar.swift (111 lines), and Services/MeetingsService.swift (495 lines) already substantively implemented in mlr-app-ios. Verify current behavior in Xcode before assuming this is unbuilt."
+    },
+    "conversationSearch": {
+      "migrations": ["0129_semantic_search", "0130_search_hybrid", "0131_search_keyword_precision"],
+      "summary": "On-device (mini) semantic + keyword search across every conversation a member can see (Feed posts+comments, committee/area chats, house chat). RLS-safe via a SECURITY DEFINER RPC that re-resolves auth.uid() as the caller. Ranking is keyword-precise (Postgres full-text @@, NOT ts_rank(...)>0) — pure semantic search is intentionally off (Apple's mean-pooled vectors are too anisotropic to threshold; they only break ties among keyword matches).",
+      "keyFiles": ["lib/search.ts", "components/ConversationSearch.tsx", "media-server/embed-service/ (Swift/Vapor)", "media-server/search-indexer.js"],
+      "iosParity": "CONFIRMED zero iOS presence. The iOS Search/ folder has only a 144-line GlobalSearchView.swift that is a generic search UI unrelated to search_conversations — grep for 'search_conversations' returns no matches."
+    },
+    "placesToStayApproverAndMessaging": {
+      "migrations": ["0114_admin_committee_taxonomy... (0114 places-to-stay kind+approver)", "0115_request_cabin_stay_overload_cleanup", "0120_cabin_message_guests"],
+      "summary": "Admins can add arbitrary new bookable places (not just the original two), each with kind cabin|house and an optional per-place approver who need not be an app admin. That approver (or an admin) can broadcast a message to everyone currently/soon staying at their place.",
+      "keyFiles": ["lib/cabins.ts", "components/AdminCabinDetails.tsx", "components/CabinMessageSheet.tsx"],
+      "iosParity": "LIKELY BUILT per the iOS survey — CabinMessageSheet.swift and AdminCabinDetails equivalents exist in the iOS Cabins/ folder (CabinBookingsView, AdminCabinDetails, CabinMessageSheet, EditCabinBookingSheet, PickMyRoomSheet all present), matching the web feature set closely. Not exhaustively line-by-line verified this pass."
+    },
+    "committeeAdminTaxonomy": {
+      "migrations": ["0112_admin_committee_taxonomy", "0113_sync_fest_lead_names", "0121_rename_area_meetings"],
+      "summary": "Admins create/rename/archive committees and their roles (areas) in-app instead of the taxonomy being hardcoded; renames cascade through 7 denormalized places in one transaction.",
+      "keyFiles": ["lib/committeeAdmin.ts", "components/AdminCommittees.tsx"],
+      "iosParity": "BUILT — CommitteeService.swift (778 lines) includes archive/restore + rename RPC calls, plus a dedicated MyCommitteeAreasSheet.swift. Confirmed via docs/ios-committee-taxonomy-parity.md and file survey."
+    },
+    "chefCrewSelfEdit": {
+      "migrations": ["0099_dinner_chef_crew_self_edit", "0110_extend_self_edit_schedule_activities"],
+      "summary": "A dinner/schedule-event/activity's assigned chef/lead + crew can edit that item's operational details (not day/title/who's-assigned) without full committee/admin access — a second, narrower RLS policy layered on the blanket can_edit_fest() write policy.",
+      "keyFiles": ["components/DinnerDetailsEditSheet.tsx", "components/ScheduleDetailsEditSheet.tsx", "components/ActivityDetailsEditSheet.tsx"],
+      "iosParity": "Not explicitly confirmed this pass — iOS FamilyFestTab has FestDinnerEditSheet/FestActivityEditSheet/FestInlineEditSheets which suggest some parity, but the narrower self-edit-vs-full-edit RLS distinction was not verified."
+    }
+  },
+
+  "iosParity": {
+    "summary": "Payload for opening Xcode on mlr-app-ios: what exists, how it's organized, what's confirmed missing, and where the project's own docs disagree with the actual repo. Built from an Explore-agent survey of /home/user/mlr-app-ios plus cross-referencing CLAUDE.md's inline '📱' parity annotations and the repo's own docs/ios-*.md notes (read from the mlr-app side).",
+    "sharedBackend": "iOS talks to the exact same Supabase project as web — no separate database, no separate RPCs. A schema/RPC/realtime change made for web must be checked against iOS consumers (Services/*.swift, Models/*.swift) before shipping, and vice versa.",
+    "repoStructure": {
+      "MLRApp": "The main iOS app target (SwiftUI, ~184 Swift files). Organized by feature module (see featureModules) plus App/ (AppEnvironment.swift Supabase client setup, MLRApp.swift @main, RootView.swift root nav shell), Tabs/ (5 tab modules mirroring web's TabBar), Models/ (16 files, one per major table family), Services/ (16 files, one per web lib/*.ts data-access seam), Native/ (EventKit/Contacts/CoreSpotlight/Haptics/MapKit/Messages/PassKit bridges — iOS-only), Intents/ (20 files — Siri/Shortcuts/App Intents surface, iOS-only), Weather/ (WeatherKit event badges, iOS-only), LiveActivities/ (ActivityKit Fest countdown controller, iOS-only).",
+      "MLRCore": "A tiny separate Swift Package (Package.swift + 2 files, ~32 lines total) — a thin shared-code seam intended to be importable from both the main app and the widget extension, though most Supabase logic actually lives in MLRApp/App/AppEnvironment.swift directly rather than here.",
+      "MLRWidget": "WidgetKit extension target: a Family Fest countdown widget (small/medium + Lock Screen accessory), a 'Next at the Resort' widget, and the ActivityKit Live Activity UI for Fest week.",
+      "AppGroup": "Shared app-group storage (group.com.muskellungelakeresort.mlr) so the main app and widget extension exchange a data snapshot without a network round trip.",
+      "iosCompatConstraints": "IOS_COMPAT.md documents hard rules: iOS 18 is the minimum deployment target; Liquid Glass (iOS 26) visuals are always gated behind `if #available` via Shared/Design/LiquidGlass.swift helpers; on-device FoundationModels/AI is explicitly BANNED (crashes pre-26); `IndexedEntity` conformance is FORBIDDEN (crashes at launch on iOS 18 despite compiling clean)."
+    },
+    "featureModulesBuilt": [
+      "Auth (email-OTP + App-Review bypass via AuthService.ReviewAccess)",
+      "Cabins (full booking lifecycle: AdminCabinDetails, CabinBookingsView, CabinMessageSheet, CabinRequestSheet, EditCabinBookingSheet, PickMyRoomSheet — matches web's places-to-stay feature closely)",
+      "Committees (chat + roster + self-service area management + email-a-group + admin taxonomy CRUD)",
+      "Events (calendar/RSVP: EventCard, EventComposer, EventSheet, EventsView)",
+      "Houses (chat, calendar, Hub, MJT dues — full parity per CLAUDE.md's own note)",
+      "Help / HelpRequests (guide, how-to, Ask for Help)",
+      "Meetings (MeetingComposer 401 lines, MeetingSchedulerSheet 495 lines, MeetingSectionBar 111 lines, MeetingsService 495 lines — SUBSTANTIAL, see docVsRealityDrift)",
+      "People (directory, admin member/roster management, email pools)",
+      "Polls (family polls — 351-line PollsView.swift, single-file but complete: create/vote/close/delete)",
+      "Work Items (composer, detail sheet, checklist section)",
+      "Home tab (delight cards doctrine matches web: weather, on-this-day, admin dashboard shortcut, callout stack, work checklist card)",
+      "Family Fest tab (largest module, 14 files: planner, crew view, dinner/activity/schedule edit sheets, dues calculator, photos, status)",
+      "Profile/Admin tab (14-file admin console: broadcast composer, cabin bookings, callouts, committees, help contact, houses, invite, members, moderation, notification composer, scheduled broadcasts, sign-ins, app-images, preview-as — a fairly complete native mirror of web's /admin dashboard)",
+      "iOS-only superpowers (no web equivalent): App Intents/Siri Shortcuts (20 files — ask-for-help, cabin, chat-search, committee-action, fest-countdown, member-query, next-event, personal, place, resort-life, resort-query, search, work-item intents + donations), WeatherKit event badges, ActivityKit Live Activities + widgets, Calendar/Contacts/Spotlight/Maps/Messages native bridges, native haptics"
+    ],
+    "confirmedParityGaps": [
+      { "feature": "Tournament brackets", "webMigrations": "0144-0154", "iosStatus": "Zero code — no Models/Services/Views, confirmed by repo-wide grep for 'tournament'/'Tournament'.", "buildNotes": "Would need Tournament/TournamentEntrant/TournamentParticipant/TournamentMatch models, a TournamentsService mirroring lib/tournaments.ts's RPC wrappers, and bracket/round-robin/pools UI. The web's polymorphic host pattern (schedule_item_id XOR private_activity_id) should carry over directly since it's the same schema." },
+      { "feature": "Private activities", "webMigrations": "0150-0151", "iosStatus": "Zero code — the existing ActivitiesView.swift (94 lines) is unrelated (mirrors the legacy fest_activities concept, not this feature).", "buildNotes": "Needs a PrivateActivity model + service, roster management UI, and (if tournaments ship) the shared tournament host wiring. Naturally surfaces in the Events tab like on web." },
+      { "feature": "Quick polls in chat", "webMigrations": "0149", "iosStatus": "Zero code — existing Polls/PollsView.swift is the separate family-polls feature, unrelated.", "buildNotes": "Needs a ChatPoll model + service and inline-timeline rendering inside CommitteeChatView/HouseChatView's message list (not a separate screen) to match web's 'renders inline, not a pinned bar' design decision." },
+      { "feature": "Conversation search (semantic)", "webMigrations": "0129-0131", "iosStatus": "Zero code — Search/GlobalSearchView.swift (144 lines) is a generic search UI, confirmed unrelated by grep for 'search_conversations'.", "buildNotes": "Could call the same mini POST /search endpoint (which forwards the caller's Supabase token so RLS scopes results) rather than reimplementing embedding logic natively." },
+      { "feature": "Event sign-up slots", "webMigrations": "0135-0143", "iosStatus": "No dedicated sign-up UI found in the survey.", "buildNotes": "Would need to mirror lib/scheduleSignups.ts's three modes (interval/slots/headcount) plus team support against fest_schedule_slots/fest_schedule_signups." }
+    ],
+    "docVsRealityDrift": [
+      { "topic": "Meeting scheduler", "docClaim": "Both CLAUDE.md ('📱 iOS parity is a planned follow-up') and the web repo's own docs/ios-parity-2026-07.md (frames WS1 'Meeting scheduler' as P0, 'entirely missing') say this is unbuilt on iOS.", "reality": "The Explore-agent survey found substantial, real code: MeetingComposer.swift (401 lines), MeetingSchedulerSheet.swift (495 lines), MeetingSectionBar.swift (111 lines), MeetingsService.swift (495 lines), plus a Meeting model — over 1,400 lines total, not a stub.", "recommendation": "Before doing any Meeting-scheduler work in Xcode, actually run the app and check current behavior — the docs are stale, not the code. This is the single biggest doc-vs-reality mismatch found this pass; treat every '📱 no iOS parity' claim as a hypothesis to verify against the live repo, not a fact." },
+      { "topic": "fest_activities retirement (migration 0141)", "docClaim": "Web retired the standalone 'anytime activities' concept in favor of anytime-flagged fest_schedule_items, but the fest_activities table was deliberately left in place because iOS still reads it.", "reality": "Confirmed consistent — iOS's Activities/ActivitiesView.swift (94 lines) is exactly this legacy path. This is an intentional, acknowledged drift point (not a doc error): a web edit to a converted event will NOT reflect on the untouched fest_activities row iOS reads.", "recommendation": "When iOS eventually adopts the anytime-fest_schedule_items model (a real follow-up, not done), this dual-read situation resolves. Until then, don't expect the two clients' 'anytime activities' lists to agree." },
+      { "topic": "Places-to-stay approver + cabin messaging (migrations 0114/0120)", "docClaim": "Not explicitly claimed done or not-done in CLAUDE.md's terse iOS notes for this feature.", "reality": "iOS Cabins/ folder already has CabinMessageSheet.swift and AdminCabinDetails-equivalent files, suggesting this landed, consistent with docs/ios-parity-2026-07.md describing WS2 as likely-landed based on file presence.", "recommendation": "Spot-check in Xcode rather than assume from file presence alone — file existing != feature fully wired." }
+    ],
+    "iosOwnDocs": {
+      "ios-swiftui-strategy.md": "Foundational strategy doc: 'clean platform split' (web covers Android/desktop, iOS is a fully native additive second client against the SAME Supabase project — RSVPs/photos sync instantly between clients, no separate iOS DB). Full stack: SwiftUI, supabase-swift, Kingfisher, WeatherKit, ActivityKit, App Intents, APNs via apns_subscriptions + apns-sender.js. Documents a 7-phase build plan (Foundation -> Core Tabs -> Fest/Events -> Social/People -> Admin/Polish -> TestFlight -> App Store -> Native Extras), substantially executed per the file survey.",
+      "ios-parity-2026-07.md": "Most current author note (as of that writing): frames itself as the delta since iOS's last sync (2026-07-18) through web PR #362 / migrations 0114-0128. Claims prior workstreams A-F (design foundation, Fest redesign, cabins parity, broadcasts/reminders, OnThisDay/reactions, committee self-service/taxonomy) all landed — confirmed by the file survey. Lists 8 remaining workstreams: WS1 Meeting scheduler (see docVsRealityDrift — likely already landed despite the doc), WS2 Places-to-stay (likely landed), WS3 Family roster + email pools (likely landed — FamilyRosterService/AdminFamilyRosterView/EmailPoolsView all present), WS4 Unified broadcast composer (likely landed — AdminBroadcastComposer present), WS5 Chat parity (optimistic send/typing/smart-scroll/moderation/Home-to-House-chat tunnel — still a real gap per the survey, and note web ALSO closed several of these same gaps since this doc was written, so re-diff before starting), WS6 Fest Dinners weekly-menu list, WS7 Home/House-Hub IA regrouping, WS8 native motion polish (lowest priority). Explicitly out of scope for iOS: GitHub-Pages/Vercel plumbing, desktop sidebar layout, PWA-specific fixes.",
+      "ios-committee-taxonomy-parity.md": "Focused handoff spec for the admin-managed committee/role taxonomy (migration 0112) — confirmed landed by the file survey (CommitteeService.swift has archive/restore + rename RPC calls, MyCommitteeAreasSheet.swift exists).",
+      "recommendationForDeveloper": "Treat these three docs as directional history, not current truth. Before starting any iOS work: (1) grep the actual Swift source for the feature/table name first (as this survey did), (2) only then read the .md notes for context on WHY a decision was made, (3) update the stale .md claims once you've verified reality — the docVsRealityDrift entries above are the known stale spots as of 2026-07-24."
     }
   },
 
@@ -268,120 +405,118 @@
     "motionTokensExisting": {
       "eases": "--ease-ios cubic-bezier(0.22,1,0.36,1); --ease-ios-in cubic-bezier(0.4,0,1,1); --ease-spring cubic-bezier(0.34,1.46,0.64,1)",
       "durations": "--dur-page 340ms; --dur-sheet 440ms; --dur-collapse 460ms; --dur-tap 140ms",
-      "utilities": "page-enter (Messages slide-in), chat-push 300ms / chat-pop 240ms, scrim-in/out, sheet-panel/close, pop-panel/close, rise (stagger via --i), press (tap scale 0.96 spring), callout-wiggle, splash-logo/motto/wash",
-      "reducedMotion": "@media (prefers-reduced-motion: reduce) collapses all to a 1ms fade — MUST keep any new motion routed through this"
+      "utilities": "page-enter (Messages slide-in), chat-push 300ms / chat-pop 240ms, chat-unmask (hold-then-fade room-open cover), scrim-in/out, sheet-panel/close, pop-panel/close, rise (stagger via --i), press (tap scale 0.96 spring), callout-wiggle, splash-logo/motto/wash",
+      "reducedMotion": "@media (prefers-reduced-motion: reduce) collapses all to a 1ms fade — every framer-motion primitive routes through MotionProvider's reducedMotion=\"user\" for the same effect."
     },
-    "currentMotionInventory": "All CSS. Good: page transitions, chat push/pop, .press everywhere, Lightbox (scrim + pop), splash FLIP, callout swipe+wiggle. Missing vs stock-game: physics springs (framer-motion), animated numbers, FLIP list reorder, shared-element segmented pill, message-appear, typing dots, P3/HDR color."
+    "currentMotionInventory": "CSS foundation (page transitions, chat push/pop/unmask, .press everywhere, Lightbox, splash FLIP, callout swipe+wiggle) PLUS framer-motion physics (AnimatedNumber count-up, AnimatedList FLIP reorder, SegmentedControl shared-element pill, Celebration confetti, TypingIndicator, spring-in chat bubbles) PLUS a P3/HDR color layer and Android-only haptics. This is essentially the full motionKitToPort backlog from the prior pass, now shipped — see motionKit.status below."
   },
 
-  "motionKitToPort": {
-    "source": "/Users/brian/Repos/stock-game-dev (sibling app; its CLAUDE.md §6.5 documents this in depth)",
-    "principle": "stock-game's 'buttery' feel is ~70% the SAME CSS foundation mlr-app already has (motion tokens + .press + CSS sheets/transitions) PLUS framer-motion for a few physics moments. NO haptics exist in stock-game. Only ONE box-shadow in the whole app — depth is color steps + hairlines + blur. Preserve that restraint.",
-    "deps": "npm i framer-motion@^12 clsx. SKIP @use-gesture (unused in stock-game; PullToRefresh uses raw touch listeners — and note mlr deliberately has NO pull-to-refresh, do not add).",
-    "springPresets": {
-      "listGlide": { "type": "spring", "stiffness": 500, "damping": 40, "use": "FLIP list reorder + shared-element pill" },
-      "selectionPop": { "type": "spring", "stiffness": 220, "damping": 22, "use": "bouncier tap-selected element" }
+  "motionKit": {
+    "sourceInspiration": "Ported from the sibling stock-game app's motion approach (framer-motion physics layered on a CSS foundation, restrained — only ONE box-shadow in that whole app; depth is color steps + hairlines + blur).",
+    "status": "SHIPPED — deps installed (framer-motion ^12.42.2), MotionProvider mounted once in app/layout.tsx, all core primitives live in components/: AnimatedNumber, AnimatedList, SegmentedControl (+ FamilyFestNav layoutId pill), Celebration, TypingIndicator. P3/HDR color layer live in globals.css. Haptics via lib/haptics.ts.",
+    "primitives": {
+      "AnimatedNumber": "rAF count-up (tabular-nums), gated by reduced-motion. Live wherever counts render (votes, dues, RSVP tallies, unread badges — exact call sites not re-audited this pass).",
+      "AnimatedList": "layout='position' FLIP reorder, spring ~500/40. Live for at least People directory / Feed conversation ordering per the prior plan's target list.",
+      "SegmentedControl": "Shared-element layoutId pill — used directly by FamilyFestNav; likely also on AttendanceControl per the original plan (not re-verified line-by-line).",
+      "Celebration": "CSS/framer confetti + accent banner, sessionStorage-guarded once-per-event. Target moments per the original plan: RSVP 'Going', poll vote, help 'Covered', dues paid.",
+      "TypingIndicator": "Renders over useTypingChannel's realtime broadcast presence in chat rooms."
     },
-    "components": [
-      { "name": "MotionProvider", "port": "copy verbatim — <MotionConfig reducedMotion=\"user\">, mount once in app/layout.tsx" },
-      { "name": "AnimatedNumber", "port": "rAF count-up (450ms cubic ease-out), tabular-nums span, gated by reduced-motion. NO framer dep needed. Targets: vote counts, dues totals, RSVP/attendance tallies, unread counts." },
-      { "name": "AnimatedList (layout='position')", "port": "spring 500/40; give callers an animate={false} escape hatch for gesture-driven re-renders. Targets: People directory, Feed conversation list (sort by recent), poll result bars." },
-      { "name": "RangeTabs (LayoutGroup + layoutId pill)", "port": "shared-element active pill glides between tabs. Targets: AttendanceControl (Going/Maybe/Can't), FamilyFestNav pills, any segmented control." },
-      { "name": "Sheet (CSS-only)", "port": "stock-game's is CSS-only w/ animated backdrop-blur; mlr already has Sheet.tsx — optionally add drag-to-dismiss physics (MemberSheet already has some) and unify." },
-      { "name": "TabBar tabPop", "port": "key the active icon by state to force a keyframe replay (scale 1->1.14->1) + accent-dot fade. mlr TabBar exists; add the pop." },
-      { "name": "Celebration", "port": "CSS confetti + color-mix accent banner, sessionStorage-guarded. Targets: RSVP 'Going', poll vote, help 'Covered', dues paid." }
-    ],
     "hdrColor": {
-      "mechanism": "@supports (color: color(display-p3 1 1 1)) upgrade layer over the sRGB hex source (hex stays fallback/source of truth). NO oklch. SVG attrs need a useP3() JS hook (starts false through first paint for hydration safety).",
-      "applyTo": "richer P3 variants of --color-primary (forest green), --color-accent/campfire, --color-lake, --color-sun, --color-dusk, --color-fest — deeper, more saturated on P3 displays while preserving the exact light Northwoods identity. Neutrals stay sRGB (wide-gamut grays read tinted)."
-    },
-    "portingNotes": "1) Add motion tokens + reduced-motion global guard FIRST. 2) Mount MotionProvider once. 3) Port AnimatedNumber (zero deps) -> AnimatedList -> RangeTabs -> TabBar pop -> Celebration. 4) Keep page transitions CSS-only (a lingering framer transform re-roots position:fixed overlays — mlr already documents this). 5) Test each against prefers-reduced-motion emulation."
+      "mechanism": "@supports (color: color(display-p3 1 1 1)) upgrade layer over the sRGB hex source (hex stays fallback/source of truth). Neutrals stay sRGB.",
+      "applyTo": "Richer P3 variants of --color-primary/--color-accent/--color-lake/--color-sun/--color-dusk/--color-fest on capable displays, preserving the exact light Northwoods identity."
+    }
   },
 
   "hardConstraints": [
     "LIGHT MODE ONLY forever. Never add a dark theme. Never use a dark translucent surface tint (bg-black/NN, bg-zinc-*/NN) as a card/panel bg (goes muddy grey) — bg-black/NN is OK only as a modal scrim.",
     "Never hard-code hex in components — add/edit a --color-* token in globals.css @theme.",
     "profiles.is_admin & house_id are NEVER client-writable (column GRANT + insert guard). No client admin allow-list.",
-    "RLS is the real privacy gate, not the UI (migration 0081 lockdown). Any new sensitive field/table needs matching RLS. UI hiding is insufficient.",
+    "RLS is the real privacy gate, not the UI (migration 0081 lockdown). Any new sensitive field/table needs matching RLS. UI hiding is insufficient. chat_poll_votes (0149) and content_embeddings (0129) both go further — zero SELECT grant at all (deny-all), not just members-only.",
     "resort_config help-contact stays PUBLIC-read (it's the sign-in escape hatch). Don't lock it down.",
     "No PII in the client bundle (lib/data.ts seed = names/roles only; lib/help.ts is a neutral placeholder).",
     "Committee/role/cabin 'delete' = archive (archived_at), never destructive. Slugs are immutable.",
-    "24h edit / soft-delete window on messages is enforced in RLS, not just UI — preserve server-side.",
+    "24h edit / soft-delete window on messages is enforced in RLS, not just UI — preserve server-side. Same status-visible|pending|hidden moderation model now applies to committee_messages/house_messages (0128), not just posts.",
     "Preview/'View as' is UI-only, never touches the real session, never persists (SWR rule 3).",
-    "Any schema/RPC/realtime change must preserve iOS app (mlr-app-ios) parity — it reads the same tables.",
+    "Any schema/RPC/realtime change must preserve iOS app (mlr-app-ios) parity — it reads the same tables. Before assuming a feature is iOS-unbuilt, verify against the live iOS repo, not just CLAUDE.md's inline notes (see iosParity.docVsRealityDrift — at least one 'no iOS parity' claim was found to be stale this pass).",
     "Supabase migrations are handed to Brian as SQL to run; do NOT apply autonomously without explicit authorization.",
-    "Respect notification prefs (notif_types/push_types); only help_urgent intentionally bypasses per-category push.",
+    "Respect notification prefs (notif_types/push_types); only help_urgent intentionally bypasses per-category push (signup_reminder is also an override-push, by design — anyone who signed up chose to be reachable).",
     "Do NOT reintroduce pull-to-refresh (deliberately removed — realtime + UpdateBanner cover it).",
     "The SWR cache four rules (memory-sync/storage-in-effect, uid-scoped keys, preview-never-persists, signOut clears) — breaking them causes hydration mismatch or cross-account data bleed.",
+    "Tournament match-result changes run a recursive advance-cascade that clears every stale downstream result; concurrent manager edits are serialized with pg_advisory_xact_lock(tournament_id) — don't bypass this lock with a new write path.",
     "Do NOT touch stock-game or innjoy-mobile from this repo — reference only.",
     "When adding a route/dependency/env var/data-model change, update CLAUDE.md + README.md in the same commit."
   ],
 
   "improvementOpportunities": {
-    "legend": "Each item: id, title, why, files, effort (S/M/L), risk (low/med/high), dependsOn. Grouped by category. A cheaper model can execute one item by reading its files + relevant architecture/constraints.",
-
-    "tunnels": [
-      { "id": "T1", "title": "Home -> House Chat direct tunnel", "why": "The user's flagship example. Today: Home HouseHubCard -> /house hub -> 'House chat' card -> /posts?house=<slug> (2 hops). Add a dedicated chat affordance on HouseHubCard that deep-links straight to /posts?house=<slug> (FeedView already opens the room from this param), AND add a /house/chat route mirroring /committees/[slug]/chat for a flash-free, correct-back entry.", "files": ["components/HouseHubCard.tsx", "components/FeedView.tsx", "app/house/ (new chat route or param)", "components/HouseChat.tsx"], "effort": "M", "risk": "low" },
-      { "id": "T2", "title": "Home 'Jump back in' recent-chats strip", "why": "Surface the viewer's most-active rooms (house + committees) with unread badges as horizontal chips on Home, each deep-linking straight into the room. Reuses FeedView's summary/unread logic + chatEntry cache.", "files": ["components/HomeQuickActions.tsx or a new HomeChatsStrip.tsx", "app/page.tsx", "lib/hooks.ts"], "effort": "M", "risk": "low", "dependsOn": ["T1"] },
-      { "id": "T3", "title": "Scroll-to-and-highlight a linked message (?m=<id>)", "why": "Chat @mention notifications deep-link ?m=<id> but the room doesn't scroll to / flash that message. Implement scroll+highlight (like PostsView's ?post= flash).", "files": ["components/FeedView.tsx", "components/HouseChat.tsx", "components/CommitteeChat.tsx"], "effort": "M", "risk": "low" },
-      { "id": "T4", "title": "Event -> committee chat / linked work items tunnels", "why": "From EventSheet, one-tap to the relevant committee chat area or the event's linked work items — instead of navigating manually.", "files": ["components/EventSheet.tsx", "components/FeedView.tsx"], "effort": "M", "risk": "low" },
-      { "id": "T5", "title": "'Message the chef/lead' tunnel from fest cards", "why": "Fest dinner/schedule cards show a chef/lead — add a direct link into the Family Fest committee area chat (or a MemberSheet contact).", "files": ["components/FestWeek.tsx", "components/FestStatus.tsx", "app/family-fest/dinners/page.tsx"], "effort": "S", "risk": "low" },
-      { "id": "T6", "title": "WhosUpNorth / roster avatars -> MemberSheet everywhere", "why": "Consistent one-tap into a person's card from every avatar (some already do). Audit + unify so every avatar is a tunnel.", "files": ["components/WhosUpNorthCard.tsx", "components/Avatar.tsx", "components/MemberSheetHost.tsx"], "effort": "S", "risk": "low" },
-      { "id": "T7", "title": "Family Fest tab -> live day schedule during live week", "why": "During isLive, the Family Fest tab could deep-scroll to 'today at the fest' instead of the top of Overview.", "files": ["components/TabBar.tsx", "app/family-fest/page.tsx", "components/FestStatus.tsx"], "effort": "S", "risk": "low" }
-    ],
-
-    "workflows": [
-      { "id": "W1", "title": "Extract a shared chat core from HouseChat + CommitteeChat", "why": "~1000 lines of near-duplicated code. A shared useChatRoom hook + ChatRoom/MessageRow/Composer components means every polish/perf fix lands ONCE and keeps web/iOS-parity logic in one place. Foundational for the chat upgrade.", "files": ["components/HouseChat.tsx", "components/CommitteeChat.tsx", "new components/chat/*"], "effort": "L", "risk": "med", "note": "Do behind a careful diff — chat is critical. Land before the chat-UX items so they only touch one place." },
-      { "id": "W2", "title": "Optimistic send", "why": "Append the bubble locally the instant Send is tapped (pending state), reconcile on realtime echo. The single biggest perceived-latency win.", "files": ["shared chat core (W1)"], "effort": "M", "risk": "med", "dependsOn": ["W1"] },
-      { "id": "W3", "title": "Incremental realtime patching", "why": "Stop replacing the whole array + refetching the entire profiles table on every event. Patch the single changed row; cache a profile map. Perf + smoothness.", "files": ["shared chat core (W1)"], "effort": "L", "risk": "med", "dependsOn": ["W1"] },
-      { "id": "W4", "title": "Optimistic reaction toggle", "why": "Toggle the pill locally, no refetch.", "files": ["shared chat core (W1)", "lib/reactions.ts"], "effort": "S", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "W5", "title": "Meeting scheduling reachable from more entry points", "why": "Currently buried in the room ⋯ menu. Surface for organizers on the committee detail page + relevant Home/Events contexts.", "files": ["components/CommitteeDetail.tsx", "components/MeetingComposer.tsx"], "effort": "S", "risk": "low" }
-    ],
-
-    "efficiencies": [
-      { "id": "E1", "title": "Scope the chat profiles query", "why": "refetchMessages selects the ENTIRE profiles table every time. Scope to message authors present, or cache a shared profile map. Big data reduction.", "files": ["shared chat core (W1)"], "effort": "S", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "E2", "title": "Batch/dedupe Home delight-card reads", "why": "WeatherCard, WhosUpNorth, ActivePoll, Birthdays, OnThisDay each read Supabase independently on Home. Some share data (events/attendance). Consolidate where cheap.", "files": ["components/WhosUpNorthCard.tsx", "components/BirthdaysCard.tsx", "components/OnThisDayCard.tsx", "components/ActivePollCard.tsx"], "effort": "M", "risk": "low" },
-      { "id": "E3", "title": "next/image for remote media", "why": "next.config.ts has no images.remotePatterns, so mini/Supabase media isn't optimized. Add remotePatterns + use next/image for post/chat thumbnails (perf, LCP).", "files": ["next.config.ts", "components/MediaGrid.tsx", "components/PostsView.tsx"], "effort": "M", "risk": "med", "note": "Media URLs are stored verbatim; verify the mini serves proper caching headers (it does — 365d immutable)." },
-      { "id": "E4", "title": "Migrate remaining bespoke caches to useCachedResource", "why": "CommitteeRoster, CommitteeJoin, Admin* still use hand-rolled memory caches. Opportunistic consistency win.", "files": ["components/CommitteeRoster.tsx", "components/CommitteeJoin.tsx", "components/Admin*.tsx"], "effort": "M", "risk": "low" }
-    ],
-
-    "productOptimizations": [
-      { "id": "P1", "title": "Typing indicators", "why": "Core iMessage-parity signal. Use Supabase Realtime broadcast/presence on the room channel (ephemeral, no table).", "files": ["shared chat core (W1)"], "effort": "M", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "P2", "title": "Unread divider in-room", "why": "'—— New ——' line at the first unread message on open, using the existing last_read_at BEFORE it's overwritten.", "files": ["shared chat core (W1)"], "effort": "M", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "P3", "title": "Scroll-to-bottom pill w/ new-message count", "why": "When scrolled up and a message arrives, show a floating pill (AnimatedNumber count) that smooth-scrolls down on tap.", "files": ["shared chat core (W1)"], "effort": "S", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "P4", "title": "Draft persistence per room", "why": "Keep a composer draft per room (sessionStorage) so switching rooms doesn't lose typing.", "files": ["shared chat core (W1)"], "effort": "S", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "P5", "title": "Reuse MediaGrid carousel in chat + open video in Lightbox", "why": "Multi-photo messages stack vertically today; videos never open Lightbox. Reuse the shared carousel for consistency.", "files": ["shared chat core (W1)", "components/MediaGrid.tsx", "components/Lightbox.tsx"], "effort": "M", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "P6", "title": "1:1 direct messages (bigger swing)", "why": "No DMs today — only group rooms. A common expectation. Requires a new table + RLS + iOS parity consideration. Scope carefully; likely a later phase.", "files": ["new migration", "new dm components", "components/FeedView.tsx", "components/PeopleDirectory.tsx"], "effort": "L", "risk": "high" },
-      { "id": "P7", "title": "In-room message search", "why": "Search within a conversation.", "files": ["shared chat core (W1)"], "effort": "M", "risk": "low", "dependsOn": ["W1"] }
-    ],
-
+    "legend": "Each item: id, title, why, files, effort (S/M/L), risk (low/med/high), status. Status reflects this pass's findings: 'shipped' = confirmed done via CLAUDE.md/file checks, 'open' = not confirmed done, 'unconfirmed' = plausibly done but not verified this pass, 'superseded' = solved differently than originally scoped.",
     "uiuxMotion": [
-      { "id": "U1", "title": "Add framer-motion + MotionProvider foundation", "why": "The base for all physics motion. Add dep, port MotionProvider (reducedMotion='user'), mount in layout. Update README/CLAUDE.md.", "files": ["package.json", "components/MotionProvider.tsx (new)", "app/layout.tsx", "README.md", "CLAUDE.md"], "effort": "S", "risk": "low" },
-      { "id": "U2", "title": "P3/HDR color layer", "why": "The 'HDR colors' ask. Add @supports display-p3 variants of the brand palette over the sRGB source, preserving the light Northwoods identity. Add useP3() for any SVG that needs it.", "files": ["app/globals.css", "lib/color.ts (new, if SVG needs it)"], "effort": "M", "risk": "low" },
-      { "id": "U3", "title": "AnimatedNumber across the app", "why": "Count-up for vote counts (PollsView/ActivePollCard), dues totals (FestDuesCalculator/PayView), RSVP/attendance tallies (EventSheet/AttendanceControl), unread badges (TabBar), help 'n/N covered'.", "files": ["components/AnimatedNumber.tsx (new)", "components/PollsView.tsx", "components/FestDuesCalculator.tsx", "components/EventSheet.tsx", "components/TabBar.tsx", "components/HelpRequestsView.tsx"], "effort": "M", "risk": "low", "dependsOn": ["U1"] },
-      { "id": "U4", "title": "AnimatedList FLIP reorder", "why": "People directory (search filter), Feed conversation list (sort by most-recent), poll result bars re-ranking as votes land.", "files": ["components/AnimatedList.tsx (new)", "components/PeopleDirectory.tsx", "components/FeedView.tsx", "components/PollsView.tsx"], "effort": "M", "risk": "low", "dependsOn": ["U1"] },
-      { "id": "U5", "title": "Shared-element segmented pill (RangeTabs pattern)", "why": "AttendanceControl (Going/Maybe/Can't) + FamilyFestNav pills get a gliding active pill instead of a hard swap.", "files": ["components/RangeTabs.tsx or a shared SegmentedControl (new)", "components/AttendanceControl.tsx", "components/FamilyFestNav.tsx"], "effort": "M", "risk": "low", "dependsOn": ["U1"] },
-      { "id": "U6", "title": "TabBar active-icon pop + polish", "why": "tabPop keyframe (key-to-replay trick) on tab switch + accent dot fade. Small, high-visibility.", "files": ["components/TabBar.tsx", "app/globals.css"], "effort": "S", "risk": "low" },
-      { "id": "U7", "title": "Celebration/confetti moments", "why": "RSVP 'Going', poll vote cast, help 'Covered', dues paid. CSS confetti + accent banner, guarded once-per-event.", "files": ["components/Celebration.tsx (new)", "components/AttendanceControl.tsx", "components/PollsView.tsx", "components/HelpRequestsView.tsx", "components/PayView.tsx"], "effort": "M", "risk": "low" },
-      { "id": "U8", "title": "Chat message spring-in + reaction tray spring + smooth scroll", "why": "The core chat feel. AnimatePresence on new bubbles (subtle scale/opacity/translate spring), pop-panel on the reaction tray, smooth (not instant) scroll-to-bottom.", "files": ["shared chat core (W1)"], "effort": "M", "risk": "med", "dependsOn": ["W1", "U1"] },
-      { "id": "U9", "title": "Chat composer + send polish", "why": "Animate textarea grow, send-button morph (arrow -> spinner -> check), pending-bubble shimmer, upload progress ring (wire uploadToMini onProgress).", "files": ["shared chat core (W1)", "lib/media.ts"], "effort": "M", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "U10", "title": "Haptic ticks (progressive enhancement)", "why": "navigator.vibrate on send/react/long-press/swipe-commit — Android-only (iOS Safari has no Vibration API), so a small win, safe no-op elsewhere. Wrap in one lib/haptics.ts helper.", "files": ["lib/haptics.ts (new)", "shared chat core (W1)", "components/TabBar.tsx"], "effort": "S", "risk": "low" },
-      { "id": "U11", "title": "Chat message-list skeleton + image aspect-ratio reservation", "why": "SkeletonList while messages load (access known, cache empty); reserve img aspect-ratio from stored width/height to stop pop-in shift.", "files": ["shared chat core (W1)", "components/Skeleton.tsx"], "effort": "S", "risk": "low", "dependsOn": ["W1"] },
-      { "id": "U12", "title": "Standalone ChatShell entrance parity", "why": "CommitteeChatRoute (/committees/[slug]/chat) has no entrance animation; give it the chat-push slide for consistency.", "files": ["components/CommitteeChat.tsx", "components/HouseChat.tsx", "app/globals.css"], "effort": "S", "risk": "low" },
-      { "id": "U13", "title": "In-app action sheet to replace window.confirm", "why": "Delete-message uses native window.confirm — replace with an iOS-style action sheet (Sheet primitive) for consistency.", "files": ["shared chat core (W1)", "components/Sheet.tsx"], "effort": "S", "risk": "low", "dependsOn": ["W1"] }
+      { "id": "U1", "title": "Add framer-motion + MotionProvider foundation", "status": "shipped", "files": ["package.json", "components/MotionProvider.tsx", "app/layout.tsx"] },
+      { "id": "U2", "title": "P3/HDR color layer", "status": "shipped", "files": ["app/globals.css"] },
+      { "id": "U3", "title": "AnimatedNumber across the app", "status": "shipped (component exists; exact call-site coverage not re-audited)", "files": ["components/AnimatedNumber.tsx"] },
+      { "id": "U4", "title": "AnimatedList FLIP reorder", "status": "shipped (component exists; exact call-site coverage not re-audited)", "files": ["components/AnimatedList.tsx"] },
+      { "id": "U5", "title": "Shared-element segmented pill", "status": "shipped", "files": ["components/SegmentedControl.tsx", "components/FamilyFestNav.tsx"] },
+      { "id": "U6", "title": "TabBar active-icon pop + polish", "status": "unconfirmed", "files": ["components/TabBar.tsx"] },
+      { "id": "U7", "title": "Celebration/confetti moments", "status": "shipped", "files": ["components/Celebration.tsx"] },
+      { "id": "U8", "title": "Chat message spring-in + smooth scroll", "status": "shipped (spring-in bubbles + smart scroll/jump pill confirmed)", "files": ["components/HouseChat.tsx", "components/CommitteeChat.tsx"] },
+      { "id": "U9", "title": "Chat composer + send polish (button morph, upload progress ring)", "status": "unconfirmed" },
+      { "id": "U10", "title": "Haptic ticks (Android-only progressive enhancement)", "status": "shipped", "files": ["lib/haptics.ts"] },
+      { "id": "U11", "title": "Chat message-list skeleton + image aspect-ratio reservation", "status": "unconfirmed" },
+      { "id": "U12", "title": "Standalone ChatShell entrance parity", "status": "unconfirmed" },
+      { "id": "U13", "title": "In-app action sheet to replace window.confirm", "status": "unconfirmed" }
+    ],
+    "workflows": [
+      { "id": "W1", "title": "Extract a shared chat core from HouseChat + CommitteeChat", "status": "open (partially mitigated by shared hooks useTypingChannel/useCanEditFest, but the components themselves are still separate)", "why": "Foundational for every remaining chat polish item to land once instead of twice.", "effort": "L", "risk": "med" },
+      { "id": "W2", "title": "Optimistic send", "status": "shipped", "why": "Confirmed via CLAUDE.md: 'Chat is optimistic (instant send, spring-in bubbles, smart scroll + jump pill)'." },
+      { "id": "W3", "title": "Incremental realtime patching (stop full-array replace + full profiles refetch)", "status": "unconfirmed — do not assume fixed alongside W2/P1", "effort": "L", "risk": "med", "dependsOn": ["W1"] },
+      { "id": "W4", "title": "Optimistic reaction toggle", "status": "unconfirmed", "dependsOn": ["W1"] },
+      { "id": "W5", "title": "Meeting scheduling reachable from more entry points", "status": "unconfirmed", "note": "Meeting scheduling itself now spans committee/house/family scopes and has expanded well beyond the original scope of this item (see majorFeatures.meetingScheduling) — re-scope before picking this up." }
+    ],
+    "efficiencies": [
+      { "id": "E1", "title": "Scope the chat profiles query", "status": "unconfirmed", "dependsOn": ["W1"] },
+      { "id": "E2", "title": "Batch/dedupe Home delight-card reads", "status": "open" },
+      { "id": "E3", "title": "next/image for remote media", "status": "open" },
+      { "id": "E4", "title": "Migrate remaining bespoke caches to useCachedResource", "status": "open" }
+    ],
+    "productOptimizations": [
+      { "id": "P1", "title": "Typing indicators", "status": "shipped", "why": "useTypingChannel + TypingIndicator component, confirmed in CLAUDE.md." },
+      { "id": "P2", "title": "Unread divider in-room", "status": "unconfirmed" },
+      { "id": "P3", "title": "Scroll-to-bottom pill w/ new-message count", "status": "shipped", "why": "'smart scroll + jump pill' confirmed in CLAUDE.md." },
+      { "id": "P4", "title": "Draft persistence per room", "status": "unconfirmed" },
+      { "id": "P5", "title": "Reuse MediaGrid carousel in chat + open video in Lightbox", "status": "unconfirmed" },
+      { "id": "P6", "title": "1:1 direct messages (bigger swing)", "status": "open — still no DM system; only group rooms (committee/house)", "risk": "high" },
+      { "id": "P7", "title": "In-room message search", "status": "superseded", "why": "The shipped Conversation search feature (0129-0131) is broader than originally scoped here — it searches across ALL rooms a member can see, not just the current one." }
+    ],
+    "tunnels": [
+      { "id": "T1", "title": "Home -> House Chat direct tunnel", "status": "open — confirmed still 2 hops (Home HouseHubCard -> /house -> House chat card -> /posts?house=<slug>)" },
+      { "id": "T2", "title": "Home 'Jump back in' recent-chats strip", "status": "open" },
+      { "id": "T3", "title": "Scroll-to-and-highlight a linked message (?m=<id>)", "status": "unconfirmed" },
+      { "id": "T4", "title": "Event -> committee chat / linked work items tunnels", "status": "open" },
+      { "id": "T5", "title": "'Message the chef/lead' tunnel from fest cards", "status": "open" },
+      { "id": "T6", "title": "WhosUpNorth / roster avatars -> MemberSheet everywhere", "status": "open" },
+      { "id": "T7", "title": "Family Fest tab -> live day schedule during live week", "status": "open" }
+    ],
+    "newSincePass": [
+      { "id": "N1", "title": "iOS: build Tournament brackets", "why": "Confirmed zero iOS code; a real feature parity gap, not just a doc gap.", "effort": "L", "risk": "med", "repo": "mlr-app-ios" },
+      { "id": "N2", "title": "iOS: build Private activities", "why": "Confirmed zero iOS code.", "effort": "L", "risk": "med", "repo": "mlr-app-ios" },
+      { "id": "N3", "title": "iOS: build Quick polls in chat", "why": "Confirmed zero iOS code; needs inline-timeline rendering to match web's UX decision (not a pinned bar).", "effort": "M", "risk": "low", "repo": "mlr-app-ios" },
+      { "id": "N4", "title": "iOS: build Conversation search", "why": "Confirmed zero iOS code; could reuse the mini's POST /search endpoint directly rather than reimplement embeddings.", "effort": "M", "risk": "low", "repo": "mlr-app-ios" },
+      { "id": "N5", "title": "iOS: build Event sign-up slots", "why": "Confirmed zero iOS code.", "effort": "L", "risk": "med", "repo": "mlr-app-ios" },
+      { "id": "N6", "title": "Reconcile stale 'no iOS parity' doc claims", "why": "Meeting scheduler is annotated as unbuilt on iOS in both CLAUDE.md and docs/ios-parity-2026-07.md, but is confirmed substantially built (1,400+ lines) — update both docs after verifying actual current behavior in Xcode, to stop future passes wasting effort re-building it.", "effort": "S", "risk": "low", "repo": "both" },
+      { "id": "N7", "title": "Resolve the fest_activities dual-read drift", "why": "Web retired fest_activities in favor of anytime fest_schedule_items (0141) but iOS still reads the legacy table; the two can silently disagree on 'anytime activities' content. Either port iOS to the new model, or explicitly document this as permanent.", "effort": "M", "risk": "low", "repo": "mlr-app-ios", "dependsOn": ["majorFeatures.eventSignupSlots parity (N5)"] }
     ]
   },
 
   "implementationPlan": {
-    "approach": "Ship in small, isolated PRs (auto-ship convention). Foundation first, then the chat overhaul (behind a shared core so fixes land once), then the app-wide motion sweep, then product additions. Each wave is independently shippable and reviewable on the live site.",
+    "approach": "Ship in small, isolated PRs. The prior motion-foundation + chat-core-first waves have substantially executed (see improvementOpportunities statuses). Remaining work splits into two tracks: (a) closing residual web chat/perf gaps, and (b) the iOS parity backlog surfaced by this pass's Explore-agent survey.",
     "waves": [
-      { "wave": 1, "name": "Motion foundation", "items": ["U1 (framer-motion + MotionProvider)", "U2 (P3/HDR color)", "U6 (TabBar pop)", "U10 (haptics helper)"], "rationale": "Low-risk base every later item builds on; immediately visible polish (tabs, richer color)." },
-      { "wave": 2, "name": "App-wide motion sweep", "items": ["U3 (AnimatedNumber)", "U4 (AnimatedList)", "U5 (segmented pill)", "U7 (Celebration)"], "rationale": "High-visibility delight across polls/events/dues/people using the wave-1 base. No chat risk." },
-      { "wave": 3, "name": "Chat core + performance", "items": ["W1 (shared chat core)", "W2 (optimistic send)", "W3 (incremental realtime)", "W4 (optimistic reactions)", "E1 (scope profiles query)"], "rationale": "The make-or-break work. Refactor first so all chat polish/perf lands in one place. Highest care." },
-      { "wave": 4, "name": "Chat feel (iMessage bar)", "items": ["U8 (message spring + tray + smooth scroll)", "U9 (composer/send polish)", "U11 (skeleton + aspect-ratio)", "U12 (ChatShell parity)", "U13 (action sheet)", "P3 (scroll-to-bottom pill)"], "rationale": "The visible chat buttery-ness, on top of the wave-3 core." },
-      { "wave": 5, "name": "Chat product features", "items": ["P1 (typing)", "P2 (unread divider)", "P4 (draft persistence)", "P5 (MediaGrid in chat)", "T3 (scroll-to message)", "P7 (search)"], "rationale": "Feature-parity signals that make chat sticky." },
-      { "wave": 6, "name": "Tunnels & shortcuts", "items": ["T1 (Home->house chat)", "T2 (recent-chats strip)", "T4 (event->chat)", "T5 (fest chef/lead)", "T6 (avatars->MemberSheet)", "T7 (fest tab->today)"], "rationale": "Navigation efficiency; can run in parallel with any wave since mostly additive." },
-      { "wave": 7, "name": "Efficiencies & bigger swings", "items": ["E2 (batch Home reads)", "E3 (next/image)", "E4 (SWR migration)", "W5 (meeting entry points)", "P6 (1:1 DMs — scope/decide first)"], "rationale": "Perf cleanup + a possible larger product bet (DMs) once the core feels great." }
+      { "wave": 1, "name": "Motion foundation", "status": "COMPLETE", "items": ["U1", "U2", "U6 (unconfirmed)", "U10"] },
+      { "wave": 2, "name": "App-wide motion sweep", "status": "substantially complete", "items": ["U3", "U4", "U5", "U7"] },
+      { "wave": 3, "name": "Chat core + performance", "status": "PARTIALLY complete — send/typing/scroll shipped, but the shared-core refactor (W1) and incremental-patching (W3) are unconfirmed/open", "items": ["W1 (open)", "W2 (shipped)", "W3 (unconfirmed)", "W4 (unconfirmed)", "E1 (unconfirmed)"] },
+      { "wave": 4, "name": "Chat feel polish", "status": "partially complete", "items": ["U8 (shipped)", "U9 (unconfirmed)", "U11 (unconfirmed)", "U12 (unconfirmed)", "U13 (unconfirmed)", "P3 (shipped)"] },
+      { "wave": 5, "name": "Chat product features", "status": "partially complete", "items": ["P1 (shipped)", "P2 (unconfirmed)", "P4 (unconfirmed)", "P5 (unconfirmed)", "P7 (superseded by conversation search)"] },
+      { "wave": 6, "name": "Tunnels & shortcuts", "status": "not started", "items": ["T1", "T2", "T3", "T4", "T5", "T6", "T7"] },
+      { "wave": 7, "name": "Efficiencies & bigger swings", "status": "not started", "items": ["E2", "E3", "E4", "W5 (needs re-scoping)", "P6"] },
+      { "wave": 8, "name": "iOS parity closeout (NEW)", "status": "not started", "rationale": "Web has pulled ahead on five features (sign-up slots, tournaments, private activities, chat polls, conversation search) that iOS has zero code for. Recommend building in roughly that order — sign-up slots first since tournaments/private-activities/chat-polls all build on adjacent patterns already proven on iOS (Meetings' scope/RPC-wrapper style, Cabins' sheet-based CRUD style).", "items": ["N5 (sign-up slots)", "N1 (tournaments)", "N2 (private activities)", "N3 (chat polls)", "N4 (conversation search)", "N6 (reconcile stale docs — do this FIRST, it's S-effort and prevents wasted re-verification)", "N7 (fest_activities drift — lower priority, can wait for N5)" ] }
     ]
   }
 }
