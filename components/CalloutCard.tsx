@@ -19,18 +19,28 @@ import { formatDate, formatPhoneNational } from "@/lib/format";
  * "I did this" action that hides the card **permanently** for the viewer —
  * migration 0098, distinct from CalloutStack's swipe/✕, which only dismisses
  * it for the current session.
+ *
+ * `signupEnabled` gates the "📝 Sign up" button: a callout can be *linked* to
+ * any Family Fest activity just to borrow its photo/details (the picker was
+ * widened past migration 0137's signup-only list), so a linked `signupItemId`
+ * is NOT on its own enough — the button only makes sense when that activity
+ * actually takes sign-ups. The caller (which has the fest schedule in hand)
+ * resolves whether the linked activity is signup-enabled and passes it here.
  */
 export function CalloutCard({
   callout,
   onMarkDone,
   marking,
+  signupEnabled,
 }: {
   callout: HomeCallout;
   onMarkDone?: () => void;
   marking?: boolean;
+  signupEnabled?: boolean;
 }) {
   const { title, body, imageUrl, links, endsOn, signupItemId } = callout;
-  const hasText = Boolean(title?.trim() || body?.trim() || links.length > 0 || endsOn || signupItemId);
+  const showSignup = Boolean(signupItemId && signupEnabled);
+  const hasText = Boolean(title?.trim() || body?.trim() || links.length > 0 || endsOn || showSignup);
 
   return (
     <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border shadow-sm">
@@ -49,7 +59,7 @@ export function CalloutCard({
               {body}
             </p>
           )}
-          {signupItemId && (
+          {showSignup && (
             <Link
               href={`/family-fest/schedule/${signupItemId}`}
               data-callout-no-drag
@@ -61,7 +71,7 @@ export function CalloutCard({
             </Link>
           )}
           {links.length > 0 && (
-            <div className={`space-y-2 ${title?.trim() || body?.trim() || signupItemId ? "mt-2.5" : ""}`}>
+            <div className={`space-y-2 ${title?.trim() || body?.trim() || showSignup ? "mt-2.5" : ""}`}>
               {links.map((l, i) => {
                 const href = l.href.trim();
                 if (!href) return null;
