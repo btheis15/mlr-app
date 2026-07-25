@@ -58,7 +58,20 @@ interface Summary {
   at?: string;
   unread: number;
   muted: boolean;
+  /** Set only for a timed mute (null/undefined = permanent or not muted). */
+  mutedUntil?: string | null;
 }
+/** What the mute-duration sheet is currently muting — a committee channel or
+ *  the house chat, so one sheet + one set_*_mute call site covers both. */
+type MuteTarget = { kind: "committee"; committeeId: string; area: string | null } | { kind: "house"; houseId: string };
+/** "1 day" / "3 days" / "7 days" / "until I turn it back on" — a null hours
+ *  means permanent (no muted_until, mirrors the old toggle behavior). */
+const MUTE_DURATIONS: { label: string; hours: number | null }[] = [
+  { label: "1 day", hours: 24 },
+  { label: "3 days", hours: 72 },
+  { label: "7 days", hours: 168 },
+  { label: "Until I turn it back on", hours: null },
+];
 /** Who the ⋯ menu's "Email members" button would email — mirrors the same
  *  room the "who's in this chat" roster (`members`) is already showing. */
 type EmailTarget =
@@ -122,6 +135,9 @@ export function FeedView() {
   const [composeEmail, setComposeEmail] = useState(false);
   // Semantic search across every conversation this member can see.
   const [searchOpen, setSearchOpen] = useState(false);
+  // Mute-duration sheet — opened from the bell on either a committee channel
+  // or the house row; null while closed.
+  const [muteTarget, setMuteTarget] = useState<MuteTarget | null>(null);
 
   // Jump from a search result into the right conversation. We set the URL
   // params the chat/feed views already understand (?c/&area/&m for committees,
@@ -273,7 +289,7 @@ export function FeedView() {
                   .eq("committee_id", ch.committeeId)
                   .is("deleted_at", null),
               ).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-              sb.from("committee_area_reads").select("last_read_at, muted").eq("committee_id", ch.committeeId).eq("user_id", meId).eq("area", ch.area ?? "").maybeSingle(),
+              sb.from("committee_area_reads").select("last_read_at, muted, muted_until").eq("committee_id", ch.committeeId).eq("user_id", meId).eq("area", ch.area ?? "").maybeSingle(),
             ]);
             const lastRow = lastRes.data as {
               text: string | null;
@@ -281,7 +297,7 @@ export function FeedView() {
               profiles: { display_name: string | null } | null;
               committee_message_media: { media_type: string }[] | null;
             } | null;
-            const read = readRes.data as { last_read_at: string | null; muted: boolean | null } | null;
+            const read = readRes.data as { last_read_at: string | null; muted: boolean | null; muted_until: string | null } | null;
             let unreadQ = areaEq(
               sb.from("committee_messages").select("id", { count: "exact", head: true }).eq("committee_id", ch.committeeId).neq("author_id", meId).is("deleted_at", null),
             );
@@ -289,15 +305,17 @@ export function FeedView() {
             const { count } = await unreadQ;
             const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
             const body = lastRow?.text || (lastRow?.committee_message_media?.length ? mediaPreviewLabel(lastRow.committee_message_media[0].media_type) : "");
+            const timedActive = Boolean(read?.muted_until && new Date(read.muted_until).getTime() > Date.now());
             next[ch.key] = {
               last: lastRow ? who + body : undefined,
               at: lastRow?.created_at,
               unread: count ?? 0,
-              muted: read?.muted ?? false,
+              muted: (read?.muted ?? false) || timedActive,
+              mutedUntil: timedActive ? read!.muted_until : null,
             };
           }),
         );
-        // House channel summary (its own tables; no per-room mute).
+        // House channel summary (its own tables; timed/permanent mute on house_reads, 0155).
         if (houseCh) {
           const hid = houseCh.houseId;
           const [lastRes, readRes] = await Promise.all([
@@ -309,7 +327,7 @@ export function FeedView() {
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle(),
-            sb.from("house_reads").select("last_read_at").eq("house_id", hid).eq("user_id", meId).maybeSingle(),
+            sb.from("house_reads").select("last_read_at, muted, muted_until").eq("house_id", hid).eq("user_id", meId).maybeSingle(),
           ]);
           const lastRow = lastRes.data as {
             text: string | null;
@@ -317,17 +335,19 @@ export function FeedView() {
             profiles: { display_name: string | null } | null;
             house_message_media: { media_type: string }[] | null;
           } | null;
-          const read = readRes.data as { last_read_at: string | null } | null;
+          const read = readRes.data as { last_read_at: string | null; muted: boolean | null; muted_until: string | null } | null;
           let unreadQ = sb.from("house_messages").select("id", { count: "exact", head: true }).eq("house_id", hid).neq("author_id", meId).is("deleted_at", null);
           if (read?.last_read_at) unreadQ = unreadQ.gt("created_at", read.last_read_at);
           const { count } = await unreadQ;
           const who = lastRow?.profiles?.display_name ? `${lastRow.profiles.display_name}: ` : "";
           const body = lastRow?.text || (lastRow?.house_message_media?.length ? mediaPreviewLabel(lastRow.house_message_media[0].media_type) : "");
+          const timedActive = Boolean(read?.muted_until && new Date(read.muted_until).getTime() > Date.now());
           next[houseCh.key] = {
             last: lastRow ? who + body : undefined,
             at: lastRow?.created_at,
             unread: count ?? 0,
-            muted: false,
+            muted: (read?.muted ?? false) || timedActive,
+            mutedUntil: timedActive ? read!.muted_until : null,
           };
         }
         // Keep the cached snapshot's summaries current so a returning tab paints
@@ -567,12 +587,26 @@ export function FeedView() {
     setShowMembers(true);
   };
 
-  const toggleMute = async (ch: Channel) => {
+  // Tapping the bell: already muted → one-tap unmute. Not muted → open the
+  // duration sheet (1/3/7 days or "until I turn it back on").
+  const bellTapped = (key: string, target: MuteTarget) => {
+    if (summaries[key]?.muted) {
+      void applyMute(key, target, false, null);
+    } else {
+      setMuteTarget(target);
+    }
+  };
+
+  const applyMute = async (key: string, target: MuteTarget, muted: boolean, hours: number | null) => {
     const sb = supabase;
     if (!sb) return;
-    const nextMuted = !(summaries[ch.key]?.muted ?? false);
-    setSummaries((s) => ({ ...s, [ch.key]: { ...(s[ch.key] ?? { unread: 0, muted: false }), muted: nextMuted } }));
-    await sb.rpc("set_area_mute", { cid: ch.committeeId, p_area: ch.area, p_muted: nextMuted });
+    const mutedUntil = muted && hours != null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
+    setSummaries((s) => ({ ...s, [key]: { ...(s[key] ?? { unread: 0, muted: false }), muted, mutedUntil } }));
+    if (target.kind === "house") {
+      await sb.rpc("set_house_mute", { hid: target.houseId, p_muted: muted, p_muted_until: mutedUntil });
+    } else {
+      await sb.rpc("set_area_mute", { cid: target.committeeId, p_area: target.area, p_muted: muted, p_muted_until: mutedUntil });
+    }
   };
 
   // Opened via a house deep-link (from the House hub): wait for load so we drop
@@ -734,6 +768,7 @@ export function FeedView() {
             subtitle="Your house"
             summary={summaries[houseChannel.key]}
             onOpen={() => setActive(houseChannel.key)}
+            onToggleMute={() => bellTapped(houseChannel.key, { kind: "house", houseId: houseChannel.houseId })}
           />
         </ChatSection>
       )}
@@ -749,7 +784,7 @@ export function FeedView() {
                 subtitle={ch.subtitle}
                 summary={summaries[ch.key]}
                 onOpen={() => setActive(ch.key)}
-                onToggleMute={() => toggleMute(ch)}
+                onToggleMute={() => bellTapped(ch.key, { kind: "committee", committeeId: ch.committeeId, area: ch.area })}
               />
             </div>
           ))}
@@ -783,6 +818,20 @@ export function FeedView() {
           houseChannel={houseChannel}
           onOpenResult={openResult}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {muteTarget && (
+        <MuteDurationSheet
+          onPick={(hours) => {
+            const key =
+              muteTarget.kind === "house"
+                ? (houseChannel?.key ?? "")
+                : (channels.find((c) => c.committeeId === muteTarget.committeeId && (c.area ?? "") === (muteTarget.area ?? ""))?.key ?? "");
+            if (key) void applyMute(key, muteTarget, true, hours);
+            setMuteTarget(null);
+          }}
+          onClose={() => setMuteTarget(null)}
         />
       )}
     </div>
@@ -943,6 +992,41 @@ function ChatEmailSheet({ target, onClose }: { target: EmailTarget; onClose: () 
   );
 }
 
+/**
+ * "Mute for…" — the duration picker opened from a conversation row's bell
+ * (1/3/7 days, or indefinitely). Unmuting itself is a one-tap toggle on the
+ * bell (see bellTapped) and never opens this sheet.
+ */
+function MuteDurationSheet({ onPick, onClose }: { onPick: (hours: number | null) => void; onClose: () => void }) {
+  const { closing, close } = useSheetDismiss(onClose);
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="mute-duration-title"
+      header={
+        <h2 id="mute-duration-title" className="text-lg font-bold">
+          🔕 Mute this chat
+        </h2>
+      }
+    >
+      <ul className="space-y-2">
+        {MUTE_DURATIONS.map((d) => (
+          <li key={d.label}>
+            <button
+              type="button"
+              onClick={() => onPick(d.hours)}
+              className="press flex w-full items-center justify-between rounded-xl bg-card px-4 py-3 text-left text-sm font-medium ring-1 ring-border"
+            >
+              {d.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Sheet>
+  );
+}
+
 /** A rounded, ringed card that groups conversation rows (iOS inset-grouped look). */
 function ChatCard({ children }: { children: React.ReactNode }) {
   return <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border">{children}</div>;
@@ -981,7 +1065,11 @@ function ConversationRow({
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{title}</span>
-            {summary?.muted && <span aria-label="Muted">🔕</span>}
+            {summary?.muted && (
+              <span aria-label={summary.mutedUntil ? `Muted until ${formatWhen(summary.mutedUntil)}` : "Muted"} title={summary.mutedUntil ? `Muted until ${formatWhen(summary.mutedUntil)}` : "Muted"}>
+                🔕
+              </span>
+            )}
             <span className="ml-auto shrink-0 text-[11px] text-foreground/45">{when}</span>
           </span>
           <span className="flex items-center gap-2">

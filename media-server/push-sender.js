@@ -123,7 +123,7 @@ async function start() {
     const [committeeRes, mediaRes, muteRes] = await Promise.all([
       sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle(),
       sb.from("committee_message_media").select("media_type").eq("message_id", mid),
-      sb.from("committee_area_reads").select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "").eq("muted", true),
+      sb.from("committee_area_reads").select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "").or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`),
     ]);
     const committee = committeeRes.data;
     if (!committee) return;
@@ -188,9 +188,9 @@ async function start() {
 
   // Every new house message → a phone push, gated on the SAME push_types 'chat'
   // category as committee chat (so "chat push on" covers every chat the member is
-  // in). A house is a single room scoped to its members (profiles.house_id) — no
-  // area channels, no per-channel mute table — so this mirrors handleMessage
-  // above minus the committee role-channel/mute logic.
+  // in). A house is a single room scoped to its members (profiles.house_id),
+  // with its own per-member mute on house_reads (0155) mirroring the committee
+  // area mute above.
   const handleHouseMessage = async (mid) => {
     if (!once(`hm:${mid}`)) return;
     // Let any @mentions for this message land (they're inserted right after).
@@ -203,18 +203,20 @@ async function start() {
       .maybeSingle();
     if (!msg || msg.deleted_at) return;
 
-    const [houseRes, mediaRes, membersRes] = await Promise.all([
+    const [houseRes, mediaRes, membersRes, muteRes] = await Promise.all([
       sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle(),
       sb.from("house_message_media").select("media_type").eq("message_id", mid),
       sb.from("profiles").select("id, display_name, push_types, push_self_notify").eq("house_id", msg.house_id),
+      sb.from("house_reads").select("user_id").eq("house_id", msg.house_id).or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`),
     ]);
     const house = houseRes.data;
     if (!house) return;
 
-    // Recipients are this house's members (profiles.house_id) — minus the author.
+    // Recipients are this house's members (profiles.house_id) — minus the author + anyone muted.
     const members = membersRes.data || [];
     const memberIds = members.map((m) => m.id);
-    const others = memberIds.filter((id) => id !== msg.author_id);
+    const muted = new Set(((muteRes && muteRes.data) || []).map((m) => m.user_id));
+    const others = memberIds.filter((id) => id !== msg.author_id && !muted.has(id));
     const authorEligible = SELF_NOTIFY_IDS.has(msg.author_id);
     if (!others.length && !authorEligible) return;
 

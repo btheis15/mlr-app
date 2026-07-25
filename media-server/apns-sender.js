@@ -200,9 +200,10 @@ async function start() {
     const others = memberIds.filter((id) => id !== msg.author_id);
     if (!others.length) return;
 
-    // Skip anyone who muted this channel.
+    // Skip anyone who muted this channel (permanently or with a still-active timer).
     const { data: muteRows } = await sb.from("committee_area_reads")
-      .select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "").eq("muted", true);
+      .select("user_id").eq("committee_id", msg.committee_id).eq("area", msg.area || "")
+      .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`);
     const muted = new Set((muteRows || []).map((m) => m.user_id));
 
     const { data: profs } = await sb.from("profiles")
@@ -226,8 +227,8 @@ async function start() {
 
   // chat — every new house message (gated on the SAME push_types 'chat' category
   // as committee chat, so "chat push on" covers every chat the member is in). A
-  // house is a single room (no area channels, no mute table), scoped to its
-  // members via profiles.house_id. Mirrors handleMessage above, minus the split.
+  // house is a single room (no area channels), scoped to its members via
+  // profiles.house_id, with its own per-member mute on house_reads (0155).
   const handleHouseMessage = async (mid) => {
     if (!once(`hm:${mid}`)) return;
     await new Promise((r) => setTimeout(r, 500));
@@ -237,11 +238,15 @@ async function start() {
     const { data: house } = await sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle();
     if (!house) return;
 
-    // Recipients are this house's members (profiles.house_id) — minus the author.
+    // Recipients are this house's members (profiles.house_id) — minus the author + anyone muted.
     const { data: members } = await sb.from("profiles")
       .select("id, display_name, push_types").eq("house_id", msg.house_id);
+    const { data: muteRows } = await sb.from("house_reads")
+      .select("user_id").eq("house_id", msg.house_id)
+      .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`);
+    const muted = new Set((muteRows || []).map((m) => m.user_id));
     const memberIds = (members || []).map((m) => m.id);
-    const others = memberIds.filter((id) => id !== msg.author_id);
+    const others = memberIds.filter((id) => id !== msg.author_id && !muted.has(id));
     if (!others.length) return;
 
     const typesById = new Map();
