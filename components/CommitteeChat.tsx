@@ -419,6 +419,11 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     }
   };
 
+  // Deep-link target, read up here (rather than down by scrollToMessage/
+  // useDeepLinkFlash below) so the initial-load auto-scroll effect right below
+  // can see it and skip jumping to the bottom first — see that effect.
+  const focusMsgId = useUrlParam("m");
+
   // Smart auto-scroll: jump to the bottom on first load; SMOOTH-follow a new
   // message only when you're already at the bottom; if you've scrolled up to
   // read history, don't yank you — surface a tappable "new messages" pill.
@@ -429,14 +434,19 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     prevLenRef.current = messages.length;
     if (messages.length === 0) return;
     if (prev === 0) {
-      bottomRef.current?.scrollIntoView({ block: "end" }); // initial: jump
+      // Skip the initial jump-to-bottom when a message deep-link is pending —
+      // otherwise the room visibly jumps to the bottom and then a beat later
+      // smooth-scrolls back up to the target, reading as an extra "hop". The
+      // deep-link effect (useDeepLinkFlash) owns positioning in that case.
+      if (!focusMsgId) bottomRef.current?.scrollIntoView({ block: "end" });
+      else atBottomRef.current = false; // we're landing on an older message, not the bottom
       return;
     }
     if (messages.length > prev) {
       if (atBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
       else setShowJump(true);
     }
-  }, [messages.length]);
+  }, [messages.length, focusMsgId]);
 
   const jumpToBottom = () => {
     setShowJump(false);
@@ -718,7 +728,6 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   // later. useUrlParam re-arms this if a second deep-link (to a new message)
   // arrives while already in this room, since Next won't remount for a
   // same-route navigation.
-  const focusMsgId = useUrlParam("m");
   const flashMsgId = useDeepLinkFlash("cmsg-", focusMsgId, loaded);
 
   // Start a reply: show the reply banner and focus the composer so the keyboard

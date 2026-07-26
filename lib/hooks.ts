@@ -103,6 +103,14 @@ export function useUrlParam(name: string): string | null {
 export function useDeepLinkFlash(idPrefix: string, target: string | null, ready: boolean): string | null {
   const [flashId, setFlashId] = useState<string | null>(null);
   const handledRef = useRef<string | null>(null);
+  // The very FIRST deep-link landed on for a given mount snaps straight there
+  // (no animation) — the room/feed hasn't shown the viewer anything to scroll
+  // "from" yet, so an animated scroll here just reads as an extra visible hop
+  // on top of whatever load/transition already got them here. Once one has
+  // landed, a second deep-link arriving later (a new search/notification tap
+  // without a remount) DOES scroll smoothly, since that one's motion is the
+  // useful cue that the view actually moved.
+  const hasLandedRef = useRef(false);
   useEffect(() => {
     if (!target || !ready || typeof document === "undefined") return;
     if (handledRef.current === target) return;
@@ -113,7 +121,8 @@ export function useDeepLinkFlash(idPrefix: string, target: string | null, ready:
       const el = document.getElementById(`${idPrefix}${target}`);
       if (el) {
         handledRef.current = target;
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.scrollIntoView({ behavior: hasLandedRef.current ? "smooth" : "auto", block: "center" });
+        hasLandedRef.current = true;
         setFlashId(target);
         setTimeout(() => setFlashId((cur) => (cur === target ? null : cur)), 2200);
         return;
