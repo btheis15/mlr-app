@@ -18,20 +18,27 @@ function firstName(name: string): string {
 }
 
 /**
- * Members-only "who's up north today" strip. Presence is derived EXACTLY like
- * Ask for Help (lib/helpRequests.ts, widened from "am I present" to "who's
- * present" in lib/presence.ts): RSVP'd going to an event whose ±2-day window
- * covers today — day-aware (`days[today]`) on a real event day, lenient
- * ("going at all") on the grace shoulder — OR an approved cabin booking
- * covering today. Reads via `fetchEvents()`/`fetchAttendance()`
- * (lib/events.ts) — the same functions `useEvents()` itself calls — rather
- * than that hook, because the hook only exposes pre-grouped `summaries`
- * (going/maybe/not-going rolled up over an event's WHOLE run), which loses
- * the per-day `days` map this card needs for the "going today specifically"
- * check on a real event day. `today` comes from `useDemoDate()` — the same
- * "see the app as if it's this day" override Ask for Help honors, so a demo
- * date test also moves this card. Null for guests or when nobody's present /
- * the data isn't reachable.
+ * Members-only "who's up north today" strip. Presence is derived from
+ * lib/presence.ts's `presentFromAttendance` (a widened, WhosUpNorth-only cousin
+ * of Ask for Help's single-viewer `amIPresent`, lib/helpRequests.ts):
+ * RSVP'd going to an event whose ±2-day window covers today — day-aware
+ * (`days[today]`) on a REAL event day, and on the ±grace shoulder (arriving
+ * early / lingering after) widened around the PERSON'S OWN picked days rather
+ * than the event's whole run, so someone who only RSVP'd Tue–Thu isn't shown
+ * as already up north on the preceding Sunday just because the fest's overall
+ * window covers it — OR an approved cabin booking covering today. Reads via
+ * `fetchEvents()`/`fetchAttendance()` (lib/events.ts) — the same functions
+ * `useEvents()` itself calls — rather than that hook, because the hook only
+ * exposes pre-grouped `summaries` (going/maybe/not-going rolled up over an
+ * event's WHOLE run), which loses the per-day `days` map this card needs for
+ * the "going today specifically" check. `today` comes from `useDemoDate()` —
+ * the same "see the app as if it's this day" override Ask for Help honors, so
+ * a demo date test also moves this card. Null for guests or when nobody's
+ * present / the data isn't reachable.
+ *
+ * Wording is deliberately soft ("Up North today", not "right now") — this is
+ * derived from RSVPs/bookings, not live location, so it can't promise someone
+ * has actually arrived yet.
  *
  * Tapping the card opens a full roster sheet (`UpNorthSheet`) of everyone
  * shown here — same data, no extra fetch — and tapping a name there opens
@@ -75,7 +82,7 @@ export function WhosUpNorthCard() {
           🏕
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Up North right now</p>
+          <p className="text-sm font-semibold">Up North today</p>
           <div className="mt-1.5 flex items-center gap-2">
             <div className="flex shrink-0 -space-x-2">
               {shown.map((m) => (
@@ -127,10 +134,13 @@ function UpNorthSheet({
       labelledBy="up-north-title"
       header={
         <h2 id="up-north-title" className="text-lg font-bold">
-          🏕 Up North right now · {members.length}
+          🏕 Up North today · {members.length}
         </h2>
       }
     >
+      <p className="mb-3 text-xs text-foreground/50">
+        Based on who&rsquo;s RSVP&rsquo;d or booked for today — not their exact arrival time, so someone here may still be on their way.
+      </p>
       <ul className="space-y-1.5">
         {members.map((m) => (
           <li key={m.userId}>
