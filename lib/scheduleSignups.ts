@@ -279,7 +279,7 @@ export async function fetchScheduleSlots(kind: SignupKind, parentId: string): Pr
     .from(src.slots)
     .select("id, day, start_time, end_time, label, capacity, position")
     .eq(src.parentCol, parentId)
-    .order("position")
+    .order("day", { nullsFirst: true })
     .order("start_time");
   return ((data ?? []) as ScheduleSlotRow[]).map((r) => ({
     id: r.id,
