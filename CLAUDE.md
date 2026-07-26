@@ -529,6 +529,7 @@ media server**'s "Remote restart" — so most admins see 9:
 |---|---|---|
 | Members | `/admin/members` | [`AdminMembers`](components/AdminMembers.tsx) + [`AdminProfileOverride`](components/AdminProfileOverride.tsx) |
 | Alerts & Notifications | `/admin/alerts` | [`AdminBroadcastComposer`](components/AdminBroadcastComposer.tsx) (the merged "reach everyone" composer — see **Reach everyone**) + [`AdminCallouts`](components/AdminCallouts.tsx) (Home call-out cards — see **Home call-out stack**) |
+| Notification Test | `/admin/notification-test` | [`NotificationTestView`](components/NotificationTestView.tsx) — see **Test a member's notifications** |
 | Content review | `/admin/content-review` | [`AdminModeration`](components/AdminModeration.tsx) |
 | Committees & join requests | `/admin/committees` | [`AdminCommittees`](components/AdminCommittees.tsx) (also mounts the per-committee join-request queue) |
 | Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
@@ -1128,33 +1129,55 @@ exclude-not-attending targeting the main composer offers; a failure there
 surfaces as an error (blocking the sheet from closing) without undoing the
 already-saved callout, so the admin can just retry.
 
-### Test a member's notifications (migration 0156)
+### Test a member's notifications (migrations 0156-0157)
 
-A narrower tool sitting right next to "Reach everyone" in Admin → Alerts &
-Notifications: **[`AdminTestNotification`](components/AdminTestNotification.tsx)**
-lets an admin pick ONE specific member (reusing FestPlanner's
-[`MemberPickerSheet`](components/FestPlanner.tsx)/`fetchMemberOptions()` search
-rather than a duplicate list) and fire a single test notification at them —
-for "I'm not getting notifications" support requests, so an admin can check
-the pipeline for that one person without alerting anyone else. Nothing sends
-until the admin explicitly picks someone and taps send.
+Its own Admin dashboard card — **Notification Test** (`/admin/notification-test`,
+[`NotificationTestView`](components/NotificationTestView.tsx)) — with two related
+tools any app admin can use, no more nested inside Alerts & Notifications:
 
-- **Data model:** `send_test_notification(p_user, p_title, p_body)` (admin-gated
-  SECURITY DEFINER) inserts one `notifications` row of type **`admin_test`**
-  (client seam `sendTestNotification()` in [`lib/broadcast.ts`](lib/broadcast.ts)).
-  It bypasses `profiles.notif_types` entirely, same as `broadcast` (0030) — the
-  admin explicitly targeted this one person, so there's no preference to
-  check. `admin_test` is a `NotifType` ([`lib/types.ts`](lib/types.ts)) with its
-  own icon (🧪) in `NotificationsView`'s `TYPE_EMOJI` map, but **deliberately
-  absent from `NotifPrefs`** (which is a hand-authored row list, not derived
-  from the union) — same as `broadcast`, there's nothing to opt into.
-- **The phone push is an OVERRIDE**, exactly like `help_urgent`/`signup_reminder`
-  in both mini senders (`push-sender.js`/`apns-sender.js`'s `PUSHABLE_FEED_TYPES`/
-  `PUSHABLE` sets): anyone with phone push on (`push_types` non-empty) gets
-  buzzed regardless of their per-category picks. The point is testing whether
-  the push pipeline reaches that person's device at all, not respecting a
-  category preference — if push is fully off, they correctly get nothing,
-  which is itself useful diagnostic signal.
+- **Send a test to one member.** Pick ONE specific member (reusing FestPlanner's
+  [`MemberPickerSheet`](components/FestPlanner.tsx)/`fetchMemberOptions()` search
+  rather than a duplicate list) and fire a single test notification at them —
+  for "I'm not getting notifications" support requests, so an admin can check
+  the pipeline for that one person without alerting anyone else. Nothing sends
+  until the admin explicitly picks someone and taps send.
+  - **Data model:** `send_test_notification(p_user, p_title, p_body)` (migration
+    0156, admin-gated SECURITY DEFINER) inserts one `notifications` row of type
+    **`admin_test`** (client seam `sendTestNotification()` in
+    [`lib/notificationTest.ts`](lib/notificationTest.ts)). It bypasses
+    `profiles.notif_types` entirely, same as `broadcast` (0030) — the admin
+    explicitly targeted this one person, so there's no preference to check.
+    `admin_test` is a `NotifType` ([`lib/types.ts`](lib/types.ts)) with its own
+    icon (🧪) in `NotificationsView`'s `TYPE_EMOJI` map, but **deliberately
+    absent from `NotifPrefs`** (which is a hand-authored row list, not derived
+    from the union) — same as `broadcast`, there's nothing to opt into.
+  - **The phone push is an OVERRIDE**, exactly like `help_urgent`/`signup_reminder`
+    in both mini senders (`push-sender.js`/`apns-sender.js`'s `PUSHABLE_FEED_TYPES`/
+    `PUSHABLE` sets): anyone with phone push on (`push_types` non-empty) gets
+    buzzed regardless of their per-category picks. The point is testing whether
+    the push pipeline reaches that person's device at all, not respecting a
+    category preference — if push is fully off, they correctly get nothing,
+    which is itself useful diagnostic signal.
+- **"Notifications confirmed" checklist (migration 0157).** Below the sender, a
+  searchable list of every member with a checkbox: once an admin has actually
+  watched a test notification land on someone's phone, they check the box next
+  to that person's name — a lightweight, admin-visible record of who's been
+  verified. It's deliberately **not wired to the send tool above** (an admin can
+  check it off after a phone call just as well) and **not gated to whoever sent
+  the original ping** — any app admin can check/uncheck anyone.
+  - **Data model:** three plain columns on `profiles` —
+    `notifications_confirmed boolean`, `notifications_confirmed_at timestamptz`,
+    `notifications_confirmed_by uuid references profiles(id)` — flipped only by
+    `set_notification_test_confirmed(p_user, p_value)` (admin-gated SECURITY
+    DEFINER; stamps/clears the timestamp + who-confirmed together). Like
+    `is_admin`/`house_id`, these are deliberately **absent from any client
+    update grant** (`profiles`' blanket 0001 `revoke update ... from
+    authenticated` covers new columns by default), so the RPC is the only write
+    path. `fetchNotificationTestRoster()` in
+    [`lib/notificationTest.ts`](lib/notificationTest.ts) resolves the
+    "confirmed by" name from the same roster fetch (no second query) and
+    degrades to a plain, all-unconfirmed list pre-migration rather than
+    throwing.
 
 ### Event-targeted broadcasts (migration 0096)
 

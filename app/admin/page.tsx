@@ -26,6 +26,7 @@ const CARDS: {
   { href: "/admin/members", emoji: "🧑‍🤝‍🧑", tile: "bg-lake/12", title: "Members", sub: "Directory · promote admins · edit a member's info" },
   { href: "/admin/invite", emoji: "💌", tile: "bg-lake/12", title: "Invite people", sub: "Branded welcome email · signs them straight in" },
   { href: "/admin/alerts", emoji: "📣", tile: "bg-campfire/12", title: "Alerts & Notifications", sub: "Banner alerts + Activity notifications" },
+  { href: "/admin/notification-test", emoji: "🧪", tile: "bg-campfire/12", title: "Notification Test", sub: "Ping a member + check off who's confirmed" },
   { href: "/admin/content-review", emoji: "🛡️", tile: "bg-dusk/12", title: "Content review", sub: "Held & reported posts · blocked words" },
   { href: "/admin/committees", emoji: "👥", tile: "bg-sun/12", title: "Committees & join requests", sub: "Who's in each + pending requests" },
   { href: "/admin/houses", emoji: "🏠", tile: "bg-primary/12", title: "Houses", sub: "Create houses & assign members" },
