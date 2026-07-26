@@ -67,9 +67,20 @@ export function formatTime(input?: string): string {
  *  slot to decide, so it reads as "No specific time" rather than "TBD",
  *  which otherwise implies someone still needs to pin one down. A day-locked
  *  event with a missing time is the genuinely-still-pending case and keeps
- *  reading as "TBD". */
-export function formatEventTime(event: { anytime?: boolean; start?: string }): string {
-  if (!event.start || !event.start.trim()) return event.anytime ? "No specific time" : "TBD";
+ *  reading as "TBD". An anytime event with sign-up **time slots** turned on
+ *  (migration 0135/0136) does have specific times to pick from — they just
+ *  live in the sign-up card below, not on the event itself — so it reads as
+ *  "Specific time slots" instead, pointing at where those times actually are. */
+export function formatEventTime(event: {
+  anytime?: boolean;
+  start?: string;
+  signupEnabled?: boolean;
+  signupMode?: string | null;
+}): string {
+  if (!event.start || !event.start.trim()) {
+    if (!event.anytime) return "TBD";
+    return event.signupEnabled && event.signupMode !== "headcount" ? "Specific time slots" : "No specific time";
+  }
   return formatTime(event.start);
 }
 
