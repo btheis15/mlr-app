@@ -46,6 +46,89 @@ import type {
   ResortEvent,
 } from "@/lib/types";
 
+// One-time monkey-patch so client-side navigations (router.push/replace to
+// the SAME route, which Next doesn't remount for) are observable without
+// pulling in useSearchParams (that forces a Suspense boundary around the
+// whole page — see PostsView's original deep-link comment). Idempotent;
+// safe to call from every useUrlParam mount.
+let urlPatchInstalled = false;
+function ensureUrlChangePatched() {
+  if (urlPatchInstalled || typeof window === "undefined") return;
+  urlPatchInstalled = true;
+  const notify = () => window.dispatchEvent(new Event("mlr:locationchange"));
+  const wrap = (fn: History["pushState"]): History["pushState"] =>
+    function (this: History, ...args: Parameters<History["pushState"]>) {
+      const ret = fn.apply(this, args);
+      notify();
+      return ret;
+    };
+  history.pushState = wrap(history.pushState);
+  history.replaceState = wrap(history.replaceState);
+  window.addEventListener("popstate", notify);
+}
+
+/**
+ * Reactively read one query-string param off the CURRENT url. Unlike a
+ * one-shot `new URLSearchParams(window.location.search)` read in a mount
+ * effect, this updates whenever the url changes client-side — including a
+ * second `router.push()` to the same route (e.g. tapping a second Activity
+ * notification while already on /posts), which Next doesn't remount for.
+ * Returns null until the first client tick (hydration-safe) and whenever the
+ * param is absent.
+ */
+export function useUrlParam(name: string): string | null {
+  const [value, setValue] = useState<string | null>(null);
+  useEffect(() => {
+    ensureUrlChangePatched();
+    const read = () => setValue(new URLSearchParams(window.location.search).get(name));
+    read();
+    window.addEventListener("mlr:locationchange", read);
+    return () => window.removeEventListener("mlr:locationchange", read);
+  }, [name]);
+  return value;
+}
+
+/**
+ * Deep-link scroll-and-flash: once `target` (a query-param value, e.g. a post
+ * or message id) and `ready` (the real data load, NOT an unrelated "some
+ * local state settled" flag) are both set, poll for `#${idPrefix}${target}`
+ * until it exists in the DOM (up to ~3s) and scroll+flash it. Handles the
+ * common failure mode where the id shows up in the DOM a beat after `ready`
+ * flips (still rendering a long list, or the cold-open snapshot doesn't yet
+ * contain an older item that the full fetch hasn't landed for). Re-arms
+ * whenever `target` changes, so a second deep-link to a new id works even
+ * without a remount. Returns the currently-flashed id (or null) to drive a
+ * ring/highlight class.
+ */
+export function useDeepLinkFlash(idPrefix: string, target: string | null, ready: boolean): string | null {
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const handledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!target || !ready || typeof document === "undefined") return;
+    if (handledRef.current === target) return;
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`${idPrefix}${target}`);
+      if (el) {
+        handledRef.current = target;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setFlashId(target);
+        setTimeout(() => setFlashId((cur) => (cur === target ? null : cur)), 2200);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) setTimeout(tryScroll, 150); // ~3s of retries
+    };
+    tryScroll();
+    return () => {
+      cancelled = true;
+    };
+  }, [idPrefix, target, ready]);
+  return flashId;
+}
+
 /**
  * The dismiss pattern shared by every sheet/overlay: flip `closing` so the
  * panel plays its -close animation, then call `onClose` once it finishes;

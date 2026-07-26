@@ -168,7 +168,10 @@ async function start() {
       icon: ICON,
       badge: ICON,
       tag: `committee-${committee.slug}${msg.area ? "-" + msg.area : ""}`,
-      url: `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}`,
+      // &m=<message id> so tapping the push scrolls straight to THIS message
+      // (PostsView/CommitteeChat's deep-link handling), not just the room —
+      // mirrors the in-app chat_mention notification's url (migration 0063).
+      url: `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}&m=${msg.id}`,
     };
 
     // Notify the committee (minus the author) — plus the author themselves if
@@ -243,7 +246,8 @@ async function start() {
       icon: ICON,
       badge: ICON,
       tag: `house-${house.slug}`,
-      url: `${APP_URL}/posts?house=${house.slug}`,
+      // &m=<message id> — see the matching comment in handleCommitteeMessage.
+      url: `${APP_URL}/posts?house=${house.slug}&m=${msg.id}`,
     };
 
     const targets = others.slice();

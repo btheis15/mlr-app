@@ -218,7 +218,10 @@ async function start() {
     // Always name the channel (role area, or the General channel for area null),
     // so the push says which chat it's from — mirrors push-sender.js.
     const title = `${committee.emoji ? committee.emoji + " " : ""}${committee.name} — ${msg.area || "General"}`;
-    const url = `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}`;
+    // &m=<message id> so the web fallback (and any client reading `url`
+    // directly) scrolls straight to THIS message, not just the room —
+    // mirrors push-sender.js's web push for the same event.
+    const url = `${APP_URL}/posts?c=${committee.slug}${msg.area ? `&area=${encodeURIComponent(msg.area)}` : ""}&m=${msg.id}`;
     const payload = { title, body, url, type: "chat" };
     let sent = 0;
     for (const uid of others) if (!muted.has(uid) && (typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
@@ -264,8 +267,9 @@ async function start() {
     const body = msg.text && msg.text.trim() ? `${authorName}: ${msg.text.trim().slice(0, 140)}` : `${authorName} sent a message`;
     const title = `${house.emoji ? house.emoji + " " : ""}${house.name}`;
     // target_type/target_id let the phone deep-link straight to the house chat
-    // (RootView.resolveHouse resolves the house from the message id).
-    const payload = { title, body, url: `${APP_URL}/posts?house=${house.slug}`, type: "chat", target_type: "house_message", target_id: msg.id };
+    // (RootView.resolveHouse resolves the house from the message id); &m=
+    // on the url is the web fallback's equivalent (see push-sender.js).
+    const payload = { title, body, url: `${APP_URL}/posts?house=${house.slug}&m=${msg.id}`, type: "chat", target_type: "house_message", target_id: msg.id };
     let sent = 0;
     for (const uid of others) if ((typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
     if (sent) console.log(`[apns] house chat ${house.slug}: ${sent}`);

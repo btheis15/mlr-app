@@ -8,7 +8,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
 import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
-import { useMediaPicker, useDebouncedCallback, useSheetDismiss } from "@/lib/hooks";
+import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
@@ -207,26 +207,19 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   // The Lightbox owns its open/close animation; keying it by url remounts it
   // cleanly when you tap from one photo straight to another.
   const [lightbox, setLightbox] = useState<string | null>(null);
-  // Deep-link from the Notifications tab (/posts?post=<id>): once the feed has
-  // loaded, scroll that post into view and flash a ring around it. Reads the
-  // query off window.location in-effect (client-only) to avoid pulling in
-  // useSearchParams, which would force a Suspense boundary around this page.
-  const [flashId, setFlashId] = useState<string | null>(null);
+  // Deep-link from the Notifications tab (/posts?post=<id>): once the real
+  // feed data has loaded (feedLoaded — NOT the unrelated `loaded` flag above,
+  // which just tracks a localStorage read), scroll that post into view and
+  // flash a ring around it. useDeepLinkFlash polls for the DOM node (it may
+  // not exist yet — a trimmed cold-open snapshot or a slow first fetch can
+  // both land after this effect would otherwise have given up once) and
+  // useUrlParam re-arms if a second notification points at a new post while
+  // already on this page (Next doesn't remount for a same-route navigation).
+  const focusPostId = useUrlParam("post");
+  const flashId = useDeepLinkFlash("post-", focusPostId, feedLoaded);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [scheduleRefetch, cancelRefetch] = useDebouncedCallback(120);
-
-  useEffect(() => {
-    if (!loaded || typeof window === "undefined") return;
-    const focus = new URLSearchParams(window.location.search).get("post");
-    if (!focus) return;
-    const el = document.getElementById(`post-${focus}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setFlashId(focus);
-    const t = setTimeout(() => setFlashId(null), 2200);
-    return () => clearTimeout(t);
-  }, [loaded]);
 
   // ---- Shared feed from the database ----
   const refetch = async () => {
