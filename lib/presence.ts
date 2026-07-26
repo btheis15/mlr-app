@@ -13,6 +13,7 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { eligibleEvents, EVENT_PRESENCE_GRACE_DAYS } from "@/lib/helpRequests";
+import { addDays } from "@/lib/cabins";
 import { effectiveStatus, isOngoing } from "@/lib/events";
 import type { EventAttendance, ResortEvent } from "@/lib/types";
 
@@ -40,14 +41,27 @@ export function presentFromAttendance(
   for (const r of rows) {
     const ev = liveById.get(r.eventId);
     if (!ev) continue;
-    // Day-aware on a REAL event day for day-RSVP events; lenient ("going at
-    // all") on the ±grace shoulder, where there's no per-day answer to read.
+    // Day-aware on a REAL event day for day-RSVP events. On the ±grace shoulder
+    // (before the event starts / after it ends), a naive "going at all" check
+    // would show someone who only RSVP'd for, say, Tue–Thu as already up north
+    // on the preceding Sunday — because the EVENT's own window (widened by
+    // grace) covers Sunday, even though THIS PERSON isn't arriving that early.
+    // So on the shoulder we widen grace around the person's OWN picked days
+    // instead of the event's full run.
     const strict = ev.dayRsvp && isOngoing(ev, today);
-    const going = strict
-      ? r.days && Object.keys(r.days).length
-        ? r.days[today] === "going"
-        : effectiveStatus(r.status, r.days) === "going"
-      : effectiveStatus(r.status, r.days) === "going";
+    let going: boolean;
+    if (strict) {
+      going = r.days && Object.keys(r.days).length ? r.days[today] === "going" : effectiveStatus(r.status, r.days) === "going";
+    } else if (ev.dayRsvp && r.days && Object.keys(r.days).length) {
+      const goingDays = Object.keys(r.days)
+        .filter((d) => r.days![d] === "going")
+        .sort();
+      going = goingDays.length
+        ? addDays(goingDays[0], -grace) <= today && today <= addDays(goingDays[goingDays.length - 1], grace)
+        : false;
+    } else {
+      going = effectiveStatus(r.status, r.days) === "going";
+    }
     if (going) seen.set(r.userId, { userId: r.userId, name: r.name, avatarUrl: r.avatarUrl });
   }
   return Array.from(seen.values());
