@@ -53,16 +53,21 @@ export function helpType(key: string | null) {
   return HELP_TYPES.find((t) => t.key === key) ?? null;
 }
 
-/** Events whose ±grace window includes `today` (so the 4th-of-July Fri–Sun event
- *  is "live" Wed–Tue). The basis for who can ask for / receive help today. */
+/** Events whose grace window includes `today` (so the 4th-of-July Fri–Sun event
+ *  is "live" Wed–Tue with the default symmetric grace). The basis for who can
+ *  ask for / receive help today. `graceBefore`/`graceAfter` let a caller widen
+ *  the two sides independently — e.g. WhosUpNorthCard (lib/presence.ts) uses
+ *  graceBefore=0 since it can't assume anyone has arrived before the event
+ *  actually starts, only that they might still be lingering after. */
 export function eligibleEvents(
   events: ResortEvent[],
   today: string,
-  grace = EVENT_PRESENCE_GRACE_DAYS,
+  graceBefore: number = EVENT_PRESENCE_GRACE_DAYS,
+  graceAfter: number = graceBefore,
 ): ResortEvent[] {
   return events.filter((e) => {
-    const from = addDays(e.startDate, -grace);
-    const to = addDays(e.endDate || e.startDate, grace);
+    const from = addDays(e.startDate, -graceBefore);
+    const to = addDays(e.endDate || e.startDate, graceAfter);
     return from <= today && today <= to;
   });
 }

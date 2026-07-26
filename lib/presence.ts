@@ -5,11 +5,16 @@
 // viewer. Extracted here rather than duplicated so both features stay in sync
 // if the presence rule ever changes.
 //
-// Presence = RSVP'd "going" to an event whose window, widened by
-// ±EVENT_PRESENCE_GRACE_DAYS, covers today — day-aware (`days[today]`) on a
-// REAL event day for day-RSVP events, lenient ("going at all") on the ±grace
-// shoulder — OR an approved cabin booking covering today. See lib/helpRequests.ts
-// for the original (single-viewer) version of this rule.
+// Presence = RSVP'd "going" to an event that has ALREADY STARTED (no early-
+// arrival grace — we can't assume anyone's arrival time) and whose end is
+// widened by +EVENT_PRESENCE_GRACE_DAYS for lingering after — day-aware
+// (`days[today]`) on a REAL event day for day-RSVP events, and on the
+// lingering-after shoulder widened around the PERSON'S OWN last "going" day,
+// not the event's whole run — OR an approved cabin booking covering today.
+// See lib/helpRequests.ts for the original (single-viewer) version of this
+// rule, which DOES grace the "before" side too (arriving early to help set up
+// is a reasonable assumption there; showing someone as already "up north" on
+// a Home card before the event they're RSVP'd to has even started is not).
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { eligibleEvents, EVENT_PRESENCE_GRACE_DAYS } from "@/lib/helpRequests";
@@ -34,20 +39,22 @@ export function presentFromAttendance(
   today: string,
   grace: number = EVENT_PRESENCE_GRACE_DAYS,
 ): PresentMember[] {
-  const live = eligibleEvents(events, today, grace);
+  // graceBefore=0: an event that hasn't started yet is never "live" for this
+  // card, no matter how close — see the module note above.
+  const live = eligibleEvents(events, today, 0, grace);
   if (!live.length) return [];
   const liveById = new Map(live.map((e) => [e.id, e]));
   const seen = new Map<string, PresentMember>();
   for (const r of rows) {
     const ev = liveById.get(r.eventId);
     if (!ev) continue;
-    // Day-aware on a REAL event day for day-RSVP events. On the ±grace shoulder
-    // (before the event starts / after it ends), a naive "going at all" check
-    // would show someone who only RSVP'd for, say, Tue–Thu as already up north
-    // on the preceding Sunday — because the EVENT's own window (widened by
-    // grace) covers Sunday, even though THIS PERSON isn't arriving that early.
-    // So on the shoulder we widen grace around the person's OWN picked days
-    // instead of the event's full run.
+    // Day-aware on a REAL event day for day-RSVP events. On the lingering-
+    // after shoulder (event has ended, within `grace` days), a naive "going at
+    // all" check would show someone who only RSVP'd for, say, Sun–Tue as still
+    // up north through the following Friday — because the EVENT's own window
+    // (widened by grace) extends that far, even though THIS PERSON left after
+    // Tuesday. So on that shoulder we widen grace around the person's OWN last
+    // "going" day instead of the event's full run.
     const strict = ev.dayRsvp && isOngoing(ev, today);
     let going: boolean;
     if (strict) {
@@ -57,7 +64,7 @@ export function presentFromAttendance(
         .filter((d) => r.days![d] === "going")
         .sort();
       going = goingDays.length
-        ? addDays(goingDays[0], -grace) <= today && today <= addDays(goingDays[goingDays.length - 1], grace)
+        ? goingDays[0] <= today && today <= addDays(goingDays[goingDays.length - 1], grace)
         : false;
     } else {
       going = effectiveStatus(r.status, r.days) === "going";
