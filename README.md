@@ -188,6 +188,15 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   nested accordions that used to live in Profile → Admin (Profile itself is now
   flattened to just identity/settings + a link here for admins). Also links to
   the Family Fest Planner. See CLAUDE.md → **Admin dashboard**.
+- **Test a member's notifications** — in Admin → Alerts & Notifications, an
+  admin can pick one specific member and send them a single test notification
+  (Activity tab + an override phone push, regardless of that member's push
+  category picks) — for checking "I'm not getting notifications" reports
+  without alerting anyone else. Nothing sends until the admin explicitly picks
+  someone. Migration [`0156`](supabase/migrations/0156_admin_test_notification.sql),
+  seam `sendTestNotification()` in [`lib/broadcast.ts`](lib/broadcast.ts), UI
+  [`AdminTestNotification`](components/AdminTestNotification.tsx). See CLAUDE.md
+  → **Test a member's notifications**.
 - **Committees & roles are admin-managed** — admins create/rename/"delete"
   committees and the roles (chat channels) inside them from Admin → Committees
   ([`AdminCommittees`](components/AdminCommittees.tsx)); "delete" archives (chat

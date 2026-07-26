@@ -348,6 +348,11 @@ async function start() {
     // activity/game — only ever sent to the people involved, and only when the
     // organizer opted in. Off by default; opt into the push in Profile.
     "private_activity_invite",
+    // Admin test notification (migration 0156): an admin deliberately pinging
+    // ONE specific member to check their notifications are working. An
+    // OVERRIDE push (handled below) — the whole point is testing the push
+    // pipeline for that person, not respecting their per-category picks.
+    "admin_test",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
@@ -360,11 +365,12 @@ async function start() {
       .eq("id", n.recipient_id)
       .maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    if (n.type === "help_urgent" || n.type === "signup_reminder") {
+    if (n.type === "help_urgent" || n.type === "signup_reminder" || n.type === "admin_test") {
       // Override: buzz anyone whose phone push is ON (push_types non-empty = the
       // master switch is on). help_urgent is an emergency to everyone;
-      // signup_reminder goes only to people who chose to sign up for that slot,
-      // so per-category opt-in isn't required. Push OFF still gets nothing.
+      // signup_reminder goes only to people who chose to sign up for that slot;
+      // admin_test is an admin deliberately testing one member's notifications —
+      // none of these require per-category opt-in. Push OFF still gets nothing.
       if (pushTypes.length === 0) return;
     } else if (!pushTypes.includes(n.type)) {
       return;

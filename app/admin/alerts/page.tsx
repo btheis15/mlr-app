@@ -4,6 +4,7 @@ import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { AdminBroadcastComposer } from "@/components/AdminBroadcastComposer";
 import { AdminCallouts } from "@/components/AdminCallouts";
 import { AdminScheduledBroadcasts } from "@/components/AdminScheduledBroadcasts";
+import { AdminTestNotification } from "@/components/AdminTestNotification";
 
 export default function AdminAlertsPage() {
   return (
@@ -38,6 +39,17 @@ export default function AdminAlertsPage() {
           subtitle="Banner, Activity tab, and/or email — pick any combination."
         >
           <AdminBroadcastComposer />
+        </CollapsibleSection>
+
+        {/* At-will, single-member ping (migration 0156) — for checking one
+            person's notification settings without alerting anyone else.
+            Collapsed by default, same reasoning as "Reach everyone" above. */}
+        <CollapsibleSection
+          title="Test notifications"
+          icon="🧪"
+          subtitle="Ping one member to check their notification settings."
+        >
+          <AdminTestNotification />
         </CollapsibleSection>
 
         <div className="space-y-2">

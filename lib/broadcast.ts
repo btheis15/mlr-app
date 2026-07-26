@@ -106,3 +106,23 @@ export async function sendActivityNotification(
   if (error) return { error: error.message };
   return { count: typeof data === "number" ? data : 0 };
 }
+
+/** Ping ONE specific member with a test notification (Activity tab + phone
+ *  push, migration 0156) — for an admin checking that a member's own
+ *  notification settings are actually working. Bypasses notif_types (like a
+ *  broadcast) and rides an override push regardless of the recipient's
+ *  per-category picks, since the point is testing the pipeline itself. */
+export async function sendTestNotification(
+  userId: string,
+  title?: string,
+  body?: string,
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.rpc("send_test_notification", {
+    p_user: userId,
+    p_title: title?.trim() || null,
+    p_body: body?.trim() || null,
+  });
+  return error ? { error: error.message } : {};
+}
