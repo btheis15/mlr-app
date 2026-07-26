@@ -363,6 +363,11 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     }
   };
 
+  // Deep-link target, read up here (rather than down by scrollToMessage/
+  // useDeepLinkFlash below) so the initial-load auto-scroll effect right below
+  // can see it and skip jumping to the bottom first — see that effect.
+  const focusMsgId = useUrlParam("m");
+
   // Smart auto-scroll: jump to the bottom on first load; SMOOTH-follow a new
   // message only when you're already at the bottom; if you've scrolled up to
   // read history, don't yank you — surface a tappable "new messages" pill.
@@ -373,14 +378,19 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     prevLenRef.current = messages.length;
     if (messages.length === 0) return;
     if (prev === 0) {
-      bottomRef.current?.scrollIntoView({ block: "end" }); // initial: jump
+      // Skip the initial jump-to-bottom when a message deep-link is pending —
+      // otherwise the room visibly jumps to the bottom and then a beat later
+      // smooth-scrolls back up to the target, reading as an extra "hop". The
+      // deep-link effect (useDeepLinkFlash) owns positioning in that case.
+      if (!focusMsgId) bottomRef.current?.scrollIntoView({ block: "end" });
+      else atBottomRef.current = false; // we're landing on an older message, not the bottom
       return;
     }
     if (messages.length > prev) {
       if (atBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
       else setShowJump(true);
     }
-  }, [messages.length]);
+  }, [messages.length, focusMsgId]);
 
   const jumpToBottom = () => {
     setShowJump(false);
@@ -623,8 +633,8 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
   // Deep-link from the Notifications tab / conversation search (…?m=<id>):
   // see CommitteeChat's matching comment — polls for the DOM node (the
   // cold-open snapshot only holds the last CHAT_SNAPSHOT_MSGS messages) and
-  // re-arms on a second deep-link without needing a remount.
-  const focusMsgId = useUrlParam("m");
+  // re-arms on a second deep-link without needing a remount. (focusMsgId
+  // itself is read further up, before the auto-scroll effect.)
   const flashMsgId = useDeepLinkFlash("hmsg-", focusMsgId, loaded);
 
   const startReply = (m: Msg) => {
