@@ -1128,6 +1128,34 @@ exclude-not-attending targeting the main composer offers; a failure there
 surfaces as an error (blocking the sheet from closing) without undoing the
 already-saved callout, so the admin can just retry.
 
+### Test a member's notifications (migration 0156)
+
+A narrower tool sitting right next to "Reach everyone" in Admin → Alerts &
+Notifications: **[`AdminTestNotification`](components/AdminTestNotification.tsx)**
+lets an admin pick ONE specific member (reusing FestPlanner's
+[`MemberPickerSheet`](components/FestPlanner.tsx)/`fetchMemberOptions()` search
+rather than a duplicate list) and fire a single test notification at them —
+for "I'm not getting notifications" support requests, so an admin can check
+the pipeline for that one person without alerting anyone else. Nothing sends
+until the admin explicitly picks someone and taps send.
+
+- **Data model:** `send_test_notification(p_user, p_title, p_body)` (admin-gated
+  SECURITY DEFINER) inserts one `notifications` row of type **`admin_test`**
+  (client seam `sendTestNotification()` in [`lib/broadcast.ts`](lib/broadcast.ts)).
+  It bypasses `profiles.notif_types` entirely, same as `broadcast` (0030) — the
+  admin explicitly targeted this one person, so there's no preference to
+  check. `admin_test` is a `NotifType` ([`lib/types.ts`](lib/types.ts)) with its
+  own icon (🧪) in `NotificationsView`'s `TYPE_EMOJI` map, but **deliberately
+  absent from `NotifPrefs`** (which is a hand-authored row list, not derived
+  from the union) — same as `broadcast`, there's nothing to opt into.
+- **The phone push is an OVERRIDE**, exactly like `help_urgent`/`signup_reminder`
+  in both mini senders (`push-sender.js`/`apns-sender.js`'s `PUSHABLE_FEED_TYPES`/
+  `PUSHABLE` sets): anyone with phone push on (`push_types` non-empty) gets
+  buzzed regardless of their per-category picks. The point is testing whether
+  the push pipeline reaches that person's device at all, not respecting a
+  category preference — if push is fully off, they correctly get nothing,
+  which is itself useful diagnostic signal.
+
 ### Event-targeted broadcasts (migration 0096)
 
 All three admin broadcast tools under Admin → Alerts & Notifications — Home

@@ -44,6 +44,7 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   tournament_champion: "🥇",
   private_activity_invite: "🎉",
   broadcast: "📣",
+  admin_test: "🧪",
 };
 
 interface RawRow {

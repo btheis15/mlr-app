@@ -90,7 +90,8 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
 /** A kind of in-app notification shown in the Notifications tab (migration
  *  0030). Each kind is fanned out by a DB trigger on its source event; members
  *  choose which kinds they receive via `notif_types` (migration 0029) — all
- *  EXCEPT `broadcast`, which an admin sends deliberately and always delivers. */
+ *  EXCEPT `broadcast` and `admin_test` (migration 0156), which an admin sends
+ *  deliberately to a specific target and which always deliver. */
 export type NotifType =
   | "post_comment"
   | "post_reply"
@@ -120,7 +121,8 @@ export type NotifType =
   | "tournament_match_ready"
   | "tournament_champion"
   | "private_activity_invite"
-  | "broadcast";
+  | "broadcast"
+  | "admin_test";
 
 /** The member-selectable notification kinds (everything but `broadcast`), so
  *  the settings UI and the User.notifTypes preference stay in sync. */

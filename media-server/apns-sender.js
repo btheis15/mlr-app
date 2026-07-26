@@ -318,15 +318,17 @@ async function start() {
     "tournament_published", "tournament_match_ready", "tournament_champion",
     // Private activities (migration 0150) — invited to a private activity/game.
     "private_activity_invite",
+    // Admin test notification (migration 0156) — override push, like help_urgent.
+    "admin_test",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;
     if (!once(`notif:${n.id}`)) return;
     const { data: prof } = await sb.from("profiles").select("push_types").eq("id", n.recipient_id).maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    // help_urgent + signup_reminder override per-category picks (buzz anyone
-    // with push on) — see push-sender.js for the rationale.
-    if (n.type === "help_urgent" || n.type === "signup_reminder") { if (pushTypes.length === 0) return; }
+    // help_urgent + signup_reminder + admin_test override per-category picks
+    // (buzz anyone with push on) — see push-sender.js for the rationale.
+    if (n.type === "help_urgent" || n.type === "signup_reminder" || n.type === "admin_test") { if (pushTypes.length === 0) return; }
     else if (!pushTypes.includes(n.type)) return;
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
