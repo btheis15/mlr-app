@@ -195,6 +195,22 @@ export function FeedView() {
     return c ? `${c}|${params.get("area") ?? ""}` : null;
   });
   const [loaded, setLoaded] = useState(false);
+
+  // A ?post=<id> deep-link (Activity notification for a Main Feed post, an
+  // On-This-Day card, etc.) needs NONE of the house/committee data the load
+  // effect below fetches — PostsView mounts and loads its own feed
+  // independently. So flip straight to "posts" in a LAYOUT effect (runs
+  // synchronously after the initial hydration render but before the browser
+  // paints), instead of waiting for the async loadHouse()/loadChannels() to
+  // resolve like the mount effect below does. Without this, a member who IS
+  // in a house/committee (so the "no channels → straight to Family Feed"
+  // render branch below doesn't apply either) would see the plain Chats list
+  // for a beat before the deep link "hopped" them to the post — hydration-safe
+  // because the very first render still matches the SSR'd "list" HTML.
+  useIsoLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("post")) setActive("posts");
+  }, []);
   // Holds the latest computeSummaries so the "returning to list" effect below
   // (which lives outside the load effect's closure) can trigger a refresh.
   const computeSummariesRef = useRef<() => Promise<void>>(async () => {});
