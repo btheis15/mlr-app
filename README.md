@@ -182,20 +182,25 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`PrivateActivityComposer`](components/PrivateActivityComposer.tsx)/[`PrivateActivitySheet`](components/PrivateActivitySheet.tsx).
   See CLAUDE.md → **Private activities**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
-  Alerts & Notifications, Content review, Committees & join requests, Houses,
-  Cabin requests, Help contact, Sign-ins, and View as — each its own `/admin/*`
+  Alerts & Notifications, Notification Test, Content review, Committees & join
+  requests, Houses, Cabin requests, Help contact, Sign-ins, and View as — each
+  its own `/admin/*`
   sub-page behind [`AdminGuard`](app/admin/AdminGuard.tsx), replacing the ~9
   nested accordions that used to live in Profile → Admin (Profile itself is now
   flattened to just identity/settings + a link here for admins). Also links to
   the Family Fest Planner. See CLAUDE.md → **Admin dashboard**.
-- **Test a member's notifications** — in Admin → Alerts & Notifications, an
-  admin can pick one specific member and send them a single test notification
-  (Activity tab + an override phone push, regardless of that member's push
-  category picks) — for checking "I'm not getting notifications" reports
-  without alerting anyone else. Nothing sends until the admin explicitly picks
-  someone. Migration [`0156`](supabase/migrations/0156_admin_test_notification.sql),
-  seam `sendTestNotification()` in [`lib/broadcast.ts`](lib/broadcast.ts), UI
-  [`AdminTestNotification`](components/AdminTestNotification.tsx). See CLAUDE.md
+- **Notification Test** — its own Admin dashboard card (`/admin/notification-test`):
+  any admin can pick one specific member and send them a single test
+  notification (Activity tab + an override phone push, regardless of that
+  member's push category picks) — for checking "I'm not getting
+  notifications" reports without alerting anyone else. Nothing sends until
+  the admin explicitly picks someone. Below it, a searchable checklist of
+  every member with a **"Notifications confirmed"** checkbox — once an admin
+  has actually watched it arrive on someone's phone, they check them off (not
+  wired to the send tool, and any admin can check anyone). Migrations
+  [`0156`](supabase/migrations/0156_admin_test_notification.sql)/[`0157`](supabase/migrations/0157_notification_test_confirmed.sql),
+  seam [`lib/notificationTest.ts`](lib/notificationTest.ts), UI
+  [`NotificationTestView`](components/NotificationTestView.tsx). See CLAUDE.md
   → **Test a member's notifications**.
 - **Committees & roles are admin-managed** — admins create/rename/"delete"
   committees and the roles (chat channels) inside them from Admin → Committees
