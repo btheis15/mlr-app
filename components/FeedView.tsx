@@ -21,7 +21,7 @@ import { MeetingComposer } from "@/components/MeetingComposer";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
 import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
 import { fetchCommitteeRecipients, fetchHouseRecipients, type RecipientResult } from "@/lib/emailBlast";
-import { useSheetDismiss } from "@/lib/hooks";
+import { useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { useRouter } from "next/navigation";
 
@@ -184,6 +184,16 @@ export function FeedView() {
   const [bootHouseSlug] = useState<string | null>(() =>
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("house") : null
   );
+  // Same idea for a committee/area deep-link (?c=slug&area=) — without this,
+  // a cold mount briefly renders the plain Chats list (or Main Feed) before
+  // the channels fetch resolves and `setActive` jumps to the right room,
+  // which reads as an extra visible "hop" even when the deep link works.
+  const [bootChannelKey] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("c");
+    return c ? `${c}|${params.get("area") ?? ""}` : null;
+  });
   const [loaded, setLoaded] = useState(false);
   // Holds the latest computeSummaries so the "returning to list" effect below
   // (which lives outside the load effect's closure) can trigger a refresh.
@@ -454,7 +464,11 @@ export function FeedView() {
         setActive("posts");
       } else if (wantSlug) {
         const key = `${wantSlug}|${wantArea}`;
-        if (mine.some((c) => c.key === key)) setActive(key);
+        // Fall back to the archived list too — a deep-linked committee/role
+        // may have been archived (0112) since the notification was sent;
+        // it's still reachable read-only, so don't silently strand the user
+        // on the plain Chats list with no explanation.
+        if (mine.some((c) => c.key === key) || archivedRef.current.some((c) => c.key === key)) setActive(key);
       } else if (wantHouse && hc && hc.slug === wantHouse) {
         openedFromHouseRef.current = true;
         setActive(hc.key);
@@ -478,6 +492,34 @@ export function FeedView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, previewAsId, authReady]);
+
+  // Re-resolve a ?post=/?c=&area=/?house= deep-link whenever the URL changes,
+  // not just at mount. The load effect above only reads window.location.search
+  // once (inside its startup IIFE) — a SECOND Activity-tab notification tapped
+  // while already on this route doesn't remount FeedView (same page, same
+  // component), so without this, the second tap silently does nothing and
+  // just leaves you wherever the first deep-link (or the plain list) landed.
+  const urlPost = useUrlParam("post");
+  const urlC = useUrlParam("c");
+  const urlArea = useUrlParam("area");
+  const urlHouse = useUrlParam("house");
+  const lastUrlSigRef = useRef<string>("");
+  useEffect(() => {
+    if (!loaded) return;
+    const sig = `${urlPost ?? ""}|${urlC ?? ""}|${urlArea ?? ""}|${urlHouse ?? ""}`;
+    if (!urlPost && !urlC && !urlHouse) return;
+    if (lastUrlSigRef.current === sig) return;
+    lastUrlSigRef.current = sig;
+    if (urlPost) {
+      setActive("posts");
+    } else if (urlC) {
+      const key = `${urlC}|${urlArea ?? ""}`;
+      if (channels.some((c) => c.key === key) || archivedChannels.some((c) => c.key === key)) setActive(key);
+    } else if (urlHouse && houseChannel && houseChannel.slug === urlHouse) {
+      openedFromHouseRef.current = true;
+      setActive(houseChannel.key);
+    }
+  }, [urlPost, urlC, urlArea, urlHouse, loaded, channels, archivedChannels, houseChannel]);
 
   // Recompute summaries when returning to the list: otherwise a room's unread
   // badge only clears on the next message INSERT, so it stays lit after you've
@@ -614,7 +656,7 @@ export function FeedView() {
   // Exception: the snapshot fast path above may have already opened the house
   // chat — then there's nothing to hide, so skip the gate and render it now.
   const fastPathOpen = houseChannel !== null && active === houseChannel.key;
-  if (bootHouseSlug && !loaded && !fastPathOpen) {
+  if ((bootHouseSlug || bootChannelKey) && !loaded && !fastPathOpen) {
     return (
       <div className="flex h-[50dvh] items-center justify-center text-sm text-foreground/40">Loading…</div>
     );

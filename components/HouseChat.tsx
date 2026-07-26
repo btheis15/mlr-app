@@ -14,7 +14,7 @@ import { closeChatPoll, deleteChatPoll, setChatPollVotes, useChatPolls, type Cha
 import { StickerArt } from "@/components/Stickers";
 import { uploadToMini, compressImage } from "@/lib/media";
 import { motion } from "framer-motion";
-import { useDebouncedCallback, useTypingChannel } from "@/lib/hooks";
+import { useDebouncedCallback, useTypingChannel, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Lightbox } from "@/components/Lightbox";
@@ -620,14 +620,12 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     document.getElementById(`hmsg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  useEffect(() => {
-    if (!loaded || typeof window === "undefined") return;
-    const focus = new URLSearchParams(window.location.search).get("m");
-    if (!focus) return;
-    const t = setTimeout(() => scrollToMessage(focus), 200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+  // Deep-link from the Notifications tab / conversation search (…?m=<id>):
+  // see CommitteeChat's matching comment — polls for the DOM node (the
+  // cold-open snapshot only holds the last CHAT_SNAPSHOT_MSGS messages) and
+  // re-arms on a second deep-link without needing a remount.
+  const focusMsgId = useUrlParam("m");
+  const flashMsgId = useDeepLinkFlash("hmsg-", focusMsgId, loaded);
 
   const startReply = (m: Msg) => {
     setReplyTo(m);
@@ -764,6 +762,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
                     reply={msgById.get(m.replyToId ?? "")}
                     members={members}
                     reacting={reactingId === m.id}
+                    flash={flashMsgId === m.id}
                     onOpenReact={() => setReactingId((cur) => (cur === m.id ? null : m.id))}
                     onReact={(e) => react(m.id, e)}
                     onReply={() => startReply(m)}
@@ -1015,11 +1014,11 @@ function MessageText({ text, mentions, members }: { text: string; mentions: stri
 }
 
 function MessageRow({
-  m, mine, grouped, uid, canDelete, canEdit, reply, members, reacting,
+  m, mine, grouped, uid, canDelete, canEdit, reply, members, reacting, flash,
   onOpenReact, onReact, onReply, onEdit, onDelete, onOpenMember, onOpenPhoto, onJumpToReply,
 }: {
   m: Msg; mine: boolean; grouped: boolean; uid: string | null; canDelete: boolean; canEdit: boolean;
-  reply?: Msg; members: Member[]; reacting: boolean;
+  reply?: Msg; members: Member[]; reacting: boolean; flash?: boolean;
   onOpenReact: () => void; onReact: (emoji: string) => void; onReply: () => void; onEdit: () => void; onDelete: () => void;
   onOpenMember: (m: Member) => void; onOpenPhoto: (url: string) => void; onJumpToReply: (id: string) => void;
 }) {
@@ -1061,7 +1060,7 @@ function MessageRow({
     return (
       <div id={`hmsg-${m.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
         {!mine && <div className="mr-1.5 w-7 shrink-0" aria-hidden />}
-        <div className="max-w-[78%] rounded-2xl bg-card px-3 py-2 text-sm italic text-faint ring-1 ring-border">
+        <div className={`max-w-[78%] rounded-2xl bg-card px-3 py-2 text-sm italic text-faint transition-shadow ${flash ? "ring-2 ring-primary" : "ring-1 ring-border"}`}>
           🚫 message deleted
         </div>
       </div>
@@ -1081,7 +1080,7 @@ function MessageRow({
       )}
 
       <div
-        className="relative max-w-[78%]"
+        className={`relative max-w-[78%] rounded-2xl transition-shadow ${flash ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
