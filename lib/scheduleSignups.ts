@@ -273,12 +273,15 @@ export async function removeScheduleSignup(kind: SignupKind, signupId: string): 
  *  up in ONE slot — a manual, immediate send, distinct from the fully
  *  automatic pre-configured `signup_reminder_minutes` cron (0140). `minutes`
  *  is descriptive only (e.g. 60 -> "starts in 1 hour" in the notification
- *  body); pass null/omit for a plain "is coming up" instead. Gated server-side
- *  to the item's creator predicate (can_edit_fest() OR its lead/crew). */
+ *  body); pass null/omit for a plain "is coming up" instead. Pass `email:
+ *  true` to also queue a group email for anyone signed up with a linked
+ *  account (migration 0159; sent by the mini's alert-mailer, not inline).
+ *  Gated server-side to the item's creator predicate (can_edit_fest() OR its
+ *  lead/crew). */
 export async function sendSlotReminderNow(
   kind: SignupKind,
   parentId: string,
-  opts: { slotId?: string | null; slotStart?: string | null; minutes?: number | null },
+  opts: { slotId?: string | null; slotStart?: string | null; minutes?: number | null; email?: boolean },
 ): Promise<{ error?: string; count?: number }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -288,6 +291,7 @@ export async function sendSlotReminderNow(
     p_slot_id: opts.slotId ?? null,
     p_slot_start: opts.slotId ? null : opts.slotStart ?? null,
     p_minutes: opts.minutes ?? null,
+    p_email: opts.email ?? false,
   });
   return error ? { error: error.message } : { count: (data as number | null) ?? 0 };
 }

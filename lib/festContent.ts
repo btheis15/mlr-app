@@ -168,6 +168,7 @@ interface ScheduleRow {
   signup_instructions: string | null;
   signup_fields: SignupField[] | null;
   signup_reminder_minutes: number[] | null;
+  signup_reminder_email: boolean | null;
   signup_team_size: number | null;
   tournament_enabled: boolean;
 }
@@ -217,6 +218,7 @@ interface ActivityRow {
   signup_instructions: string | null;
   signup_fields: SignupField[] | null;
   signup_reminder_minutes: number[] | null;
+  signup_reminder_email: boolean | null;
 }
 interface CalloutRow {
   id: string;
@@ -274,6 +276,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupReminderEmail: r.signup_reminder_email ?? false,
     signupTeamSize: r.signup_team_size,
     tournamentEnabled: r.tournament_enabled ?? false,
   };
@@ -327,6 +330,7 @@ function mapActivity(r: ActivityRow): FestActivity {
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupReminderEmail: r.signup_reminder_email ?? false,
   };
 }
 function mapCallout(r: CalloutRow): HomeCallout {
@@ -360,7 +364,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size, tournament_enabled",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -376,7 +380,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
       sb
         .from("fest_activities")
-        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes")
+        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email")
         .eq("fest_year", FEST_YEAR)
         .order("position"),
       sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
@@ -501,6 +505,7 @@ export interface ScheduleInput {
   signupInstructions: string | null;
   signupFields: SignupField[];
   signupReminderMinutes: number[];
+  signupReminderEmail: boolean;
   signupTeamSize: number | null;
   tournamentEnabled: boolean;
 }
@@ -532,6 +537,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_instructions: i.signupInstructions,
     signup_fields: i.signupFields,
     signup_reminder_minutes: i.signupReminderMinutes,
+    signup_reminder_email: i.signupReminderEmail,
     signup_team_size: i.signupTeamSize,
     tournament_enabled: i.tournamentEnabled,
   });
@@ -699,6 +705,7 @@ export interface ActivityInput {
   signupInstructions: string | null;
   signupFields: SignupField[];
   signupReminderMinutes: number[];
+  signupReminderEmail: boolean;
 }
 export const saveActivity = (i: ActivityInput) =>
   writeRow("fest_activities", i.id, {
@@ -721,6 +728,7 @@ export const saveActivity = (i: ActivityInput) =>
     signup_instructions: i.signupInstructions,
     signup_fields: i.signupFields,
     signup_reminder_minutes: i.signupReminderMinutes,
+    signup_reminder_email: i.signupReminderEmail,
   });
 export const deleteActivity = (id: string) => deleteRow("fest_activities", id);
 
@@ -866,7 +874,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_team_size, tournament_enabled",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -899,6 +907,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupReminderEmail: r.signup_reminder_email ?? false,
     signupTeamSize: r.signup_team_size,
     tournamentEnabled: r.tournament_enabled ?? false,
   }));
@@ -978,7 +987,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   if (!isSupabaseConfigured || !sb) return [];
   const { data } = await sb
     .from("fest_activities")
-    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, position")
+    .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, position")
     .eq("fest_year", FEST_YEAR)
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
@@ -1002,6 +1011,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
     signupInstructions: r.signup_instructions,
     signupFields: r.signup_fields ?? [],
     signupReminderMinutes: r.signup_reminder_minutes ?? [],
+    signupReminderEmail: r.signup_reminder_email ?? false,
   }));
 }
 

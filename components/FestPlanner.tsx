@@ -763,6 +763,9 @@ export interface SignupDraft {
   instructions: string;
   fields: SignupField[];
   reminderMinutes: number[];
+  /** Also email everyone signed up, alongside the push/in-app reminder above
+   *  (migration 0159). Off by default. */
+  reminderEmail: boolean;
   /** Blank/"1" = individual. "2"+ = sign up in fixed-size teams (migration
    *  0143) — applies in any mode. */
   teamSize: string;
@@ -779,6 +782,7 @@ export function signupDraft(src?: {
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
   signupReminderMinutes?: number[] | null;
+  signupReminderEmail?: boolean | null;
   signupTeamSize?: number | null;
 }): SignupDraft {
   return {
@@ -791,6 +795,7 @@ export function signupDraft(src?: {
     instructions: src?.signupInstructions ?? "",
     fields: src?.signupFields ?? [],
     reminderMinutes: src?.signupReminderMinutes ?? [],
+    reminderEmail: src?.signupReminderEmail ?? false,
     teamSize: src?.signupTeamSize && src.signupTeamSize > 1 ? String(src.signupTeamSize) : "",
   };
 }
@@ -827,6 +832,7 @@ export function signupPayload(v: SignupDraft) {
     signupInstructions: v.enabled ? orNull(v.instructions) : null,
     signupFields: v.enabled ? v.fields.map((f) => ({ id: f.id, label: f.label.trim() })).filter((f) => f.label) : [],
     signupReminderMinutes: v.enabled ? [...v.reminderMinutes].sort((a, b) => b - a) : [],
+    signupReminderEmail: v.enabled && v.reminderMinutes.length > 0 ? v.reminderEmail : false,
     signupTeamSize: v.enabled && v.teamSize.trim() ? Number(v.teamSize) : null,
   };
 }
@@ -846,6 +852,7 @@ export function activitySignupPayload(v: SignupDraft) {
     signupInstructions: p.signupInstructions,
     signupFields: p.signupFields,
     signupReminderMinutes: p.signupReminderMinutes,
+    signupReminderEmail: p.signupReminderEmail,
   };
 }
 
@@ -1252,6 +1259,17 @@ function SignupConfigEditor({
               Everyone signed up gets a push that long before their slot starts. Add as many as you like. Only
               fires for slots that have a set date &amp; time.
             </p>
+            {value.reminderMinutes.length > 0 && (
+              <label className="mt-2 flex items-center gap-2 text-xs text-foreground/70">
+                <input
+                  type="checkbox"
+                  checked={value.reminderEmail}
+                  onChange={(e) => set({ reminderEmail: e.target.checked })}
+                  className="h-4 w-4 rounded border-border text-primary"
+                />
+                Also email everyone signed up
+              </label>
+            )}
           </div>
           )}
         </div>

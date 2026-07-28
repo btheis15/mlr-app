@@ -175,8 +175,13 @@ export function ScheduleSignupSlots({
             onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(kind, id))}
             onNotify={
               canManage
-                ? (minutes) =>
-                    sendSlotReminderNow(kind, target.id, { slotId: view.slotId, slotStart: view.slotId ? null : view.slotStart, minutes })
+                ? (minutes, email) =>
+                    sendSlotReminderNow(kind, target.id, {
+                      slotId: view.slotId,
+                      slotStart: view.slotId ? null : view.slotStart,
+                      minutes,
+                      email,
+                    })
                 : undefined
             }
             requireSignIn={promptSignIn}
@@ -340,15 +345,16 @@ function SlotCard({
   onAdd: (payload: { forUserId?: string; name: string; fields: Record<string, string> }) => Promise<boolean>;
   onAddTeam: (payload: { teamName: string; members: TeamMemberInput[] }) => Promise<boolean>;
   onRemove: (id: string) => void;
-  /** Manual "your time is soon" send for this one slot (migration 0158) —
+  /** Manual "your time is soon" send for this one slot (migration 0158/0159) —
    *  undefined when the viewer can't manage this item's sign-ups. */
-  onNotify?: (minutes: number | null) => Promise<{ error?: string; count?: number }>;
+  onNotify?: (minutes: number | null, email: boolean) => Promise<{ error?: string; count?: number }>;
   requireSignIn: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyResult, setNotifyResult] = useState<string | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState(false);
   const full = isFull(signups.length, view.capacity);
   const spotsLeft = view.capacity != null ? view.capacity - signups.length : Infinity;
   const roomForTeam = spotsLeft >= teamSize;
@@ -401,7 +407,7 @@ function SlotCard({
                     onClick={async () => {
                       setNotifyBusy(true);
                       setNotifyResult(null);
-                      const { error, count } = await onNotify(m);
+                      const { error, count } = await onNotify(m, notifyEmail);
                       setNotifyBusy(false);
                       setNotifyResult(error ? error : `✓ Sent to ${count} ${count === 1 ? "person" : "people"}`);
                       if (!error) setTimeout(() => setNotifyOpen(false), 1500);
@@ -419,6 +425,15 @@ function SlotCard({
                   Cancel
                 </button>
               </div>
+              <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-foreground/60">
+                <input
+                  type="checkbox"
+                  checked={notifyEmail}
+                  onChange={(e) => setNotifyEmail(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-border text-accent"
+                />
+                Also email anyone signed up with an account
+              </label>
               {notifyResult && <p className="mt-1.5 text-[11px] font-medium text-accent">{notifyResult}</p>}
             </div>
           )}

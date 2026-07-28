@@ -472,6 +472,55 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     }
   }
 
+  // Email everyone signed up (with a linked account) for a fest sign-up slot,
+  // for one queued (item, slot, lead-time) reminder firing — either from the
+  // automatic pg_cron run_signup_reminders() (migration 0140, opted into email
+  // via signup_reminder_email) or the manual "notify this slot" send (0158),
+  // when its "also email" box was checked. Rows are queued into
+  // fest_reminder_emails by SQL (migration 0159); this claims + sends one.
+  async function handleSignupReminderEmail(row) {
+    if (!row || row.sent_at) return;
+    const { data: claimed } = await sb
+      .from("fest_reminder_emails")
+      .update({ sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("signup_reminder_email_recipients", { p_row: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] signup_reminder_email_recipients error:", error ? error.message : "no data");
+      await sb.from("fest_reminder_emails").update({ sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (d.emails || []).filter(Boolean);
+    if (emails.length === 0) {
+      console.log(`[mailer] signup reminder ${row.id}: no linked recipients to email`);
+      return;
+    }
+    const lead = d.lead_minutes && d.lead_minutes > 0
+      ? (d.lead_minutes % 60 === 0 ? `${d.lead_minutes / 60} hour${d.lead_minutes === 60 ? "" : "s"}` : `${d.lead_minutes} minutes`)
+      : null;
+    const appLink = `${APP_URL}${d.url || ""}`;
+    const subject = `⏰ Reminder: ${d.item_title}`;
+    const text = `Your ${d.item_title} time slot ${lead ? `starts in ${lead}` : "is coming up"}.\n\nOpen the app: ${appLink}\n\n— Muskellunge Lake Resort`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
+<p style="font-size:18px;margin:0 0 12px"><strong>⏰ Your ${escapeHtml(d.item_title)} time slot ${lead ? `starts in ${escapeHtml(lead)}` : "is coming up"}</strong></p>
+<p style="margin:16px 0 0"><a href="${appLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Open the app →</a></p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">You're getting this because you signed up for this Family Fest time slot.</p>
+</div>`;
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: emails, subject, text, html });
+      console.log(`[mailer] signup reminder ${row.id} emailed to ${emails.length} member(s)`);
+    } catch (e) {
+      console.error("[mailer] signup reminder send failed:", e && e.message);
+      await sb.from("fest_reminder_emails").update({ sent_at: null }).eq("id", row.id); // retry
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -540,6 +589,14 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .order("created_at", { ascending: false })
       .limit(10);
     for (const row of cabinMsgPending || []) await handleCabinMessage(row);
+
+    const { data: signupReminderPending } = await sb
+      .from("fest_reminder_emails")
+      .select("id, kind, item_id, slot_id, slot_start, lead_minutes, sent_at, created_at")
+      .is("sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of signupReminderPending || []) await handleSignupReminderEmail(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -570,6 +627,9 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_messages" }, (payload) => {
         handleCabinMessage(payload.new).catch((e) => console.error("[mailer] cabin message handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "fest_reminder_emails" }, (payload) => {
+        handleSignupReminderEmail(payload.new).catch((e) => console.error("[mailer] signup reminder handle error:", e && e.message));
       })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);
