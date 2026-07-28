@@ -2173,6 +2173,21 @@ adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
 of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
 without them.
 
+**Realtime reconnect hardening.** `push-sender.js` and `apns-sender.js`
+(the APNs counterpart) each ran a single `.subscribe()` with no recovery —
+the same silent-drop failure mode documented in **Cabin stays**' "Mailer
+reliability" (`alert-mailer.js`'s Supabase Realtime channel can go
+`CHANNEL_ERROR`/`TIMED_OUT`/`CLOSED` with no built-in reconnect). The mailer
+was hardened for this; the two push senders were not, so a dropped channel
+meant **every push silently stopped** — chat, alerts, feed-mirrored
+notifications, all of it — until someone noticed and restarted the mini,
+with nothing in the logs pointing at why (posts/comments/etc. still work
+fine, since those are plain Supabase writes from the browser that never
+touch the mini). Both senders now resubscribe 5s after a dropped channel,
+matching `alert-mailer.js`'s pattern (there's no per-push "unsent row" to
+sweep as a backstop the way email has, so reconnect-on-drop is the whole
+fix here, not just the fast path).
+
 **In-app Notifications (the Activity tab).** A durable, Facebook-style feed of
 everything that happened involving you — comments & reactions on your posts,
 @mentions in posts/comments, @mentions in committee chat, new Feed posts,
