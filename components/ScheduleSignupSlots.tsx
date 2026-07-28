@@ -45,11 +45,11 @@ function capacityLabel(count: number, capacity: number | null): string {
  *  here since it's a small, self-contained list and the two pickers serve
  *  different actions (configure-ahead vs send-now). */
 const NOTIFY_LEAD_CHOICES: { m: number | null; label: string }[] = [
-  { m: 15, label: "15 min" },
-  { m: 30, label: "30 min" },
-  { m: 60, label: "1 hour" },
-  { m: 120, label: "2 hours" },
-  { m: null, label: "Now" },
+  { m: 15, label: "Starts in 15 min" },
+  { m: 30, label: "Starts in 30 min" },
+  { m: 60, label: "Starts in 1 hour" },
+  { m: 120, label: "Starts in 2 hours" },
+  { m: null, label: "Starts now" },
 ];
 
 export function ScheduleSignupSlots({
