@@ -11,7 +11,7 @@
 //   committee_join · cabin_decision · post_tag · post_mention · post_reply
 // (The feed already fanned out + denormalized title/body/url per recipient, so
 // we just relay it.) Other notification types — post_comment, post_reaction,
-// new_post, chat_mention, cabin_request (admin), broadcast — are intentionally
+// chat_mention, cabin_request (admin), broadcast — are intentionally
 // NOT in push_types, so they stay in-app only / use their own admin paths.
 // A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
 // also receives pushes for their OWN messages, to test without a second person.
@@ -306,6 +306,12 @@ async function start() {
   const PUSHABLE_FEED_TYPES = new Set([
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp",
+    // A new post on the Main Feed: the feed already fans a `new_post` row out to
+    // every other member; relay it to a phone push, gated on push_types — ON by
+    // default (in DEFAULT_PUSH_TYPES, existing push-on members backfilled in
+    // migration 0161), since the family feed is how time-sensitive news travels
+    // during the fest. Still individually opt-OUT-able in PushToggle.
+    "new_post",
     // A member asking to join a committee (migration 0042): the feed fans a row
     // out to that committee's leads + every app admin; we relay it to a phone
     // push, gated on push_types (admins opt in via Profile → Notifications).
