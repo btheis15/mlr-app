@@ -340,8 +340,11 @@ async function start() {
     "cabin_message",
     // A sign-up slot reminder (migration 0140) — fanned out by the pg_cron
     // run_signup_reminders() to everyone signed up for a slot, some lead time
-    // before it. An OVERRIDE push (handled below): anyone with phone push on
-    // gets it, since they chose to sign up for that slot.
+    // before it, plus the manual "notify this slot" send (migration 0158/0159).
+    // A normal category, gated on push_types — but ON by default for anyone
+    // with push already on (migration 0159 backfills existing push-on members
+    // + it's in DEFAULT_PUSH_TYPES for new ones), since it only ever fires for
+    // a slot the member themself signed up for.
     "signup_reminder",
     // Tournament brackets (migration 0144): the bracket going live, a member's
     // next match becoming ready, and the champion being crowned. All relay to a
@@ -369,12 +372,11 @@ async function start() {
       .eq("id", n.recipient_id)
       .maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    if (n.type === "help_urgent" || n.type === "signup_reminder" || n.type === "admin_test") {
+    if (n.type === "help_urgent" || n.type === "admin_test") {
       // Override: buzz anyone whose phone push is ON (push_types non-empty = the
-      // master switch is on). help_urgent is an emergency to everyone;
-      // signup_reminder goes only to people who chose to sign up for that slot;
-      // admin_test is an admin deliberately testing one member's notifications —
-      // none of these require per-category opt-in. Push OFF still gets nothing.
+      // master switch is on). help_urgent is an emergency to everyone; admin_test
+      // is an admin deliberately testing one member's notifications — neither
+      // requires per-category opt-in. Push OFF still gets nothing.
       if (pushTypes.length === 0) return;
     } else if (!pushTypes.includes(n.type)) {
       return;

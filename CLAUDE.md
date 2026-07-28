@@ -825,9 +825,48 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   guest up still gets the nudge (worded "{guest}'s slot starts …"). When 2+ people
   share the slot the body also lists the whole group by name ("In this slot:
   Alice, Bob, …") — names only, linked or write-in, no custom-field data. The push is an
-  **override** (like `help_urgent`): anyone with phone push on gets it, since they
-  chose to sign up — added to both mini senders' pushable sets. `signup_reminder`
-  is a `NotifType`, on by default, mutable in Profile → Notifications → Family Fest.
+  `signup_reminder` is a `NotifType`, on by default, mutable in Profile →
+  Notifications → Family Fest.
+- **Manual "notify this slot" send (migration 0158).** The 0140 reminders above
+  are pre-configured/automatic only — there was no way for a coordinator to just
+  say "this slot's time is close, tell everyone" on demand. [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx)
+  now shows a **"🔔 Notify this slot"** button (visible to the same `canManage`
+  viewers as "📋 View all", once at least one person is signed up for that
+  slot) that opens quick lead-time chips (15 min/30 min/1 hour/2 hours/Now) and
+  fires immediately — no waiting on the cron, no pre-configuration needed. It
+  reuses the exact same `signup_reminder` notification kind as 0140 (so no new
+  in-app-prefs wiring), sent via the
+  `send_signup_slot_reminder_now(kind, item, slot_id, slot_start, minutes, email)`
+  RPC (client seam `sendSlotReminderNow()` in [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts)),
+  gated on the same creator predicate (`_can_manage_item_signups`/
+  `_can_manage_activity_item_signups`). The chosen lead time is descriptive
+  text only ("starts in 1 hour") — this send doesn't compute off the slot's
+  real time and doesn't touch the 0140 dedup ledger, so it can't collide with
+  or double the automatic cron reminders.
+- **`signup_reminder` is a normal, default-on push category — not a hidden
+  override (migration 0159).** It used to buzz anyone with push on regardless
+  of category picks (like `help_urgent`); it's now a real
+  [`PushToggle`](components/PushToggle.tsx) row — **"Activity reminders"** —
+  that's simply **on by default**: new members get it via `DEFAULT_PUSH_TYPES`
+  ([`lib/types.ts`](lib/types.ts)), and everyone who already had push on at
+  all before this migration was backfilled to have it too (mirrors 0037's
+  `help_request`/`help_response` backfill). It's still opt-out-able — a member
+  can untick it without turning off push entirely — which the pure override
+  couldn't do.
+- **Optional email alongside the push/in-app reminder (migration 0159).** Both
+  the automatic cron (a per-event **"Also email everyone signed up"** checkbox
+  in `SignupConfigEditor`, stored as `fest_schedule_items`/`fest_activities`
+  `.signup_reminder_email`, off by default) and the manual send above (a
+  same-named checkbox in the notify panel) can additionally queue a group
+  email. Neither sends inline — both insert a deduped row into
+  `fest_reminder_emails` (one per (item, slot, lead-time), unique-indexed so
+  the cron's per-recipient loop and an accidental double-click each collapse
+  to one row), which the mini's [`alert-mailer.js`](media-server/alert-mailer.js)
+  claims and BCCs via the service-role `signup_reminder_email_recipients(row)`
+  RPC (only linked members with a resolvable email — write-in/typed-name
+  rows have no account to email). Like meeting/cabin-message emails, this is
+  transactional and overrides `email_alerts` — the organizer opted the item
+  in and the member signed up, so there's no separate preference to check.
 - **A Home callout can link to an event's sign-up** (migration 0137).
   `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
   as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a

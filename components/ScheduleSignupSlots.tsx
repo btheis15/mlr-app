@@ -22,6 +22,7 @@ import {
   fetchScheduleSlots,
   signUpForSlot,
   removeScheduleSignup,
+  sendSlotReminderNow,
   type ScheduleSignup,
   type ScheduleSlot,
   type SlotView,
@@ -38,6 +39,18 @@ function isFull(count: number, capacity: number | null): boolean {
 function capacityLabel(count: number, capacity: number | null): string {
   return capacity != null ? `${count}/${capacity}` : String(count);
 }
+
+/** Lead-time chips for the manual "notify this slot" send — same options as
+ *  FestPlanner's REMINDER_CHOICES (the automatic cron config), duplicated
+ *  here since it's a small, self-contained list and the two pickers serve
+ *  different actions (configure-ahead vs send-now). */
+const NOTIFY_LEAD_CHOICES: { m: number | null; label: string }[] = [
+  { m: 15, label: "15 min" },
+  { m: 30, label: "30 min" },
+  { m: 60, label: "1 hour" },
+  { m: 120, label: "2 hours" },
+  { m: null, label: "Now" },
+];
 
 export function ScheduleSignupSlots({
   target,
@@ -160,6 +173,17 @@ export function ScheduleSignupSlots({
               )
             }
             onRemove={(id) => void runAction(view.key, () => removeScheduleSignup(kind, id))}
+            onNotify={
+              canManage
+                ? (minutes, email) =>
+                    sendSlotReminderNow(kind, target.id, {
+                      slotId: view.slotId,
+                      slotStart: view.slotId ? null : view.slotStart,
+                      minutes,
+                      email,
+                    })
+                : undefined
+            }
             requireSignIn={promptSignIn}
           />
         ))}
@@ -303,6 +327,7 @@ function SlotCard({
   onAdd,
   onAddTeam,
   onRemove,
+  onNotify,
   requireSignIn,
 }: {
   view: SlotView;
@@ -320,9 +345,16 @@ function SlotCard({
   onAdd: (payload: { forUserId?: string; name: string; fields: Record<string, string> }) => Promise<boolean>;
   onAddTeam: (payload: { teamName: string; members: TeamMemberInput[] }) => Promise<boolean>;
   onRemove: (id: string) => void;
+  /** Manual "your time is soon" send for this one slot (migration 0158/0159) —
+   *  undefined when the viewer can't manage this item's sign-ups. */
+  onNotify?: (minutes: number | null, email: boolean) => Promise<{ error?: string; count?: number }>;
   requireSignIn: () => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyResult, setNotifyResult] = useState<string | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState(false);
   const full = isFull(signups.length, view.capacity);
   const spotsLeft = view.capacity != null ? view.capacity - signups.length : Infinity;
   const roomForTeam = spotsLeft >= teamSize;
@@ -345,6 +377,66 @@ function SlotCard({
           <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
             {capacityLabel(signups.length, view.capacity)} signed up
           </span>
+        </div>
+      )}
+
+      {onNotify && groups.length > 0 && (
+        <div className="mt-1.5">
+          {!notifyOpen ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNotifyOpen(true);
+                setNotifyResult(null);
+              }}
+              className="press rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent"
+            >
+              🔔 Notify this slot
+            </button>
+          ) : (
+            <div className="rounded-lg bg-accent/5 p-2 ring-1 ring-accent/20">
+              <p className="mb-1.5 text-[11px] font-medium text-foreground/60">
+                Let everyone in this slot know it's coming up:
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {NOTIFY_LEAD_CHOICES.map(({ m, label }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={notifyBusy}
+                    onClick={async () => {
+                      setNotifyBusy(true);
+                      setNotifyResult(null);
+                      const { error, count } = await onNotify(m, notifyEmail);
+                      setNotifyBusy(false);
+                      setNotifyResult(error ? error : `✓ Sent to ${count} ${count === 1 ? "person" : "people"}`);
+                      if (!error) setTimeout(() => setNotifyOpen(false), 1500);
+                    }}
+                    className="press rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setNotifyOpen(false)}
+                  className="press rounded-full px-2 py-1 text-[11px] font-medium text-foreground/50"
+                >
+                  Cancel
+                </button>
+              </div>
+              <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-foreground/60">
+                <input
+                  type="checkbox"
+                  checked={notifyEmail}
+                  onChange={(e) => setNotifyEmail(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-border text-accent"
+                />
+                Also email anyone signed up with an account
+              </label>
+              {notifyResult && <p className="mt-1.5 text-[11px] font-medium text-accent">{notifyResult}</p>}
+            </div>
+          )}
         </div>
       )}
 

@@ -68,7 +68,8 @@ export type PushType =
   | "tournament_published"
   | "tournament_match_ready"
   | "tournament_champion"
-  | "private_activity_invite";
+  | "private_activity_invite"
+  | "signup_reminder";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -85,6 +86,11 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "chat",
   "help_request",
   "help_response",
+  // A fest sign-up slot reminder (migration 0140/0159) — on by default for
+  // everyone with push on at all, since it only ever fires for a slot the
+  // member themself signed up for. Existing push-on members are backfilled
+  // in migration 0159, mirroring 0037's help_request/help_response backfill.
+  "signup_reminder",
 ];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
@@ -403,6 +409,9 @@ export interface ScheduleEvent {
   /** Lead times (minutes before a slot) at which everyone signed up gets a
    *  reminder push (migration 0140), e.g. [120, 60, 15]. */
   signupReminderMinutes?: number[] | null;
+  /** Also email everyone signed up, alongside the push/in-app reminder above
+   *  (migration 0159). Off by default — an organizer opts the event in. */
+  signupReminderEmail?: boolean | null;
   /** Sign up as a fixed-size team instead of individually (migration 0143) —
    *  e.g. 2 for baggo doubles. Null/1 = individual, the default. Applies in
    *  any signup mode; capacity math is unchanged (still a plain people-count,
@@ -451,6 +460,8 @@ export interface FestActivity {
   signupInstructions?: string | null;
   signupFields?: SignupField[] | null;
   signupReminderMinutes?: number[] | null;
+  /** Also email everyone signed up (migration 0159). Off by default. */
+  signupReminderEmail?: boolean | null;
 }
 
 /** One night's dinner: the head chef of the day, the houses on crew, what's

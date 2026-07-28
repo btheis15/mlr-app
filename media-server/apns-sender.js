@@ -316,7 +316,9 @@ async function start() {
     "chat_poll_created",
     // Cabin guest message (migration 0120).
     "cabin_message",
-    // Sign-up slot reminder (migration 0140) — override push, like help_urgent.
+    // Sign-up slot reminder (migration 0140/0158/0159) — a normal category,
+    // gated on push_types like the rest, but ON by default for anyone with
+    // push already on (see push-sender.js's PUSHABLE_FEED_TYPES note).
     "signup_reminder",
     // Tournament brackets (migration 0144) — bracket set, next match ready, champion.
     "tournament_published", "tournament_match_ready", "tournament_champion",
@@ -330,9 +332,10 @@ async function start() {
     if (!once(`notif:${n.id}`)) return;
     const { data: prof } = await sb.from("profiles").select("push_types").eq("id", n.recipient_id).maybeSingle();
     const pushTypes = (prof && prof.push_types) || [];
-    // help_urgent + signup_reminder + admin_test override per-category picks
-    // (buzz anyone with push on) — see push-sender.js for the rationale.
-    if (n.type === "help_urgent" || n.type === "signup_reminder" || n.type === "admin_test") { if (pushTypes.length === 0) return; }
+    // help_urgent + admin_test override per-category picks (buzz anyone with
+    // push on) — see push-sender.js for the rationale. signup_reminder is a
+    // normal category now (default-on, not an override).
+    if (n.type === "help_urgent" || n.type === "admin_test") { if (pushTypes.length === 0) return; }
     else if (!pushTypes.includes(n.type)) return;
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
