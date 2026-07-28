@@ -1725,6 +1725,28 @@ question, 2–10 options (single- or multi-select), an optional write-in
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs if the native app
   adds it later.
 
+## Venmo QR codes on a member's contact card
+
+`MemberSheet`'s Pay section can show a **QR code for a member's Venmo**, right
+below their Venmo row — a collapsed **"Show QR code"** disclosure so it never
+adds visual weight for the common case (tapping the button). It encodes the
+**exact same** `venmo.com/<handle>?txn=pay` deep link the button already opens
+(`lib/contact.ts` `payActions()` now also sets `qr` on the Venmo `Action`) — a
+QR code is just a container for that URL/text, not a signed or
+Venmo-issued token, so a self-generated code scanning to the same link behaves
+identically to the one in Venmo's own app; the built-in Reed–Solomon error
+correction (a property of the QR standard itself, not anything Venmo does) is
+also why a slightly worn or imperfectly printed code still scans.
+- **Generated on-device** via the `qrcode` npm package
+  ([`components/PayQRCode.tsx`](components/PayQRCode.tsx),
+  `QRCode.toDataURL()`) — no third-party QR API, so a handle/link is never
+  sent off-device just to render a code.
+- **Who it's paying is unambiguous** — the disclosure/card always renders
+  directly under that person's own name + Venmo row (never a bare code with
+  no context), labels it "Scan to pay **{name}** on Venmo", repeats the
+  `@handle` below the image, and reminds the scanner that Venmo will show the
+  name again before sending, to double-check it matches.
+
 ## Cabin stays
 
 "Request a Cabin Stay" (`/request-stay`) — members request a room in one of
