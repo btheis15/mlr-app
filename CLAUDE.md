@@ -2234,6 +2234,25 @@ for cabin pushes, so one switch controls feed + push. The join-request kind
 prefs UI** (only admins see the toggle, since they're the audience); admins can
 additionally opt the join-request into a **phone push** (it's in
 `PUSHABLE_FEED_TYPES` + the admin-only `PushToggle` row, off by default).
+**A new Main Feed post can now ride a phone push too** — `new_post` is a
+`PushType` (in `PUSHABLE_FEED_TYPES`/`PUSHABLE` on both mini senders + a
+[`PushToggle`](components/PushToggle.tsx) row, "New posts in the Feed") — but
+it's **opt-in, off by default**: deliberately absent from `DEFAULT_PUSH_TYPES`
+and with **no backfill** for existing push-on members, since it's the
+highest-frequency category and most people don't want a buzz per post. The
+in-app `new_post` Activity row is unchanged (still on by default in
+`NotifPrefs`). No migration was needed — `push_types` is a plain `text[]` with
+no allow-list constraint, so a new valid value is code-only.
+
+⚠️ **Audit finding, fixed: `help_request`/`help_response` had no `PushToggle`
+row.** Both are real `PushType` values, default-on (`DEFAULT_PUSH_TYPES`), and
+correctly gated in both mini senders' pushable sets — but
+[`PushToggle`](components/PushToggle.tsx)'s `TYPES` list never had a row for
+either, so a member had no way to see or opt OUT of these two specifically
+(only the blunt "turn off push entirely" master switch). Fixed by adding both
+rows (mirroring `NotifPrefs.tsx`'s existing wording). Every `PushType` now has
+an exactly-matching `PushToggle` row — verified by diffing the `PushType` union
+against `TYPES`' `value`s; keep them in sync when adding a new push category.
 **Independent of push** (it
 works even if the mini is down; the chat firehose stays out — only chat
 @mentions land here). Pieces: the [`/notifications`](app/notifications/page.tsx)

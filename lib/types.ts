@@ -54,6 +54,7 @@ export type PushType =
   | "committee_join_request"
   | "cabin_decision"
   | "cabin_message"
+  | "new_post"
   | "post_tag"
   | "post_mention"
   | "post_reply"
