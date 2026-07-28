@@ -9,6 +9,7 @@ import { useGuest } from "@/components/Guard";
 import { firstName } from "@/lib/privacy";
 import { contactActions, payActions, birthdayInfo, directionsLinks, type Action, type MemberContact } from "@/lib/contact";
 import { isApple } from "@/lib/push";
+import { PayQRCode } from "@/components/PayQRCode";
 
 // Tap a member's avatar/name anywhere → this bottom sheet. It slides up from the
 // bottom over a backdrop that dims as it rises, and can be flicked or dragged
@@ -279,7 +280,7 @@ export function MemberSheet({
             <section className="space-y-1.5">
               <h3 className="text-xs font-bold uppercase tracking-wide text-faint">Pay</h3>
               {pays.map((a) => (
-                <ActionRow key={a.key} a={a} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
+                <ActionRow key={a.key} a={a} name={name} copied={copied === a.key} onCopy={() => copy(a.value, a.key)} />
               ))}
             </section>
           )}
@@ -336,8 +337,9 @@ export function MemberSheet({
   );
 }
 
-function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: () => void }) {
+function ActionRow({ a, name, copied, onCopy }: { a: Action; name?: string; copied: boolean; onCopy: () => void }) {
   const branded = Boolean(a.brand);
+  const [showQR, setShowQR] = useState(false);
   const inner = (
     <div
       className={`flex items-center gap-3 rounded-xl px-3 py-3 transition ${branded ? "text-white shadow-sm active:opacity-90" : "bg-card text-foreground ring-1 ring-border active:bg-background"}`}
@@ -370,7 +372,7 @@ function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: 
       )}
     </div>
   );
-  return a.href ? (
+  const row = a.href ? (
     <a href={a.href} target={a.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="press block">
       {inner}
     </a>
@@ -378,5 +380,22 @@ function ActionRow({ a, copied, onCopy }: { a: Action; copied: boolean; onCopy: 
     <button type="button" onClick={onCopy} className="press block w-full text-left">
       {inner}
     </button>
+  );
+
+  if (!a.qr || !name) return row;
+
+  return (
+    <div className="space-y-1.5">
+      {row}
+      <button
+        type="button"
+        onClick={() => setShowQR((s) => !s)}
+        className="press flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-muted ring-1 ring-border active:bg-card"
+      >
+        <span>{showQR ? "Hide QR code" : "Show QR code"}</span>
+        <span aria-hidden className="text-foreground/40">{showQR ? "▲" : "▼"}</span>
+      </button>
+      {showQR && <PayQRCode value={a.qr} name={name} handle={a.value.replace(/^@/, "")} />}
+    </div>
   );
 }

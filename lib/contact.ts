@@ -29,6 +29,10 @@ export interface Action {
   brand?: string; // brand color → render as a smooth filled button (pay methods)
   emoji?: string; // leading emoji (contact methods)
   logo?: string; // leading logo image URL (pay methods)
+  /** The exact URL a QR code should encode — present only where scanning is
+   *  equivalent to tapping (Venmo's deep link is just this URL; see
+   *  components/PayQRCode.tsx). */
+  qr?: string;
 }
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
@@ -49,7 +53,10 @@ export function contactActions(c: MemberContact): Action[] {
 export function payActions(c: MemberContact): Action[] {
   const out: Action[] = [];
   // venmo.com/<user>?txn=pay opens straight to the Pay screen (not the profile).
-  if (c.venmo) out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`, brand: "#008CFF", logo: `${ASSETS}/venmo.svg` });
+  if (c.venmo) {
+    const venmoUrl = `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`;
+    out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: venmoUrl, brand: "#008CFF", logo: `${ASSETS}/venmo.svg`, qr: venmoUrl });
+  }
   if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app", brand: "#6D1ED4", logo: `${ASSETS}/zelle.svg` });
   if (c.apple_cash && c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "opens Messages — tap ＄ to send", brand: "#111111", logo: `${ASSETS}/applepay.svg` });
   if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}`, brand: "#00B843", logo: `${ASSETS}/cashapp.svg` });
