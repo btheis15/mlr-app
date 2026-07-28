@@ -495,6 +495,7 @@ export function ScheduleSheet({
   const [notify, setNotify] = useState<ChangeNotifyState>(emptyChangeNotify);
 
   const canSave = title.trim().length > 0 && (anytime || day.length > 0) && signupIsValid(signup) && !save.pending;
+  const saveLabel = draft ? "Save changes" : "Create event";
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -556,139 +557,145 @@ export function ScheduleSheet({
       onDismiss={close}
       labelledBy="sched-sheet"
       header={<h2 id="sched-sheet" className="text-lg font-bold">{draft ? "✏️ Edit event" : "📅 New event"}</h2>}
-      footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} />}
+      footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} label={saveLabel} />}
     >
-      <Field label="Day">
-        <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-          <span className="min-w-0">
-            <span className="text-sm">Anytime (no set day)</span>
-            <span className="block text-xs text-foreground/50">Shows in &ldquo;Anytime all week&rdquo; instead of on a day.</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={anytime}
-            onChange={(e) => setAnytime(e.target.checked)}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-          />
-        </label>
-        {!anytime && (
-          <select value={day} onChange={(e) => setDay(e.target.value)} className={`${FIELD} w-full`}>
-            {days.map((d) => (
-              <option key={d} value={d}>{formatDateLong(d)}</option>
-            ))}
-          </select>
-        )}
-      </Field>
-
-      <Field label="Event">
-        <div className="flex gap-2">
-          <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={8} placeholder="🏅" aria-label="Emoji" className={`${FIELD} w-14 text-center`} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lake Day" className={`${FIELD} min-w-0 flex-1`} />
-        </div>
-      </Field>
-
-      <Field label="Time">
-        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-          <span className="text-sm">Set a time</span>
-          <input type="checkbox" checked={hasTime} onChange={(e) => setHasTime(e.target.checked)} className="h-5 w-5 accent-[var(--color-primary)]" />
-        </label>
-        {hasTime && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Start time" className={FIELD} />
-            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="End time (optional)" className={FIELD} />
+      <Group title="What & when">
+        <Field label="Event">
+          <div className="flex gap-2">
+            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={8} placeholder="🏅" aria-label="Emoji" className={`${FIELD} w-14 text-center`} />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lake Day" className={`${FIELD} min-w-0 flex-1`} />
           </div>
-        )}
-      </Field>
+        </Field>
 
-      <Field label="Location">
-        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Where (leave blank for TBD)" className={`${FIELD} w-full`} />
-      </Field>
+        <Field label="Day">
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+            <span className="min-w-0">
+              <span className="text-sm">Anytime (no set day)</span>
+              <span className="block text-xs text-foreground/50">Shows in &ldquo;Anytime all week&rdquo; instead of on a day.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={anytime}
+              onChange={(e) => setAnytime(e.target.checked)}
+              className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+            />
+          </label>
+          <Reveal open={!anytime}>
+            <select value={day} onChange={(e) => setDay(e.target.value)} className={`${FIELD} mt-2 w-full`}>
+              {days.map((d) => (
+                <option key={d} value={d}>{formatDateLong(d)}</option>
+              ))}
+            </select>
+          </Reveal>
+        </Field>
 
-      <LeadPicker
-        title="Who's in charge"
-        members={members}
-        userId={leadUserId}
-        name={leadName}
-        phone={leadPhone}
-        onPick={() => setPicking(true)}
-        onClear={() => { setLeadUserId(null); setLeadName(""); }}
-        onName={setLeadName}
-        onPhone={setLeadPhone}
-      />
+        <Field label="Time">
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+            <span className="text-sm">Set a time</span>
+            <input type="checkbox" checked={hasTime} onChange={(e) => setHasTime(e.target.checked)} className="h-5 w-5 accent-[var(--color-primary)]" />
+          </label>
+          <Reveal open={hasTime}>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label="Start time" className={FIELD} />
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label="End time (optional)" className={FIELD} />
+            </div>
+          </Reveal>
+        </Field>
 
-      <Field label="Crew members (also get editing rights for this event)">
-        {crewUserIds.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {crewUserIds.map((id) => {
-              const m = members.find((x) => x.id === id);
-              return (
-                <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
-                  {m?.name ?? "Member"}
-                  <button
-                    type="button"
-                    onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
-                    aria-label={`Remove ${m?.name ?? "member"} from crew`}
-                    className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
-                  >
-                    ✕
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setPickingCrew(true)}
-          disabled={members.length === 0}
-          className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
-        >
-          + Add a crew member…
-        </button>
-      </Field>
+        <Field label="Location">
+          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Where (leave blank for TBD)" className={`${FIELD} w-full`} />
+        </Field>
+      </Group>
 
-      <Field label="Details">
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="What it is, when to arrive…" className={`${FIELD} w-full resize-none`} />
-      </Field>
+      <Group title="Who's running it">
+        <LeadPicker
+          title="Who's in charge"
+          members={members}
+          userId={leadUserId}
+          name={leadName}
+          phone={leadPhone}
+          onPick={() => setPicking(true)}
+          onClear={() => { setLeadUserId(null); setLeadName(""); }}
+          onName={setLeadName}
+          onPhone={setLeadPhone}
+        />
 
-      <Field label="What to bring (optional)">
-        <input value={bring} onChange={(e) => setBring(e.target.value)} placeholder="e.g. swimsuit & towel" className={`${FIELD} w-full`} />
-      </Field>
-
-      <Field label="Photo (optional)">
-        {imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" className="mb-2 max-h-40 w-full rounded-xl object-cover" />
-        )}
-        <input ref={imageInputRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-        <div className="flex items-center gap-2">
+        <Field label="Crew members (also get editing rights for this event)">
+          {crewUserIds.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {crewUserIds.map((id) => {
+                const m = members.find((x) => x.id === id);
+                return (
+                  <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                    {m?.name ?? "Member"}
+                    <button
+                      type="button"
+                      onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
+                      aria-label={`Remove ${m?.name ?? "member"} from crew`}
+                      className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => imageInputRef.current?.click()}
-            disabled={imageBusy}
-            className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-primary ring-1 ring-border disabled:opacity-50"
+            onClick={() => setPickingCrew(true)}
+            disabled={members.length === 0}
+            className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
           >
-            {imageBusy ? "Uploading…" : imageUrl ? "Replace photo" : "Add a photo"}
+            + Add a crew member…
           </button>
+        </Field>
+      </Group>
+
+      <Group title="More details">
+        <Field label="Details">
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="What it is, when to arrive…" className={`${FIELD} w-full resize-none`} />
+        </Field>
+
+        <Field label="What to bring (optional)">
+          <input value={bring} onChange={(e) => setBring(e.target.value)} placeholder="e.g. swimsuit & towel" className={`${FIELD} w-full`} />
+        </Field>
+
+        <Field label="Photo (optional)">
           {imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt="" className="mb-2 max-h-40 w-full rounded-xl object-cover" />
+          )}
+          <input ref={imageInputRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setImageUrl(null)}
-              className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-border"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={imageBusy}
+              className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-primary ring-1 ring-border disabled:opacity-50"
             >
-              Remove
+              {imageBusy ? "Uploading…" : imageUrl ? "Replace photo" : "Add a photo"}
             </button>
-          )}
-        </div>
-        {imageError && <p className="mt-1 text-xs font-medium text-accent">{imageError}</p>}
-      </Field>
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={() => setImageUrl(null)}
+                className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-border"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {imageError && <p className="mt-1 text-xs font-medium text-accent">{imageError}</p>}
+        </Field>
 
-      <Field label="Links (optional)">
-        <p className="mb-1.5 text-xs text-foreground/50">
-          A Google Doc/Sheet, sign-up form, or any web page for this event — add more than one if you need to.
-        </p>
-        <LinksEditor links={links} onChange={setLinks} />
-      </Field>
+        <Field label="Links (optional)">
+          <p className="mb-1.5 text-xs text-foreground/50">
+            A Google Doc/Sheet, sign-up form, or any web page for this event — add more than one if you need to.
+          </p>
+          <LinksEditor links={links} onChange={setLinks} />
+        </Field>
+      </Group>
 
       <SignupConfigEditor
         kind="schedule"
@@ -698,36 +705,27 @@ export function ScheduleSheet({
         onChange={setSignup}
         pendingSlots={pendingSlots}
         onPendingSlots={setPendingSlots}
+        tournamentEnabled={tournamentEnabled}
+        onTournamentChange={setTournamentEnabled}
       />
 
-      <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-        <span className="min-w-0">
-          <span className="text-sm font-medium">🏆 Tournament</span>
-          <span className="block text-xs text-foreground/50">Run a bracket or round-robin for this activity — a Tournament section appears on it.</span>
-        </span>
-        <input
-          type="checkbox"
-          checked={tournamentEnabled}
-          onChange={(e) => setTournamentEnabled(e.target.checked)}
-          className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-        />
-      </label>
+      <Group title="Advanced">
+        {isAdmin && draft && (
+          <ChangeNotifyEditor
+            value={notify}
+            onChange={setNotify}
+            defaultMessage={changeMessageDefault(title, hasTime ? startTime : null)}
+          />
+        )}
 
-      {isAdmin && draft && (
-        <ChangeNotifyEditor
-          value={notify}
-          onChange={setNotify}
-          defaultMessage={changeMessageDefault(title, hasTime ? startTime : null)}
-        />
-      )}
-
-      <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-        <span className="min-w-0">
-          <span className="text-sm font-medium">Private</span>
-          <span className="block text-xs text-foreground/50">Hide location/details from signed-out guests.</span>
-        </span>
-        <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-primary)]" />
-      </label>
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm font-medium">Private</span>
+            <span className="block text-xs text-foreground/50">Hide location/details from signed-out guests.</span>
+          </span>
+          <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-primary)]" />
+        </label>
+      </Group>
 
       {picking && (
         <MemberPickerSheet
@@ -980,6 +978,8 @@ function SignupConfigEditor({
   onChange,
   pendingSlots,
   onPendingSlots,
+  tournamentEnabled,
+  onTournamentChange,
 }: {
   kind: SignupKind;
   parentId: string | undefined;
@@ -989,6 +989,10 @@ function SignupConfigEditor({
   /** Slots staged for a not-yet-saved item (used only when `parentId` is unset). */
   pendingSlots: PendingSlot[];
   onPendingSlots: (s: PendingSlot[]) => void;
+  /** Schedule events only (activities can't run a tournament) — omit both to
+   *  hide the toggle entirely, e.g. from the legacy ActivitySheet. */
+  tournamentEnabled?: boolean;
+  onTournamentChange?: (v: boolean) => void;
 }) {
   const set = (patch: Partial<SignupDraft>) => onChange({ ...value, ...patch });
   const [customMin, setCustomMin] = useState("");
@@ -1013,23 +1017,41 @@ function SignupConfigEditor({
           ["slots", "Specific times", "Pick each slot yourself"],
         ] as const);
   return (
-    <Field label="Sign-ups">
-      <label className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-        <span className="min-w-0">
-          <span className="text-sm">Take sign-ups</span>
-          <span className="block text-xs text-foreground/50">
-            {kind === "schedule" ? "A headcount, time slots, or both" : "e.g. 4 people per slot, every hour from noon to 4pm"}
+    <Field label={onTournamentChange ? "Sign-ups & tournament" : "Sign-ups"}>
+      <div className="space-y-2">
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm">Take sign-ups</span>
+            <span className="block text-xs text-foreground/50">
+              {kind === "schedule" ? "A headcount, time slots, or both" : "e.g. 4 people per slot, every hour from noon to 4pm"}
+            </span>
           </span>
-        </span>
-        <input
-          type="checkbox"
-          checked={value.enabled}
-          onChange={(e) => set({ enabled: e.target.checked })}
-          className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-        />
-      </label>
-      {value.enabled && (
-        <div className="space-y-3">
+          <input
+            type="checkbox"
+            checked={value.enabled}
+            onChange={(e) => set({ enabled: e.target.checked })}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+
+        {onTournamentChange && (
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+            <span className="min-w-0">
+              <span className="text-sm font-medium">🏆 Tournament</span>
+              <span className="block text-xs text-foreground/50">Run a bracket or round-robin for this activity — a Tournament section appears on it.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={tournamentEnabled ?? false}
+              onChange={(e) => onTournamentChange(e.target.checked)}
+              className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+            />
+          </label>
+        )}
+      </div>
+
+      <Reveal open={value.enabled}>
+        <div className="space-y-3 pt-3">
           {/* How the slots are defined. */}
           <div className={`grid gap-1.5 rounded-xl bg-background p-1 ring-1 ring-border ${modeOptions.length === 3 ? "grid-cols-1" : "grid-cols-2"}`}>
             {modeOptions.map(([val, label, hint]) => (
@@ -1233,7 +1255,7 @@ function SignupConfigEditor({
           </div>
           )}
         </div>
-      )}
+      </Reveal>
     </Field>
   );
 }
@@ -2171,6 +2193,42 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <SectionLabel>{label}</SectionLabel>
       {children}
+    </div>
+  );
+}
+
+/** Visually chunks a run of Fields into one named card, so a long editor reads
+ *  as a handful of considered decisions (What & when / Who's running it / …)
+ *  instead of one undifferentiated wall of fields. */
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4 rounded-2xl bg-background/60 p-3 ring-1 ring-border/60">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-primary/60">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+/** Smooth auto-height reveal for a disclosure's contents — mirrors FestWeek's
+ *  Expander so toggling "Take sign-ups"/"Anytime"/etc. doesn't just snap the
+ *  layout, matching the rest of the app's motion feel. */
+function Reveal({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows] duration-[var(--dur-collapse)] ease-[var(--ease-ios)] motion-reduce:transition-none ${
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      }`}
+    >
+      <div className="overflow-hidden">
+        <div
+          inert={!open}
+          className={`min-h-0 transition-opacity duration-[var(--dur-collapse)] ease-[var(--ease-ios)] motion-reduce:transition-none ${
+            open ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
