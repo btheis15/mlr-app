@@ -396,7 +396,7 @@ function SlotCard({
           ) : (
             <div className="rounded-lg bg-accent/5 p-2 ring-1 ring-accent/20">
               <p className="mb-1.5 text-[11px] font-medium text-foreground/60">
-                Let everyone in this slot know it's coming up:
+                Notify everyone in this slot this far before it starts:
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {NOTIFY_LEAD_CHOICES.map(({ m, label }) => (
