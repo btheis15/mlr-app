@@ -269,6 +269,29 @@ export async function removeScheduleSignup(kind: SignupKind, signupId: string): 
   return error ? { error: error.message } : {};
 }
 
+/** On-demand "your time is soon" nudge (migration 0158) for everyone signed
+ *  up in ONE slot — a manual, immediate send, distinct from the fully
+ *  automatic pre-configured `signup_reminder_minutes` cron (0140). `minutes`
+ *  is descriptive only (e.g. 60 -> "starts in 1 hour" in the notification
+ *  body); pass null/omit for a plain "is coming up" instead. Gated server-side
+ *  to the item's creator predicate (can_edit_fest() OR its lead/crew). */
+export async function sendSlotReminderNow(
+  kind: SignupKind,
+  parentId: string,
+  opts: { slotId?: string | null; slotStart?: string | null; minutes?: number | null },
+): Promise<{ error?: string; count?: number }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("send_signup_slot_reminder_now", {
+    p_kind: kind,
+    p_item: parentId,
+    p_slot_id: opts.slotId ?? null,
+    p_slot_start: opts.slotId ? null : opts.slotStart ?? null,
+    p_minutes: opts.minutes ?? null,
+  });
+  return error ? { error: error.message } : { count: (data as number | null) ?? 0 };
+}
+
 // ── Explicit slots (signup_mode = 'slots') — organizer-managed via RLS ────────
 
 export async function fetchScheduleSlots(kind: SignupKind, parentId: string): Promise<ScheduleSlot[]> {

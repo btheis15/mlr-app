@@ -828,6 +828,22 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   **override** (like `help_urgent`): anyone with phone push on gets it, since they
   chose to sign up — added to both mini senders' pushable sets. `signup_reminder`
   is a `NotifType`, on by default, mutable in Profile → Notifications → Family Fest.
+- **Manual "notify this slot" send (migration 0158).** The 0140 reminders above
+  are pre-configured/automatic only — there was no way for a coordinator to just
+  say "this slot's time is close, tell everyone" on demand. [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx)
+  now shows a **"🔔 Notify this slot"** button (visible to the same `canManage`
+  viewers as "📋 View all", once at least one person is signed up for that
+  slot) that opens quick lead-time chips (15 min/30 min/1 hour/2 hours/Now) and
+  fires immediately — no waiting on the cron, no pre-configuration needed. It
+  reuses the exact same `signup_reminder` notification kind + push override as
+  0140 (so no new prefs/push wiring), sent via the new
+  `send_signup_slot_reminder_now(kind, item, slot_id, slot_start, minutes)` RPC
+  (client seam `sendSlotReminderNow()` in [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts)),
+  gated on the same creator predicate (`_can_manage_item_signups`/
+  `_can_manage_activity_item_signups`). The chosen lead time is descriptive
+  text only ("starts in 1 hour") — this send doesn't compute off the slot's
+  real time and doesn't touch the 0140 dedup ledger, so it can't collide with
+  or double the automatic cron reminders.
 - **A Home callout can link to an event's sign-up** (migration 0137).
   `home_callouts.signup_item_id` (a `fest_schedule_items` id, text — same shape
   as `event_id`) makes [`CalloutCard`](components/CalloutCard.tsx) render a
