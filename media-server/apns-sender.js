@@ -310,8 +310,8 @@ async function start() {
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp", "committee_join_request", "help_request", "help_response", "help_urgent",
     "work_item_created", "house_stay_created",
-    // A new post on the Main Feed — same gating as web: relayed only when the
-    // member opted `new_post` into push_types (off by default).
+    // A new post on the Main Feed — same gating as web: relayed when the member
+    // has `new_post` in push_types (ON by default since migration 0161).
     "new_post",
     // Meeting scheduling (migration 0116) — proposal + finalized, same gating.
     "meeting_proposed", "meeting_scheduled",

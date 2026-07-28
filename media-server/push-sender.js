@@ -307,10 +307,10 @@ async function start() {
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp",
     // A new post on the Main Feed: the feed already fans a `new_post` row out to
-    // every other member; relay it to a phone push, gated on push_types (off by
-    // default — a member opts in via Profile → Notifications). Deliberately NOT
-    // in DEFAULT_PUSH_TYPES: it's the highest-frequency category, so it's strictly
-    // opt-in rather than something new members have to turn off.
+    // every other member; relay it to a phone push, gated on push_types — ON by
+    // default (in DEFAULT_PUSH_TYPES, existing push-on members backfilled in
+    // migration 0161), since the family feed is how time-sensitive news travels
+    // during the fest. Still individually opt-OUT-able in PushToggle.
     "new_post",
     // A member asking to join a committee (migration 0042): the feed fans a row
     // out to that committee's leads + every app admin; we relay it to a phone

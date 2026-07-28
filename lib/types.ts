@@ -87,6 +87,13 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "chat",
   "help_request",
   "help_response",
+  // A new Main Feed post (migration 0161) — ON by default: the family feed is
+  // the app's town square, and during a live Family Fest a post ("dinner is
+  // ready!") is exactly the thing people need to hear about right away. It IS
+  // the highest-frequency category, so it stays individually opt-OUT-able in
+  // PushToggle. Existing push-on members are backfilled in 0161, mirroring
+  // 0159's signup_reminder / 0037's help_request backfill.
+  "new_post",
   // A fest sign-up slot reminder (migration 0140/0159) — on by default for
   // everyone with push on at all, since it only ever fires for a slot the
   // member themself signed up for. Existing push-on members are backfilled
