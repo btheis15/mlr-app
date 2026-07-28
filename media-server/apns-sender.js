@@ -414,18 +414,38 @@ async function start() {
     );
   };
 
-  sb.channel("apns-sender")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" },
-      (e) => handleMessage(e.new.id).catch((err) => console.error("[apns] msg error:", err && err.message)))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" },
-      (e) => handleHouseMessage(e.new.id).catch((err) => console.error("[apns] house msg error:", err && err.message)))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
-      (e) => handleAlert(e.new.id).catch((err) => console.error("[apns] alert error:", err && err.message)))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
-      (e) => handleFeed(e.new).catch((err) => console.error("[apns] feed error:", err && err.message)))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
-    .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[apns] listening (committee + house chat + alerts + feed notifications + verified new members)"); });
+  // Same reconnect hardening as push-sender.js / alert-mailer.js — Realtime can
+  // silently drop (CHANNEL_ERROR/TIMED_OUT/CLOSED) with no built-in recovery,
+  // which would otherwise mean APNs pushes go silently dark until the mini is
+  // restarted by hand.
+  let realtimeChannel = null;
+  let reconnecting = false;
+  function subscribeRealtime() {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb.channel("apns-sender")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" },
+        (e) => handleMessage(e.new.id).catch((err) => console.error("[apns] msg error:", err && err.message)))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" },
+        (e) => handleHouseMessage(e.new.id).catch((err) => console.error("[apns] house msg error:", err && err.message)))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
+        (e) => handleAlert(e.new.id).catch((err) => console.error("[apns] alert error:", err && err.message)))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
+        (e) => handleFeed(e.new).catch((err) => console.error("[apns] feed error:", err && err.message)))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+      .subscribe((status) => {
+        console.log("[apns] realtime:", status);
+        if (status === "SUBSCRIBED") {
+          console.log("[apns] listening (committee + house chat + alerts + feed notifications + verified new members)");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!reconnecting) {
+            reconnecting = true;
+            setTimeout(() => { reconnecting = false; subscribeRealtime(); }, 5000);
+          }
+        }
+      });
+  }
+  subscribeRealtime();
 }
 
 module.exports = { start, createApnsDelivery };

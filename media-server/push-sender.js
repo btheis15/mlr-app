@@ -517,33 +517,52 @@ async function start() {
   // cabin_decision) to a push — so there's a single, consistent path and we don't
   // double-send. (Cabin REQUESTS to admins stay separate, see handleCabinRequest.)
 
-  sb.channel("push-sender")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
-      handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
-    )
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" }, (e) =>
-      handleHouseMessage(e.new.id).catch((err) => console.error("[push] house msg error:", err && err.message)),
-    )
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
-      handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
-    )
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (e) =>
-      handleFeedNotification(e.new).catch((err) =>
-        console.error("[push] feed notification error:", err && err.message),
-      ),
-    )
-    // A new member's profile is stamped with joined_at at first verification —
-    // which can land as an INSERT (no prior row) or an UPDATE (stub upgraded).
-    // Route both through maybeNewMember, which fires only on a FRESH joined_at,
-    // so an existing member re-signing in / editing their profile never re-notifies.
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
-      handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
-    )
-    .subscribe((status) => {
-      if (status === "SUBSCRIBED") console.log("[push] listening (committee + house chat + alerts + feed notifications + verified new members + cabin requests)");
-    });
+  // Realtime can silently drop (CHANNEL_ERROR/TIMED_OUT/CLOSED) without ever
+  // recovering on its own — the exact failure mode alert-mailer.js documents
+  // and hardens against. Unlike the mailer, push has no "unsent row" to sweep
+  // as a backstop, so a dead channel here means EVERY push silently stops
+  // until something resubscribes — this is that something.
+  let realtimeChannel = null;
+  let reconnecting = false;
+  function subscribeRealtime() {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb.channel("push-sender")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "committee_messages" }, (e) =>
+        handleMessage(e.new.id).catch((err) => console.error("[push] msg error:", err && err.message)),
+      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" }, (e) =>
+        handleHouseMessage(e.new.id).catch((err) => console.error("[push] house msg error:", err && err.message)),
+      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
+        handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
+      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (e) =>
+        handleFeedNotification(e.new).catch((err) =>
+          console.error("[push] feed notification error:", err && err.message),
+        ),
+      )
+      // A new member's profile is stamped with joined_at at first verification —
+      // which can land as an INSERT (no prior row) or an UPDATE (stub upgraded).
+      // Route both through maybeNewMember, which fires only on a FRESH joined_at,
+      // so an existing member re-signing in / editing their profile never re-notifies.
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (e) => maybeNewMember(e.new))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cabin_bookings" }, (e) =>
+        handleCabinRequest(e.new.id).catch((err) => console.error("[push] cabin request error:", err && err.message)),
+      )
+      .subscribe((status) => {
+        console.log("[push] realtime:", status);
+        if (status === "SUBSCRIBED") {
+          console.log("[push] listening (committee + house chat + alerts + feed notifications + verified new members + cabin requests)");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!reconnecting) {
+            reconnecting = true;
+            setTimeout(() => { reconnecting = false; subscribeRealtime(); }, 5000);
+          }
+        }
+      });
+  }
+  subscribeRealtime();
 }
 
 module.exports = { start };
