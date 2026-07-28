@@ -490,7 +490,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // Atomic create via the create_post RPC (0080): posts + media + tags
         // land in ONE transaction, so a mid-write failure can never leave a
         // live half-finished post behind a "Couldn't post" error.
-        const { error: rpcErr } = await supabase.rpc("create_post", {
+        const { data: rpcPostId, error: rpcErr } = await supabase.rpc("create_post", {
           p_caption: caption || null,
           p_occurred_at: occurredAt,
           p_media: uploaded.map((u) => ({ path: u.path, type: u.type })),
@@ -498,6 +498,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           p_held: heldForText,
         });
         if (rpcErr && !isMissingFunction(rpcErr)) throw rpcErr;
+        let newPostId: string | null = (rpcPostId as string | null) ?? null;
         if (rpcErr) {
           // Pre-migration fallback (0080 not applied yet): the old
           // multi-insert path — non-transactional, but the feature still works
@@ -505,11 +506,12 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           const { data: np, error: insErr } = await supabase
             .from("posts")
             .insert({ author_id: uid, text: caption || null, ...(heldForText ? { status: "pending" } : {}), ...(occurredAt ? { occurred_at: occurredAt } : {}) })
-            .select("id")
+            .select("id, status")
             .single();
           if (insErr) throw insErr;
-          const postId = (np as { id: string } | null)?.id;
+          const postId = (np as { id: string; status: string } | null)?.id;
           if (!postId) throw new Error("Could not create the post.");
+          newPostId = postId;
           for (let i = 0; i < uploaded.length; i++) {
             const { error: medErr } = await supabase
               .from("post_media")
@@ -526,7 +528,30 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         await refetch();
         setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
         setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
-        setStatus("Posted — everyone can see it now ✓");
+        // `heldForText`/`p_held` only reflects OUR OWN client-side AI text
+        // pre-check — it says nothing about whether the server's blocklist
+        // trigger (moderate_content_text) separately auto-held the row. The
+        // RPC/insert reports success either way (the trigger never throws),
+        // so re-check the row's ACTUAL resulting status before claiming it's
+        // visible — otherwise a silently-held post looks like a normal,
+        // successful post to its own author, with no way to tell it never
+        // showed up for anyone else.
+        let finalStatus: string | null = null;
+        if (newPostId) {
+          const { data: freshPost } = await supabase
+            .from("posts")
+            .select("status")
+            .eq("id", newPostId)
+            .maybeSingle();
+          finalStatus = (freshPost as { status: string } | null)?.status ?? null;
+        }
+        setStatus(
+          finalStatus === "pending"
+            ? "Posted — held for admin review (only you and admins can see it until then) ⏳"
+            : finalStatus === "hidden"
+            ? "Posted — held for admin review (only you and admins can see it until then) ⏳"
+            : "Posted — everyone can see it now ✓",
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "please try again";
         const friendly = /max|size|large|exceed|413|payload/i.test(msg) ? "that file was too big to upload." : msg;

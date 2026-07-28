@@ -2073,6 +2073,36 @@ the post-media hold trigger), and [`0128`](supabase/migrations/0128_chat_moderat
 extending the queue/blocklist/set-status to chat; also fixes a latent post bug
 where the member-edit status pin reverted the automated holds).
 
+⚠️ **Incident: 0128 silently regressed whole-word blocklist matching (fixed by
+[`0160`](supabase/migrations/0160_restore_blocklist_whole_word.sql)).**
+[`0044`](supabase/migrations/0044_blocklist_whole_word.sql) had fixed
+`moderate_content_text()` to match single-word blocklist terms as **whole
+words**, not substrings — otherwise a public profanity seed list
+(`media-server/seed-blocklist.js`) over-flags ordinary fishing-resort words
+that merely *contain* a blocked fragment ("bass"/"class"/"glass"/"assist"
+all contain "ass", "hello"/"shell" contain "hell", etc). 0128 recreated the
+same function (to extend it to committee/house chat) directly off the
+**original 0040 version**, not 0044 — silently reintroducing plain substring
+matching (`ilike '%pattern%'`). Live impact: one post got auto-held as a
+false positive, and — since it's the same regressed matcher, not something
+specific to that post — every post/comment/chat message containing an
+ordinary word with a blocked fragment inside it kept getting silently
+auto-held afterward, for everyone, with the composer's success toast still
+claiming "Posted — everyone can see it now" (see the `PostsView.tsx` fix
+below), so it looked like posting itself had broken rather than one specific
+row being held. 0160 re-recreates `moderate_content_text()` with 0128's
+structure (chat branches + the `mlr.mod_bypass` GUC) but restores 0044's
+tokenized whole-word matching. **Takeaway for future edits to this
+function:** always `create or replace` it starting from the CURRENT
+production definition (or diff against the previous migration that touched
+it), never from an older migration's copy-pasted body — Postgres has no way
+to detect that a "recreate" silently dropped an unrelated prior fix.
+[`PostsView.tsx`](components/PostsView.tsx)'s post composer was also fixed to
+stop always showing "Posted — everyone can see it now ✓" — it now re-reads
+the created row's actual `status` and shows a "held for admin review" message
+when the trigger auto-holds it, so a future legitimate (or erroneous) hold is
+immediately visible to the poster instead of looking like silent failure.
+
 ## Conversation search (semantic, on-device)
 
 A search box at the **foot of the Feed conversation list** ([`FeedView`](components/FeedView.tsx))
@@ -2172,6 +2202,21 @@ Supabase realtime and delivers via the `web-push` lib. **Env:**
 adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
 of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
 without them.
+
+**Realtime reconnect hardening.** `push-sender.js` and `apns-sender.js`
+(the APNs counterpart) each ran a single `.subscribe()` with no recovery —
+the same silent-drop failure mode documented in **Cabin stays**' "Mailer
+reliability" (`alert-mailer.js`'s Supabase Realtime channel can go
+`CHANNEL_ERROR`/`TIMED_OUT`/`CLOSED` with no built-in reconnect). The mailer
+was hardened for this; the two push senders were not, so a dropped channel
+meant **every push silently stopped** — chat, alerts, feed-mirrored
+notifications, all of it — until someone noticed and restarted the mini,
+with nothing in the logs pointing at why (posts/comments/etc. still work
+fine, since those are plain Supabase writes from the browser that never
+touch the mini). Both senders now resubscribe 5s after a dropped channel,
+matching `alert-mailer.js`'s pattern (there's no per-push "unsent row" to
+sweep as a backstop the way email has, so reconnect-on-drop is the whole
+fix here, not just the fast path).
 
 **In-app Notifications (the Activity tab).** A durable, Facebook-style feed of
 everything that happened involving you — comments & reactions on your posts,
