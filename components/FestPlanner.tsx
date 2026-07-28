@@ -1902,6 +1902,7 @@ export function ActivitySheet({
   const [pickingCrew, setPickingCrew] = useState(false);
 
   const canSave = title.trim().length > 0 && signupIsValid(signup) && !save.pending;
+  const saveLabel = draft ? "Save changes" : "Create activity";
   const submit = () =>
     save.run(async () => {
       const { error, id } = await saveActivity({
@@ -1931,60 +1932,64 @@ export function ActivitySheet({
       onDismiss={close}
       labelledBy="act-sheet"
       header={<h2 id="act-sheet" className="text-lg font-bold">{draft ? "✏️ Edit activity" : "🗺️ New activity"}</h2>}
-      footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} />}
+      footer={<SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} label={saveLabel} />}
     >
-      <Field label="Title">
-        <div className="flex gap-2">
-          <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={8} aria-label="Emoji" className={`${FIELD} w-14 text-center`} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${FIELD} min-w-0 flex-1`} />
-        </div>
-      </Field>
-      <Field label="Blurb (one-liner)"><input value={blurb} onChange={(e) => setBlurb(e.target.value)} className={`${FIELD} w-full`} /></Field>
-      <Field label="Details (optional)"><textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} /></Field>
-      <Field label="Where to start (optional)"><input value={location} onChange={(e) => setLocation(e.target.value)} className={`${FIELD} w-full`} /></Field>
-
-      <LeadPicker
-        title="Who's in charge"
-        members={members}
-        userId={leadUserId}
-        name={leadName}
-        phone={leadPhone}
-        onPick={() => setPicking(true)}
-        onClear={() => { setLeadUserId(null); setLeadName(""); }}
-        onName={setLeadName}
-        onPhone={setLeadPhone}
-      />
-
-      <Field label="Crew members (also get editing rights for this activity)">
-        {crewUserIds.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {crewUserIds.map((id) => {
-              const m = members.find((x) => x.id === id);
-              return (
-                <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
-                  {m?.name ?? "Member"}
-                  <button
-                    type="button"
-                    onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
-                    aria-label={`Remove ${m?.name ?? "member"} from crew`}
-                    className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
-                  >
-                    ✕
-                  </button>
-                </span>
-              );
-            })}
+      <Group title="What & where">
+        <Field label="Title">
+          <div className="flex gap-2">
+            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={8} aria-label="Emoji" className={`${FIELD} w-14 text-center`} />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${FIELD} min-w-0 flex-1`} />
           </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setPickingCrew(true)}
-          disabled={members.length === 0}
-          className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
-        >
-          + Add a crew member…
-        </button>
-      </Field>
+        </Field>
+        <Field label="Blurb (one-liner)"><input value={blurb} onChange={(e) => setBlurb(e.target.value)} className={`${FIELD} w-full`} /></Field>
+        <Field label="Details (optional)"><textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} className={`${FIELD} w-full resize-none`} /></Field>
+        <Field label="Where to start (optional)"><input value={location} onChange={(e) => setLocation(e.target.value)} className={`${FIELD} w-full`} /></Field>
+      </Group>
+
+      <Group title="Who's running it">
+        <LeadPicker
+          title="Who's in charge"
+          members={members}
+          userId={leadUserId}
+          name={leadName}
+          phone={leadPhone}
+          onPick={() => setPicking(true)}
+          onClear={() => { setLeadUserId(null); setLeadName(""); }}
+          onName={setLeadName}
+          onPhone={setLeadPhone}
+        />
+
+        <Field label="Crew members (also get editing rights for this activity)">
+          {crewUserIds.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {crewUserIds.map((id) => {
+                const m = members.find((x) => x.id === id);
+                return (
+                  <span key={id} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                    {m?.name ?? "Member"}
+                    <button
+                      type="button"
+                      onClick={() => setCrewUserIds((prev) => prev.filter((x) => x !== id))}
+                      aria-label={`Remove ${m?.name ?? "member"} from crew`}
+                      className="press flex h-4 w-4 items-center justify-center rounded-full text-primary/70 hover:text-primary"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setPickingCrew(true)}
+            disabled={members.length === 0}
+            className="press w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-border disabled:opacity-50"
+          >
+            + Add a crew member…
+          </button>
+        </Field>
+      </Group>
 
       <SignupConfigEditor
         kind="activity"
