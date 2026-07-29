@@ -40,17 +40,12 @@ function capacityLabel(count: number, capacity: number | null): string {
   return capacity != null ? `${count}/${capacity}` : String(count);
 }
 
-/** Lead-time chips for the manual "notify this slot" send — same options as
- *  FestPlanner's REMINDER_CHOICES (the automatic cron config), duplicated
- *  here since it's a small, self-contained list and the two pickers serve
- *  different actions (configure-ahead vs send-now). */
-const NOTIFY_LEAD_CHOICES: { m: number | null; label: string }[] = [
-  { m: 15, label: "Starts in 15 min" },
-  { m: 30, label: "Starts in 30 min" },
-  { m: 60, label: "Starts in 1 hour" },
-  { m: 120, label: "Starts in 2 hours" },
-  { m: null, label: "Starts now" },
-];
+// The manual send deliberately has NO lead-time picker. It used to offer
+// chips ("Starts in 15 min" / "30 min" / …) whose label became the
+// notification's wording verbatim — so picking the wrong one told everyone a
+// lead time that had nothing to do with the slot's real time (see migration
+// 0165). A manual nudge now always just states the slot's actual day + time,
+// resolved server-side from the stored value, so there's nothing to pick.
 
 export function ScheduleSignupSlots({
   target,
@@ -396,27 +391,25 @@ function SlotCard({
           ) : (
             <div className="rounded-lg bg-accent/5 p-2 ring-1 ring-accent/20">
               <p className="mb-1.5 text-[11px] font-medium text-foreground/60">
-                Notify everyone in this slot this far before it starts:
+                Remind everyone in this slot when it starts
+                {view.label ? ` (${view.label})` : ""}.
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
-                {NOTIFY_LEAD_CHOICES.map(({ m, label }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    disabled={notifyBusy}
-                    onClick={async () => {
-                      setNotifyBusy(true);
-                      setNotifyResult(null);
-                      const { error, count } = await onNotify(m, notifyEmail);
-                      setNotifyBusy(false);
-                      setNotifyResult(error ? error : `✓ Sent to ${count} ${count === 1 ? "person" : "people"}`);
-                      if (!error) setTimeout(() => setNotifyOpen(false), 1500);
-                    }}
-                    className="press rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
-                  >
-                    {label}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  disabled={notifyBusy}
+                  onClick={async () => {
+                    setNotifyBusy(true);
+                    setNotifyResult(null);
+                    const { error, count } = await onNotify(null, notifyEmail);
+                    setNotifyBusy(false);
+                    setNotifyResult(error ? error : `✓ Sent to ${count} ${count === 1 ? "person" : "people"}`);
+                    if (!error) setTimeout(() => setNotifyOpen(false), 1500);
+                  }}
+                  className="press rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
+                >
+                  {notifyBusy ? "Sending…" : "Send reminder"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setNotifyOpen(false)}

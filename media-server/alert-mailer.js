@@ -500,14 +500,28 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       console.log(`[mailer] signup reminder ${row.id}: no linked recipients to email`);
       return;
     }
+    // Wording, in preference order (migration 0166):
+    //   1. The slot's REAL day + time in Central — always correct, and the only
+    //      thing a manual "notify this slot" send has (it carries no lead time).
+    //   2. The automatic cron's configured lead time ("starts in 30 minutes"),
+    //      which is accurate there because the cron fires AT that offset.
+    //   3. A vague fallback when the slot has no resolvable calendar moment.
     const lead = d.lead_minutes && d.lead_minutes > 0
       ? (d.lead_minutes % 60 === 0 ? `${d.lead_minutes / 60} hour${d.lead_minutes === 60 ? "" : "s"}` : `${d.lead_minutes} minutes`)
       : null;
+    const slotWhen = d.slot_when
+      ? new Date(d.slot_when).toLocaleString("en-US", {
+          timeZone: "America/Chicago",
+          weekday: "short", month: "short", day: "numeric",
+          hour: "numeric", minute: "2-digit",
+        })
+      : null;
+    const phrase = slotWhen ? `starts ${slotWhen}` : lead ? `starts in ${lead}` : "is coming up";
     const appLink = `${APP_URL}${d.url || ""}`;
     const subject = `⏰ Reminder: ${d.item_title}`;
-    const text = `Your ${d.item_title} time slot ${lead ? `starts in ${lead}` : "is coming up"}.\n\nOpen the app: ${appLink}\n\n— Muskellunge Lake Resort`;
+    const text = `Your ${d.item_title} time slot ${phrase}.\n\nOpen the app: ${appLink}\n\n— Muskellunge Lake Resort`;
     const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:520px">
-<p style="font-size:18px;margin:0 0 12px"><strong>⏰ Your ${escapeHtml(d.item_title)} time slot ${lead ? `starts in ${escapeHtml(lead)}` : "is coming up"}</strong></p>
+<p style="font-size:18px;margin:0 0 12px"><strong>⏰ Your ${escapeHtml(d.item_title)} time slot ${escapeHtml(phrase)}</strong></p>
 <p style="margin:16px 0 0"><a href="${appLink}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600">Open the app →</a></p>
 <hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
 <p style="color:#888;font-size:12px;margin:0">You're getting this because you signed up for this Family Fest time slot.</p>

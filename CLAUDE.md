@@ -854,17 +854,52 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   say "this slot's time is close, tell everyone" on demand. [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx)
   now shows a **"🔔 Notify this slot"** button (visible to the same `canManage`
   viewers as "📋 View all", once at least one person is signed up for that
-  slot) that opens quick lead-time chips (15 min/30 min/1 hour/2 hours/Now) and
-  fires immediately — no waiting on the cron, no pre-configuration needed. It
+  slot) that fires immediately — no waiting on the cron, no pre-configuration
+  needed. There is deliberately **no lead-time picker** (see the 0165 note
+  below — it used to offer chips whose label became the notification's wording
+  verbatim); a manual nudge always just states the slot's real day + time. It
   reuses the exact same `signup_reminder` notification kind as 0140 (so no new
   in-app-prefs wiring), sent via the
   `send_signup_slot_reminder_now(kind, item, slot_id, slot_start, minutes, email)`
   RPC (client seam `sendSlotReminderNow()` in [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts)),
   gated on the same creator predicate (`_can_manage_item_signups`/
-  `_can_manage_activity_item_signups`). The chosen lead time is descriptive
-  text only ("starts in 1 hour") — this send doesn't compute off the slot's
-  real time and doesn't touch the 0140 dedup ledger, so it can't collide with
-  or double the automatic cron reminders.
+  `_can_manage_activity_item_signups`). This send still doesn't touch the 0140
+  dedup ledger, so it can't collide with or double the automatic cron
+  reminders.
+  - ⚠️ **Fixed: the notification text used to be the sender's chosen chip
+    label verbatim ("starts in 30 minutes"), with zero connection to the
+    slot's real stored day/time (migration
+    [`0165`](supabase/migrations/0165_signup_notify_real_time.sql).** A
+    coordinator clicking the wrong chip (or the wrong slot's button) could
+    send "starts in 30 minutes" for a slot that was actually a full day away
+    — the recipient had no way to tell the lead time was wrong from the
+    message alone. `send_signup_slot_reminder_now` now resolves the SAME real
+    instant `run_signup_reminders()` computes (day + start_time, Central,
+    DST-safe via `AT TIME ZONE 'America/Chicago'`) and states it plainly
+    ("starts Thu, Jul 30 at 3:00 PM") instead of trusting the sender's
+    minutes label. The old descriptive phrasing survives only as a fallback
+    for a slot with no resolvable real time (an activity's interval slot has
+    no calendar day at all). The lead-time chips were removed from
+    [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) entirely —
+    there's nothing left to pick, so one "Send reminder" button replaces them.
+    **The automatic cron's `_humanize_minutes(m)` wording ("starts in 30
+    minutes") is deliberately UNCHANGED** — it's accurate there, because the
+    cron fires *at* that offset. (Known wart, not fixed: someone who signs up
+    *inside* the lead window — at 2:45 for a 3:00 slot — gets "starts in 30
+    minutes" on the next tick when it's really 15 away. Never an early buzz,
+    just imprecise copy.)
+  - **Migration [`0166`](supabase/migrations/0166_signup_reminder_email_real_time.sql)**
+    carries the same fix into the optional **email** half:
+    `signup_reminder_email_recipients` now also returns the slot's resolved
+    instant (`slot_when`), which the mini's [`alert-mailer.js`](media-server/alert-mailer.js)
+    prefers over `lead_minutes` when wording the email (needs a mini
+    restart, like all mini email/push). It also fixes a dedup fallout — the
+    `fest_reminder_emails` unique index keys on `coalesce(lead_minutes, -1)`,
+    so with manual sends now always passing null, every manual email for a
+    slot collapsed onto one row *forever* (a deliberate re-send got the push
+    but silently no email). The manual insert now `on conflict … do update`
+    re-queues the row when it's older than 90s, keeping the index's real job
+    (swallowing a double-tap) without pinning it permanently.
 - **`signup_reminder` is a normal, default-on push category — not a hidden
   override (migration 0159).** It used to buzz anyone with push on regardless
   of category picks (like `help_urgent`); it's now a real
