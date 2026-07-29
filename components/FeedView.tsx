@@ -18,8 +18,10 @@ import { ConversationSearch } from "@/components/ConversationSearch";
 import type { SearchResult } from "@/lib/search";
 import { Sheet } from "@/components/Sheet";
 import { MeetingComposer } from "@/components/MeetingComposer";
+import { ChatPollComposer } from "@/components/ChatPollComposer";
 import { EmailMembersComposer } from "@/components/EmailMembersComposer";
 import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
+import type { ChatPollScope } from "@/lib/chatPolls";
 import { fetchCommitteeRecipients, fetchHouseRecipients, type RecipientResult } from "@/lib/emailBlast";
 import { useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
@@ -133,6 +135,18 @@ export function FeedView() {
   // room (no organizer gate — everyone here can already see everyone here).
   const [emailTarget, setEmailTarget] = useState<EmailTarget | null>(null);
   const [composeEmail, setComposeEmail] = useState(false);
+  // "Create a poll" joins them in the ⋯ menu, for the same reason meetings are
+  // there: it's a rare-but-important action, so it stays out of the composer,
+  // which keeps ONE clean "+" (attach) button next to the text field. Open to
+  // any room member (the family-polls doctrine). The poll itself renders inline
+  // in the message timeline — created here, it shows up there on the next
+  // realtime tick, so there's no cross-component wiring, same as meetings.
+  const [composePoll, setComposePoll] = useState(false);
+  // The poll scope is exactly the room scope already resolved for meetings,
+  // minus the "family" case ChatPollScope doesn't have (and openMembers /
+  // openHouseMembers never set).
+  const pollScope: ChatPollScope | null =
+    meetingScope && meetingScope.type !== "family" ? meetingScope : null;
   // Semantic search across every conversation this member can see.
   const [searchOpen, setSearchOpen] = useState(false);
   // Mute-duration sheet — opened from the bell on either a committee channel
@@ -717,6 +731,7 @@ export function FeedView() {
             canSchedule={canOrganizeMeeting}
             onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
             onEmail={() => { setShowMembers(false); setComposeEmail(true); }}
+            onPoll={() => { setShowMembers(false); setComposePoll(true); }}
             onClose={() => setShowMembers(false)}
           />
         )}
@@ -725,6 +740,14 @@ export function FeedView() {
         )}
         {composeEmail && emailTarget && (
           <ChatEmailSheet target={emailTarget} onClose={() => setComposeEmail(false)} />
+        )}
+        {composePoll && pollScope && (
+          <ChatPollComposer
+            scope={pollScope}
+            roomLabel={meetingLabel}
+            onClose={() => setComposePoll(false)}
+            onCreated={() => setComposePoll(false)}
+          />
         )}
       </>
     );
@@ -761,6 +784,7 @@ export function FeedView() {
             canSchedule={canOrganizeMeeting}
             onSchedule={() => { setShowMembers(false); setComposeMeeting(true); }}
             onEmail={() => { setShowMembers(false); setComposeEmail(true); }}
+            onPoll={() => { setShowMembers(false); setComposePoll(true); }}
             onClose={() => setShowMembers(false)}
           />
         )}
@@ -769,6 +793,14 @@ export function FeedView() {
         )}
         {composeEmail && emailTarget && (
           <ChatEmailSheet target={emailTarget} onClose={() => setComposeEmail(false)} />
+        )}
+        {composePoll && pollScope && (
+          <ChatPollComposer
+            scope={pollScope}
+            roomLabel={meetingLabel}
+            onClose={() => setComposePoll(false)}
+            onCreated={() => setComposePoll(false)}
+          />
         )}
       </>
     );
@@ -962,6 +994,7 @@ function ChatMembersSheet({
   canSchedule = false,
   onSchedule,
   onEmail,
+  onPoll,
   onClose,
 }: {
   title: string;
@@ -971,6 +1004,8 @@ function ChatMembersSheet({
   onSchedule?: () => void;
   /** Show the "Email members" action — open to anyone viewing the room. */
   onEmail?: () => void;
+  /** Show the "Create a poll" action — open to anyone viewing the room. */
+  onPoll?: () => void;
   onClose: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
@@ -999,10 +1034,20 @@ function ChatMembersSheet({
         <button
           type="button"
           onClick={onEmail}
-          className="press mb-3 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+          className="press mb-2 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
         >
           <span aria-hidden className="text-base">✉️</span>
           Email members
+        </button>
+      )}
+      {onPoll && (
+        <button
+          type="button"
+          onClick={onPoll}
+          className="press mb-3 flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary ring-1 ring-primary/20"
+        >
+          <span aria-hidden className="text-base">🗳️</span>
+          Create a poll
         </button>
       )}
       <ul className="space-y-1">
