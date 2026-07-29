@@ -1735,6 +1735,34 @@ question, 2–10 options (single- or multi-select), an optional write-in
   either way; only how the file dialog opens changed). Same change in both
   `CommitteeChat.tsx` and `HouseChat.tsx` (near-duplicate composer code, per
   **Houses**).
+  - ⚠️ **Incident: attaching a photo in chat was broken in the installed iOS
+    PWA — never unmount the tapped element while the native picker is up.**
+    Each menu item did `libraryFileRef.current?.click(); setAttachMenuOpen(false);`
+    — closing the menu in the same tick as opening the picker, which ripped the
+    tapped button, the `motion.div` menu, and its `fixed inset-0` overlay out of
+    the DOM. In a standalone iOS PWA the picker's presentation is tied to the
+    element that received the tap, so the picker opened, you could select a
+    photo and hit the checkmark, and the `change` event had nothing to land on:
+    the file was dropped and **nothing appeared in the composer, with no error**
+    (`pickFiles` also `return`ed silently on an empty `FileList`, so there was
+    no signal either way). It read as "sending photos just doesn't work". Safari
+    (non-standalone) and the Posts composer were unaffected — `PostsView`'s
+    trigger button stays mounted, which is the whole difference. **The fix, in
+    both chat components:** (1) the three file `<input>`s are mounted
+    **unconditionally at the composer root**, outside the `!editing` attach-menu
+    wrapper, so no unrelated state change can unmount them mid-pick; (2) the
+    menu items only call `.click()` — the menu is closed later, in `pickFiles`
+    (a selection arrived) or on the input's native `cancel` event (backed out),
+    both *after* the picker has resolved; (3) `sr-only` instead of `hidden`,
+    since a laid-out input is what iOS reliably delivers a selection to; and
+    (4) an empty `FileList` now surfaces a visible message instead of returning
+    silently (iOS hands one back when it can't export the asset — an
+    iCloud-optimized photo that isn't on-device, an odd HEIC). `cancel` is wired
+    with `addEventListener` rather than a JSX `onCancel` prop because it isn't in
+    the installed `@types/react` input props. **Takeaway:** any
+    programmatically-`.click()`ed file input must outlive the picker — don't
+    close a menu, sheet, or overlay containing (or containing the trigger for)
+    a file input until its `change`/`cancel` fires.
 - **Data model:** `chat_polls` / `chat_poll_options` / `chat_poll_votes`,
   scoped and read-gated exactly like `meetings` (0116) —
   `can_access_committee_area()` (0063) / `is_house_member()` (0064). All
