@@ -183,7 +183,19 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       if (e.key === "Escape") setAttachMenuOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Also close the menu when the native file picker is dismissed WITHOUT a
+    // pick — the menu now stays open across the picker (see the file inputs
+    // below), so something has to retire it. Wired natively because `cancel`
+    // isn't in our @types/react input props; attached only while the menu is
+    // open, which is the only window the event can fire in (and the only time
+    // the inputs are guaranteed mounted).
+    const els = [libraryFileRef.current, cameraFileRef.current, documentFileRef.current];
+    const onCancel = () => setAttachMenuOpen(false);
+    els.forEach((el) => el?.addEventListener("cancel", onCancel));
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      els.forEach((el) => el?.removeEventListener("cancel", onCancel));
+    };
   }, [attachMenuOpen]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -530,7 +542,19 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   };
   const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
-    if (!list?.length) return;
+    // Close the attach menu only once the picker has actually handed something
+    // back — NOT at tap time. See the note on the file inputs below.
+    setAttachMenuOpen(false);
+    if (!list?.length) {
+      // iOS can hand back an empty FileList when it fails to export the asset
+      // (an iCloud-optimized photo that isn't on the device, an odd HEIC).
+      // Cancelling fires `cancel`, not `change`, on our iOS floor (16.4+), so an
+      // empty change here is a real failure — say so instead of returning
+      // silently, which read as "attaching just doesn't work".
+      setStatus("Couldn't attach that file. Try another photo, or save it to Files first.");
+      window.setTimeout(() => setStatus(null), 6000);
+      return;
+    }
     setPending((p) => [...p, ...Array.from(list).map(pendingFromFile)]);
     e.target.value = "";
   };
@@ -1002,30 +1026,21 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        libraryFileRef.current?.click();
-                        setAttachMenuOpen(false);
-                      }}
+                      onClick={() => libraryFileRef.current?.click()}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
                       <span className="text-lg">🖼️</span> Photo &amp; Video Library
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        cameraFileRef.current?.click();
-                        setAttachMenuOpen(false);
-                      }}
+                      onClick={() => cameraFileRef.current?.click()}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
                       <span className="text-lg">📷</span> Take Photo
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        documentFileRef.current?.click();
-                        setAttachMenuOpen(false);
-                      }}
+                      onClick={() => documentFileRef.current?.click()}
                       className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
                     >
                       <span className="text-lg">📄</span> Document
@@ -1043,9 +1058,6 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                   </motion.div>
                 </>
               )}
-              <input ref={libraryFileRef} type="file" multiple accept="image/*,video/*" onChange={pickFiles} className="hidden" />
-              <input ref={cameraFileRef} type="file" accept="image/*" capture="environment" onChange={pickFiles} className="hidden" />
-              <input ref={documentFileRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.pages,.numbers,.key,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,application/rtf,application/zip" onChange={pickFiles} className="hidden" />
             </div>
           )}
           <textarea
@@ -1069,6 +1081,25 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
             {sending ? "…" : editing ? "✓" : "➤"}
           </button>
         </div>
+
+        {/* ── The attachment file inputs ─────────────────────────────────────
+            Deliberately mounted HERE — unconditionally, outside the `!editing`
+            attach-menu wrapper — and NOT `display: none`.
+
+            In an installed iOS PWA the native photo picker's presentation is
+            tied to the element that received the tap. These used to live inside
+            the attach menu, whose buttons closed the menu (`setAttachMenuOpen(false)`)
+            in the same tick as `.click()` — ripping the tapped button, the menu,
+            and its full-screen overlay out of the DOM while the picker was
+            being presented. You could pick a photo and hit the checkmark and
+            the `change` event had nothing to land on, so the file was dropped
+            with no error at all. Keeping them mounted (and closing the menu
+            only in `pickFiles`/`onCancel`, once the picker has resolved) is the
+            fix. `sr-only` over `hidden` for the same reason: a laid-out input
+            is what iOS reliably delivers a selection to. ── */}
+        <input ref={libraryFileRef} tabIndex={-1} type="file" multiple accept="image/*,video/*" onChange={pickFiles} className="sr-only" />
+        <input ref={cameraFileRef} tabIndex={-1} type="file" accept="image/*" capture="environment" onChange={pickFiles} className="sr-only" />
+        <input ref={documentFileRef} tabIndex={-1} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.pages,.numbers,.key,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,application/rtf,application/zip" onChange={pickFiles} className="sr-only" />
       </div>
       )}
 
