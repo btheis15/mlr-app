@@ -2294,6 +2294,15 @@ want it unticks that one row rather than killing push entirely. The in-app
 No schema change was ever needed — `push_types` is a plain `text[]` with no
 allow-list constraint, so 0161 is a pure data backfill.
 
+**A comment on YOUR post rides a phone push too** — `post_comment` is a
+`PushType` (same wiring as `new_post`: both mini senders + a `PushToggle` row,
+"Comments on my posts") and is **ON by default**, backfilled by migration
+[`0163`](supabase/migrations/0163_post_comment_push_default.sql). The gap this
+closed: `post_reply` (notifying every OTHER member who'd already commented on a
+post) was already pushable, but `post_comment` — notifying the post's OWN
+AUTHOR — was in-app only, so the one person most invested in a post's comments
+was the one not getting pinged. Still individually opt-OUT-able.
+
 ⚠️ **Audit finding, fixed: `help_request`/`help_response` had no `PushToggle`
 row.** Both are real `PushType` values, default-on (`DEFAULT_PUSH_TYPES`), and
 correctly gated in both mini senders' pushable sets — but

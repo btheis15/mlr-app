@@ -6,13 +6,14 @@
 //   chat      → every new committee message (not your own)  [committee_messages]
 //   alerts    → broadcast alerts                            [announcements]
 //   birthdays → handled by birthday-notifier.js (a separate daily job)
-// The remaining five mirror an in-app `notifications` row (migration 0030/0033)
-// of the matching type to a phone push, gated on the recipient's push_types:
-//   committee_join · cabin_decision · post_tag · post_mention · post_reply
+// The rest mirror an in-app `notifications` row (migration 0030/0033) of the
+// matching type to a phone push, gated on the recipient's push_types:
+//   committee_join · cabin_decision · post_tag · post_mention · post_reply ·
+//   post_comment
 // (The feed already fanned out + denormalized title/body/url per recipient, so
-// we just relay it.) Other notification types — post_comment, post_reaction,
-// chat_mention, cabin_request (admin), broadcast — are intentionally
-// NOT in push_types, so they stay in-app only / use their own admin paths.
+// we just relay it.) Other notification types — post_reaction, chat_mention,
+// cabin_request (admin), broadcast — are intentionally NOT in push_types, so
+// they stay in-app only / use their own admin paths.
 // A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
 // also receives pushes for their OWN messages, to test without a second person.
 //
@@ -312,6 +313,12 @@ async function start() {
     // migration 0161), since the family feed is how time-sensitive news travels
     // during the fest. Still individually opt-OUT-able in PushToggle.
     "new_post",
+    // Someone commented on YOUR post (migration 0163) — ON by default. Note
+    // this is distinct from post_reply above (every OTHER prior commenter, not
+    // the author) — post_reply was already pushable, post_comment wasn't,
+    // which meant the post's own author was the one person NOT getting pinged
+    // when their post got a comment.
+    "post_comment",
     // A member asking to join a committee (migration 0042): the feed fans a row
     // out to that committee's leads + every app admin; we relay it to a phone
     // push, gated on push_types (admins opt in via Profile → Notifications).
