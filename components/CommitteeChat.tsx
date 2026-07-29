@@ -969,26 +969,31 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         )}
 
         <div className="flex items-end gap-1.5 px-2 py-2">
-          {/* ── Attach + poll ───────────────────────────────────────────────
-              These are DIRECT, always-visible buttons sitting next to a plain
-              hidden <input> — deliberately copied from the Main Feed's post
-              composer (PostsView), which is the one media picker in this app
+          {/* ── The attach button ───────────────────────────────────────────
+              ONE "+" that opens the picker DIRECTLY — its onClick is nothing
+              but `fileRef.current?.click()`, and the input is a plain hidden
+              sibling right next to it. Deliberately the exact shape of the Main
+              Feed's post composer (PostsView), the one media picker in this app
               that has always worked in the installed iOS PWA.
 
-              There used to be a "+" that opened a framer-motion popup menu
-              (Photo Library / Take Photo / Document / Poll) and the file inputs
-              were reached from inside it. In a standalone iOS PWA that never
-              delivered the file: you could pick a photo and hit the checkmark
-              and nothing arrived in the composer, with no error. Two rounds of
-              fixing the menu (keeping the inputs mounted outside it, closing it
-              only after the picker resolved, sr-only over display:none) did NOT
-              fix it on-device, so the menu is gone entirely — a popup is simply
-              not a safe place to trigger a file input from on iOS.
+              The "+" used to open a framer-motion popup menu (Photo Library /
+              Take Photo / Document / Poll) with the file inputs reached from
+              INSIDE it. In a standalone iOS PWA that never delivered the file:
+              you could pick a photo, hit the checkmark, and nothing arrived in
+              the composer, with no error. Three attempts to keep the menu and
+              fix it around the edges all failed on-device (inputs mounted
+              outside the menu; closing the menu only after the picker resolved;
+              sr-only over display:none) — so the POPUP is gone, not the "+". A
+              popup is not a safe place to trigger a file input from on iOS; the
+              glyph was never the problem.
 
-              One unfiltered input covers everything the menu's three file items
-              did: iOS's own action sheet offers "Photo Library / Take Photo or
-              Video / Choose File", so camera + documents are still one tap
-              away, via the native path the Main Feed already relies on.
+              The input is unfiltered (no `accept`) so this one button covers
+              everything the menu's three file items did: iOS's own action sheet
+              offers "Photo Library / Take Photo or Video / Choose File", so
+              camera + documents stay one tap away through the native path the
+              Main Feed already relies on. Poll moved to the room's ⋯ menu
+              (FeedView) with the other occasional actions, which is what keeps
+              this a single, uncluttered button.
 
               Editing changes text only — the attach button is hidden so it's
               clear media isn't part of an edit (and to leave room for text). ── */}
@@ -998,19 +1003,24 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 aria-label="Attach a photo, video, or file"
-                className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-foreground/55"
+                className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl font-semibold leading-none text-foreground/55"
               >
-                📎
+                +
               </button>
               <input ref={fileRef} type="file" multiple onChange={pickFiles} className="hidden" />
-              <button
-                type="button"
-                onClick={() => setPollComposing(true)}
-                aria-label="Create a poll"
-                className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-foreground/55"
-              >
-                🗳️
-              </button>
+              {/* The standalone (non-embedded) route has no ⋯ menu, so poll
+                  creation stays reachable there. Embedded — the Feed tab, how
+                  the family actually opens chats — uses the ⋯ menu. */}
+              {!embedded && (
+                <button
+                  type="button"
+                  onClick={() => setPollComposing(true)}
+                  aria-label="Create a poll"
+                  className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-foreground/55"
+                >
+                  🗳️
+                </button>
+              )}
             </>
           )}
           <textarea

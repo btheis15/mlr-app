@@ -1715,16 +1715,24 @@ question, 2–10 options (single- or multi-select), an optional write-in
 "Other", and a choice of **anonymous** (counts only) or **attributed**
 (counts + little avatar icons of who picked what) results.
 
-- **Entry point is a 🗳️ button in the composer row, next to 📎 attach** — two
-  plain, always-visible icon buttons left of the textarea, not a menu. There is
-  deliberately **no "+" attach menu** — see the incident below for why it was
-  removed. Same in both `CommitteeChat.tsx` and `HouseChat.tsx` (near-duplicate
-  composer code, per **Houses**).
+- **Entry point is "🗳️ Create a poll" in the room's ⋯ menu** — the
+  `ChatMembersSheet` in [`FeedView`](components/FeedView.tsx), alongside
+  "📅 Schedule a meeting" and "✉️ Email members", for the same reason meetings
+  live there: it's a rare-but-important action, so it stays out of the composer.
+  Open to **any room member** (the family-polls doctrine — no organizer gate,
+  unlike scheduling). `FeedView` mounts [`ChatPollComposer`](components/ChatPollComposer.tsx)
+  itself, reusing the room scope it already resolved for meetings (`MeetingScope`
+  is a superset of `ChatPollScope` — just drop the `"family"` case), so nothing
+  is drilled into the chat components; a poll created here appears inline in the
+  timeline on the next realtime tick, exactly like a meeting shows up in its bar.
+  The composer keeps **one clean `+` button** (attach) next to the textarea.
+  The **standalone** `/committees/[slug]/chat` route has no ⋯ menu, so it keeps
+  an in-composer 🗳️ button gated on `!embedded`.
   - ⚠️⚠️ **Incident: attaching a photo in chat was broken in the installed iOS
-    PWA for as long as the "+" menu existed. NEVER trigger a file input from
-    inside a popup/menu/overlay — copy the Main Feed composer instead.**
-    A `+` button used to open a small `framer-motion` spring-in menu (Photo
-    Library / Take Photo / Document / Poll), and the three file `<input>`s were
+    PWA for as long as the `+` POPUP MENU existed. NEVER trigger a file input
+    from inside a popup/menu/overlay — copy the Main Feed composer instead.**
+    The `+` used to open a small `framer-motion` spring-in menu (Photo Library /
+    Take Photo / Document / Poll), and the three file `<input>`s were
     `.click()`ed from inside it. In a **standalone iOS PWA** that never
     delivered the file: the native picker opened, you could select a photo and
     tap the checkmark, and **nothing arrived in the composer, with no error at
@@ -1732,29 +1740,31 @@ question, 2–10 options (single- or multi-select), an optional write-in
     was fine, and so was the Main Feed's post composer
     ([`PostsView`](components/PostsView.tsx)), whose trigger button is plain and
     always-mounted.
-    **Two rounds of fixing the menu did NOT work on-device** (recorded so nobody
-    retries them): (1) mounting the inputs unconditionally at the composer root,
-    outside the menu, so nothing unmounted them mid-pick; (2) removing
-    `setAttachMenuOpen(false)` from the tap so the menu only closed after the
-    picker resolved (via `pickFiles` or the input's native `cancel`); (3)
-    `sr-only` instead of `hidden`, on the theory a laid-out input receives the
-    selection more reliably. All shipped, all still broken in the PWA.
-    **What actually fixed it: deleting the menu.** The composer now mirrors
-    `PostsView` exactly — a direct always-visible 📎 button whose `onClick` is
-    just `fileRef.current?.click()`, sitting next to one plain
-    `<input type="file" multiple className="hidden">`, with no popup, no
-    `framer-motion`, no `fixed inset-0` overlay, and nothing conditionally
-    rendered anywhere in the path. The input is deliberately **unfiltered (no
-    `accept`)**, which covers all three of the menu's old file items at once:
-    iOS's own action sheet offers "Photo Library / Take Photo or Video / Choose
-    File", so camera and documents stay one tap away through the same native
-    path the Main Feed relies on. `pendingFromFile` still classifies each pick
-    as image/video/file by MIME, so nothing downstream changed. The one
-    deliberate regression is losing the one-tap `capture="environment"` camera
-    shortcut — iOS's "Take Photo or Video" in its own sheet replaces it.
+    **Three attempts to keep the menu and fix it around the edges all failed
+    on-device** (recorded so nobody retries them): (1) mounting the inputs
+    unconditionally at the composer root, outside the menu, so nothing unmounted
+    them mid-pick; (2) removing `setAttachMenuOpen(false)` from the tap so the
+    menu only closed after the picker resolved (via `pickFiles` or the input's
+    native `cancel`); (3) `sr-only` instead of `hidden`, on the theory a
+    laid-out input receives the selection more reliably.
+    **What was actually removed is the POPUP, not the `+`** — the glyph was
+    never the problem, and it's still the button. Its `onClick` is now nothing
+    but `fileRef.current?.click()`, with one plain
+    `<input type="file" multiple className="hidden">` as its immediate sibling:
+    no popup, no `framer-motion`, no `fixed inset-0` overlay, and nothing
+    conditionally rendered anywhere in the path — i.e. `PostsView`'s shape
+    exactly. The input is deliberately **unfiltered (no `accept`)**, so the one
+    button covers all three of the menu's old file items: iOS's own action sheet
+    offers "Photo Library / Take Photo or Video / Choose File", keeping camera
+    and documents one tap away through the same native path the Main Feed relies
+    on. `pendingFromFile` still classifies each pick as image/video/file by MIME,
+    so nothing downstream changed. The one deliberate regression is losing the
+    one-tap `capture="environment"` camera shortcut — iOS's "Take Photo or
+    Video" in its own sheet replaces it.
     **Takeaway:** a file input and its trigger must both be plain,
-    always-mounted siblings. If a picker needs to live behind a menu or sheet,
-    it will break in the installed PWA — put the button directly in the UI.
+    always-mounted siblings. If an action needs to live behind a menu or sheet,
+    it must not be a file picker — move the *other* actions there instead (which
+    is exactly where Poll went) and leave the picker as a direct button.
 - **Data model:** `chat_polls` / `chat_poll_options` / `chat_poll_votes`,
   scoped and read-gated exactly like `meetings` (0116) —
   `can_access_committee_area()` (0063) / `is_house_member()` (0064). All
