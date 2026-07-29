@@ -55,6 +55,7 @@ interface CommentItem {
   text: string;
   ts: string;
   mentions: string[]; // tagged user ids
+  media: Media[];     // photo/video attachments (0162)
 }
 
 interface PostRow {
@@ -91,6 +92,12 @@ interface TagRow {
 interface CommentMentionRow {
   comment_id: string;
   mentioned_user_id: string;
+}
+interface CommentMediaRow {
+  comment_id: string;
+  storage_path: string;
+  media_type: string;
+  position: number;
 }
 
 const LS = { hidden: "posts-hidden" };
@@ -231,6 +238,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
       sb.from("post_comment_mentions").select("comment_id, mentioned_user_id"),
+      // Comment attachments (0162). Pre-migration this errors (42P01) and
+      // supabase-js hands back `{ data: null }` rather than throwing, so the
+      // feed simply renders comments with no media — same degrade as elsewhere.
+      sb.from("post_comment_media").select("comment_id, storage_path, media_type, position").order("position", { ascending: true }),
       sb.from("profiles").select("id, display_name, full_name, avatar_url"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
@@ -262,7 +273,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
     }
     setHasOccurredAt(occ);
-    const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, profilesRes] = await others;
+    const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, commentMediaRes, profilesRes] = await others;
 
     const names = new Map<string, string>();
     const avatars = new Map<string, string | null>();
@@ -322,9 +333,20 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       (mentionsByComment[m.comment_id] ||= []).push(m.mentioned_user_id);
     }
 
+    const mediaByComment: Record<string, Media[]> = {};
+    for (const m of (commentMediaRes.data ?? []) as unknown as CommentMediaRow[]) {
+      (mediaByComment[m.comment_id] ||= []).push({
+        url: m.storage_path.startsWith("http")
+          ? m.storage_path
+          : sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
+        type: m.media_type === "video" ? "video" : "image",
+        path: m.storage_path,
+      });
+    }
+
     const byPost: Record<string, CommentItem[]> = {};
     for (const c of (commentsRes.data ?? []) as unknown as CommentRow[]) {
-      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorAvatar: avatarOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at, mentions: mentionsByComment[c.id] ?? [] });
+      (byPost[c.post_id] ||= []).push({ id: c.id, author: nameOf(c.author_id), authorAvatar: avatarOf(c.author_id), authorId: c.author_id, text: c.text, ts: c.created_at, mentions: mentionsByComment[c.id] ?? [], media: mediaByComment[c.id] ?? [] });
     }
     setDbComments(byPost);
 
@@ -365,7 +387,17 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     if (!snap) return;
     feedSeededRef.current = true;
     setDbPosts(snap.posts);
-    setDbComments(snap.comments);
+    // `media` on a comment is new (0162), so a snapshot written by an older
+    // build has none — normalize it rather than letting the render read
+    // undefined.length.
+    setDbComments(
+      Object.fromEntries(
+        Object.entries(snap.comments).map(([postId, list]) => [
+          postId,
+          list.map((c) => ({ ...c, media: c.media ?? [] })),
+        ]),
+      ),
+    );
     setDbReactions(snap.reactions);
     setMembers(snap.members);
     setHasOccurredAt(snap.hasOccurredAt);
@@ -389,6 +421,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       .on("postgres_changes", { event: "*", schema: "public", table: "post_media" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comment_mentions" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "post_comment_media" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, fire)
       .subscribe();
@@ -629,15 +662,36 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     await op;
   };
 
-  const addComment = async (postId: string, body: string, mentionIds: string[] = []) => {
+  const addComment = async (postId: string, body: string, mentionIds: string[] = [], commentFiles: File[] = []) => {
     const t = body.trim();
-    if (!t) return;
+    // A photo with no words is a perfectly good comment (mirrors the post
+    // composer's "text OR at least one file" rule).
+    if (!t && commentFiles.length === 0) return;
     if (!supabase || !uid) { promptSignIn(); return; }
     const { data, error } = await supabase.from("post_comments").insert({ post_id: postId, author_id: uid, text: t }).select("id").single();
     if (error) return;
     const commentId = (data as { id: string } | null)?.id;
     if (commentId && mentionIds.length) {
       await supabase.from("post_comment_mentions").insert(mentionIds.map((id) => ({ comment_id: commentId, mentioned_user_id: id })));
+    }
+    // Attachments (0162), same pipeline as a post's media: compress photos to
+    // web JPEGs, pass videos through, upload to the mini under the DEFAULT
+    // "posts" category — which the mini moderates INLINE, so any flagged
+    // verdict already exists in media_moderation by the time these rows land
+    // and the DB trigger holds the comment for review with no client help.
+    if (commentId && commentFiles.length) {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (token) {
+        let pos = 0;
+        for (const raw of commentFiles) {
+          const isVideo = raw.type.startsWith("video");
+          const f = isVideo ? raw : await compressImage(raw);
+          const url = await uploadToMini(f, token);
+          await supabase
+            .from("post_comment_media")
+            .insert({ comment_id: commentId, storage_path: url, media_type: isVideo ? "video" : "image", position: pos++ });
+        }
+      }
     }
     await refetch();
   };
@@ -1010,8 +1064,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                           <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press block text-left text-xs font-semibold">
                             {c.author}
                           </button>
-                          <p className="whitespace-pre-wrap break-words text-xs text-foreground/80"><MentionText text={c.text} mentions={c.mentions} members={members} /></p>
+                          {c.text && <p className="whitespace-pre-wrap break-words text-xs text-foreground/80"><MentionText text={c.text} mentions={c.mentions} members={members} /></p>}
                         </div>
+                        {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={setLightbox} />}
                         <div className="mt-1 flex items-center gap-3 px-3 text-[11px] text-faint">
                           <span>{timeAgo(c.ts)}</span>
                           {isAdmin || (!!uid && c.authorId === uid) ? (
@@ -1050,7 +1105,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         <CommentComposerSheet
           members={members}
           uid={uid}
-          onAdd={(t, ids) => addComment(commentSheetFor, t, ids)}
+          onAdd={(t, ids, commentFiles) => addComment(commentSheetFor, t, ids, commentFiles)}
           onClose={() => setCommentSheetFor(null)}
         />
       )}
@@ -1268,6 +1323,23 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
   );
 }
 
+// A comment's attachments (0162). Deliberately NOT the full-bleed square
+// carousel a post uses (MediaCarousel/MediaGrid) — a comment is a small inline
+// item in a list, so its photos read as thumbnails: a capped-width row that
+// wraps, reusing MediaItem so photos still open in the Lightbox and videos still
+// play inline exactly as they do on a post.
+function CommentMedia({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {media.map((m, i) => (
+        <div key={i} className="w-24 overflow-hidden rounded-xl ring-1 ring-border">
+          <MediaItem m={m} onOpen={onOpenPhoto} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Render comment text with @mentions of tagged members highlighted — mirrors
 // CommitteeChat's MessageText so a tag reads the same in a comment as in chat.
 function MentionText({ text, mentions, members }: { text: string; mentions: string[]; members: Member[] }) {
@@ -1290,8 +1362,9 @@ function MentionText({ text, mentions, members }: { text: string; mentions: stri
 
 // Full-screen comment composer (Sheet) with inline @mention autocomplete —
 // type "@" then a name to tag anyone in the family (same member list as post
-// tagging). The chosen ids flow back through onAdd so addComment can write
-// them to post_comment_mentions.
+// tagging) — plus photos/videos (0162), the same useMediaPicker + previews-grid
+// pattern EditPostPanel uses. The chosen ids and picked files flow back through
+// onAdd so addComment can write post_comment_mentions + post_comment_media.
 function CommentComposerSheet({
   members,
   uid,
@@ -1300,12 +1373,15 @@ function CommentComposerSheet({
 }: {
   members: Member[];
   uid: string | null;
-  onAdd: (text: string, mentionIds: string[]) => void;
+  onAdd: (text: string, mentionIds: string[], files: File[]) => void;
   onClose: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const [v, setV] = useState("");
   const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const { files, previews, add: addFiles, removeAt: removePreview } = useMediaPicker();
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Keep only mentions whose "@Name" is still present in the text — on a word
   // boundary, matching how choose() inserts them ("@Name "): the character
@@ -1340,8 +1416,17 @@ function CommentComposerSheet({
 
   const submit = () => {
     const text = v.trim();
-    if (!text) return;
-    onAdd(text, liveMentions(v));
+    // A photo on its own is enough — text OR at least one file, like the post
+    // composer's own guard.
+    if (!text && files.length === 0) return;
+    // Same friendly client-side file guard the post composer runs (the mini
+    // re-checks magic bytes + size server-side).
+    const badFile = files.map(fileRejectionReason).find(Boolean);
+    if (badFile) {
+      setErr(badFile);
+      return;
+    }
+    onAdd(text, liveMentions(v), files);
     close();
   };
 
@@ -1355,7 +1440,7 @@ function CommentComposerSheet({
         <button
           type="button"
           onClick={submit}
-          disabled={!v.trim()}
+          disabled={!v.trim() && previews.length === 0}
           className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
           Send
@@ -1370,6 +1455,33 @@ function CommentComposerSheet({
         autoFocus
         className={`${FIELD} w-full resize-none`}
       />
+
+      {previews.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {previews.map((m, i) => (
+            <div key={i} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
+              {m.type === "video" ? (
+                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.url} alt="" className="h-full w-full object-cover" />
+              )}
+              {m.type === "video" && (
+                <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">▶ Video</span>
+              )}
+              <button type="button" onClick={() => removePreview(i)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white before:absolute before:-inset-2.5 before:content-['']" aria-label="Remove">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => fileRef.current?.click()} className="press rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground/70 ring-1 ring-border">📷 Add photo / video</button>
+        <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={(e) => { setErr(null); addFiles(e); }} className="hidden" />
+      </div>
+
+      {err && <p className="text-xs font-medium text-accent">{err}</p>}
+
       {candidates.length > 0 && (
         <div className="space-y-1 rounded-xl bg-card p-1 ring-1 ring-border">
           {candidates.map((m) => (
