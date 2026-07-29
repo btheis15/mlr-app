@@ -5,6 +5,7 @@ import { TabBar } from "@/components/TabBar";
 import { InstallHint } from "@/components/InstallHint";
 import { PushPrompt } from "@/components/PushPrompt";
 import { PushKeepAlive } from "@/components/PushKeepAlive";
+import { PushDeepLink } from "@/components/PushDeepLink";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
@@ -94,6 +95,7 @@ export default async function RootLayout({
             <InstallHint />
             <PushPrompt />
             <PushKeepAlive />
+            <PushDeepLink />
             <ChunkErrorRecovery />
           {/* The one and only scroll container (see globals.css's #app-scroll
               note) — html/body never scroll, so the fixed TabBar below never
