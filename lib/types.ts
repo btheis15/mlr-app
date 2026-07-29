@@ -55,6 +55,7 @@ export type PushType =
   | "cabin_decision"
   | "cabin_message"
   | "new_post"
+  | "post_comment"
   | "post_tag"
   | "post_mention"
   | "post_reply"
@@ -87,6 +88,12 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   "chat",
   "help_request",
   "help_response",
+  // Someone commented on YOUR post (migration 0163) — ON by default. A member
+  // who wrote a post is exactly who needs to hear when a family member replies
+  // to it; the (much less central) "someone else also commented" case,
+  // post_reply, was already pushable, so post_comment being absent was the
+  // real gap. Existing push-on members are backfilled in 0163.
+  "post_comment",
   // A new Main Feed post (migration 0161) — ON by default: the family feed is
   // the app's town square, and during a live Family Fest a post ("dinner is
   // ready!") is exactly the thing people need to hear about right away. It IS

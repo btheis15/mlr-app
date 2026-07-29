@@ -18,6 +18,7 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "cabin_decision", label: "My cabin stay decisions", desc: "When your cabin stay request is approved or declined" },
   { value: "cabin_message", label: "Messages about my stay", desc: "When whoever runs a place you're booked at sends a note" },
   { value: "new_post", label: "New posts in the Feed", desc: "When anyone shares a new post to the family feed — on by default" },
+  { value: "post_comment", label: "Comments on my posts", desc: "When someone comments on a post you shared — on by default" },
   { value: "post_tag", label: "Tagged in a post", desc: "When someone tags you in a post" },
   { value: "post_mention", label: "Mentions in comments", desc: "When you're @mentioned in a post comment" },
   { value: "post_reply", label: "Replies on posts", desc: "When someone replies on a post you're on" },

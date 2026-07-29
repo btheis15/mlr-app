@@ -313,6 +313,9 @@ async function start() {
     // A new post on the Main Feed — same gating as web: relayed when the member
     // has `new_post` in push_types (ON by default since migration 0161).
     "new_post",
+    // Someone commented on YOUR post (migration 0163) — ON by default, same
+    // gating as web. Distinct from post_reply (every OTHER prior commenter).
+    "post_comment",
     // Meeting scheduling (migration 0116) — proposal + finalized, same gating.
     "meeting_proposed", "meeting_scheduled",
     // Quick poll started in a committee/house chat (migration 0147), same gating.
