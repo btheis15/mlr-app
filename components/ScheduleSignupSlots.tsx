@@ -217,8 +217,11 @@ function SignupRosterSheet({
         <div id="signup-roster">
           <h2 className="text-lg font-bold">All sign-ups</h2>
           <p className="text-xs text-foreground/50">
-            {total} {total === 1 ? "person" : "people"} across {slotViews.length}{" "}
-            {slotViews.length === 1 ? "slot" : "slots"}
+            {total} {total === 1 ? "person" : "people"}
+            {/* Headcount mode is one label-less bucket — no slots to count. */}
+            {slotViews.some((v) => v.label)
+              ? ` across ${slotViews.length} ${slotViews.length === 1 ? "slot" : "slots"}`
+              : " signed up"}
           </p>
         </div>
       }
@@ -229,7 +232,7 @@ function SignupRosterSheet({
           return (
             <div key={view.key} className="rounded-2xl bg-card ring-1 ring-border">
               <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
-                <p className="text-sm font-semibold">{view.label}</p>
+                <p className="text-sm font-semibold">{view.label || "Everyone signed up"}</p>
                 <span className={`text-xs ${isFull(rows.length, view.capacity) ? "text-accent" : "text-foreground/50"}`}>
                   {capacityLabel(rows.length, view.capacity)}
                 </span>
@@ -345,6 +348,11 @@ function SlotCard({
   onNotify?: (minutes: number | null, email: boolean) => Promise<{ error?: string; count?: number }>;
   requireSignIn: () => void;
 }) {
+  // Headcount mode (migration 0143) has no time dimension at all — it's the
+  // item's single "no slot" bucket, so "slot" wording is meaningless there and
+  // the copy talks about the activity itself instead. Same predicate
+  // resolveSlotViews() uses to build that bucket, so the two can't drift.
+  const timed = Boolean(view.slotId || view.slotStart);
   const [adding, setAdding] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyBusy, setNotifyBusy] = useState(false);
@@ -386,13 +394,14 @@ function SlotCard({
               }}
               className="press rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent"
             >
-              🔔 Notify this slot
+              {timed ? "🔔 Notify this slot" : "🔔 Notify everyone"}
             </button>
           ) : (
             <div className="rounded-lg bg-accent/5 p-2 ring-1 ring-accent/20">
               <p className="mb-1.5 text-[11px] font-medium text-foreground/60">
-                Remind everyone in this slot when it starts
-                {view.label ? ` (${view.label})` : ""}.
+                {timed
+                  ? `Remind everyone in this slot when it starts${view.label ? ` (${view.label})` : ""}.`
+                  : "Remind everyone signed up that this is starting."}
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -484,7 +493,7 @@ function SlotCard({
               disabled={busy}
               className="press rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary disabled:opacity-50"
             >
-              {userId ? "+ Join this slot" : "Sign in to join"}
+              {!userId ? "Sign in to join" : timed ? "+ Join this slot" : "+ Join activity"}
             </button>
           )}
           <button
