@@ -861,10 +861,23 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   `send_signup_slot_reminder_now(kind, item, slot_id, slot_start, minutes, email)`
   RPC (client seam `sendSlotReminderNow()` in [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts)),
   gated on the same creator predicate (`_can_manage_item_signups`/
-  `_can_manage_activity_item_signups`). The chosen lead time is descriptive
-  text only ("starts in 1 hour") — this send doesn't compute off the slot's
-  real time and doesn't touch the 0140 dedup ledger, so it can't collide with
-  or double the automatic cron reminders.
+  `_can_manage_activity_item_signups`). This send still doesn't touch the 0140
+  dedup ledger, so it can't collide with or double the automatic cron
+  reminders.
+  - ⚠️ **Fixed: the notification text used to be the sender's chosen chip
+    label verbatim ("starts in 30 minutes"), with zero connection to the
+    slot's real stored day/time (migration
+    [`0165`](supabase/migrations/0165_signup_notify_real_time.sql).** A
+    coordinator clicking the wrong chip (or the wrong slot's button) could
+    send "starts in 30 minutes" for a slot that was actually a full day away
+    — the recipient had no way to tell the lead time was wrong from the
+    message alone. `send_signup_slot_reminder_now` now resolves the SAME real
+    instant `run_signup_reminders()` computes (day + start_time, Central,
+    DST-safe via `AT TIME ZONE 'America/Chicago'`) and states it plainly
+    ("starts Thu, Jul 30 at 3:00 PM") instead of trusting the sender's
+    minutes label. The old descriptive phrasing survives only as a fallback
+    for a slot with no resolvable real time (an activity's interval slot has
+    no calendar day at all).
 - **`signup_reminder` is a normal, default-on push category — not a hidden
   override (migration 0159).** It used to buzz anyone with push on regardless
   of category picks (like `help_urgent`); it's now a real
