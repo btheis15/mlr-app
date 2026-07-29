@@ -171,32 +171,9 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   const [status, setStatus] = useState<string | null>(null);
   const [memberSheet, setMemberSheet] = useState<Member | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [pollComposing, setPollComposing] = useState(false);
 
-  const libraryFileRef = useRef<HTMLInputElement>(null);
-  const cameraFileRef = useRef<HTMLInputElement>(null);
-  const documentFileRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (!attachMenuOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAttachMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    // Also close the menu when the native file picker is dismissed WITHOUT a
-    // pick — the menu now stays open across the picker (see the file inputs
-    // below), so something has to retire it. Wired natively because `cancel`
-    // isn't in our @types/react input props; attached only while the menu is
-    // open, which is the only window the event can fire in (and the only time
-    // the inputs are guaranteed mounted).
-    const els = [libraryFileRef.current, cameraFileRef.current, documentFileRef.current];
-    const onCancel = () => setAttachMenuOpen(false);
-    els.forEach((el) => el?.addEventListener("cancel", onCancel));
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      els.forEach((el) => el?.removeEventListener("cancel", onCancel));
-    };
-  }, [attachMenuOpen]);
+  const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -540,21 +517,12 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
     const type = f.type.startsWith("video") ? "video" : f.type.startsWith("image") ? "image" : "file";
     return { file: f, url, type, name: f.name || "file" };
   };
+  // Identical in shape to the Main Feed composer's picker (useMediaPicker's
+  // `add` in lib/hooks.ts) — a plain change handler on a plain hidden input,
+  // nothing clever around it.
   const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
-    // Close the attach menu only once the picker has actually handed something
-    // back — NOT at tap time. See the note on the file inputs below.
-    setAttachMenuOpen(false);
-    if (!list?.length) {
-      // iOS can hand back an empty FileList when it fails to export the asset
-      // (an iCloud-optimized photo that isn't on the device, an odd HEIC).
-      // Cancelling fires `cancel`, not `change`, on our iOS floor (16.4+), so an
-      // empty change here is a real failure — say so instead of returning
-      // silently, which read as "attaching just doesn't work".
-      setStatus("Couldn't attach that file. Try another photo, or save it to Files first.");
-      window.setTimeout(() => setStatus(null), 6000);
-      return;
-    }
+    if (!list?.length) return;
     setPending((p) => [...p, ...Array.from(list).map(pendingFromFile)]);
     e.target.value = "";
   };
@@ -1001,64 +969,49 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         )}
 
         <div className="flex items-end gap-1.5 px-2 py-2">
-          {/* Editing changes text only — hide the attachment buttons so it's clear
-              media isn't part of an edit (and to leave more room for the text). */}
+          {/* ── Attach + poll ───────────────────────────────────────────────
+              These are DIRECT, always-visible buttons sitting next to a plain
+              hidden <input> — deliberately copied from the Main Feed's post
+              composer (PostsView), which is the one media picker in this app
+              that has always worked in the installed iOS PWA.
+
+              There used to be a "+" that opened a framer-motion popup menu
+              (Photo Library / Take Photo / Document / Poll) and the file inputs
+              were reached from inside it. In a standalone iOS PWA that never
+              delivered the file: you could pick a photo and hit the checkmark
+              and nothing arrived in the composer, with no error. Two rounds of
+              fixing the menu (keeping the inputs mounted outside it, closing it
+              only after the picker resolved, sr-only over display:none) did NOT
+              fix it on-device, so the menu is gone entirely — a popup is simply
+              not a safe place to trigger a file input from on iOS.
+
+              One unfiltered input covers everything the menu's three file items
+              did: iOS's own action sheet offers "Photo Library / Take Photo or
+              Video / Choose File", so camera + documents are still one tap
+              away, via the native path the Main Feed already relies on.
+
+              Editing changes text only — the attach button is hidden so it's
+              clear media isn't part of an edit (and to leave room for text). ── */}
           {!editing && (
-            <div className="relative shrink-0">
+            <>
               <button
                 type="button"
-                onClick={() => setAttachMenuOpen((o) => !o)}
-                aria-label="Add a photo, video, document, or poll"
-                aria-expanded={attachMenuOpen}
-                className="press flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold leading-none text-foreground/55"
+                onClick={() => fileRef.current?.click()}
+                aria-label="Attach a photo, video, or file"
+                className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-foreground/55"
               >
-                +
+                📎
               </button>
-              {attachMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setAttachMenuOpen(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9, y: 4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    style={{ transformOrigin: "bottom left" }}
-                    className="absolute bottom-11 left-0 z-20 w-56 space-y-0.5 rounded-2xl bg-card p-1.5 shadow-lg ring-1 ring-border"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => libraryFileRef.current?.click()}
-                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
-                    >
-                      <span className="text-lg">🖼️</span> Photo &amp; Video Library
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => cameraFileRef.current?.click()}
-                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
-                    >
-                      <span className="text-lg">📷</span> Take Photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => documentFileRef.current?.click()}
-                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
-                    >
-                      <span className="text-lg">📄</span> Document
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachMenuOpen(false);
-                        setPollComposing(true);
-                      }}
-                      className="press flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium hover:bg-background"
-                    >
-                      <span className="text-lg">🗳️</span> Poll
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </div>
+              <input ref={fileRef} type="file" multiple onChange={pickFiles} className="hidden" />
+              <button
+                type="button"
+                onClick={() => setPollComposing(true)}
+                aria-label="Create a poll"
+                className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-foreground/55"
+              >
+                🗳️
+              </button>
+            </>
           )}
           <textarea
             ref={textareaRef}
@@ -1081,25 +1034,6 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
             {sending ? "…" : editing ? "✓" : "➤"}
           </button>
         </div>
-
-        {/* ── The attachment file inputs ─────────────────────────────────────
-            Deliberately mounted HERE — unconditionally, outside the `!editing`
-            attach-menu wrapper — and NOT `display: none`.
-
-            In an installed iOS PWA the native photo picker's presentation is
-            tied to the element that received the tap. These used to live inside
-            the attach menu, whose buttons closed the menu (`setAttachMenuOpen(false)`)
-            in the same tick as `.click()` — ripping the tapped button, the menu,
-            and its full-screen overlay out of the DOM while the picker was
-            being presented. You could pick a photo and hit the checkmark and
-            the `change` event had nothing to land on, so the file was dropped
-            with no error at all. Keeping them mounted (and closing the menu
-            only in `pickFiles`/`onCancel`, once the picker has resolved) is the
-            fix. `sr-only` over `hidden` for the same reason: a laid-out input
-            is what iOS reliably delivers a selection to. ── */}
-        <input ref={libraryFileRef} tabIndex={-1} type="file" multiple accept="image/*,video/*" onChange={pickFiles} className="sr-only" />
-        <input ref={cameraFileRef} tabIndex={-1} type="file" accept="image/*" capture="environment" onChange={pickFiles} className="sr-only" />
-        <input ref={documentFileRef} tabIndex={-1} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.pages,.numbers,.key,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,application/rtf,application/zip" onChange={pickFiles} className="sr-only" />
       </div>
       )}
 

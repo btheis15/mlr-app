@@ -1715,54 +1715,46 @@ question, 2–10 options (single- or multi-select), an optional write-in
 "Other", and a choice of **anonymous** (counts only) or **attributed**
 (counts + little avatar icons of who picked what) results.
 
-- **Entry point is the composer's "+" menu, not the ⋯ member sheet.** The old
-  📎 paperclip (`onClick={() => fileRef.current?.click()}` next to one
-  generic `<input type="file">`) is now a `+` button that pops a small
-  `framer-motion` spring-in menu (adapted from the message long-press
-  reaction tray's absolute-positioned/transform-origin pattern) with **Photo
-  Library** (`accept="image/*,video/*"`), **Take Photo**
-  (`accept="image/*" capture="environment"` — genuinely skips iOS's own
-  picker sheet straight to the camera), and **Document** (`accept` listing
-  common non-media document types/MIME types, e.g. `.pdf,.doc,.docx,...` —
-  since iOS Safari's file-input action sheet only offers Photo Library/Take
-  Photo alongside Browse when the accept value COULD match a photo, excluding
-  image/video types makes it skip straight to Files). **Photo Library** has
-  no such shortcut — any generic (non-`capture`) file input that could match
-  a photo always shows iOS's "Photo Library / Take Photo or Video / Choose
-  File" sheet first; there's no HTML attribute to suppress that, so tapping
-  it there is an unavoidable extra native step, not a bug (three menu items
-  route through the existing `pickFiles`/`pendingFromFile` classification
-  either way; only how the file dialog opens changed). Same change in both
-  `CommitteeChat.tsx` and `HouseChat.tsx` (near-duplicate composer code, per
-  **Houses**).
-  - ⚠️ **Incident: attaching a photo in chat was broken in the installed iOS
-    PWA — never unmount the tapped element while the native picker is up.**
-    Each menu item did `libraryFileRef.current?.click(); setAttachMenuOpen(false);`
-    — closing the menu in the same tick as opening the picker, which ripped the
-    tapped button, the `motion.div` menu, and its `fixed inset-0` overlay out of
-    the DOM. In a standalone iOS PWA the picker's presentation is tied to the
-    element that received the tap, so the picker opened, you could select a
-    photo and hit the checkmark, and the `change` event had nothing to land on:
-    the file was dropped and **nothing appeared in the composer, with no error**
-    (`pickFiles` also `return`ed silently on an empty `FileList`, so there was
-    no signal either way). It read as "sending photos just doesn't work". Safari
-    (non-standalone) and the Posts composer were unaffected — `PostsView`'s
-    trigger button stays mounted, which is the whole difference. **The fix, in
-    both chat components:** (1) the three file `<input>`s are mounted
-    **unconditionally at the composer root**, outside the `!editing` attach-menu
-    wrapper, so no unrelated state change can unmount them mid-pick; (2) the
-    menu items only call `.click()` — the menu is closed later, in `pickFiles`
-    (a selection arrived) or on the input's native `cancel` event (backed out),
-    both *after* the picker has resolved; (3) `sr-only` instead of `hidden`,
-    since a laid-out input is what iOS reliably delivers a selection to; and
-    (4) an empty `FileList` now surfaces a visible message instead of returning
-    silently (iOS hands one back when it can't export the asset — an
-    iCloud-optimized photo that isn't on-device, an odd HEIC). `cancel` is wired
-    with `addEventListener` rather than a JSX `onCancel` prop because it isn't in
-    the installed `@types/react` input props. **Takeaway:** any
-    programmatically-`.click()`ed file input must outlive the picker — don't
-    close a menu, sheet, or overlay containing (or containing the trigger for)
-    a file input until its `change`/`cancel` fires.
+- **Entry point is a 🗳️ button in the composer row, next to 📎 attach** — two
+  plain, always-visible icon buttons left of the textarea, not a menu. There is
+  deliberately **no "+" attach menu** — see the incident below for why it was
+  removed. Same in both `CommitteeChat.tsx` and `HouseChat.tsx` (near-duplicate
+  composer code, per **Houses**).
+  - ⚠️⚠️ **Incident: attaching a photo in chat was broken in the installed iOS
+    PWA for as long as the "+" menu existed. NEVER trigger a file input from
+    inside a popup/menu/overlay — copy the Main Feed composer instead.**
+    A `+` button used to open a small `framer-motion` spring-in menu (Photo
+    Library / Take Photo / Document / Poll), and the three file `<input>`s were
+    `.click()`ed from inside it. In a **standalone iOS PWA** that never
+    delivered the file: the native picker opened, you could select a photo and
+    tap the checkmark, and **nothing arrived in the composer, with no error at
+    all** — it read as "sending photos just doesn't work". Non-standalone Safari
+    was fine, and so was the Main Feed's post composer
+    ([`PostsView`](components/PostsView.tsx)), whose trigger button is plain and
+    always-mounted.
+    **Two rounds of fixing the menu did NOT work on-device** (recorded so nobody
+    retries them): (1) mounting the inputs unconditionally at the composer root,
+    outside the menu, so nothing unmounted them mid-pick; (2) removing
+    `setAttachMenuOpen(false)` from the tap so the menu only closed after the
+    picker resolved (via `pickFiles` or the input's native `cancel`); (3)
+    `sr-only` instead of `hidden`, on the theory a laid-out input receives the
+    selection more reliably. All shipped, all still broken in the PWA.
+    **What actually fixed it: deleting the menu.** The composer now mirrors
+    `PostsView` exactly — a direct always-visible 📎 button whose `onClick` is
+    just `fileRef.current?.click()`, sitting next to one plain
+    `<input type="file" multiple className="hidden">`, with no popup, no
+    `framer-motion`, no `fixed inset-0` overlay, and nothing conditionally
+    rendered anywhere in the path. The input is deliberately **unfiltered (no
+    `accept`)**, which covers all three of the menu's old file items at once:
+    iOS's own action sheet offers "Photo Library / Take Photo or Video / Choose
+    File", so camera and documents stay one tap away through the same native
+    path the Main Feed relies on. `pendingFromFile` still classifies each pick
+    as image/video/file by MIME, so nothing downstream changed. The one
+    deliberate regression is losing the one-tap `capture="environment"` camera
+    shortcut — iOS's "Take Photo or Video" in its own sheet replaces it.
+    **Takeaway:** a file input and its trigger must both be plain,
+    always-mounted siblings. If a picker needs to live behind a menu or sheet,
+    it will break in the installed PWA — put the button directly in the UI.
 - **Data model:** `chat_polls` / `chat_poll_options` / `chat_poll_votes`,
   scoped and read-gated exactly like `meetings` (0116) —
   `can_access_committee_area()` (0063) / `is_house_member()` (0064). All
