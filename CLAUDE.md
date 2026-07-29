@@ -2203,6 +2203,26 @@ adds `profiles.push_level` + the `push_subscriptions` table (RLS: own-rows). All
 of it is dormant/no-op until the VAPID keys are set, so the app builds and runs
 without them.
 
+**Tapping a push must land on its deep link ([`PushDeepLink`](components/PushDeepLink.tsx)).**
+`sw.js`'s `notificationclick` called `client.navigate(url)` inside a `try/catch`
+that swallowed the failure and then `return client.focus()`ed regardless — so
+wherever `navigate()` is unsupported and rejects (an **installed PWA**, iOS
+especially — which is how most of the family runs this) a tap merely focused the
+app on whatever page it was already showing and the deep link was silently
+dropped. "Cass shared a new post" left you hunting the feed by hand. Three
+routing paths now, in reliability order: (1) `navigate()` — spec'd, guaranteed
+correct where supported; (2) **`postMessage` → the app routes with its own
+router**, the new `PushDeepLink` client component mounted in `layout.tsx` — the
+path that actually works in an installed iOS PWA, and it stays a client-side
+transition instead of a reload; (3) `openWindow()` when nothing suitable is
+open. `matchAll` results are also filtered to **same-origin** windows first
+(only those can be navigated/messaged, and it can return others), and
+`PushDeepLink` re-resolves the url against `window.location.origin` and drops
+anything cross-origin before routing. Because it routes via `router.push()`,
+the patched `history.pushState` fires `mlr:locationchange` → `useUrlParam`
+re-reads `?post=` / `&m=` → `useDeepLinkFlash` scrolls to + flashes the item,
+identical to tapping the row in the Activity tab.
+
 **Realtime reconnect hardening.** `push-sender.js` and `apns-sender.js`
 (the APNs counterpart) each ran a single `.subscribe()` with no recovery —
 the same silent-drop failure mode documented in **Cabin stays**' "Mailer
