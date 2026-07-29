@@ -224,6 +224,13 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   // already on this page (Next doesn't remount for a same-route navigation).
   const focusPostId = useUrlParam("post");
   const flashId = useDeepLinkFlash("post-", focusPostId, feedLoaded);
+  // A post_comment/post_reply/post_mention notification also carries &comment=
+  // (the specific new/mentioning comment), so a tap lands right on it instead
+  // of just the post it's on — same scroll-and-flash mechanism, a second
+  // independent instance of the hook targeting comment DOM nodes instead of
+  // post ones.
+  const focusCommentId = useUrlParam("comment");
+  const flashCommentId = useDeepLinkFlash("comment-", focusCommentId, feedLoaded);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [scheduleRefetch, cancelRefetch] = useDebouncedCallback(120);
@@ -1055,12 +1062,12 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               {(postComments.length > 0 || user) && (
                 <div className="space-y-3 border-t border-border px-4 py-3">
                   {postComments.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2">
+                    <div key={c.id} id={`comment-${c.id}`} className="flex items-start gap-2">
                       <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press mt-0.5 shrink-0">
                         <Avatar name={c.author} url={c.authorAvatar} size={28} />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <div className="inline-block max-w-full rounded-2xl bg-background px-3 py-1.5 ring-1 ring-border">
+                        <div className={`inline-block max-w-full rounded-2xl bg-background px-3 py-1.5 ring-1 transition-shadow ${flashCommentId === c.id ? "ring-2 ring-primary" : "ring-border"}`}>
                           <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press block text-left text-xs font-semibold">
                             {c.author}
                           </button>
