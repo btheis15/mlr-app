@@ -2245,6 +2245,22 @@ the patched `history.pushState` fires `mlr:locationchange` → `useUrlParam`
 re-reads `?post=` / `&m=` → `useDeepLinkFlash` scrolls to + flashes the item,
 identical to tapping the row in the Activity tab.
 
+**...and land on the specific COMMENT, not just the post (migration
+[`0164`](supabase/migrations/0164_comment_notification_deep_link.sql)).**
+`PushDeepLink` getting a tap to the right *post* still left a `post_comment`/
+`post_reply`/`post_mention` notification dropping you at the top of a
+(possibly long) comment thread to hunt for the one being talked about — the
+same "find it yourself" problem, one level down. `notif_on_post_comment()`/
+`notif_on_post_mention()` now append `&comment=<comment id>` to the url they
+already build; `PostsView.tsx` reads it with a **second, independent**
+`useDeepLinkFlash("comment-", …)` instance (alongside the existing
+`"post-"` one — the hook has no shared state, so both run side by side) and
+scrolls to + flashes that specific comment bubble once it's in the DOM.
+Comments render unpaginated (every comment for a loaded post is always in the
+DOM), so there's no "expand thread first" step needed. Existing/older
+notification rows keep their post-only url — a harmless degrade, not a
+migration-time backfill.
+
 **Realtime reconnect hardening.** `push-sender.js` and `apns-sender.js`
 (the APNs counterpart) each ran a single `.subscribe()` with no recovery —
 the same silent-drop failure mode documented in **Cabin stays**' "Mailer
