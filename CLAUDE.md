@@ -86,6 +86,28 @@ seams**.
 public-read like comments), and `@name` renders highlighted (shared
 `MentionText` helper, mirrors the chat).
 
+**Comments can carry photos/videos** (migration
+[`0162`](supabase/migrations/0162_post_comment_media.sql)) — `post_comment_media`
+mirrors `post_media` (0004) exactly: one row per attachment ordered by
+`position`, members-only read (the 0081 lockdown doctrine), write narrowed to
+the comment's own author (delete also allows an admin). The composer's photo/
+video picker reuses `useMediaPicker` + the same compress/upload pipeline
+`EditPostPanel` uses (uploads ride the **default** `posts` category, which the
+mini moderates INLINE — so any flagged verdict already exists in
+`media_moderation` by the time the client inserts the row, and the DB trigger
+holds the comment automatically with no client-side handling needed). A
+comment can be photo-only (text OR at least one file, same rule as the post
+composer). Rendered as a small wrapping row of thumbnails (`CommentMedia`,
+reusing `MediaItem` — NOT the full-bleed `MediaGrid`/`MediaCarousel` a post
+uses, which is too heavy for an inline comment), tapping a photo opens the
+existing `Lightbox`. Moderation mirrors post/chat media: `hold_comment_on_flagged_media`
+(attach-time) + a fourth branch added to `hold_content_on_media_verdict`
+(0128 §5b, the retroactive hold for an async verdict) — both set the
+`mlr.mod_bypass` GUC so the automated hold isn't reverted by
+`moderate_content_text()`'s member-edit pin. `entity_type = 'comment'` already
+routed to `post_comments` in `moderation_queue()`/`set_content_status()` (0128),
+so neither needed a change.
+
 **Committee chat** ([`CommitteeChat`](components/CommitteeChat.tsx)) `@mentions`
 are scoped to **that committee's roster only** — you can only tag people who can
 see the room (Beautification members can tag Beautification members, etc.).
