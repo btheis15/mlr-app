@@ -969,20 +969,32 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   to `fest_activities`).** `fest_schedule_items.signup_hide_names` lets the
   creator keep a sign-up's roster a surprise (e.g. a variety-show lineup) —
   every member still sees an accurate headcount, but individual names are
-  visible only to the event's organizer (the same `_can_manage_schedule_signups`
-  predicate as everywhere else in this feature) and to a person's own entry.
-  Enforced in **RLS, not the client**: the `fest_schedule_signups` select
-  policy only returns a row to its own `user_id`/`added_by`, or to anyone at
-  all when `signup_hide_names` is false, or to a manager always. Since a
-  non-manager's plain `select` is then missing everyone else's rows, the
-  headcount badge instead comes from `fest_schedule_signup_counts(item)` — a
-  `SECURITY DEFINER` RPC that counts every row regardless of RLS
-  (`lib/scheduleSignups.ts` `fetchScheduleSignupCounts()`), called by
+  visible only to the event's organizer/lead/crew (the same
+  `_can_manage_schedule_signups` predicate as everywhere else in this feature)
+  and to a person's own entry. Enforced in **RLS, not the client**: the
+  `fest_schedule_signups` select policy only returns a row to its own
+  `user_id`/`added_by`, or to anyone at all when `signup_hide_names` is false,
+  or to a manager always. Since a non-manager's plain `select` is then missing
+  everyone else's rows, the headcount badge instead comes from
+  `fest_schedule_signup_counts(item)` — a `SECURITY DEFINER` RPC that counts
+  every row regardless of RLS (`lib/scheduleSignups.ts`
+  `fetchScheduleSignupCounts()`), called by
   [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) only when names
-  are hidden from the viewer. Toggled in `SignupConfigEditor`
+  are hidden from a non-manager. Toggled in `SignupConfigEditor`
   ("🙈 Hide who's signed up," schedule-only like team size/tournament); a
   hidden card shows a "🙈 who's signed up is a surprise" hint in place of the
   roster.
+  - **The organizer defaults to hiding it from THEMSELVES too.** RLS lets a
+    manager's fetch through in full (they have to be able to run the event),
+    but `ScheduleSignupSlots` doesn't render those names until the manager
+    deliberately taps a **"👀 Show participants"** button — otherwise even the
+    organizer would be spoiled just by opening the card to check the
+    headcount. Tapping it flips to "🙈 Hide again"; the reveal is per-mount
+    only (not persisted anywhere), so navigating away and back starts hidden
+    again on purpose. The "📋 View all" roster sheet is likewise hidden until
+    revealed (same button governs both). A non-manager's own entry (the one
+    row RLS lets through) still renders automatically either way — seeing
+    your own sign-up was never the spoiler.
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 
@@ -1057,10 +1069,17 @@ resolves the item and defers to that existing predicate.
   `lib/festContent.ts` (`ScheduleRow`/`mapSchedule`/`ScheduleInput`/`saveScheduleItem` + the
   schedule selects) and `ScheduleEvent.tournamentEnabled`.
 - **Surfaces:** [`TournamentView`](components/TournamentView.tsx) (`TournamentSection`
-  is the mount) renders on [`FestScheduleDetail`](components/FestScheduleDetail.tsx)
-  and inline in [`FestWeek`](components/FestWeek.tsx)'s `EventRow` (**mounted only when
+  is the mount) renders on [`FestScheduleDetail`](components/FestScheduleDetail.tsx),
+  inline in [`FestWeek`](components/FestWeek.tsx)'s `EventRow` (**mounted only when
   the row is open** — Expander keeps children in the DOM, so a per-row realtime channel
-  would otherwise open for every event). A spectator "Now/Bracket" toggle
+  would otherwise open for every event), and in [`FestStatus`](components/FestStatus.tsx)'s
+  `TodayEvent` ("Happening today" card during the live week — no `open` gate needed, that
+  card is always fully shown). ⚠️ **Was missing from `TodayEvent` entirely** — `FestWeek`'s
+  `EventRow` had it from the start, but the live-week "Happening today" card (the ONLY
+  place a viewer sees today's event once the fest goes live and `FestStatus` takes over
+  the top of the page) never got it wired in, so a tournament-enabled activity showed its
+  sign-ups but no way to set up/watch the bracket during the live week itself — fixed by
+  mirroring `EventRow`'s block. A spectator "Now/Bracket" toggle
   ([`TournamentBracket`](components/TournamentBracket.tsx) round pager,
   [`MatchResultSheet`](components/MatchResultSheet.tsx),
   [`TournamentSetupSheet`](components/TournamentSetupSheet.tsx)). A Home call-out with

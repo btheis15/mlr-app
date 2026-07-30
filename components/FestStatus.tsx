@@ -17,6 +17,7 @@ import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
 import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
+import { TournamentSection } from "@/components/TournamentView";
 import {
   canEditFest,
   fetchMemberOptions,
@@ -274,6 +275,18 @@ function TodayEvent({
       {e.signupEnabled && (
         <div className="mt-3">
           <ScheduleSignupSlots target={e} kind="schedule" canManage={canEditThis} members={members} />
+        </div>
+      )}
+      {/* Was missing here entirely — FestWeek's EventRow (the Overview
+          accordion) already gated the same way on tournamentEnabled, but this
+          "Happening today" card (the ONLY place a live-week viewer sees an
+          event, since FestStatus takes over the top of the page) never got
+          the Tournament section wired in, so a tournament-enabled activity
+          showed sign-ups but no way to set up/watch its bracket during the
+          live week. No `open` gate needed — this card is always fully shown. */}
+      {e.tournamentEnabled && (
+        <div className="mt-3">
+          <TournamentSection host={{ kind: "schedule", id: e.id }} canManage={canEditThis} itemTitle={e.title} enabled />
         </div>
       )}
       {e.lead && <Contact label="In charge" name={e.lead.name} phone={e.lead.phone} />}
