@@ -58,6 +58,7 @@ import {
 import {
   fetchScheduleSlots,
   createScheduleSlot,
+  updateScheduleSlotCapacity,
   deleteScheduleSlot,
   type ScheduleSlot,
   type SignupKind,
@@ -1329,6 +1330,11 @@ function SignupSlotsEditor({
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Editing an EXISTING slot's capacity in place (e.g. bumping a variety-show
+  // act from one performer to a whole group) — deleting + re-adding the slot
+  // instead would cascade-delete anyone already signed up for it.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editCap, setEditCap] = useState("");
 
   const reload = useCallback(async () => {
     if (parentId) setSaved(await fetchScheduleSlots(kind, parentId));
@@ -1378,6 +1384,36 @@ function SignupSlotsEditor({
     }
   };
 
+  const startEdit = (key: string, currentCap: number | null) => {
+    setEditingKey(key);
+    setEditCap(currentCap != null ? String(currentCap) : "");
+    setError(null);
+  };
+
+  const saveEdit = async (key: string) => {
+    const capacity = editCap.trim() ? Number(editCap) : null;
+    if (!live) {
+      const idx = Number(key);
+      onPending(pending.map((s, i) => (i === idx ? { ...s, capacity } : s)));
+      setEditingKey(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { error } = await updateScheduleSlotCapacity(kind, key, capacity);
+      if (error) setError(error);
+      else {
+        setEditingKey(null);
+        await reload();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't update that slot.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async (key: string) => {
     if (!live) {
       onPending(pending.filter((_, i) => String(i) !== key));
@@ -1401,25 +1437,71 @@ function SignupSlotsEditor({
       <span className="block text-xs font-semibold text-foreground/60">Time slots</span>
       {rows.length > 0 ? (
         <ul className="space-y-1">
-          {rows.map((s) => (
-            <li key={s.key} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5 text-xs">
-              <span className="font-medium">
-                {s.day ? `${formatDate(s.day)} · ` : ""}
-                {formatTime(s.startTime)}
-                {s.endTime ? `–${formatTime(s.endTime)}` : ""}
-                {s.capacity != null ? ` · ${s.capacity} people` : ""}
-              </span>
-              <button
-                type="button"
-                onClick={() => remove(s.key)}
-                disabled={busy}
-                aria-label="Remove slot"
-                className="press text-foreground/50"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
+          {rows.map((s) =>
+            editingKey === s.key ? (
+              <li key={s.key} className="flex items-center gap-2 rounded-lg bg-card px-2.5 py-1.5 text-xs">
+                <span className="shrink-0 font-medium">
+                  {s.day ? `${formatDate(s.day)} · ` : ""}
+                  {formatTime(s.startTime)}
+                  {s.endTime ? `–${formatTime(s.endTime)}` : ""}
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  autoFocus
+                  value={editCap}
+                  onChange={(e) => setEditCap(e.target.value)}
+                  placeholder="default"
+                  aria-label="People in this slot"
+                  className="w-16 min-w-0 rounded-lg bg-background px-2 py-1 text-xs ring-1 ring-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveEdit(s.key)}
+                  disabled={busy}
+                  className="press shrink-0 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingKey(null)}
+                  className="press shrink-0 text-[11px] font-medium text-foreground/50"
+                >
+                  Cancel
+                </button>
+              </li>
+            ) : (
+              <li key={s.key} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5 text-xs">
+                <span className="font-medium">
+                  {s.day ? `${formatDate(s.day)} · ` : ""}
+                  {formatTime(s.startTime)}
+                  {s.endTime ? `–${formatTime(s.endTime)}` : ""}
+                  {s.capacity != null ? ` · ${s.capacity} people` : ""}
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(s.key, s.capacity)}
+                    disabled={busy}
+                    aria-label="Edit how many people this slot holds"
+                    className="press text-foreground/50"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(s.key)}
+                    disabled={busy}
+                    aria-label="Remove slot"
+                    className="press text-foreground/50"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </li>
+            ),
+          )}
         </ul>
       ) : (
         <p className="text-xs text-foreground/50">No slots yet — add the specific times below.</p>

@@ -358,6 +358,22 @@ export async function createScheduleSlot(
   return error ? { error: error.message } : {};
 }
 
+/** Change how many people an EXISTING slot holds — e.g. bumping a variety-show
+ *  act from one performer to a whole group, without deleting and re-adding the
+ *  slot (which would cascade-delete anyone already signed up for it). `null`
+ *  reverts to the event's default capacity. Gated by the same "manage update"
+ *  RLS policy as create/delete (migrations 0136/0138). */
+export async function updateScheduleSlotCapacity(
+  kind: SignupKind,
+  slotId: string,
+  capacity: number | null,
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from(SOURCES[kind].slots).update({ capacity }).eq("id", slotId);
+  return error ? { error: error.message } : {};
+}
+
 export async function deleteScheduleSlot(kind: SignupKind, slotId: string): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
