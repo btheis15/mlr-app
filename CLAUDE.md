@@ -1193,6 +1193,7 @@ replaces both with one form and three independent channel checkboxes:
   admin-facing toggle here).
 - **🔔 Activity tab** — the unchanged `send_broadcast_notification` RPC:
   Everyone or Admins-only, an optional tap-through link, its own badge-expiry.
+  **Now also rides a phone push** (fixed — see the incident note below).
 - **✉️ Email** — opted-in members, or admins only.
 
 Banner and Email both still write the same `announcements` row (Email alone
@@ -1224,6 +1225,27 @@ an existing callout later never silently resends. Firing happens right after
 exclude-not-attending targeting the main composer offers; a failure there
 surfaces as an error (blocking the sheet from closing) without undoing the
 already-saved callout, so the admin can just retry.
+
+⚠️ **Incident, fixed: the "🔔 Activity tab" channel (and callout's "🔔 Also
+send a notification") never pushed to phones, for anyone, ever.** An admin
+who checked "Also send a notification" on a callout (or used
+`AdminBroadcastComposer`'s Activity-tab channel) saw the item land in the
+Activity feed for recipients, but no one — including an admin with every push
+category on — got buzzed. Root cause: `send_broadcast_notification()`
+(migration 0100) inserts `notifications` rows with `type = 'broadcast'`, and
+`'broadcast'` was never a real [`PushType`](lib/types.ts) — the mini's feed
+relay (`push-sender.js`'s `PUSHABLE_FEED_TYPES` /
+`apns-sender.js`'s `PUSHABLE`) gates a row on
+`profile.push_types.includes(n.type)`, which can never be true for a type
+that isn't a selectable push category at all. It wasn't an infra or
+preference problem — no admin action or member setting could have produced a
+push through this path, on either sender. Fixed in both mini senders by
+adding `"broadcast"` to the pushable set and special-casing it (alongside the
+existing `help_urgent`/`admin_test` override) to gate on the recipient's
+existing **`alerts`** push category (the same "broadcast alerts" concept the
+announcements-table channel already uses) rather than requiring a
+non-existent `broadcast` category — no new `PushType`, no migration, no
+client change needed.
 
 ### Test a member's notifications (migrations 0156-0157)
 

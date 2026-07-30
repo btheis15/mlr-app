@@ -332,6 +332,11 @@ async function start() {
     "private_activity_invite",
     // Admin test notification (migration 0156) — override push, like help_urgent.
     "admin_test",
+    // The "🔔 Activity tab" broadcast channel (send_broadcast_notification) —
+    // see push-sender.js's matching comment. Gated on the 'alerts' category
+    // (handled as a special case below), since `broadcast` isn't a real
+    // PushType of its own.
+    "broadcast",
   ]);
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;
@@ -342,6 +347,8 @@ async function start() {
     // push on) — see push-sender.js for the rationale. signup_reminder is a
     // normal category now (default-on, not an override).
     if (n.type === "help_urgent" || n.type === "admin_test") { if (pushTypes.length === 0) return; }
+    // No dedicated `broadcast` PushType — reuse 'alerts' (see push-sender.js).
+    else if (n.type === "broadcast") { if (!pushTypes.includes("alerts")) return; }
     else if (!pushTypes.includes(n.type)) return;
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
