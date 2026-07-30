@@ -11,9 +11,12 @@
 //   committee_join · cabin_decision · post_tag · post_mention · post_reply ·
 //   post_comment
 // (The feed already fanned out + denormalized title/body/url per recipient, so
-// we just relay it.) Other notification types — post_reaction, chat_mention,
-// cabin_request (admin), broadcast — are intentionally NOT in push_types, so
-// they stay in-app only / use their own admin paths.
+// we just relay it.) `broadcast` (the "🔔 Activity tab" admin channel) rides
+// this same relay too, gated on the 'alerts' category since it has no
+// dedicated PushType of its own — see PUSHABLE_FEED_TYPES below. Other
+// notification types — post_reaction, chat_mention, cabin_request (admin) —
+// are intentionally NOT in push_types, so they stay in-app only / use their
+// own admin paths.
 // A self-notify tester (id in PUSH_SELF_NOTIFY_USER_IDS + push_self_notify on)
 // also receives pushes for their OWN messages, to test without a second person.
 //
@@ -373,6 +376,17 @@ async function start() {
     // OVERRIDE push (handled below) — the whole point is testing the push
     // pipeline for that person, not respecting their per-category picks.
     "admin_test",
+    // The "🔔 Activity tab" broadcast channel (send_broadcast_notification —
+    // AdminBroadcastComposer and AdminCallouts' "Also send a notification").
+    // This used to be silently in-app-only: `broadcast` isn't a real PushType,
+    // so it could never satisfy `pushTypes.includes(n.type)` below, meaning an
+    // admin firing this channel got zero pushes even for members with every
+    // push category on. There's no dedicated `broadcast` push category —
+    // gated on the existing 'alerts' category (handled as a special case
+    // below) since this is the same "broadcast alert" concept as the
+    // announcements-table `alerts` channel, just delivered via the feed
+    // instead of a banner.
+    "broadcast",
   ]);
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
@@ -391,6 +405,10 @@ async function start() {
       // is an admin deliberately testing one member's notifications — neither
       // requires per-category opt-in. Push OFF still gets nothing.
       if (pushTypes.length === 0) return;
+    } else if (n.type === "broadcast") {
+      // No dedicated `broadcast` PushType — reuse the 'alerts' category (the
+      // same "broadcast alerts" concept as the announcements-table channel).
+      if (!pushTypes.includes("alerts")) return;
     } else if (!pushTypes.includes(n.type)) {
       return;
     }
