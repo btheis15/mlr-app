@@ -788,7 +788,16 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     need to share a length or increment ("Mon 10:50am, Wed 1:48pm, …"). Stored as
     `fest_schedule_slots` rows (public-read; writes RLS-gated to the same manage
     predicate via `_can_manage_item_signups(item_id)`). The Planner's inline
-    `SignupSlotsEditor` adds/removes them. Times use a `TimeSelect` (hour · minute
+    `SignupSlotsEditor` adds/removes/**edits** them (an existing slot's people
+    count is editable in place — ✏️ opens a small number input,
+    `updateScheduleSlotCapacity()` in `lib/scheduleSignups.ts` — e.g. bumping a
+    variety-show act from a solo spot to a whole group act; deleting +
+    re-adding the slot instead would cascade-delete anyone already signed up
+    for it). Capacity `null` (left blank) falls back to the event's own
+    `signup_capacity` default, which itself defaults to null/no-value unless
+    set — so a slot with neither set reads as capacity 0 (immediately full);
+    set a number at the event level (`People per slot (default)`) or per slot
+    to actually allow sign-ups. Times use a `TimeSelect` (hour · minute
     · AM/PM `<select>`s — an iOS wheel, a real pick-list on Android/desktop)
     rather than a native `<input type=time>`, which on Android/desktop left the
     value empty until AM/PM was chosen (so "Add this slot" stayed disabled); the
