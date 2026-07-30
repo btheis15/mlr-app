@@ -1003,10 +1003,12 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     again on purpose. The "📋 View all" roster sheet is likewise hidden until
     revealed (same button governs both). **Your own entry always renders
     regardless** — a plain member's own row (the one RLS lets through) and a
-    suppressing manager's own row (filtered client-side out of their
-    otherwise-full fetch) both still show, with a "+N more hidden…" note for
-    everyone else — seeing that you signed up was never the spoiler, only
-    seeing who else did.
+    suppressing manager's own row(s) (filtered client-side out of their
+    otherwise-full fetch — matched by `user_id` **or `added_by`**, so a
+    hardcoded/typed-in name the manager personally added for someone without
+    an account shows too, not just their own linked entry) both still show,
+    with a "+N more hidden…" note for everyone else — seeing what you
+    signed up or entered was never the spoiler, only seeing who else did.
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 

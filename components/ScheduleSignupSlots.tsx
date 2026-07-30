@@ -423,11 +423,15 @@ function SlotCard({
   const mine = userId ? signups.some((s) => s.userId === userId) : false;
   const hasFields = fields.length > 0;
   const groups = groupSignups(signups);
-  // A manager hiding names from themselves still needs to know THEY signed
-  // up (same guarantee a regular member already gets — RLS only ever hands
-  // them their own row) — so their own entry always renders even while
-  // suppressed; only everyone else's stays behind "Show participants."
-  const groupsToRender = suppressNames ? groups.filter((g) => g.members.some((m) => m.userId === userId)) : groups;
+  // A manager hiding names from themselves still needs to know what THEY
+  // put in — their own linked entry, AND any hardcoded/typed-in name they
+  // personally added for someone without an account (added_by, not just
+  // user_id) — same guarantee a regular member already gets (RLS only ever
+  // hands them their own rows either way). Only entries someone ELSE added
+  // stay behind "Show participants."
+  const groupsToRender = suppressNames
+    ? groups.filter((g) => g.members.some((m) => m.userId === userId || m.addedBy === userId))
+    : groups;
   const hiddenGroupCount = suppressNames ? groups.length - groupsToRender.length : 0;
 
   return (
