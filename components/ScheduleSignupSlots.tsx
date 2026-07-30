@@ -20,6 +20,7 @@ import {
   resolveSlotViews,
   fetchScheduleSignups,
   fetchScheduleSlots,
+  fetchScheduleSignupCounts,
   signUpForSlot,
   removeScheduleSignup,
   sendSlotReminderNow,
@@ -64,21 +65,35 @@ export function ScheduleSignupSlots({
   const { userId, promptSignIn } = useIdentity();
   const [signups, setSignups] = useState<ScheduleSignup[]>([]);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [memberOptions, setMemberOptions] = useState<FestMemberOption[]>(members);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
 
   const fields: SignupField[] = target.signupFields ?? [];
+  // Names hidden from THIS viewer (migration 0167) — a regular member never
+  // sees anyone else's name (RLS blocks the row entirely; their own entry, if
+  // any, still comes through). An organizer/crew member CAN see everyone —
+  // RLS lets their fetch through — but defaults to hiding it from themselves
+  // too, so running a "surprise" event doesn't spoil it for them until they
+  // deliberately tap Show participants. `revealed` is per-mount only (not
+  // persisted) so re-opening this card starts hidden again.
+  const namesHidden = Boolean(target.signupHideNames) && !canManage;
+  const canRevealNames = Boolean(target.signupHideNames) && canManage;
+  const [revealed, setRevealed] = useState(false);
+  const managerHiding = canRevealNames && !revealed;
 
   const reload = useCallback(async () => {
-    const [s, sl] = await Promise.all([
+    const [s, sl, c] = await Promise.all([
       fetchScheduleSignups(kind, target.id),
       target.signupMode === "slots" ? fetchScheduleSlots(kind, target.id) : Promise.resolve([]),
+      namesHidden ? fetchScheduleSignupCounts(kind, target.id) : Promise.resolve({}),
     ]);
     setSignups(s);
     setSlots(sl);
-  }, [kind, target.id, target.signupMode]);
+    setCounts(c);
+  }, [kind, target.id, target.signupMode, namesHidden]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -106,20 +121,46 @@ export function ScheduleSignupSlots({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">
           {target.signupMode === "headcount" ? "Sign up" : "Sign up for a time slot"}
         </p>
-        {/* Organizer/crew get a consolidated view of every slot + row in one place. */}
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => setRosterOpen(true)}
-            className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
-          >
-            📋 View all
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Organizer/crew chose to hide names from THEMSELVES too — this is
+              the deliberate "I'm ready to peek" action (see canRevealNames above). */}
+          {canRevealNames && (
+            <button
+              type="button"
+              onClick={() => setRevealed((v) => !v)}
+              className="press rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent"
+            >
+              {revealed ? "🙈 Hide again" : "👀 Show participants"}
+            </button>
+          )}
+          {/* Organizer/crew get a consolidated view of every slot + row in one
+              place — hidden until revealed, same as the inline names below. */}
+          {canManage && !managerHiding && (
+            <button
+              type="button"
+              onClick={() => setRosterOpen(true)}
+              className="press rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
+            >
+              📋 View all
+            </button>
+          )}
+        </div>
       </div>
       {target.signupInstructions?.trim() && (
         <p className="whitespace-pre-line rounded-xl bg-background px-3 py-2 text-xs leading-relaxed text-foreground/70 ring-1 ring-border/60">
           {target.signupInstructions.trim()}
+        </p>
+      )}
+      {namesHidden && (
+        <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/60 ring-1 ring-border/60">
+          🙈 Who&rsquo;s signed up is a surprise — you&rsquo;ll see the headcount and your own spot, not everyone&rsquo;s
+          name.
+        </p>
+      )}
+      {managerHiding && (
+        <p className="rounded-xl bg-background px-3 py-2 text-xs text-foreground/60 ring-1 ring-border/60">
+          🙈 You&rsquo;re keeping this one a surprise for yourself too — tap &ldquo;Show participants&rdquo; above when
+          you&rsquo;re ready to see who&rsquo;s signed up.
         </p>
       )}
       <div className="space-y-2">
@@ -128,6 +169,8 @@ export function ScheduleSignupSlots({
             key={view.key}
             view={view}
             signups={signups.filter((s) => view.matches(s))}
+            displayCount={namesHidden ? counts[view.key] ?? 0 : undefined}
+            suppressNames={managerHiding}
             fields={fields}
             teamSize={target.signupTeamSize && target.signupTeamSize > 1 ? target.signupTeamSize : 1}
             userId={userId}
@@ -314,6 +357,8 @@ function groupSignups(signups: ScheduleSignup[]): SignupGroup[] {
 function SlotCard({
   view,
   signups,
+  displayCount,
+  suppressNames,
   fields,
   teamSize,
   userId,
@@ -329,7 +374,17 @@ function SlotCard({
   requireSignIn,
 }: {
   view: SlotView;
+  /** RLS-visible rows only — when `namesHidden`, that's just the viewer's own
+   *  entry (if any), never the full slot. */
   signups: ScheduleSignup[];
+  /** The real headcount for this slot when `namesHidden` (from the counts
+   *  RPC, which isn't row-limited by RLS) — falls back to `signups.length`
+   *  when undefined. */
+  displayCount?: number;
+  /** The organizer chose to hide names, incl. from themselves, and hasn't
+   *  tapped "Show participants" yet (migration 0167) — render the count only,
+   *  never the roster below. */
+  suppressNames?: boolean;
   fields: SignupField[];
   /** ≥2 ⇒ every sign-up here is a fixed-size team (migration 0143); 1 (or
    *  unset) ⇒ the original one-person-per-row behavior, unchanged. */
@@ -358,8 +413,12 @@ function SlotCard({
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyResult, setNotifyResult] = useState<string | null>(null);
   const [notifyEmail, setNotifyEmail] = useState(false);
-  const full = isFull(signups.length, view.capacity);
-  const spotsLeft = view.capacity != null ? view.capacity - signups.length : Infinity;
+  // The real count when names are hidden (from the counts RPC) — `signups`
+  // itself is RLS-limited to just the viewer's own row(s) in that case, so it
+  // can't be used for the badge/capacity math below.
+  const count = displayCount ?? signups.length;
+  const full = isFull(count, view.capacity);
+  const spotsLeft = view.capacity != null ? view.capacity - count : Infinity;
   const roomForTeam = spotsLeft >= teamSize;
   const mine = userId ? signups.some((s) => s.userId === userId) : false;
   const hasFields = fields.length > 0;
@@ -371,14 +430,14 @@ function SlotCard({
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold">{view.label}</p>
           <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
-            {capacityLabel(signups.length, view.capacity)} filled
+            {capacityLabel(count, view.capacity)} filled
           </span>
         </div>
       )}
-      {!view.label && signups.length > 0 && (
+      {!view.label && count > 0 && (
         <div className="flex items-center justify-end">
           <span className={`text-xs ${full ? "text-accent" : "text-foreground/50"}`}>
-            {capacityLabel(signups.length, view.capacity)} signed up
+            {capacityLabel(count, view.capacity)} signed up
           </span>
         </div>
       )}
@@ -442,7 +501,10 @@ function SlotCard({
         </div>
       )}
 
-      {groups.length > 0 && (
+      {groups.length > 0 && suppressNames && (
+        <p className="mt-1.5 text-xs italic text-foreground/45">Hidden until you tap &ldquo;Show participants.&rdquo;</p>
+      )}
+      {groups.length > 0 && !suppressNames && (
         <ul className="mt-1.5 space-y-1">
           {groups.map((g) => (
             <li key={g.key} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary">

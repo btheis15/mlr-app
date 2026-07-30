@@ -769,6 +769,10 @@ export interface SignupDraft {
   /** Blank/"1" = individual. "2"+ = sign up in fixed-size teams (migration
    *  0143) — applies in any mode. */
   teamSize: string;
+  /** Hide individual names from other members (migration 0167, schedule
+   *  events only) — everyone still sees an accurate headcount; the
+   *  organizer (and each person's own entry) always sees who. */
+  hideNames: boolean;
 }
 
 /** Seed a SignupDraft from an item draft's persisted signup* fields. */
@@ -784,6 +788,7 @@ export function signupDraft(src?: {
   signupReminderMinutes?: number[] | null;
   signupReminderEmail?: boolean | null;
   signupTeamSize?: number | null;
+  signupHideNames?: boolean | null;
 }): SignupDraft {
   return {
     enabled: src?.signupEnabled ?? false,
@@ -797,6 +802,7 @@ export function signupDraft(src?: {
     reminderMinutes: src?.signupReminderMinutes ?? [],
     reminderEmail: src?.signupReminderEmail ?? false,
     teamSize: src?.signupTeamSize && src.signupTeamSize > 1 ? String(src.signupTeamSize) : "",
+    hideNames: src?.signupHideNames ?? false,
   };
 }
 
@@ -834,6 +840,7 @@ export function signupPayload(v: SignupDraft) {
     signupReminderMinutes: v.enabled ? [...v.reminderMinutes].sort((a, b) => b - a) : [],
     signupReminderEmail: v.enabled && v.reminderMinutes.length > 0 ? v.reminderEmail : false,
     signupTeamSize: v.enabled && v.teamSize.trim() ? Number(v.teamSize) : null,
+    signupHideNames: v.enabled && v.hideNames,
   };
 }
 
@@ -1109,6 +1116,24 @@ function SignupConfigEditor({
               {value.teamSize.trim() && !(Number(value.teamSize) >= 2 && Number.isInteger(Number(value.teamSize))) && (
                 <p className="mt-1 text-xs font-medium text-accent">Team size must be a whole number of 2 or more.</p>
               )}
+            </label>
+          )}
+
+          {kind === "schedule" && (
+            <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+              <span className="min-w-0">
+                <span className="text-sm">🙈 Hide who&rsquo;s signed up</span>
+                <span className="block text-xs text-foreground/50">
+                  Other members see a headcount only — you (and any lead/crew) still see every name. Good for a
+                  surprise lineup, e.g. a variety show.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={value.hideNames}
+                onChange={(e) => set({ hideNames: e.target.checked })}
+                className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+              />
             </label>
           )}
 
