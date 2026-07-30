@@ -423,6 +423,12 @@ function SlotCard({
   const mine = userId ? signups.some((s) => s.userId === userId) : false;
   const hasFields = fields.length > 0;
   const groups = groupSignups(signups);
+  // A manager hiding names from themselves still needs to know THEY signed
+  // up (same guarantee a regular member already gets — RLS only ever hands
+  // them their own row) — so their own entry always renders even while
+  // suppressed; only everyone else's stays behind "Show participants."
+  const groupsToRender = suppressNames ? groups.filter((g) => g.members.some((m) => m.userId === userId)) : groups;
+  const hiddenGroupCount = suppressNames ? groups.length - groupsToRender.length : 0;
 
   return (
     <div className="rounded-xl bg-background p-2.5 ring-1 ring-border/60">
@@ -501,12 +507,9 @@ function SlotCard({
         </div>
       )}
 
-      {groups.length > 0 && suppressNames && (
-        <p className="mt-1.5 text-xs italic text-foreground/45">Hidden until you tap &ldquo;Show participants.&rdquo;</p>
-      )}
-      {groups.length > 0 && !suppressNames && (
+      {groupsToRender.length > 0 && (
         <ul className="mt-1.5 space-y-1">
-          {groups.map((g) => (
+          {groupsToRender.map((g) => (
             <li key={g.key} className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
               {g.teamId && (
                 <p className="mb-1 font-semibold uppercase tracking-wide text-primary/70">
@@ -543,6 +546,12 @@ function SlotCard({
             </li>
           ))}
         </ul>
+      )}
+      {hiddenGroupCount > 0 && (
+        <p className="mt-1.5 text-xs italic text-foreground/45">
+          {groupsToRender.length > 0 ? "+ " : ""}
+          {hiddenGroupCount} more hidden until you tap &ldquo;Show participants.&rdquo;
+        </p>
       )}
 
       {!full && roomForTeam && !adding && (
