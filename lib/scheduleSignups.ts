@@ -53,6 +53,9 @@ export interface SignupTarget {
   /** Sign up as a fixed-size team instead of individually (migration 0143,
    *  schedule events only). Null/1 = individual. */
   signupTeamSize?: number | null;
+  /** Hide individual names from other members (migration 0167, schedule
+   *  events only) — everyone still sees an accurate headcount. */
+  signupHideNames?: boolean;
 }
 
 export interface ScheduleSignup {
@@ -210,6 +213,23 @@ export async function fetchScheduleSignups(kind: SignupKind, parentId: string): 
     teamId: r.team_id ?? null,
     teamName: r.team_name ?? null,
   }));
+}
+
+/** A per-slot headcount keyed the same way SlotView.key is built ("headcount",
+ *  a slot id, or an interval "HH:MM" start) — accurate even when
+ *  `signupHideNames` hides other people's rows from a plain select (migration
+ *  0167; the RPC is SECURITY DEFINER so it counts every row regardless of RLS).
+ *  Schedule events only — activities never got the hide-names option. */
+export async function fetchScheduleSignupCounts(kind: SignupKind, parentId: string): Promise<Record<string, number>> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb || kind !== "schedule") return {};
+  const { data } = await sb.rpc("fest_schedule_signup_counts", { p_item: parentId });
+  const out: Record<string, number> = {};
+  for (const row of (data ?? []) as { slot_start: string | null; slot_id: string | null; cnt: number }[]) {
+    const key = row.slot_id ?? row.slot_start ?? "headcount";
+    out[key] = (out[key] ?? 0) + Number(row.cnt);
+  }
+  return out;
 }
 
 /** One member of a team sign-up (migration 0143, schedule events only) —

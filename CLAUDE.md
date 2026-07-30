@@ -965,6 +965,24 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
   was still `not null` from 0135, but 0136's insert can leave it `NULL` for a
   `slots`-mode row — so "Specific times" sign-ups had been failing outright
   since 0136 shipped; column is now nullable.
+- **Hide who's signed up (migration 0167, schedule events only — not mirrored
+  to `fest_activities`).** `fest_schedule_items.signup_hide_names` lets the
+  creator keep a sign-up's roster a surprise (e.g. a variety-show lineup) —
+  every member still sees an accurate headcount, but individual names are
+  visible only to the event's organizer (the same `_can_manage_schedule_signups`
+  predicate as everywhere else in this feature) and to a person's own entry.
+  Enforced in **RLS, not the client**: the `fest_schedule_signups` select
+  policy only returns a row to its own `user_id`/`added_by`, or to anyone at
+  all when `signup_hide_names` is false, or to a manager always. Since a
+  non-manager's plain `select` is then missing everyone else's rows, the
+  headcount badge instead comes from `fest_schedule_signup_counts(item)` — a
+  `SECURITY DEFINER` RPC that counts every row regardless of RLS
+  (`lib/scheduleSignups.ts` `fetchScheduleSignupCounts()`), called by
+  [`ScheduleSignupSlots`](components/ScheduleSignupSlots.tsx) only when names
+  are hidden from the viewer. Toggled in `SignupConfigEditor`
+  ("🙈 Hide who's signed up," schedule-only like team size/tournament); a
+  hidden card shows a "🙈 who's signed up is a surprise" hint in place of the
+  roster.
 - 📱 **No iOS parity yet** — web-only so far; the schema/RPCs are shared, so the
   native app can add the same UI against these tables without a backend change.
 

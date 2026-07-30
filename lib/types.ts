@@ -435,6 +435,10 @@ export interface ScheduleEvent {
   /** This activity runs a tournament (migration 0147) — gates the 🏆 Tournament
    *  section on the activity so it only appears when the organizer opts in. */
   tournamentEnabled?: boolean;
+  /** Hide individual names from other members (migration 0167) — everyone
+   *  still sees an accurate headcount; only this event's organizer (or the
+   *  viewer's own entry) sees who. */
+  signupHideNames?: boolean;
 }
 
 /** One admin-defined extra column on a sign-up (migration 0136). `id` is a

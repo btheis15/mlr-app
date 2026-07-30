@@ -171,6 +171,7 @@ interface ScheduleRow {
   signup_reminder_email: boolean | null;
   signup_team_size: number | null;
   tournament_enabled: boolean;
+  signup_hide_names: boolean | null;
 }
 interface DinnerRow {
   id: string;
@@ -279,6 +280,7 @@ function mapSchedule(r: ScheduleRow): ScheduleEvent {
     signupReminderEmail: r.signup_reminder_email ?? false,
     signupTeamSize: r.signup_team_size,
     tournamentEnabled: r.tournament_enabled ?? false,
+    signupHideNames: r.signup_hide_names ?? false,
   };
 }
 function mapDinner(r: DinnerRow): Dinner {
@@ -364,7 +366,7 @@ export async function fetchFestContent(): Promise<FestContent> {
       sb
         .from("fest_schedule_items")
         .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled",
+          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled, signup_hide_names",
         )
         .eq("fest_year", FEST_YEAR)
         .order("day")
@@ -508,6 +510,7 @@ export interface ScheduleInput {
   signupReminderEmail: boolean;
   signupTeamSize: number | null;
   tournamentEnabled: boolean;
+  signupHideNames: boolean;
 }
 export const saveScheduleItem = (i: ScheduleInput) =>
   writeRow("fest_schedule_items", i.id, {
@@ -540,6 +543,7 @@ export const saveScheduleItem = (i: ScheduleInput) =>
     signup_reminder_email: i.signupReminderEmail,
     signup_team_size: i.signupTeamSize,
     tournament_enabled: i.tournamentEnabled,
+    signup_hide_names: i.signupHideNames,
   });
 export const deleteScheduleItem = (id: string) => deleteRow("fest_schedule_items", id);
 
@@ -874,7 +878,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
   const { data } = await sb
     .from("fest_schedule_items")
     .select(
-      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled",
+      "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled, signup_hide_names",
     )
     .eq("fest_year", FEST_YEAR)
     .order("day")
@@ -910,6 +914,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     signupReminderEmail: r.signup_reminder_email ?? false,
     signupTeamSize: r.signup_team_size,
     tournamentEnabled: r.tournament_enabled ?? false,
+    signupHideNames: r.signup_hide_names ?? false,
   }));
 }
 
