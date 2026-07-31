@@ -35,6 +35,19 @@ import {
   updateHouseStay,
   type StayInput,
 } from "@/lib/houseCalendar";
+import {
+  addHouseListItem,
+  clearCheckedHouseListItems,
+  createHouseList,
+  deleteHouseList,
+  deleteHouseListItem,
+  fetchHouseLists,
+  setHouseListItemChecked,
+  uncheckHouseListItems,
+  updateHouseList,
+  updateHouseListItem,
+  type HouseListInput,
+} from "@/lib/houseLists";
 import { fetchHouseBySlug, fetchMyHouse } from "@/lib/houses";
 import type {
   AttendanceStatus,
@@ -42,6 +55,7 @@ import type {
   EventAttendance,
   HelpRequest,
   House,
+  HouseList,
   HouseStay,
   ResortEvent,
 } from "@/lib/types";
@@ -1016,6 +1030,126 @@ export function useHouseCalendar(houseId: string | null): {
     addStay,
     editStay,
     removeStay,
+  };
+}
+
+/**
+ * Loads a house's shared lists (migration 0169) and keeps them live. Same shape
+ * as `useHouseCalendar` above: a cached initial load + a debounced Realtime
+ * subscription (on BOTH house_lists and house_list_items, each filtered to this
+ * house — items carry a denormalized house_id for exactly this), plus write
+ * wrappers that write then `reload()`. Every write is allowed for any member of
+ * the house, so there's no per-row ownership check on the client — the RPCs gate
+ * on is_house_member. Guests get `promptSignIn()`; no backend / pre-migration ⇒
+ * a safe empty. Pass `houseId = null` for a no-op that never fetches.
+ */
+export function useHouseLists(houseId: string | null): {
+  lists: HouseList[];
+  loading: boolean;
+  canWrite: boolean;
+  reload: () => Promise<void>;
+  addList: (input: HouseListInput) => Promise<{ error?: string }>;
+  editList: (id: string, input: HouseListInput) => Promise<{ error?: string }>;
+  removeList: (id: string) => Promise<{ error?: string }>;
+  addItem: (listId: string, text: string) => Promise<{ error?: string }>;
+  editItem: (id: string, text: string) => Promise<{ error?: string }>;
+  setItemChecked: (id: string, checked: boolean) => Promise<{ error?: string }>;
+  removeItem: (id: string) => Promise<{ error?: string }>;
+  clearChecked: (listId: string) => Promise<{ error?: string }>;
+  uncheckAll: (listId: string) => Promise<{ error?: string }>;
+} {
+  const { user, previewAsId, promptSignIn } = useIdentity();
+  const [schedule] = useDebouncedCallback(250);
+  const { data: lists, loading, reload } = useCachedResource<HouseList[]>(
+    houseId ? `houseLists.${houseId}` : null,
+    [],
+    () => fetchHouseLists(houseId!),
+    { persist: "local" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!houseId || !isSupabaseConfigured || !sb) return;
+    const channel = sb
+      .channel(`house-lists-${houseId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "house_lists", filter: `house_id=eq.${houseId}` },
+        () => schedule(reload),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "house_list_items", filter: `house_id=eq.${houseId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [houseId, reload, schedule]);
+
+  // Guests → sign-in sheet; no backend / preview-as ⇒ blocked (never writes as
+  // the real member while an admin previews). Mirrors useHouseCalendar.
+  const guarded = useCallback(
+    async (fn: () => Promise<{ error?: string }>): Promise<{ error?: string }> => {
+      if (!isSupabaseConfigured) return {};
+      if (!user) {
+        promptSignIn();
+        return {};
+      }
+      if (previewAsId) return {};
+      const res = await fn();
+      if (!res.error) await reload();
+      return res;
+    },
+    [user, previewAsId, promptSignIn, reload],
+  );
+
+  const addList = useCallback(
+    (input: HouseListInput) => guarded(() => createHouseList(houseId!, input)),
+    [guarded, houseId],
+  );
+  const editList = useCallback(
+    (id: string, input: HouseListInput) => guarded(() => updateHouseList(id, input)),
+    [guarded],
+  );
+  const removeList = useCallback((id: string) => guarded(() => deleteHouseList(id)), [guarded]);
+  const addItem = useCallback(
+    (listId: string, text: string) => guarded(() => addHouseListItem(listId, text)),
+    [guarded],
+  );
+  const editItem = useCallback(
+    (id: string, text: string) => guarded(() => updateHouseListItem(id, text)),
+    [guarded],
+  );
+  const setItemChecked = useCallback(
+    (id: string, checked: boolean) => guarded(() => setHouseListItemChecked(id, checked)),
+    [guarded],
+  );
+  const removeItem = useCallback((id: string) => guarded(() => deleteHouseListItem(id)), [guarded]);
+  const clearChecked = useCallback(
+    (listId: string) => guarded(() => clearCheckedHouseListItems(listId)),
+    [guarded],
+  );
+  const uncheckAll = useCallback(
+    (listId: string) => guarded(() => uncheckHouseListItems(listId)),
+    [guarded],
+  );
+
+  return {
+    lists,
+    loading,
+    canWrite: isSupabaseConfigured && !!user && !previewAsId,
+    reload,
+    addList,
+    editList,
+    removeList,
+    addItem,
+    editItem,
+    setItemChecked,
+    removeItem,
+    clearChecked,
+    uncheckAll,
   };
 }
 

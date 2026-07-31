@@ -276,6 +276,41 @@ export interface HouseStay {
   createdAt: string;
 }
 
+/** One item on a house list (migration 0169). Checked state is a stamp, not a
+ *  boolean, so the list also answers "who got the milk / closed the windows, and
+ *  when" — `checkedAt` null ⇒ still open. Any member of the house may add, check,
+ *  edit or delete any item, so `createdBy`/`checkedBy` are for display only. */
+export interface HouseListItem {
+  id: string;
+  listId: string;
+  text: string;
+  checkedAt: string | null;
+  checkedBy: string | null;
+  /** Display name of whoever checked it, joined from their profile. */
+  checkedByName: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+/** A shared list belonging to a house (migration 0169) — groceries, a cabin
+ *  close-up checklist, a packing list. Deliberately ONE flexible shape: a title
+ *  plus items that can each be checked off, so any kind of list fits without
+ *  picking a type up front. Private to the house (RLS on is_house_member). */
+export interface HouseList {
+  id: string;
+  houseId: string;
+  title: string;
+  emoji: string;
+  note: string | null;
+  position: number;
+  createdBy: string;
+  /** Display name of the member who started the list, for the byline. */
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+  items: HouseListItem[];
+}
+
 export type WorkItemStatus = "open" | "done";
 
 /** How urgent a work item is — drives its chip + sort order (ASAP first).

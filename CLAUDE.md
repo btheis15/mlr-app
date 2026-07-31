@@ -241,6 +241,63 @@ in migration [`0121`](supabase/migrations/0121_rename_area_meetings.sql) so a
 role-scoped meeting isn't orphaned) in one transaction, so the chat history +
 memberships + scheduled meetings follow the new name.
 
+⚠️⚠️ **Incident: every role/subcommittee was INVISIBLE to every client, because
+`committee_areas` had RLS enabled with ZERO policies (fixed by
+[`0170`](supabase/migrations/0170_committee_areas_read_policy.sql)).** Adding a
+subcommittee in Admin → Committees appeared to do nothing: you typed a name,
+tapped Add, and the list came back empty — every time. The row really landed
+(the 0112 write RPCs are `SECURITY DEFINER`, so they bypass RLS), but **reads
+returned zero rows with no error** — RLS *filters*, it doesn't raise. No
+migration ever enabled RLS here ([`0073`](supabase/migrations/0073_committee_area_validation.sql)
+creates the table with no RLS clause, and 0081's own header lists
+`committee_areas` as staying public-read), so it was switched on **out-of-band in
+the Supabase dashboard**, almost certainly in response to the Security Advisor's
+"RLS disabled in public" warning — which flags the table but can't know the app
+reads it anonymously. **What hid it for so long: `fetchCommitteeAreas()`'s seed
+fallback.** On an empty result it returns the in-code `FAMILY_FEST_AREAS`, so
+Family Fest — the one committee anyone looks at — kept rendering its five roles
+from hardcoded data and looked perfectly healthy; every *other* committee just
+got `[]`. **Knock-on effect:** `CommitteeMembers` renders its per-member role
+picker only when `areaOptions.length > 0` (and `CommitteeJoin` gates its picker
+the same way), so the *assignment* UI didn't exist on screen either — making
+"how do I put someone on a subcommittee?" unanswerable. One unreadable table
+silently deleted the whole feature, in both directions. 0170 adds the
+public-read policy that should have shipped with 0073 (labels only — a slug and
+a role name, no PII; `committees` itself is already public-read) and
+deliberately adds **no write policy**, since every write goes through 0112's
+admin-gated RPCs — leaving direct table writes denied for anon *and*
+authenticated, strictly tighter than the pre-dashboard state (RLS off + broad
+table grants meant anyone could INSERT/UPDATE/DELETE directly). **Takeaway:
+enabling RLS without a policy isn't securing a table, it's silently deleting it
+from the client's point of view — and this codebase's seed/fallback idiom
+(everywhere, for graceful pre-migration degradation) will happily disguise that
+as normal empty-but-working behavior.** When a list reads empty but writes seem
+to succeed, check `pg_policies` before anything else.
+
+**Roles are managed ROLE-FIRST.** `RolesManager` (in
+[`AdminCommittees`](components/AdminCommittees.tsx)) shows each role as an
+expandable row with a live headcount badge; opening it lists exactly who's on
+that role, with a picker over the committee's other members and a one-tap
+**Make lead / Unset lead** — because "who's on Beautification?" is the question
+an admin actually has, and the old layout made you open three separate member
+rows to put three people on one role. The per-member chips in `CommitteeMembers`
+answer the inverse ("what is this one person on?") and both remain: they write
+the same `set_committee_areas` RPC, whose `committee_members` UPDATE fires the
+realtime tick that re-syncs the other card. Assignment is scoped to people
+already in the committee (a role is a subdivision of it, and the RPC only
+touches an existing `committee_members` row), so the empty state points at the
+members card instead of offering a second way to add people.
+- **The `" · Lead"` suffix now has ONE home.** A role entry in
+  `committee_members.areas` / `committee_roster.roles[]` is either the plain
+  name or the name plus `" · Lead"`, and `can_access_committee_area` accepts
+  either — so every membership check must strip it. `baseArea` / `isOnArea` /
+  `isAreaLead` / `withArea` / `withoutArea` in
+  [`lib/committeeAdmin.ts`](lib/committeeAdmin.ts) are that logic. This also
+  **fixed a silent data-loss bug** in `CommitteeMembers`' chip editor, which
+  compared raw strings: for someone holding `"Meals · Lead"` the Meals chip
+  rendered *unlit*, so an admin editing any of their areas saved a list with the
+  lead standing stripped. Use these helpers for any new role comparison.
+
 **"Delete" is an archive, not a destroy.** Archiving a committee or role
 (`archive_committee`/`archive_committee_area`) sets `archived_at`: it drops out
 of the live lists and its chat goes **read-only** (an insert guard in RLS via
@@ -431,7 +488,7 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   default on, also a `PushType`). Surfaced via a **House Hub** — a Home card
   ([`HouseHubCard`](components/HouseHubCard.tsx), self-hides off-house) → `/house`
   ([`HouseHub`](components/HouseHub.tsx)) that gathers the house's **calendar, chat,
-  and work-item to-do list** in one place; the full calendar (month grid + agenda)
+  shared lists, and work-item to-do list** in one place; the full calendar (month grid + agenda)
   is `/house/calendar` ([`HouseCalendar`](components/HouseCalendar.tsx),
   [`HouseCalendarScreen`](components/HouseCalendarScreen.tsx)) with
   [`HouseStayComposer`](components/HouseStayComposer.tsx) /
@@ -439,6 +496,36 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   and resolve the viewer's own house, or a `?house=<slug>`
   deep-link (admins can view any) via `useResolvedHouse` +
   [`useHouseCalendar`](lib/hooks.ts); client seam [`lib/houseCalendar.ts`](lib/houseCalendar.ts).
+- **House lists** — shared lists for a house: the grocery run, a cabin close-up
+  checklist, what to pack, "stuff to fix". Deliberately **ONE flexible shape** —
+  a list is a title (+ emoji handle + optional note) and items that can each be
+  checked off — so a shopping list and a checklist are the same thing and there's
+  no "kind" to pick at creation time. **Everything is shared:** anyone in the
+  house can start a list and add / check / edit / delete *any* item on it (the
+  person who gets the milk is rarely the one who wrote it down); the house's
+  *tracked, author-owned* work stays in work items (0066). Migration
+  [`0169`](supabase/migrations/0169_house_lists.sql): `house_lists` +
+  `house_list_items`, both RLS-read on `is_house_member`, writes through
+  SECURITY DEFINER RPCs that gate on **membership, not authorship**
+  (`create/update/delete_house_list`, `add/update/delete_house_list_item`,
+  `set_house_list_item_checked`, plus the two recurring-list sweeps
+  `clear_checked_house_list_items` / `uncheck_house_list_items`). Two details
+  worth keeping: items carry a **denormalized `house_id`** (copied from the
+  parent list by the RPCs, re-derived by a before-insert/update trigger so it
+  can't drift) so both the RLS read and the client's Realtime filter key off the
+  house without a join; and "checked" is a **stamp** (`checked_at`/`checked_by`,
+  cleared on uncheck) not a boolean, so the list also answers *who* got the milk.
+  **No notifications, by design** — a grocery run would spam the house, so lists
+  are a quiet pull-only surface kept live by Realtime. Surfaced as a **Lists**
+  section on the House Hub (live subtitle: the top list + its progress) →
+  `/house/lists` ([`HouseListsScreen`](components/HouseListsScreen.tsx) →
+  [`HouseLists`](components/HouseLists.tsx)); the route is **non-dynamic** and
+  resolves the viewer's house or `?house=<slug>` like the rest of `/house/*`.
+  Checkboxes paint through a local optimistic override so they never wait on the
+  round-trip; client seam [`lib/houseLists.ts`](lib/houseLists.ts) +
+  [`useHouseLists`](lib/hooks.ts), types `HouseList` / `HouseListItem`.
+  Pre-migration reads degrade to "no lists" (42P01) with a `MigrationHint` on the
+  empty state. *(Not yet mirrored in the iOS app.)*
 - Client seam: [`lib/houses.ts`](lib/houses.ts) (`fetchHouses`, `fetchMyHouse`,
   `setMemberHouse`, `saveHouse`/`deleteHouse`); types `House` + `HouseStay` +
   `WorkItemMedia` in [`lib/types.ts`](lib/types.ts).

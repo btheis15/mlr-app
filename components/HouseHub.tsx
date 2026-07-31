@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { setHouseRules } from "@/lib/houses";
-import { useResolvedHouse, useHouseCalendar } from "@/lib/hooks";
+import { useResolvedHouse, useHouseCalendar, useHouseLists } from "@/lib/hooks";
+import { listSummary } from "@/lib/houseLists";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isStayPast, stayLabel } from "@/lib/houseCalendar";
 import { formatDateRange } from "@/lib/format";
@@ -96,7 +97,20 @@ function HouseHubBody({
       ? `Next up: ${stayLabel(next)} · ${formatDateRange(next.startDate, next.endDate)}`
       : "No stays yet — add when you're going up.";
 
+  // The Lists row's live subtitle: the most recently touched list and its
+  // progress, so the Hub answers "is there anything on the grocery list?"
+  // without a tap. Lists come back newest-first (create_house_list sorts to
+  // the top), so `lists[0]` is the one a house most likely cares about.
+  const { lists, loading: listsLoading } = useHouseLists(houseId);
+  const topList = lists[0] ?? null;
+  const listsSubtitle = listsLoading
+    ? "Loading…"
+    : topList
+      ? `${topList.emoji} ${topList.title} · ${listSummary(topList)}${lists.length > 1 ? ` · +${lists.length - 1} more` : ""}`
+      : "Shopping lists, checklists — start one for the house.";
+
   const calHref = `/house/calendar?house=${slug}`;
+  const listsHref = `/house/lists?house=${slug}`;
   const chatHref = `/posts?house=${slug}`;
   const [emailOpen, setEmailOpen] = useState(false);
 
@@ -158,6 +172,22 @@ function HouseHubBody({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">House calendar</p>
             <p className="mt-0.5 truncate text-xs text-foreground/60">{calSubtitle}</p>
+          </div>
+          <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>›</span>
+        </Link>
+      </section>
+
+      {/* Lists — the house's shared lists (groceries, checklists, packing). */}
+      <section className="space-y-2">
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Lists</h2>
+        <Link
+          href={listsHref}
+          className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        >
+          <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/12 text-2xl">📝</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">House lists</p>
+            <p className="mt-0.5 truncate text-xs text-foreground/60">{listsSubtitle}</p>
           </div>
           <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>›</span>
         </Link>
