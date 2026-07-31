@@ -922,6 +922,26 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     dodge this (`CalloutCard`, `AdminCallouts`, `WeatherCard`, `PollsView`,
     `HouseCalendar`, `FestRsvp`, `lib/cabins.ts`, …) were already correct and
     still are — a full ISO timestamp passes straight through.
+    - ⚠️ **The stored DATA was shifted too, and needed a separate one-off
+      correction (no migration).** Fixing the label was necessary but not
+      sufficient: the slots had been *created* through the same broken dropdown
+      (`FestPlanner`'s `SignupSlotsEditor` day `<select>`, whose `<option>`
+      label came from `formatDate` while its `value` was the true ISO day), so
+      picking the option that read "Thu, Jul 30" persisted `2026-07-31`. The
+      label was **self-consistent** — weekday *and* date both named Thursday
+      the 30th — so nothing on any screen could reveal the mismatch, and every
+      Muckylunge slot ended up stored one day LATER than the family actually
+      ran it. Confirmed by two independent member reports (a slot run Thursday
+      that reminded Friday morning; a slot expected Wednesday that reminded
+      Thursday). Corrected in place with
+      `update fest_schedule_slots set day = (day::date - 1)::text where day is
+      not null` — 10 rows, the only day-bearing slot rows in the database at
+      the time (`fest_activity_slots` had none, and there were no interval-mode
+      sign-ups). Sign-ups, slot ids and capacities were untouched. **Lesson: a
+      display bug in a PICKER silently corrupts the data it writes.** When
+      fixing a date-formatting bug, always check whether the bad label was also
+      feeding a form — the label fix alone leaves the stored rows wrong and
+      merely makes the wrongness newly visible.
   - **Migration [`0168`](supabase/migrations/0168_signup_reminder_absolute_time.sql)
     makes a reminder state its own real day + time**, so a mismatch like the one
     above is self-evident in the message instead of a support thread: the
