@@ -38,6 +38,13 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   // "Who's this for?" options for the composer: the whole committee, plus the
   // roles the viewer can aim a meeting at (admin → all roles; a lead → their own).
   const [areaOptions, setAreaOptions] = useState<{ value: string | null; label: string }[]>([]);
+  // Is the viewer actually ON this committee? Chat is the one thing membership
+  // buys — everything else on this page (description, roles, who's on them) is
+  // public by design, so a non-member browses freely and simply gets no chat
+  // affordance. `null` = not resolved yet, so the button never flashes in and
+  // back out. Mirrors the server rule in can_access_committee_area (0063):
+  // roster-linked to this committee, or an app admin.
+  const [onCommittee, setOnCommittee] = useState<boolean | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -70,7 +77,9 @@ export function CommitteeDetail({ slug }: { slug: string }) {
       );
       // Roles the viewer may target: all of them for an admin, else the ones
       // they lead ("<area> · Lead" in their roster roles). The server re-checks.
-      const myRoles = entries.find((e) => e.linkedUserId && e.linkedUserId === userId)?.roles ?? [];
+      const mine = entries.find((e) => e.linkedUserId && e.linkedUserId === userId);
+      setOnCommittee(isAdmin || !!mine);
+      const myRoles = mine?.roles ?? [];
       const allowed = isAdmin ? areas : areas.filter((a) => myRoles.includes(`${a} · Lead`));
       setAreaOptions([{ value: null, label: `Everyone on ${cname}` }, ...allowed.map((a) => ({ value: a, label: a }))]);
     });
@@ -120,7 +129,9 @@ export function CommitteeDetail({ slug }: { slug: string }) {
         )}
       </header>
 
-      {!row.archivedAt && <ChatEntryButton slug={committee.slug} name={committee.name} />}
+      {!row.archivedAt && onCommittee === true && (
+        <ChatEntryButton slug={committee.slug} name={committee.name} />
+      )}
 
       {/* Meeting scheduling, right on the committee page (not just in the chat) —
           scoped committee-wide. The active-meeting bar shows to everyone when one

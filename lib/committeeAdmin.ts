@@ -129,6 +129,78 @@ export async function fetchLiveAreaNames(slug: string): Promise<string[]> {
   return (await fetchCommitteeAreas(slug, false)).map((a) => a.area);
 }
 
+/** Every committee's live roles in ONE round-trip, keyed by committee slug — for
+ *  the Committees index, which shows each committee's subcommittees and would
+ *  otherwise fire a query per committee. A committee with no roles is simply
+ *  absent from the map. Falls back to the Family Fest seed (the same fallback
+ *  fetchCommitteeAreas applies) when the table is empty / unreachable, so the
+ *  index degrades the same way every other surface does. */
+export async function fetchAreasByCommittee(): Promise<Record<string, string[]>> {
+  const seed: Record<string, string[]> = { "family-fest": [...FAMILY_FEST_AREAS] };
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return seed;
+  try {
+    const primary = await sb
+      .from("committee_areas")
+      .select("committee_slug, area, archived_at")
+      .order("area", { ascending: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let data: any[] | null = primary.data;
+    if (primary.error && primary.error.code === MISSING_COLUMN) {
+      const fb = await sb
+        .from("committee_areas")
+        .select("committee_slug, area")
+        .order("area", { ascending: true });
+      data = fb.data;
+    } else if (primary.error) {
+      return seed;
+    }
+    const rows = (data ?? []) as { committee_slug: string; area: string; archived_at?: string | null }[];
+    if (!rows.length) return seed;
+    const map: Record<string, string[]> = {};
+    for (const r of rows) {
+      if (r.archived_at) continue;
+      (map[r.committee_slug] ??= []).push(r.area);
+    }
+    return map;
+  } catch {
+    return seed;
+  }
+}
+
+// ── The " · Lead" suffix idiom ─────────────────────────────────────────────────
+// A person's role entry (committee_members.areas / committee_roster.roles) is
+// either the plain role name or the name plus a trailing " · Lead" marking them
+// as that role's lead (migrations 0063/0073). Both forms mean "on this role" —
+// `can_access_committee_area` accepts either — so every membership check has to
+// strip the suffix rather than compare the raw string, and every edit has to
+// preserve it. These are the one place that logic lives.
+
+export const LEAD_SUFFIX = " · Lead";
+
+/** The role name behind an entry, with any " · Lead" stripped. */
+export const baseArea = (entry: string): string =>
+  entry.endsWith(LEAD_SUFFIX) ? entry.slice(0, -LEAD_SUFFIX.length) : entry;
+
+/** Is this person on `area` at all (as a member OR its lead)? */
+export const isOnArea = (areas: string[], area: string): boolean =>
+  areas.some((a) => baseArea(a) === area);
+
+/** Is this person the lead of `area` specifically? */
+export const isAreaLead = (areas: string[], area: string): boolean =>
+  areas.includes(area + LEAD_SUFFIX);
+
+/** `areas` with `area` set (as lead or plain), replacing any existing entry for
+ *  it — so toggling lead can never leave both "Meals" and "Meals · Lead". */
+export const withArea = (areas: string[], area: string, lead = false): string[] => [
+  ...areas.filter((a) => baseArea(a) !== area),
+  lead ? area + LEAD_SUFFIX : area,
+];
+
+/** `areas` with `area` removed in either form. */
+export const withoutArea = (areas: string[], area: string): string[] =>
+  areas.filter((a) => baseArea(a) !== area);
+
 type RpcResult = { error?: string };
 const rpc = async (fn: string, args: Record<string, unknown>): Promise<RpcResult> => {
   const sb = supabase;

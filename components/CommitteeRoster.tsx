@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
-import { fetchLiveAreaNames } from "@/lib/committeeAdmin";
+import { fetchLiveAreaNames, baseArea, isOnArea, isAreaLead } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
 import type { Committee } from "@/lib/types";
 
@@ -91,7 +91,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   // someone still holds that isn't in it (e.g. a role archived out from under
   // them) so nobody silently drops off the roster.
   const layoutAreas = useMemo(() => {
-    const held = members.flatMap((m) => (m.roles ?? []).map((r) => r.replace(/ · Lead$/, "")));
+    const held = members.flatMap((m) => (m.roles ?? []).map(baseArea));
     return Array.from(new Set([...areas, ...held]));
   }, [areas, members]);
 
@@ -278,11 +278,15 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           {adminBar}
           {layoutAreas.map((area) => {
             const inArea = members
-              .map((m) => ({ m, lead: m.roles?.includes(`${area} · Lead`) ?? false }))
-              .filter(({ m }) => m.roles?.some((r) => r === area || r === `${area} · Lead`))
+              .map((m) => ({ m, lead: isAreaLead(m.roles ?? [], area) }))
+              .filter(({ m }) => isOnArea(m.roles ?? [], area))
               .sort((a, b) => Number(b.lead) - Number(a.lead));
-            if (!inArea.length) return null;
-            const mail = user ? mailtoFor(inArea.map((x) => x.m), `${area} — ${committee.name}`) : null;
+            // An EMPTY subcommittee still gets its card. It exists in the
+            // admin-managed allow-list, so hiding it (as this did) left no way to
+            // discover a role nobody has signed up for yet — which is precisely
+            // the role that needs volunteers. Says so plainly instead.
+            const mail =
+              user && inArea.length ? mailtoFor(inArea.map((x) => x.m), `${area} — ${committee.name}`) : null;
             return (
               <div key={area} className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
                 <div className="flex items-baseline justify-between gap-2">
@@ -291,11 +295,15 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
                     <a href={mail} className="press shrink-0 text-xs font-semibold text-primary">✉️ Email</a>
                   )}
                 </div>
-                <ul className="space-y-1.5">
-                  {inArea.map(({ m, lead: isLead }) => (
-                    <Row key={m.name} m={m} isLead={isLead} />
-                  ))}
-                </ul>
+                {inArea.length ? (
+                  <ul className="space-y-1.5">
+                    {inArea.map(({ m, lead: isLead }) => (
+                      <Row key={m.name} m={m} isLead={isLead} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-foreground/60">Nobody on this one yet.</p>
+                )}
               </div>
             );
           })}

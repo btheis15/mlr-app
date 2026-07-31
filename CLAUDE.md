@@ -298,6 +298,23 @@ members card instead of offering a second way to add people.
   rendered *unlit*, so an admin editing any of their areas saved a list with the
   lead standing stripped. Use these helpers for any new role comparison.
 
+**Everything about a committee is public to browse; CHAT is the only thing
+membership buys.** The Committees index ([`CommitteeList`](components/CommitteeList.tsx))
+lists each committee's **subcommittees as chips** under its member count, from a
+single bulk read (`fetchAreasByCommittee` — one round-trip for every committee,
+not one query per row), so what exists is discoverable without opening each
+committee. On a committee page, [`CommitteeRoster`](components/CommitteeRoster.tsx)
+renders a card per subcommittee **including the empty ones** ("Nobody on this one
+yet") — that used to `return null` on an empty role, which hid precisely the roles
+that need volunteers. The chat affordance is the one thing gated:
+[`CommitteeDetail`](components/CommitteeDetail.tsx) resolves whether the viewer is
+roster-linked to the committee (or an app admin — the same rule
+`can_access_committee_area` enforces server-side) and **hides
+`ChatEntryButton` entirely** for everyone else; the state starts `null` so the
+button never flashes in and back out while the roster resolves. Reaching
+`/committees/<slug>/chat` directly still lands on `CommitteeChat`'s existing
+lock card with its "Request to join" flow, so the deep link isn't a dead end.
+
 **"Delete" is an archive, not a destroy.** Archiving a committee or role
 (`archive_committee`/`archive_committee_area`) sets `archived_at`: it drops out
 of the live lists and its chat goes **read-only** (an insert guard in RLS via

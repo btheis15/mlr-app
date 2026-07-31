@@ -5,7 +5,14 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { getCurrentUserId, fetchProfiles, profileMap } from "@/lib/roles";
 import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
-import { fetchLiveAreaNames } from "@/lib/committeeAdmin";
+import {
+  fetchLiveAreaNames,
+  baseArea,
+  isOnArea,
+  isAreaLead,
+  withArea,
+  withoutArea,
+} from "@/lib/committeeAdmin";
 
 /**
  * "X members" panel — the people with app/chat access to this committee.
@@ -141,9 +148,13 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
     setAreaSelection([...m.areas]);
     setEditingAreas(m.id);
   };
+  // Match on the base role name, not the raw string: an entry can carry a
+  // trailing " · Lead" (the area-lead marker), and an exact-match toggle would
+  // both fail to light the chip for a lead AND strip their lead standing on save.
+  // Toggling ON preserves whatever standing they already had.
   const toggleArea = (area: string) =>
     setAreaSelection((prev) =>
-      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area],
+      isOnArea(prev, area) ? withoutArea(prev, area) : withArea(prev, area, isAreaLead(prev, area)),
     );
   const saveAreas = (m: Row) => {
     const sb = supabase;
@@ -232,7 +243,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                     <div className="space-y-2">
                       <div className="flex flex-wrap gap-1">
                         {areaOptions.map((area) => {
-                          const on = areaSelection.includes(area);
+                          const on = isOnArea(areaSelection, area);
                           return (
                             <button
                               key={area}
@@ -273,7 +284,8 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                             key={a}
                             className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
                           >
-                            {a}
+                            {baseArea(a)}
+                            {a !== baseArea(a) && <span className="font-bold"> · Lead</span>}
                           </span>
                         ))
                       ) : (
