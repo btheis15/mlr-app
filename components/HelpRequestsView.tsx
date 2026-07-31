@@ -10,7 +10,6 @@ import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useBusyAction, useEvents, useHelpRequests } from "@/lib/hooks";
 import { amIPresent, claimHelpItem, helpType, mapsUrl, respondToHelp, setHelpStatus, withdrawHelp } from "@/lib/helpRequests";
 import { fetchMyBookings } from "@/lib/cabins";
-import { supabase } from "@/lib/supabase";
 import type { BringItem, HelpRequest } from "@/lib/types";
 
 // The "Ask for Help" log (migration 0037). Shows open requests from members at
@@ -36,32 +35,30 @@ function firstNames(names: string[]): string {
 }
 
 export function HelpRequestsView() {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, isAdmin, promptSignIn, effectiveUserId, previewAsId } = useIdentity();
   const { today } = useDemoDate();
   const { events, mine, loading: eventsLoading } = useEvents();
   const { requests, loading, reload } = useHelpRequests();
   const { busy, run } = useBusyAction();
 
-  const [myId, setMyId] = useState<string | null>(null);
   const [bookingCoversToday, setBookingCoversToday] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  // "am I on the way" + own-request controls resolve against the EFFECTIVE
+  // viewer (the previewed member while an admin is previewing) — never a raw
+  // auth.getUser() call, which would always be the real admin's id.
+  const myId = effectiveUserId;
 
-  // Real session id (for "am I on the way" + own-request controls) + whether an
-  // approved cabin stay covers today (a second "I'm here" signal).
+  // Whether an approved cabin stay covers today — a second "I'm here" signal,
+  // read for the effective viewer so a preview sees what THAT member would.
   useEffect(() => {
-    const sb = supabase;
-    if (!sb || !user) {
-      setMyId(null);
+    if (!user || !myId) {
       setBookingCoversToday(false);
       return;
     }
     let cancelled = false;
     (async () => {
-      const { data } = await sb.auth.getUser();
-      if (cancelled) return;
-      setMyId(data.user?.id ?? null);
-      const bookings = await fetchMyBookings();
+      const bookings = await fetchMyBookings(previewAsId ?? undefined);
       if (cancelled || !today) return;
       setBookingCoversToday(
         bookings.some((b) => b.status === "approved" && b.checkIn <= today && b.checkOut > today),
@@ -70,7 +67,7 @@ export function HelpRequestsView() {
     return () => {
       cancelled = true;
     };
-  }, [user, today]);
+  }, [user, myId, previewAsId, today]);
 
   useEffect(() => {
     if (!flash) return;
@@ -83,7 +80,9 @@ export function HelpRequestsView() {
     [mine, events, today, bookingCoversToday],
   );
   // Admins can post from anywhere (to test/demo); everyone else must be present.
-  const canAsk = atResort || isAdmin;
+  // Never true while previewing — "view as" is read-only (see `previewAsId`
+  // guards below), so there's no CTA to ask as the previewed member.
+  const canAsk = !previewAsId && (atResort || isAdmin);
 
   const { active, done } = useMemo(() => {
     const active = requests.filter((r) => r.status === "open");
@@ -91,8 +90,12 @@ export function HelpRequestsView() {
     return { active, done };
   }, [requests]);
 
+  // Every write below is a no-op while previewing as another member — "view
+  // as" only shows what they'd see, it never acts as them (or as the real
+  // admin dressed up as them).
   const toggleOnWay = (r: HelpRequest) =>
     run(r.id, async () => {
+      if (previewAsId) return;
       const already = myId != null && r.responses.some((x) => x.userId === myId);
       if (already) await withdrawHelp(r.id);
       else await respondToHelp(r.id);
@@ -101,12 +104,14 @@ export function HelpRequestsView() {
 
   const resolve = (r: HelpRequest) =>
     run(r.id, async () => {
+      if (previewAsId) return;
       await setHelpStatus(r.id, "resolved");
       await reload();
     });
 
   const cancel = (r: HelpRequest) =>
     run(r.id, async () => {
+      if (previewAsId) return;
       await setHelpStatus(r.id, "cancelled");
       await reload();
     });
@@ -114,6 +119,7 @@ export function HelpRequestsView() {
   // Claim / release a "what to bring" item (keyed per-item, independent of the
   // per-request busy lock so checking off an item doesn't disable the card).
   const claimItem = async (itemId: string, claim: boolean) => {
+    if (previewAsId) return;
     await claimHelpItem(itemId, claim);
     await reload();
   };

@@ -683,6 +683,27 @@ already reads false during an admin's own "View as" preview — no extra
 preview check needed). Purely a shortcut to `/admin`; Profile's `RowLink`
 still works exactly as before.
 
+⚠️ **"Is this MINE?" always resolves through `effectiveUserId`.**
+[`useIdentity()`](components/IdentityProvider.tsx) exposes
+`effectiveUserId` (= `previewAsId ?? userId`) — **the** canonical id for any read
+or affordance meaning *"what does the current viewer see as their own"*: my stay,
+my comment, my RSVP, my vote, is-this-my-post, the @mention picker skipping
+yourself. Never reach for a raw `supabase.auth.getUser()`/`getSession()` (nor
+`userId` alone) in that logic: both hand back the **real admin** during a "View
+as" preview, so the admin's own Edit/Delete affordances leak onto the previewed
+member's screen. It also resolves on the **first client tick**, so those
+affordances no longer pop in a network round-trip late — the reason the old
+`useState` + `getUser()` effect existed in the first place (removed from
+[`HelpRequestsView`](components/HelpRequestsView.tsx),
+[`HouseCalendar`](components/HouseCalendar.tsx) and
+[`WorkItemSheet`](components/WorkItemSheet.tsx)). Reads are only half of it:
+every **write** must additionally no-op while `previewAsId` is set, since
+"View as" is strictly read-only (it never acts as the previewed member, and
+never as the real admin dressed up as them). The `lib/*` seams that accept an
+optional `asUserId` (`fetchMyBookings`, `fetchMyAttendance`) exist
+for exactly this — pass the effective id rather than letting the seam resolve
+the session itself.
+
 ## Help contact
 
 The Help page's human escape-hatch contact (name/phone/email) is no longer a

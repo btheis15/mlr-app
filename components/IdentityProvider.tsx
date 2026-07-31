@@ -42,9 +42,18 @@ interface IdentityValue {
   /** The REAL signed-in auth uid (`session.user.id`) — resolved locally from
    *  the stored session on the first client tick, so it's available a full
    *  network round-trip before `user` used to be. Never the preview identity:
-   *  pair with `previewAsId` where a preview should win (`previewAsId ?? userId`).
+   *  pair with `previewAsId` where a preview should win (`previewAsId ?? userId`)
+   *  — or just use `effectiveUserId` below, which already does that.
    *  Null while signed out or before the session is read. */
   userId: string | null;
+  /** `previewAsId ?? userId` — the id whose data a "my stuff" read should show.
+   *  THE canonical identity for any query/display logic that means "what does
+   *  the CURRENT VIEWER see as their own" (my RSVP, my reaction, my vote, my
+   *  notifications, "is this my post", …): use this, never a raw
+   *  `supabase.auth.getUser()`/`getSession()` call or `userId` alone, or the
+   *  admin's real account leaks through during a "view as" preview. Null when
+   *  signed out (or before the session resolves) and not previewing. */
+  effectiveUserId: string | null;
   /** Current admin "view as" preview (off unless an admin turned it on). */
   previewMode: PreviewMode;
   /** When previewing as a specific member, who it is (UI-only); null otherwise. */
@@ -97,6 +106,7 @@ const IdentityContext = createContext<IdentityValue>({
   isAdmin: false,
   authReady: true,
   userId: null,
+  effectiveUserId: null,
   previewMode: "off",
   previewMember: null,
   previewAsId: null,
@@ -472,6 +482,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         isAdmin: effectiveAdmin,
         authReady,
         userId,
+        effectiveUserId: previewMode === "member" && previewMember ? previewMember.id : userId,
         previewMode,
         previewMember,
         previewAsId: previewMode === "member" && previewMember ? previewMember.id : null,

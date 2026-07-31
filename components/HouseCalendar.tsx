@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AttendanceStatus, HouseStay, ResortEvent } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
 import { useEvents, useHouseCalendar, useSheetDismiss } from "@/lib/hooks";
 import { Sheet } from "@/components/Sheet";
 import { useDemoDate } from "@/lib/DemoDateProvider";
@@ -49,16 +48,16 @@ export function HouseCalendar({
   houseName: string;
 }) {
   const { today } = useDemoDate();
-  const { user, isAdmin } = useIdentity();
+  const { user, isAdmin, effectiveUserId } = useIdentity();
   const { stays, loading, canWrite, addStay, editStay, removeStay } = useHouseCalendar(houseId);
   const events = useEvents({ realtime: true });
 
-  // The auth uid drives "is this my stay?" (identity `user` has no id — same
-  // pattern as PostsView). The server also enforces author-or-admin on edits.
-  const [uid, setUid] = useState<string | null>(null);
-  useEffect(() => {
-    supabase?.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
-  }, []);
+  // "Is this my stay?" resolves against the EFFECTIVE viewer, so an admin
+  // previewing as another member sees THAT member's Edit affordances rather than
+  // their own (a raw auth.getUser() always returns the real admin). Available on
+  // the first client tick, so no round-trip and no affordance pop-in. The server
+  // still enforces author-or-admin on every edit.
+  const uid = effectiveUserId;
 
   const [composer, setComposer] = useState<{ mode: "new" } | { mode: "edit"; stay: HouseStay } | null>(null);
   const [openStayId, setOpenStayId] = useState<string | null>(null);

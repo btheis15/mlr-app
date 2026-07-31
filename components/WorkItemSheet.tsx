@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkItem, WorkItemComment } from "@/lib/types";
 import { fetchWorkItemComments, addWorkItemComment, removeWorkItemComment, URGENCY_META } from "@/lib/workItems";
-import { supabase } from "@/lib/supabase";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -44,15 +43,15 @@ export function WorkItemSheet({
   onChanged?: () => void;
   onEdit?: () => void;
 }) {
-  const { user, isAdmin, promptSignIn } = useIdentity();
+  const { user, isAdmin, promptSignIn, effectiveUserId } = useIdentity();
   const { closing, close } = useSheetDismiss(onClose);
-  const [uid, setUid] = useState<string | null>(null);
+  // "Is this my comment?" (the delete affordance) and the @mention picker's
+  // skip-myself both resolve against the EFFECTIVE viewer — a raw auth.getUser()
+  // would hand back the real admin while previewing as someone else. Available
+  // on the first client tick, so nothing pops in a round-trip late.
+  const uid = effectiveUserId;
   const [comments, setComments] = useState<WorkItemComment[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase?.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
-  }, []);
 
   const load = async () => {
     const c = await fetchWorkItemComments(item.id);
