@@ -34,7 +34,9 @@ export interface SendActivityNotifyInput {
   channels: ActivityNotifyChannels;
   /** The activity's schedule-item id — the notification taps through to it. */
   scheduleItemId?: string | null;
-  /** Banner lifetime (hours). Default 24. */
+  /** Banner lifetime (hours). Default 3 — an event-time-change notice is only
+   *  useful for a few hours, so it shouldn't still be sitting in the banner
+   *  the next day. */
   expiryHours?: number;
 }
 
@@ -74,7 +76,7 @@ export async function sendActivityNotify(input: SendActivityNotifyInput): Promis
       showBanner: input.channels.banner,
       notifyEmail: input.channels.email,
       emailAudience: "all",
-      expiryHours: input.expiryHours ?? 24,
+      expiryHours: input.expiryHours ?? 3,
       eventId: FAMILY_FEST_EVENT_ID,
       excludeNotAttending: true,
     });
