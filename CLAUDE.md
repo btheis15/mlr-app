@@ -893,10 +893,44 @@ schedule detail page). Client seam [`lib/scheduleSignups.ts`](lib/scheduleSignup
     there's nothing left to pick, so one "Send reminder" button replaces them.
     **The automatic cron's `_humanize_minutes(m)` wording ("starts in 30
     minutes") is deliberately UNCHANGED** — it's accurate there, because the
-    cron fires *at* that offset. (Known wart, not fixed: someone who signs up
-    *inside* the lead window — at 2:45 for a 3:00 slot — gets "starts in 30
-    minutes" on the next tick when it's really 15 away. Never an early buzz,
-    just imprecise copy.)
+    cron fires *at* that offset. (Superseded by 0168 below, which states the
+    absolute time in the cron's wording too and closes that migration's own
+    "known wart": someone who signs up *inside* the lead window — at 2:45 for a
+    3:00 slot — got "starts in 30 minutes" on the next tick when it was really
+    15 away. Never an early buzz, just imprecise copy.)
+  - ⚠️⚠️ **Incident: every sign-up slot was LABELED A DAY EARLY across the whole
+    fest UI — the reminders were right, the labels were wrong (fixed by
+    [`0168`](supabase/migrations/0168_signup_reminder_absolute_time.sql) + a
+    one-line [`lib/format.ts`](lib/format.ts) fix).** Members reported
+    "our slot was yesterday but the reminder came this morning" and "I got the
+    notification the day after." The cron was never at fault — every automatic
+    send in the live Muckylunge data landed at exactly slot−30min. The bug was
+    **`formatDate()`**, which did a bare `new Date(input)`: for a
+    `"YYYY-MM-DD"` string that parses as **UTC midnight**, which renders as the
+    **previous day** in any negative-offset zone (Central). So a slot stored
+    `2026-07-31 09:00` displayed as "Thu, Jul 30 · 9:00 AM" everywhere —
+    including the Planner's own day dropdown, so the organizer *built* the slots
+    against shifted labels and every surface agreed with itself. Nothing
+    revealed the truth until the reminder fired off the real stored date,
+    server-side. `formatDate` now routes through the existing `toLocalDate()`
+    helper (which the file had already added for `dayKey`/`formatDayHeading`,
+    with a comment describing this exact trap) — fixing
+    [`lib/scheduleSignups.ts`](lib/scheduleSignups.ts)'s `slotLabel`,
+    `FestPlanner`'s slot editor + day picker, `DemoDateControl`, and
+    `activityReminderDefaults` in one place. **Takeaway: never hand a bare
+    `YYYY-MM-DD` to `new Date()`.** Call sites that pre-appended `T00:00:00` to
+    dodge this (`CalloutCard`, `AdminCallouts`, `WeatherCard`, `PollsView`,
+    `HouseCalendar`, `FestRsvp`, `lib/cabins.ts`, …) were already correct and
+    still are — a full ISO timestamp passes straight through.
+  - **Migration [`0168`](supabase/migrations/0168_signup_reminder_absolute_time.sql)
+    makes a reminder state its own real day + time**, so a mismatch like the one
+    above is self-evident in the message instead of a support thread: the
+    automatic cron body is now "…starts in 30 minutes — **Fri, Jul 31 at
+    9:00 AM**." The wording moved into a shared `_format_slot_when(timestamptz)`
+    used by BOTH the cron and 0165's manual RPC, so the two can't drift the way
+    `moderate_content_text()` silently did in the 0160 incident. `run_signup_reminders()`
+    was recreated from the **current production definition** (the 0159 version,
+    with the email queueing), not from 0140's original body — same 0160 rule.
   - **Migration [`0166`](supabase/migrations/0166_signup_reminder_email_real_time.sql)**
     carries the same fix into the optional **email** half:
     `signup_reminder_email_recipients` now also returns the slot's resolved

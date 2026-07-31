@@ -4,9 +4,29 @@
  * Stock Game / Innjoy apps use).
  */
 
+// Parse to a Date, treating a bare "YYYY-MM-DD" as LOCAL midnight. `new
+// Date("YYYY-MM-DD")` is parsed as UTC, which lands on the PREVIOUS local day in
+// western (negative-offset) timezones — so a day-key round-tripped back through
+// `new Date()` shifts back a day, e.g. mislabeling today's chat messages as
+// "Yesterday". Full ISO timestamps (with a time) and Dates pass through as-is.
+function toLocalDate(input: string | number | Date): Date {
+  if (typeof input === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+    return new Date(`${input}T00:00:00`);
+  }
+  return input instanceof Date ? input : new Date(input);
+}
+
+/**
+ * Short form, e.g. "Fri, Jul 31". A bare "YYYY-MM-DD" is parsed at LOCAL
+ * midnight (via `toLocalDate`) — `new Date("YYYY-MM-DD")` is parsed as UTC and
+ * so renders the PREVIOUS day in any negative-offset zone, which is exactly
+ * how a sign-up slot stored as 2026-07-31 came out labeled "Thu, Jul 30" all
+ * over the fest UI while the server (correctly) fired its reminder on the
+ * 31st. Callers that used to pre-append "T00:00:00" to dodge this are still
+ * fine — a full ISO timestamp passes straight through.
+ */
 export function formatDate(input: string | number | Date): string {
-  const d = input instanceof Date ? input : new Date(input);
-  return d.toLocaleDateString(undefined, {
+  return toLocalDate(input).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -105,18 +125,6 @@ export function timeAgo(input: string | number | Date): string {
   if (hrs < 24) return `${hrs}h`;
   const days = Math.round(hrs / 24);
   return `${days}d`;
-}
-
-// Parse to a Date, treating a bare "YYYY-MM-DD" as LOCAL midnight. `new
-// Date("YYYY-MM-DD")` is parsed as UTC, which lands on the PREVIOUS local day in
-// western (negative-offset) timezones — so a day-key round-tripped back through
-// `new Date()` shifts back a day, e.g. mislabeling today's chat messages as
-// "Yesterday". Full ISO timestamps (with a time) and Dates pass through as-is.
-function toLocalDate(input: string | number | Date): Date {
-  if (typeof input === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
-    return new Date(`${input}T00:00:00`);
-  }
-  return input instanceof Date ? input : new Date(input);
 }
 
 /** Local "YYYY-MM-DD" key for grouping posts into days (not UTC). */
