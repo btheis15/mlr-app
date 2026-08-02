@@ -45,7 +45,7 @@ const rosterProfileCache = new Map<string, RosterProfileSnapshot>();
  * volunteer). Anyone signed in can email a whole committee or a single role.
  */
 export function CommitteeRoster({ committee }: { committee: Committee }) {
-  const { user, isAdmin } = useIdentity();
+  const { user, isAdmin, effectiveUserId, previewAsId } = useIdentity();
   const { guest } = useGuest();
   // Contact/link visibility is RLS-gated on the viewer, so the profile/contact
   // caches key on the viewer's email as well as the slug. `user` is null during
@@ -176,6 +176,16 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     };
   }, [rosterEmails, guest]);
 
+  // Who can add/remove/edit roster slots and assign roles: app admins, plus a
+  // Lead of THIS committee (anyone holding a "· Lead" role here) — migration
+  // 0172 opens the committee_roster write RLS to match. Never during a "View
+  // as" preview (read-only). The direct-table writes in saveRosterEntry /
+  // deleteRosterEntry now succeed for a lead server-side.
+  const iAmLead = members.some(
+    (m) => m.linkedUserId && m.linkedUserId === effectiveUserId && (m.roles ?? []).some((r) => r.endsWith(" · Lead")),
+  );
+  const canManage = (isAdmin || iAmLead) && !previewAsId;
+
   const linkFor = (m: RosterEntry): ProfileLite | null => {
     if (m.linkedUserId) {
       return { id: m.linkedUserId, name: m.linkedName ?? m.name, avatarUrl: m.linkedAvatarUrl ?? null };
@@ -234,7 +244,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         )}
         <span className="ml-auto flex items-center gap-1.5">
           <CommitteeMemberContact {...effectiveContact(m)} />
-          {isAdmin && (
+          {canManage && (
             <button
               type="button"
               onClick={() => setEditing(m)}
@@ -249,7 +259,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     );
   };
 
-  const adminBar = isAdmin && (
+  const adminBar = canManage && (
     <button
       type="button"
       onClick={() => setEditing("new")}

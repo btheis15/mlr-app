@@ -30,21 +30,30 @@ import { useRouter } from "next/navigation";
 /**
  * The "Feed" tab — a Messages-style conversation list grouped into sections
  * (mirrors the iOS app's inset-grouped screen): "Family Feed" (the resort
- * posts) pinned on top, a "Your house" section (if you're in a house), then a
- * "Committee chats" section — a "{Committee} General" channel (e.g. "Family Fest
- * General") plus one row per role/area you hold (Family Fest → "Meals", …). Each
- * section is one card with inset dividers between its rows. Tap a row to open that
- * chat. If you're in no house or committee, the tab drops straight into the Family
- * Feed. Each row shows a last-message preview + unread badge (committee rows add a
- * mute toggle, 0063).
+ * posts) pinned on top, then "Your house", then the committee chats split into
+ * three sections in order — "Lead chats" (a private per-committee Leads room,
+ * only if you lead something there — migration 0172), "Helping crew" (each
+ * committee's committee-wide channel, area IS NULL — the old "General"), and
+ * "Roles & subcommittees" (one row per role/area you hold, e.g. Family Fest →
+ * "Meals"). Each section is one card with inset dividers between its rows. Tap a
+ * row to open that chat. If you're in no house or committee, the tab drops
+ * straight into the Family Feed. Each row shows a last-message preview + unread
+ * badge + a mute toggle (0063).
  */
+/** The reserved area value for a committee's private Leads chat (migration
+ *  0172). Not a real role — messages just carry area = "Leads", and
+ *  can_access_committee_area gates it to that committee's area-leads. */
+const LEADS_AREA = "Leads";
+
 interface Channel {
   key: string;            // `${slug}|${area ?? ""}`
   committeeId: string;
   slug: string;
   name: string;
   emoji: string;
-  area: string | null;    // null = the committee's General channel
+  area: string | null;    // null = the committee-wide "Helping crew" channel
+  /** Which Feed section this row lives in. */
+  kind: "general" | "area" | "leads";
   title: string;
   subtitle: string | null;
 }
@@ -445,15 +454,22 @@ export function FeedView() {
         for (const c of committees) {
           const committeeArchived = Boolean(c.archived_at);
           const areaArchived = archivedAreas.get(c.slug) ?? new Set<string>();
-          const myAreas = Array.from(
-            new Set(
-              rosterRows.filter((r) => r.committee_slug === c.slug).flatMap((r) => (r.roles ?? []).map(stripLead)).filter(Boolean),
-            ),
-          );
-          const general: Channel = { key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, title: myAreas.length ? `${c.name} General` : c.name, subtitle: null };
+          const myRolesRaw = rosterRows.filter((r) => r.committee_slug === c.slug).flatMap((r) => r.roles ?? []);
+          const iAmLead = myRolesRaw.some((r) => r.endsWith(" · Lead"));
+          const myAreas = Array.from(new Set(myRolesRaw.map(stripLead).filter(Boolean)));
+          // "Helping crew" = the committee-wide channel (area IS NULL) — the old
+          // "General", renamed. Title is just the committee name (the section
+          // header says which crew), disambiguating multiple committees' rows.
+          const general: Channel = { key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, kind: "general", title: c.name, subtitle: "Helping crew" };
           (committeeArchived ? archived : built).push(general);
+          // A private Leads room, only for people who lead something here (and
+          // only when there's no real role literally named "Leads" to collide
+          // with — mirrors the SQL guard in can_access_committee_area, 0172).
+          if (iAmLead && !committeeArchived && !myAreas.includes(LEADS_AREA)) {
+            built.push({ key: `${c.slug}|${LEADS_AREA}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: LEADS_AREA, kind: "leads", title: c.name, subtitle: "Leads" });
+          }
           for (const a of myAreas) {
-            const ch: Channel = { key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, title: a, subtitle: c.name };
+            const ch: Channel = { key: `${c.slug}|${a}`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: a, kind: "area", title: a, subtitle: c.name };
             // A role goes to Archived if its committee is archived OR that role
             // itself was archived (deleted out from under a still-live committee).
             (committeeArchived || areaArchived.has(a) ? archived : built).push(ch);
@@ -621,9 +637,13 @@ export function FeedView() {
       .eq("committee_slug", ch.slug);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (data ?? []) as any[];
-    const inArea = ch.area
-      ? rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role === ch.area || role === `${ch.area} · Lead`))
-      : rows;
+    const inArea =
+      ch.area === LEADS_AREA
+        ? // The Leads room: everyone holding any "· Lead" role in the committee.
+          rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role.endsWith(" · Lead")))
+        : ch.area
+          ? rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role === ch.area || role === `${ch.area} · Lead`))
+          : rows;
     setMembers(
       inArea
         .map((r) => {
@@ -686,6 +706,28 @@ export function FeedView() {
       await sb.rpc("set_area_mute", { cid: target.committeeId, p_area: target.area, p_muted: muted, p_muted_until: mutedUntil });
     }
   };
+
+  // One committee-chat section (Lead chats / Helping crew / Roles & subcommittees).
+  // Renders nothing when its slice is empty, so a member with e.g. no lead role
+  // never sees an empty "Lead chats" header.
+  const renderChannelSection = (label: string, list: Channel[]) =>
+    list.length > 0 ? (
+      <ChatSection label={label}>
+        {list.map((ch, i) => (
+          <div key={ch.key}>
+            {i > 0 && <div className="ml-[68px] border-t border-border" aria-hidden />}
+            <ConversationRow
+              emoji={ch.emoji}
+              title={ch.title}
+              subtitle={ch.subtitle}
+              summary={summaries[ch.key]}
+              onOpen={() => setActive(ch.key)}
+              onToggleMute={() => bellTapped(ch.key, { kind: "committee", committeeId: ch.committeeId, area: ch.area })}
+            />
+          </div>
+        ))}
+      </ChatSection>
+    ) : null;
 
   // Opened via a house deep-link (from the House hub): wait for load so we drop
   // straight into the house chat instead of flashing the feed/list on the way in.
@@ -869,23 +911,9 @@ export function FeedView() {
         </ChatSection>
       )}
 
-      {channels.length > 0 && (
-        <ChatSection label="Committee chats">
-          {channels.map((ch, i) => (
-            <div key={ch.key}>
-              {i > 0 && <div className="ml-[68px] border-t border-border" aria-hidden />}
-              <ConversationRow
-                emoji={ch.emoji}
-                title={ch.title}
-                subtitle={ch.subtitle}
-                summary={summaries[ch.key]}
-                onOpen={() => setActive(ch.key)}
-                onToggleMute={() => bellTapped(ch.key, { kind: "committee", committeeId: ch.committeeId, area: ch.area })}
-              />
-            </div>
-          ))}
-        </ChatSection>
-      )}
+      {renderChannelSection("Lead chats", channels.filter((c) => c.kind === "leads"))}
+      {renderChannelSection("Helping crew", channels.filter((c) => c.kind === "general"))}
+      {renderChannelSection("Roles & subcommittees", channels.filter((c) => c.kind === "area"))}
 
       {/* Search — at the foot of the conversation list. Semantic ("find it
           without the exact words") and scoped to your own RLS: it only ever
@@ -1083,9 +1111,11 @@ function ChatEmailSheet({ target, onClose }: { target: EmailTarget; onClose: () 
     target.type === "house"
       ? fetchHouseRecipients(target.houseId)
       : fetchCommitteeRecipients(target.committeeId).then((res) =>
-          target.area
-            ? { ...res, recipients: res.recipients.filter((r) => r.roles?.some((role) => role.replace(/ · Lead$/, "") === target.area)) }
-            : res,
+          target.area === LEADS_AREA
+            ? { ...res, recipients: res.recipients.filter((r) => r.roles?.some((role) => role.endsWith(" · Lead"))) }
+            : target.area
+              ? { ...res, recipients: res.recipients.filter((r) => r.roles?.some((role) => role.replace(/ · Lead$/, "") === target.area)) }
+              : res,
         );
   const sourceKey = target.type === "house" ? `house:${target.houseId}` : `committee:${target.committeeId}|${target.area ?? ""}`;
   const migrationFile = target.type === "house" ? "0123_family_roster.sql" : "0028_email_recipients.sql";
