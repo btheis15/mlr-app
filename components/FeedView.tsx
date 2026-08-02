@@ -211,7 +211,10 @@ export function FeedView() {
   const [loaded, setLoaded] = useState(false);
 
   // A ?post=<id> deep-link (Activity notification for a Main Feed post, an
-  // On-This-Day card, etc.) needs NONE of the house/committee data the load
+  // On-This-Day card, etc.) — or a bare ?feed=main, which opens the Main Feed
+  // with no particular post in mind (the fest wrap card's "Add your photos",
+  // which otherwise stranded people on the Chats list) —
+  // needs NONE of the house/committee data the load
   // effect below fetches — PostsView mounts and loads its own feed
   // independently. So flip straight to "posts" in a LAYOUT effect (runs
   // synchronously after the initial hydration render but before the browser
@@ -223,7 +226,8 @@ export function FeedView() {
   // because the very first render still matches the SSR'd "list" HTML.
   useIsoLayoutEffect(() => {
     if (typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("post")) setActive("posts");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("post") || params.get("feed") === "main") setActive("posts");
   }, []);
   // Holds the latest computeSummaries so the "returning to list" effect below
   // (which lives outside the load effect's closure) can trigger a refresh.
@@ -490,7 +494,7 @@ export function FeedView() {
       const wantSlug = params.get("c");
       const wantArea = params.get("area") ?? "";
       const wantHouse = params.get("house");
-      if (params.get("post")) {
+      if (params.get("post") || params.get("feed") === "main") {
         setActive("posts");
       } else if (wantSlug) {
         const key = `${wantSlug}|${wantArea}`;
@@ -533,14 +537,16 @@ export function FeedView() {
   const urlC = useUrlParam("c");
   const urlArea = useUrlParam("area");
   const urlHouse = useUrlParam("house");
+  const urlFeed = useUrlParam("feed");
+  const wantsMainFeed = urlFeed === "main";
   const lastUrlSigRef = useRef<string>("");
   useEffect(() => {
     if (!loaded) return;
-    const sig = `${urlPost ?? ""}|${urlC ?? ""}|${urlArea ?? ""}|${urlHouse ?? ""}`;
-    if (!urlPost && !urlC && !urlHouse) return;
+    const sig = `${urlPost ?? ""}|${urlC ?? ""}|${urlArea ?? ""}|${urlHouse ?? ""}|${urlFeed ?? ""}`;
+    if (!urlPost && !urlC && !urlHouse && !wantsMainFeed) return;
     if (lastUrlSigRef.current === sig) return;
     lastUrlSigRef.current = sig;
-    if (urlPost) {
+    if (urlPost || wantsMainFeed) {
       setActive("posts");
     } else if (urlC) {
       const key = `${urlC}|${urlArea ?? ""}`;
@@ -549,7 +555,7 @@ export function FeedView() {
       openedFromHouseRef.current = true;
       setActive(houseChannel.key);
     }
-  }, [urlPost, urlC, urlArea, urlHouse, loaded, channels, archivedChannels, houseChannel]);
+  }, [urlPost, urlC, urlArea, urlHouse, urlFeed, wantsMainFeed, loaded, channels, archivedChannels, houseChannel]);
 
   // Recompute summaries when returning to the list: otherwise a room's unread
   // badge only clears on the next message INSERT, so it stays lit after you've

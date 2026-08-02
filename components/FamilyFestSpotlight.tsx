@@ -153,7 +153,7 @@ export function FamilyFestSpotlight({
     // Wrap — nudge photos for two weeks.
     card = (
       <Link
-        href="/posts"
+        href="/posts?feed=main"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
