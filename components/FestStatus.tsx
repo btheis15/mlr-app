@@ -186,7 +186,7 @@ export function FestStatus({
         <p className="mt-1 text-sm text-foreground/60">
           Post any photos you didn&rsquo;t get to share — they go to the Feed.
         </p>
-        <Link href="/posts" className="press mt-2 inline-block text-sm font-semibold text-primary">
+        <Link href="/posts?feed=main" className="press mt-2 inline-block text-sm font-semibold text-primary">
           Post your photos →
         </Link>
       </div>
