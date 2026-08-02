@@ -260,6 +260,10 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   );
 
   const everyoneMail = mailtoFor(members, `${committee.name} — Muskellunge Lake Resort`);
+  // The committee's leads (anyone holding a "· Lead" role) — so you can reach
+  // just the people running it, without hunting down each of their emails.
+  const leads = members.filter((m) => (m.roles ?? []).some((r) => r.endsWith(" · Lead")));
+  const leadsMail = mailtoFor(leads, `${committee.name} leads — Muskellunge Lake Resort`);
 
   return (
     <>
@@ -269,6 +273,15 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           className="press block rounded-2xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
         >
           ✉️ Email everyone on this committee
+        </a>
+      )}
+
+      {user && leadsMail && (
+        <a
+          href={leadsMail}
+          className="press block rounded-2xl bg-card py-3 text-center text-sm font-semibold text-primary ring-1 ring-primary/20"
+        >
+          ✉️ Email the leads{leads.length > 1 ? ` (${leads.length})` : ""}
         </a>
       )}
 
