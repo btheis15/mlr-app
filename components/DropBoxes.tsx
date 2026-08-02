@@ -184,7 +184,7 @@ function BoxCard({ box }: { box: DropBox }) {
 // ── One open folder ───────────────────────────────────────────────────────────
 
 function DropBoxDetail({ boxId }: { boxId: string }) {
-  const { box, loading } = useDropBox(boxId);
+  const { box, loading, reload } = useDropBox(boxId);
   const { user, userId, isAdmin, promptSignIn } = useIdentity();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -194,8 +194,15 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   const [managing, setManaging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [zipping, setZipping] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Who may delete a given item: its uploader, the folder's creator, or an
+  // admin (same rule the remove RPC enforces server-side). Regular members can
+  // clean up their OWN accidental adds; creator/admin can remove anything.
+  const canManageItem = (i: DropBoxItem) =>
+    !!box && (i.uploadedBy === userId || box.createdBy === userId || isAdmin);
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
@@ -309,6 +316,28 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     }
   };
 
+  // Delete the selected items the viewer is allowed to remove. The RPC also
+  // enforces this, so anything not theirs is simply skipped (not attempted).
+  const deleteSelected = async () => {
+    if (deleting || !box) return;
+    const targets = box.items.filter((i) => selected.has(i.id) && canManageItem(i));
+    if (!targets.length) return;
+    if (!window.confirm(`Delete ${targets.length} ${targets.length === 1 ? "item" : "items"} from the album? This can't be undone.`)) return;
+    setDeleting(true);
+    let ok = 0;
+    let fail = 0;
+    for (const it of targets) {
+      const { error } = await removeDropBoxMedia(it.id);
+      if (error) fail++;
+      else ok++;
+    }
+    setDeleting(false);
+    exitSelect();
+    await reload();
+    setMsg(fail ? `Deleted ${ok} — ${fail} couldn't be removed.` : `Deleted ${ok} ${ok === 1 ? "item" : "items"} ✓`);
+    window.setTimeout(() => setMsg(null), 6000);
+  };
+
   if (loading && !box) {
     return (
       <div className="space-y-4 pt-2">
@@ -383,27 +412,43 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
 
       {selecting ? (
         // Selection toolbar (replaces the dump button while picking).
-        <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-3 ring-1 ring-border">
-          <button onClick={exitSelect} className="press px-1 text-sm font-medium text-foreground/70">
-            Cancel
-          </button>
-          <span className="text-sm font-semibold tabular-nums">{selected.size} selected</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setSelected(new Set(box.items.map((i) => i.id)))}
-              className="press rounded-full bg-background px-3 py-1.5 text-sm font-medium text-foreground/70 ring-1 ring-border"
-            >
-              All
-            </button>
-            <button
-              onClick={() => downloadZip(box.items.filter((i) => selected.has(i.id)))}
-              disabled={selected.size === 0 || zipping}
-              className="press rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {zipping ? "…" : `⬇ Download${selected.size ? ` (${selected.size})` : ""}`}
-            </button>
-          </div>
-        </div>
+        (() => {
+          const deletableCount = box.items.filter((i) => selected.has(i.id) && canManageItem(i)).length;
+          return (
+            <div className="space-y-2.5 rounded-2xl bg-card p-3 ring-1 ring-border">
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={exitSelect} className="press px-1 text-sm font-medium text-foreground/70">
+                  Cancel
+                </button>
+                <span className="text-sm font-semibold tabular-nums">{selected.size} selected</span>
+                <button
+                  onClick={() => setSelected(new Set(box.items.map((i) => i.id)))}
+                  className="press rounded-full bg-background px-3 py-1.5 text-sm font-medium text-foreground/70 ring-1 ring-border"
+                >
+                  Select all
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => downloadZip(box.items.filter((i) => selected.has(i.id)))}
+                  disabled={selected.size === 0 || zipping || deleting}
+                  className="press flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {zipping ? "…" : `⬇ Download${selected.size ? ` (${selected.size})` : ""}`}
+                </button>
+                {deletableCount > 0 && (
+                  <button
+                    onClick={deleteSelected}
+                    disabled={deleting || zipping}
+                    className="press flex-1 rounded-xl bg-card px-4 py-2.5 text-sm font-semibold text-red-600 ring-1 ring-red-600/30 disabled:opacity-50"
+                  >
+                    {deleting ? "Deleting…" : `🗑 Delete (${deletableCount})`}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()
       ) : (
         <>
           {/* The one big "dump" button — a plain trigger + always-mounted input. */}
