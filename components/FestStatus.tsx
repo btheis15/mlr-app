@@ -9,7 +9,7 @@ import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
 import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatTime, formatEventTime, plural } from "@/lib/format";
+import { formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
@@ -184,10 +184,7 @@ export function FestStatus({
         </p>
         <p className="mt-1 text-lg font-bold text-primary">Thanks for a great week 🎆</p>
         <p className="mt-1 text-sm text-foreground/60">
-          Post any photos you didn&rsquo;t get to share
-          {season.wrapDaysLeft > 0
-            ? ` — the album's open ${season.wrapDaysLeft} more ${plural(season.wrapDaysLeft, "day")}.`
-            : "."}
+          Post any photos you didn&rsquo;t get to share — they go to the Feed.
         </p>
         <Link href="/posts" className="press mt-2 inline-block text-sm font-semibold text-primary">
           Post your photos →
