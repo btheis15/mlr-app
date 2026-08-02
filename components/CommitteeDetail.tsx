@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BackLink } from "@/components/BackLink";
 import { ChatEntryButton } from "@/components/ChatEntryButton";
 import { CommitteeRoster } from "@/components/CommitteeRoster";
+import { MyCommitteeCard } from "@/components/MyCommitteeCard";
 import { MeetingSection } from "@/components/MeetingSection";
 import { MeetingComposer } from "@/components/MeetingComposer";
 import { COMMITTEES } from "@/lib/data";
@@ -128,6 +129,11 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           </p>
         )}
       </header>
+
+      {/* The viewer's own spot on this committee, right up top — their roles at
+          a glance, plus one-tap self-service to change their areas or leave.
+          Self-hides for guests, non-members, and seed-only committees. */}
+      <MyCommitteeCard committee={committee} committeeId={committeeId} />
 
       {!row.archivedAt && onCommittee === true && (
         <ChatEntryButton slug={committee.slug} name={committee.name} />
