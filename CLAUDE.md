@@ -1466,6 +1466,27 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   - `relPathForItem()` derives each item's on-disk path (relative to
     `dropbox/<box>/`) from its URL; the zip endpoint sanitizes every `path`
     against traversal before handing it to `zip`.
+- **The official Family Fest 2026 album is a well-known box** with a **fixed
+  id** (`FEST_ALBUM_BOX_ID` / `FEST_ALBUM_HREF` in [`lib/data.ts`](lib/data.ts) =
+  `0000fe57-2026-4000-8000-000000000001`), seeded in Supabase so the app can
+  deep-link straight to it. The **wrap-phase "upload your photos" CTAs** — Home
+  ([`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx)) + the fest hub
+  ([`FestStatus`](components/FestStatus.tsx)) — now point at
+  `/drop?box=<FEST_ALBUM_BOX_ID>` (were `/posts?feed=main`), so "post your
+  photos" means the shared, downloadable album, not the Feed. Until the row is
+  seeded the link degrades to "folder isn't available" (harmless). Seed SQL is
+  a one-row `insert into drop_boxes (id, title, emoji, created_by) …` with that
+  id + an admin owner — handed to Brian to run (DB changes aren't applied via
+  MCP).
+- **A Home callout can link to a Drop Box folder** (migration 0172,
+  `home_callouts.drop_box_id` — the signup_item_id pattern from 0137):
+  [`CalloutCard`](components/CalloutCard.tsx) renders a prominent **"📸 Add &
+  see photos"** button deep-linking `/drop?box=<id>`, picked from a folder
+  dropdown in [`AdminCallouts`](components/AdminCallouts.tsx)' `CalloutSheet`.
+  So an admin can post a callout (with an optional notification + push via the
+  existing "🔔 Also send a notification" side-action) that drops everyone
+  straight into (e.g.) the Family Fest album. `festContent.ts` maps
+  `dropBoxId`; `saveCallout` retries without the column pre-migration.
 - 📱 **No iOS-native parity yet** — web/PWA only; shared schema/RPCs. This is a
   **new upload category + two new mini endpoints** (`/dropbox-zip`, `?dl=1`),
   so shipping needs a **mini `git pull` + restart** (Admin → Media server), like

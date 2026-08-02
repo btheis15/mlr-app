@@ -38,9 +38,9 @@ export function CalloutCard({
   marking?: boolean;
   signupEnabled?: boolean;
 }) {
-  const { title, body, imageUrl, links, endsOn, signupItemId } = callout;
+  const { title, body, imageUrl, links, endsOn, signupItemId, dropBoxId } = callout;
   const showSignup = Boolean(signupItemId && signupEnabled);
-  const hasText = Boolean(title?.trim() || body?.trim() || links.length > 0 || endsOn || showSignup);
+  const hasText = Boolean(title?.trim() || body?.trim() || links.length > 0 || endsOn || showSignup || dropBoxId);
 
   return (
     <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-border shadow-sm">
@@ -70,8 +70,19 @@ export function CalloutCard({
               📝 Sign up
             </Link>
           )}
+          {dropBoxId && (
+            <Link
+              href={`/drop?box=${dropBoxId}`}
+              data-callout-no-drag
+              className={`press flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 py-2.5 text-sm font-semibold text-white ${
+                title?.trim() || body?.trim() || showSignup ? "mt-2.5" : ""
+              }`}
+            >
+              📸 Add &amp; see photos
+            </Link>
+          )}
           {links.length > 0 && (
-            <div className={`space-y-2 ${title?.trim() || body?.trim() || showSignup ? "mt-2.5" : ""}`}>
+            <div className={`space-y-2 ${title?.trim() || body?.trim() || showSignup || dropBoxId ? "mt-2.5" : ""}`}>
               {links.map((l, i) => {
                 const href = l.href.trim();
                 if (!href) return null;

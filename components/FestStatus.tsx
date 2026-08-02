@@ -11,6 +11,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { FEST_ALBUM_HREF } from "@/lib/data";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
@@ -184,10 +185,10 @@ export function FestStatus({
         </p>
         <p className="mt-1 text-lg font-bold text-primary">Thanks for a great week 🎆</p>
         <p className="mt-1 text-sm text-foreground/60">
-          Post any photos you didn&rsquo;t get to share — they go to the Feed.
+          Drop every photo &amp; video from the week into the shared Family Fest album — everyone can browse and download them.
         </p>
-        <Link href="/posts?feed=main" className="press mt-2 inline-block text-sm font-semibold text-primary">
-          Post your photos →
+        <Link href={FEST_ALBUM_HREF} className="press mt-2 inline-block text-sm font-semibold text-primary">
+          📸 Upload your photos to the Family Fest album →
         </Link>
       </div>
     );

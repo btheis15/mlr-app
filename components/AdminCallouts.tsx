@@ -28,6 +28,7 @@ import {
   type CalloutLink,
 } from "@/lib/festContent";
 import type { ScheduleEvent } from "@/lib/types";
+import { fetchDropBoxes, type DropBox } from "@/lib/dropBoxes";
 
 /** "Jul 1 – Jul 15" / "through Jul 15" / "from Jul 1" / "always" — the show
  *  window, for the list row summary. */
@@ -240,10 +241,18 @@ function CalloutSheet({
   // picker itself is no longer limited to sign-up-enabled activities.
   const [signupItemId, setSignupItemId] = useState<string | null>(draft?.signupItemId ?? null);
   const [activityOptions, setActivityOptions] = useState<ScheduleEvent[]>([]);
+  // Link this callout to a Drop Box folder (0172) → a "📸 Add & see photos"
+  // button deep-linking /drop?box=<id> (e.g. the Family Fest album).
+  const [dropBoxId, setDropBoxId] = useState<string | null>(draft?.dropBoxId ?? null);
+  const [dropBoxOptions, setDropBoxOptions] = useState<DropBox[]>([]);
   useEffect(() => {
     let alive = true;
     fetchFestContent().then((c) => {
       if (alive) setActivityOptions(c.schedule);
+    });
+    // Non-archived folders, newest first (fetchDropBoxes already sorts).
+    fetchDropBoxes(null, true).then((boxes) => {
+      if (alive) setDropBoxOptions(boxes.filter((b) => !b.archivedAt));
     });
     return () => {
       alive = false;
@@ -331,9 +340,10 @@ function CalloutSheet({
     excludeNotAttending: eventTarget.excludeNotAttending,
     deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
     signupItemId,
+    dropBoxId,
   };
 
-  const hasContent = Boolean(title.trim() || body.trim() || imageUrl || signupItemId);
+  const hasContent = Boolean(title.trim() || body.trim() || imageUrl || signupItemId || dropBoxId);
   const validRange = !startsOn || !endsOn || endsOn >= startsOn;
   const canSave =
     hasContent &&
@@ -360,6 +370,7 @@ function CalloutSheet({
         excludeNotAttending: eventTarget.excludeNotAttending,
         deadlineAt: deadlineAt ? new Date(deadlineAt).toISOString() : null,
         signupItemId,
+        dropBoxId,
       });
       if (error) return error;
 
@@ -427,6 +438,28 @@ function CalloutSheet({
             A single item on the agenda — a dinner, a concert, a scavenger hunt. Picking one pulls
             its photo, details, and links into this card below (tweak anything after); if it's
             taking sign-ups, this also adds a &ldquo;📝 Sign up&rdquo; button.
+          </p>
+        </Field>
+        <Field label="To a photo folder (Drop Box)">
+          <select
+            value={dropBoxId ?? ""}
+            onChange={(e) => setDropBoxId(e.target.value || null)}
+            className={`${FIELD} w-full`}
+          >
+            <option value="">No photo folder</option>
+            {dropBoxId && !dropBoxOptions.some((b) => b.id === dropBoxId) && (
+              <option value={dropBoxId}>Linked folder</option>
+            )}
+            {dropBoxOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                📸 {b.emoji ? `${b.emoji} ` : ""}{b.title}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
+            Adds a &ldquo;📸 Add &amp; see photos&rdquo; button that opens the shared folder — where
+            everyone can dump and download the week&rsquo;s photos &amp; videos. (Make a folder from
+            Home → Drop Box first.)
           </p>
         </Field>
         <EventTargetPicker value={eventTarget} onChange={setEventTarget} />

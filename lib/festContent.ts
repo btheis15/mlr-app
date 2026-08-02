@@ -79,6 +79,11 @@ export interface HomeCallout {
    *  fest_schedule_items id; the card renders a "Sign up" button deep-linking
    *  to /family-fest/schedule/<id>. Distinct from `eventId` (targeting only). */
   signupItemId: string | null;
+  /** Optional link to a Drop Box folder (migration 0172). The `drop_boxes` id;
+   *  the card renders a "Photos" button deep-linking to /drop?box=<id> so a
+   *  callout can point straight at (e.g.) the Family Fest album. Distinct from
+   *  `signupItemId` (a fest sign-up) and `eventId` (targeting only). */
+  dropBoxId: string | null;
 }
 
 /** Seed call-outs — the t-shirt flyer this feature replaced, identical to the
@@ -101,6 +106,7 @@ export const FALLBACK_CALLOUTS: HomeCallout[] = [
     excludeNotAttending: false,
     deadlineAt: null,
     signupItemId: null,
+    dropBoxId: null,
   },
 ];
 
@@ -236,10 +242,11 @@ interface CalloutRow {
   exclude_not_attending: boolean;
   deadline_at: string | null;
   signup_item_id: string | null;
+  drop_box_id: string | null;
 }
 
 const CALLOUT_COLUMNS =
-  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at, signup_item_id";
+  "id, title, body, image_url, links, starts_on, ends_on, dismiss_id, position, is_active, event_id, exclude_not_attending, deadline_at, signup_item_id, drop_box_id";
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
@@ -351,6 +358,7 @@ function mapCallout(r: CalloutRow): HomeCallout {
     excludeNotAttending: r.exclude_not_attending,
     deadlineAt: r.deadline_at,
     signupItemId: r.signup_item_id ?? null,
+    dropBoxId: r.drop_box_id ?? null,
   };
 }
 
@@ -780,6 +788,7 @@ export interface CalloutInput {
   excludeNotAttending: boolean;
   deadlineAt: string | null;
   signupItemId: string | null;
+  dropBoxId: string | null;
 }
 export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> {
   const sb = supabase;
@@ -798,11 +807,21 @@ export async function saveCallout(i: CalloutInput): Promise<{ error?: string }> 
     exclude_not_attending: i.excludeNotAttending,
     deadline_at: i.deadlineAt,
     signup_item_id: i.signupItemId,
+    drop_box_id: i.dropBoxId,
   };
-  const q = i.id
-    ? sb.from("home_callouts").update(row).eq("id", i.id)
-    : sb.from("home_callouts").insert({ ...row, created_by: await currentUid() });
-  const { error } = await q;
+  // Resolve the insert's created_by up front (currentUid is async), then run
+  // the write. `run` stays sync-shaped so the pre-migration retry is trivial.
+  const created_by = i.id ? undefined : await currentUid();
+  const run = (r: Record<string, unknown>) =>
+    i.id ? sb.from("home_callouts").update(r).eq("id", i.id) : sb.from("home_callouts").insert({ ...r, created_by });
+  let { error } = await run(row);
+  // Pre-migration (0172 not yet applied): drop_box_id doesn't exist. Retry
+  // without it so callout editing keeps working — the same graceful-degrade
+  // idiom used across the DB layer (a missing new column never hard-breaks).
+  if (error && /drop_box_id/.test(error.message || "")) {
+    const { drop_box_id: _omit, ...base } = row;
+    ({ error } = await run(base));
+  }
   return error ? { error: error.message } : {};
 }
 export const deleteCallout = (id: string) => deleteRow("home_callouts", id);

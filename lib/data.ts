@@ -171,6 +171,17 @@ export const FAMILY_FEST = {
 };
 
 /**
+ * The official **Family Fest 2026 photo album** — a well-known Drop Box (0171)
+ * with a FIXED id so the app can deep-link straight to it (the wrap-phase
+ * "upload your photos" CTAs on Home + the fest hub). The row is seeded in
+ * Supabase with this exact id (see the seed SQL / migration note); until it's
+ * seeded, `/drop?box=<id>` just shows "folder isn't available", so the CTAs
+ * degrade gracefully. `0000fe57` = "fest", `2026` = the year.
+ */
+export const FEST_ALBUM_BOX_ID = "0000fe57-2026-4000-8000-000000000001";
+export const FEST_ALBUM_HREF = `/drop?box=${FEST_ALBUM_BOX_ID}`;
+
+/**
  * Seed resort events that live in CODE rather than the database: Family Fest
  * (synthesized from the FAMILY_FEST window above so its dates have one source of
  * truth and stay tied to the season model) and the 4th of July weekend.
