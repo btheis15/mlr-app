@@ -33,6 +33,8 @@ flat pile (the upload route picks the folder from `?category=` / `?room=`):
   posts/<YYYY-MM>/<uuid>.<ext>        # Posts feed
   posts/legacy/<uuid>.<ext>          # files from before this layout
   chat/<committee-slug>/<YYYY-MM>/…   # committee-chat attachments
+  work/<YYYY-MM>/…                    # work-item attachments
+  dropbox/<box-id>/<YYYY-MM>/…        # shared drop-box folders (0171)
 ```
 
 `GET /f/<…>` serves the whole tree, **plus** a fallback mount on `posts/legacy`,
@@ -211,6 +213,6 @@ Requires migrations through `0034`. Dep: `web-push`.
 ## Notes
 - ⚠️ The `PUBLIC_URL` must stay constant — the app stores the URLs this returns.
 - The server doesn't touch photos (the app may downscale very large ones before upload); **videos are transcoded** to ≤1080p H.264 MP4 (needs `ffmpeg`; see *Video transcoding*).
-- Endpoints: `POST /upload?category=posts|chat[&room=<slug>]` (auth, field `file`), `POST /moderate/text` (auth), `GET /geocode?q=&country=` (auth), `GET /f/<path>` (public), `GET /assets/<path>` (public), `GET /health` (public).
+- Endpoints: `POST /upload?category=posts|chat|work|dropbox[&room=<slug|box-id>]` (auth, field `file`), `POST /moderate/text` (auth), `GET /geocode?q=&country=` (auth), `GET /f/<path>` (public; append `?dl=1` to force a download instead of inline), `GET /dropbox-zip?box=&token=` / `POST /dropbox-zip` (auth via token — zips a whole drop-box folder or a selection of `path`s via the system `zip`), `GET /assets/<path>` (public), `GET /health` (public).
 - Admin endpoints (caller must be an app admin, else 401/403): `POST /admin/invite` `{ name, email }` — create a named account + email a sign-in code (needs `SUPABASE_SERVICE_ROLE_KEY`); `POST /admin/set-email` `{ userId, newEmail }` — set a member's email, allowed only while the two-admin override window is open (re-checked via `is_override_unlocked()`, migration 0025).
 - Owner-only endpoints (caller's verified email must match `OWNER_EMAIL` in server.js, else 401/403 — narrower than the admin gate above, since restarting this process isn't an ordinary app-admin action): `GET /admin/media-server-status` — current commit + how many commits behind `origin/main`; `POST /admin/restart-media-server` — fast-forwards the mini's checkout to `origin/main` (409 if it can't, e.g. local commits), `npm install`s only if `media-server/package.json`/`package-lock.json` changed, then exits so launchd's `KeepAlive` relaunches it on the new code within `ThrottleInterval` (10s) — the app's Admin → Media server card (`/admin/system`, itself hidden from every admin except `lib/owner.ts`'s `OWNER_EMAIL`) is the one-tap trigger for the "`git pull` + restart" cycle this doc otherwise describes as a manual mini step.

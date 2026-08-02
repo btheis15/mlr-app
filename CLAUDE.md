@@ -1399,6 +1399,71 @@ a handful of people (app members or **typed-in names** for anyone not on the app
   [`app/events/page.tsx`](app/events/page.tsx) (deep-link `?activity=<id>`).
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
 
+## Drop boxes — shared photo/video folders (migration 0171)
+
+The app's **account-free alternative to a Google Drive shared folder**: a big
+shared folder anyone with the app can **dump photos & videos into**, and
+everyone can browse — and, unlike the Family Feed, **download** (originals, for
+photo books etc.). One `/drop` screen ([`app/drop/page.tsx`](app/drop/page.tsx) →
+[`DropBoxes`](components/DropBoxes.tsx)) switches between the **list of folders**
+and **one open folder** via a `?box=<id>` param (read client-side — no dynamic
+route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
+**shareable link is just `/drop?box=<id>`**. Reached from a **Drop Box tile in
+[`HomeQuickActions`](components/HomeQuickActions.tsx)** (`images` icon, added to
+[`Icon.tsx`](components/Icon.tsx)).
+
+- **Access = members-only** (chosen with Brian over link-token / invite-only):
+  the "link" opens for any signed-in member and prompts sign-in for a guest
+  (`SignInWall`), like every private surface since 0081. So every upload is
+  **attributed** and runs the **same Tier-2 AI moderation** as a Feed post — a
+  flagged item is held (`status='pending'`), visible only to its uploader +
+  admins, until an admin Approves it right in the carousel.
+- **Data model:** `drop_boxes` (title/emoji/`created_by`/`archived_at`) +
+  `drop_box_media` (box_id, `storage_path` = the mini URL, `media_type`,
+  moderation `status`, `uploaded_by`). Members-only reads, media read is
+  status-aware (the posts-RLS shape). **All writes via SECURITY DEFINER RPCs**
+  (`create_drop_box`/`update_drop_box`/`set_drop_box_archived`/`delete_drop_box`
+  — creator-or-admin; `add_drop_box_media`/`remove_drop_box_media` — member/
+  uploader; `set_drop_box_media_status` — admin, to un-hold). Realtime on both.
+  The hold is a BEFORE INSERT trigger (`hold_drop_box_media_on_flagged`)
+  mirroring 0043 — reads the mini's `media_moderation` verdict (recorded inline
+  at upload, before /upload responds) and sets the new row's own status. Client
+  seam [`lib/dropBoxes.ts`](lib/dropBoxes.ts) (degrades to none on 42P01), hooks
+  `useDropBoxes()` / `useDropBox(id)` in [`lib/hooks.ts`](lib/hooks.ts) (uid-
+  scoped SWR + realtime).
+- **Uploads reuse the Family Feed pipeline exactly** — `compressImage` +
+  `uploadToMini` with the new **`category:"dropbox"`** (mini files under
+  `dropbox/<box-id>/<ym>/`; the box id rides in `?room`), no size cap, inline
+  moderation. The picker is a **plain, always-mounted `<input>` triggered by a
+  plain button** — never from inside a popup/menu — per the installed-iOS-PWA
+  file-drop incident (see **Quick polls in chat**). Auto-uploads on pick (the
+  "just dump" feel), progress bar, realtime fills the grid.
+- **Viewing is a full-screen swipe carousel** over every item (`FolderCarousel`
+  — native scroll-snap swipe + desktop edge arrows + Esc), so you page through
+  photos/videos without close/reopen. Each slide has **Save** (that one file),
+  plus Remove (uploader/creator/admin) and Approve (admin, held items).
+- **Downloads** (the deliberate difference from the Feed):
+  - **Per file** — `⬇ Save` in the carousel hits `<mini>/f/…?dl=1`, which the
+    media server serves with `Content-Disposition: attachment` (works
+    cross-origin, unlike the bare HTML `download` attr — app and mini are
+    different origins).
+  - **Whole folder / a selection as one .zip** — the mini streams a zip via the
+    system `zip` (nothing buffered): `GET /dropbox-zip?box=&token=` for all,
+    `POST /dropbox-zip` (form fields: token + `box` + many `path`) for a
+    selection. The client submits a **hidden form → hidden iframe** so any
+    number of paths + the token ride along (no URL-length limit) and the browser
+    saves natively without navigating away. Token auth via query/body (an
+    `<a>`/`<form>` download can't set an Authorization header), validated like
+    `requireUser`. **Select mode** (a "Select" pill → checkable grid + a
+    Download(N)/All/Cancel toolbar) drives the selection zip.
+  - `relPathForItem()` derives each item's on-disk path (relative to
+    `dropbox/<box>/`) from its URL; the zip endpoint sanitizes every `path`
+    against traversal before handing it to `zip`.
+- 📱 **No iOS-native parity yet** — web/PWA only; shared schema/RPCs. This is a
+  **new upload category + two new mini endpoints** (`/dropbox-zip`, `?dl=1`),
+  so shipping needs a **mini `git pull` + restart** (Admin → Media server), like
+  all media-server changes. `zip` is a stock macOS binary (no npm dep added).
+
 ## Home call-out stack
 
 The Home "what's happening" slot is a **Robinhood-style swipe-away card stack**
