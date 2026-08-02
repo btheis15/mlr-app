@@ -6,6 +6,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateRange, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { FEST_ALBUM_HREF } from "@/lib/data";
 import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
@@ -150,10 +151,10 @@ export function FamilyFestSpotlight({
       </Link>
     );
   } else if (season?.isWrap) {
-    // Wrap — nudge photos for two weeks.
+    // Wrap — nudge photos for two weeks, into the shared Family Fest album.
     card = (
       <Link
-        href="/posts?feed=main"
+        href={FEST_ALBUM_HREF}
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
@@ -161,9 +162,9 @@ export function FamilyFestSpotlight({
         </p>
         <p className="mt-1 text-lg font-semibold">Thanks for a great week Up North</p>
         <p className="mt-1 text-sm text-foreground/70">
-          Add the photos you didn&rsquo;t get to share yet — post them to the Feed.
+          Add every photo &amp; video from the week to the shared Family Fest album — everyone can browse and download them.
         </p>
-        <p className="mt-2 text-xs font-medium text-campfire">Add your photos →</p>
+        <p className="mt-2 text-xs font-medium text-campfire">📸 Upload your photos to the Family Fest album →</p>
       </Link>
     );
   } else if (season?.isPlanning) {
