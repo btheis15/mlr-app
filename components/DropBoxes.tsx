@@ -102,7 +102,7 @@ function postDownload(action: string, fields: [string, string][]) {
 export function DropBoxes() {
   const boxId = useUrlParam("box");
   return (
-    <SignInWall title="Drop Box" note="Add your name & email to see and add to the family photo drops — no password, just a code we email you.">
+    <SignInWall title="Albums" note="Add your name & email to see and add to the family albums from our time Up North — no password, just a code we email you.">
       {boxId ? <DropBoxDetail boxId={boxId} /> : <DropBoxList />}
     </SignInWall>
   );
@@ -121,9 +121,9 @@ function DropBoxList() {
       <BackLink href="/" label="Home" />
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">📦 Drop Box</h1>
+          <h1 className="text-2xl font-bold tracking-tight">📸 Albums</h1>
           <p className="mt-1 text-sm text-muted">
-            Shared folders. Dump in as many photos & videos as you want — everyone with the app can see them.
+            Shared albums from our time Up North. Add as many photos & videos as you want — everyone with the app can see them.
           </p>
         </div>
       </div>
@@ -132,14 +132,14 @@ function DropBoxList() {
         onClick={() => setComposing(true)}
         className="press w-full rounded-2xl border-2 border-dashed border-border bg-card/50 py-4 text-sm font-semibold text-primary"
       >
-        ＋ New folder
+        ＋ New album
       </button>
 
       {loading && active.length === 0 ? (
         <SkeletonList count={3} />
       ) : active.length === 0 ? (
         <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted ring-1 ring-border">
-          No folders yet. Make one and start dumping photos.
+          No albums yet. Make one and start adding photos.
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-3">
@@ -271,7 +271,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     const link = `${window.location.origin}/drop?box=${boxId}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: box?.title || "Drop Box", url: link });
+        await navigator.share({ title: box?.title || "Album", url: link });
       } else {
         await navigator.clipboard.writeText(link);
         setCopied(true);
@@ -341,7 +341,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   if (loading && !box) {
     return (
       <div className="space-y-4 pt-2">
-        <BackLink href="/drop" label="All folders" />
+        <BackLink href="/drop" label="All albums" />
         <SkeletonList count={2} />
       </div>
     );
@@ -349,9 +349,9 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   if (!box) {
     return (
       <div className="space-y-4 pt-2">
-        <BackLink href="/drop" label="All folders" />
+        <BackLink href="/drop" label="All albums" />
         <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted ring-1 ring-border">
-          This folder isn&apos;t available.
+          This album isn&apos;t available.
         </p>
       </div>
     );
@@ -395,7 +395,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           {box.canManage && (
             <button
               onClick={() => setManaging(true)}
-              aria-label="Folder settings"
+              aria-label="Album settings"
               className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
             >
               ⋯
@@ -406,7 +406,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
 
       {box.archivedAt && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">
-          This folder is archived — hidden from the list, but still here via its link.
+          This album is archived — hidden from the list, but still here via its link.
         </p>
       )}
 
@@ -593,7 +593,7 @@ function FolderCarousel({
   const canRemove = item.uploadedBy === userId || creatorId === userId || isAdmin;
 
   const remove = async () => {
-    if (busy || !window.confirm("Remove this from the folder?")) return;
+    if (busy || !window.confirm("Remove this from the album?")) return;
     setBusy(true);
     const { error } = await removeDropBoxMedia(item.id);
     setBusy(false);
@@ -700,7 +700,7 @@ function NewBoxSheet({ onClose }: { onClose: () => void }) {
     setErr(null);
     const { id, error } = await createDropBox(title.trim(), emoji.trim() || null);
     setBusy(false);
-    if (error || !id) { setErr(error || "Couldn't create the folder."); return; }
+    if (error || !id) { setErr(error || "Couldn't create the album."); return; }
     // Land the creator straight in the new (empty) folder, ready to dump.
     if (typeof window !== "undefined") window.location.assign(`/drop?box=${id}`);
     close();
@@ -711,14 +711,14 @@ function NewBoxSheet({ onClose }: { onClose: () => void }) {
       closing={closing}
       onDismiss={close}
       labelledBy="new-box-title"
-      header={<h2 id="new-box-title" className="text-lg font-bold">New folder</h2>}
+      header={<h2 id="new-box-title" className="text-lg font-bold">New album</h2>}
       footer={
         <button
           onClick={create}
           disabled={!title.trim() || busy}
           className="press w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {busy ? "Creating…" : "Create folder"}
+          {busy ? "Creating…" : "Create album"}
         </button>
       }
     >
@@ -743,7 +743,7 @@ function NewBoxSheet({ onClose }: { onClose: () => void }) {
           />
         </div>
         <p className="text-xs text-muted">
-          Anyone with the app can open this folder and add to it. Share the link once it&apos;s made.
+          Anyone with the app can open this album and add to it. Share the link once it&apos;s made.
         </p>
         {err && <p className="text-sm text-red-600">{err}</p>}
       </div>
@@ -787,7 +787,7 @@ function ManageBoxSheet({ box, onClose }: { box: DropBox; onClose: () => void })
       closing={closing}
       onDismiss={close}
       labelledBy="manage-box-title"
-      header={<h2 id="manage-box-title" className="text-lg font-bold">Folder settings</h2>}
+      header={<h2 id="manage-box-title" className="text-lg font-bold">Album settings</h2>}
       footer={
         <button
           onClick={save}
@@ -810,10 +810,10 @@ function ManageBoxSheet({ box, onClose }: { box: DropBox; onClose: () => void })
         {err && <p className="text-sm text-red-600">{err}</p>}
         <div className="space-y-2 border-t border-border pt-4">
           <button onClick={toggleArchive} disabled={busy} className="press w-full rounded-xl bg-card py-3 text-sm font-semibold text-foreground/80 ring-1 ring-border">
-            {box.archivedAt ? "Unarchive folder" : "Archive folder"}
+            {box.archivedAt ? "Unarchive album" : "Archive album"}
           </button>
           <button onClick={destroy} disabled={busy} className="press w-full rounded-xl bg-card py-3 text-sm font-semibold text-red-600 ring-1 ring-border">
-            Delete folder
+            Delete album
           </button>
         </div>
       </div>
