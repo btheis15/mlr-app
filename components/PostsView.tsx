@@ -8,6 +8,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
 import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
+import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Avatar } from "@/components/Avatar";
@@ -210,6 +211,24 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   const [commentSheetFor, setCommentSheetFor] = useState<string | null>(null);
   // Timeline jump filter: "" = whole feed, else a "YYYY-MM" month or "YYYY-MM-DD" day.
   const [jump, setJump] = useState("");
+  // Filters/tagging live behind one button now (collapsed by default) so the
+  // feed header isn't three stacked rows of controls.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // "Also add these photos to an album" — optional, Main Feed only. The
+  // same media is referenced into the chosen album (no re-upload).
+  const [albumOptions, setAlbumOptions] = useState<DropBox[]>([]);
+  const [alsoAlbum, setAlsoAlbum] = useState(false);
+  const [albumId, setAlbumId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!configured || !uid) return;
+    let alive = true;
+    fetchDropBoxes(uid, false).then((bs) => {
+      if (alive) setAlbumOptions(bs.filter((b) => !b.archivedAt));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [configured, uid]);
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
   // The Lightbox owns its open/close animation; keying it by url remounts it
   // cleanly when you tap from one photo straight to another.
@@ -565,9 +584,18 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
             if (tagErr) throw tagErr;
           }
         }
+        // Optionally reference the same uploaded media into a shared album
+        // — NO re-upload; the album row points at the same mini URL, so
+        // moderation carries over. Best-effort: a failure here never undoes the
+        // post that already succeeded.
+        if (alsoAlbum && albumId && uploaded.length) {
+          for (const u of uploaded) {
+            try { await addDropBoxMedia(albumId, u.path, u.type); } catch { /* keep going */ }
+          }
+        }
         await refetch();
         setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
-        setCustomWhen(false); setWhenValue(""); setComposerOpen(false);
+        setCustomWhen(false); setWhenValue(""); setComposerOpen(false); setAlsoAlbum(false);
         // `heldForText`/`p_held` only reflects OUR OWN client-side AI text
         // pre-check — it says nothing about whether the server's blocklist
         // trigger (moderate_content_text) separately auto-held the row. The
@@ -745,17 +773,59 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
 
   return (
     <div className="space-y-3 pt-1">
-      {/* One tidy row instead of a stacked title + wordy subtitle + link. The
-          verbose blurb is dropped (the composer's placeholder is instruction
-          enough); the title shows only when FeedView isn't already labelling
-          this view via its "Family Feed" row (i.e. the member is in no house or
-          committee), so we never double up or leave the feed unlabelled. */}
-      <header className="flex items-center gap-3">
-        {showHeading && <h1 className="text-2xl font-bold tracking-tight">Family Feed</h1>}
-        <a href={FAMILY_FEST.facebookGroupUrl} target="_blank" rel="noreferrer" className="press ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary">
-          📘 Facebook group ↗
-        </a>
-      </header>
+      {/* One tidy row: the title (only when FeedView isn't already labelling this
+          view via its "Family Feed" row, so we never double up) and a single
+          Filter button on the right — the filters/tagging controls used to be
+          three stacked rows always taking up space; they now collapse behind
+          this one button. */}
+      {(showHeading || (configured && user)) && (
+        <header className="flex items-center gap-3">
+          {showHeading && <h1 className="text-2xl font-bold tracking-tight">Family Feed</h1>}
+          {configured && user && (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+              className={`press ml-auto inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${
+                filterTaggedMe || jump ? "bg-primary/10 text-primary ring-primary/20" : "bg-card text-foreground/60 ring-border"
+              }`}
+            >
+              🔍 Filter{filterTaggedMe || jump ? " •" : ""}
+            </button>
+          )}
+        </header>
+      )}
+
+      {/* Collapsed-by-default filters + tagging panel (opened by the button). */}
+      {configured && user && filtersOpen && (
+        <div className="space-y-3 rounded-2xl bg-card p-3 ring-1 ring-border">
+          <div className="flex gap-2 text-xs">
+            <button onClick={() => setFilterTaggedMe(false)} className={`press rounded-full px-3 py-1.5 font-medium ${!filterTaggedMe ? "bg-primary text-white" : "bg-background text-foreground/60 ring-1 ring-border"}`}>
+              Everyone
+            </button>
+            <button onClick={() => setFilterTaggedMe(true)} className={`press rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-background text-foreground/60 ring-1 ring-border"}`}>
+              🏷️ Tagged me
+            </button>
+          </div>
+          {feed.length > 0 && (monthsPresent.length > 1 || jump) && (
+            <div className="space-y-2 border-t border-border pt-2.5">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <button onClick={() => setJump("")} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${!jump ? "bg-primary text-white" : "bg-background text-foreground/60 ring-1 ring-border"}`}>All</button>
+                {monthsPresent.map((m) => (
+                  <button key={m} onClick={() => setJump(jump === m ? "" : m)} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${jump === m ? "bg-primary text-white" : "bg-background text-foreground/60 ring-1 ring-border"}`}>
+                    {monthLabel(m)}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <span>Jump to a day</span>
+                <input type="date" value={jump.length === 10 ? jump : ""} onChange={(e) => setJump(e.target.value)} className="rounded-lg bg-background px-2 py-1 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
+                {jump && <button onClick={() => setJump("")} className="press font-medium text-primary">Clear</button>}
+              </label>
+            </div>
+          )}
+        </div>
+      )}
 
       <form onSubmit={submit} className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <textarea
@@ -791,6 +861,36 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Also add these photos/videos to a shared album — optional, so
+            the same media doesn't have to be added twice. Only when there's
+            media attached and at least one album exists. */}
+        {previews.length > 0 && albumOptions.length > 0 && (
+          <div className="space-y-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={alsoAlbum}
+                onChange={(e) => { setAlsoAlbum(e.target.checked); if (e.target.checked && !albumId) setAlbumId(albumOptions[0].id); }}
+                className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-foreground/70">
+                <span className="font-semibold text-foreground">📸 Also add to an album</span> — save these to a shared album too, so you don&rsquo;t have to add them twice.
+              </span>
+            </label>
+            {alsoAlbum && (
+              <select
+                value={albumId ?? ""}
+                onChange={(e) => setAlbumId(e.target.value || null)}
+                className="w-full rounded-lg bg-card px-2 py-1.5 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+              >
+                {albumOptions.map((b) => (
+                  <option key={b.id} value={b.id}>{b.emoji ? `${b.emoji} ` : ""}{b.title}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 
@@ -895,40 +995,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}
       </form>
 
-      {configured && user && (
-        <div className="flex gap-2 text-xs">
-          <button onClick={() => setFilterTaggedMe(false)} className={`press rounded-full px-3 py-1.5 font-medium ${!filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
-            Everyone
-          </button>
-          <button onClick={() => setFilterTaggedMe(true)} className={`press rounded-full px-3 py-1.5 font-medium ${filterTaggedMe ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
-            🏷️ Tagged me
-          </button>
-        </div>
-      )}
-
       {configured && feedLoaded && feed.length === 0 && (
         <p className="rounded-2xl bg-card p-6 text-center text-sm text-foreground/60 ring-1 ring-border">
           {filterTaggedMe ? "No posts you're tagged in yet." : "No posts yet — share the first photo! 📸"}
         </p>
-      )}
-
-      {/* Timeline jump: browse back by month, or pick an exact day */}
-      {feed.length > 0 && (monthsPresent.length > 1 || jump) && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <button onClick={() => setJump("")} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${!jump ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>All</button>
-            {monthsPresent.map((m) => (
-              <button key={m} onClick={() => setJump(jump === m ? "" : m)} className={`press shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${jump === m ? "bg-primary text-white" : "bg-card text-foreground/60 ring-1 ring-border"}`}>
-                {monthLabel(m)}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <span>Jump to a day</span>
-            <input type="date" value={jump.length === 10 ? jump : ""} onChange={(e) => setJump(e.target.value)} className="rounded-lg bg-card px-2 py-1 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary" />
-            {jump && <button onClick={() => setJump("")} className="press font-medium text-primary">Clear</button>}
-          </label>
-        </div>
       )}
 
       {feed.length > 0 && filteredFeed.length === 0 && (

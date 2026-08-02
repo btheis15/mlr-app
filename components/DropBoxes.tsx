@@ -59,12 +59,14 @@ function zipName(title: string): string {
   return (title || "drop-box").replace(/[^\w.\-]+/g, "-").slice(0, 40) || "drop-box";
 }
 
-// The on-disk path of an item relative to its box folder (dropbox/<box>/…),
+// An item's on-disk path relative to the MEDIA ROOT (everything after `/f/`),
 // derived from its public URL — what the zip endpoint's `path` fields expect.
-function relPathForItem(url: string, boxId: string): string | null {
-  const marker = `/f/dropbox/${boxId}/`;
+// Root-relative (not box-relative) so an album can include files referenced
+// from elsewhere in the tree, e.g. a Feed post's photo also added to the album.
+function mediaRelPath(url: string): string | null {
+  const marker = "/f/";
   const i = url.indexOf(marker);
-  return i >= 0 ? url.slice(i + marker.length) : null;
+  return i >= 0 ? url.slice(i + marker.length).split("?")[0] : null;
 }
 
 // Download via a hidden form POST → hidden iframe: carries the token + any
@@ -282,10 +284,12 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     }
   };
 
-  // Zip + download originals — the whole folder (no `items`) or a selection.
-  // The mini streams it; nothing is buffered in the browser.
-  const downloadZip = async (items?: DropBoxItem[]) => {
-    if (zipping || !box) return;
+  // Zip + download originals for an explicit set of items (all, or a selection).
+  // Every item's media-root path is sent, so items referenced from elsewhere in
+  // the tree (a Feed post's photo added to the album) are included. The mini
+  // streams it; nothing is buffered in the browser.
+  const downloadZip = async (items: DropBoxItem[]) => {
+    if (zipping || !box || !items.length) return;
     setZipping(true);
     try {
       const token = (await supabase?.auth.getSession())?.data.session?.access_token;
@@ -295,17 +299,13 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         ["box", box.id],
         ["name", zipName(box.title)],
       ];
-      if (items) {
-        let n = 0;
-        for (const it of items) {
-          const rel = relPathForItem(it.url, box.id);
-          if (rel) { fields.push(["path", rel]); n++; }
-        }
-        if (!n) throw new Error("Couldn't resolve those files.");
-        setMsg(`Preparing ${n} ${n === 1 ? "item" : "items"}…`);
-      } else {
-        setMsg("Preparing your download…");
+      let n = 0;
+      for (const it of items) {
+        const rel = mediaRelPath(it.url);
+        if (rel) { fields.push(["path", rel]); n++; }
       }
+      if (!n) throw new Error("Couldn't resolve those files.");
+      setMsg(`Preparing ${n} ${n === 1 ? "item" : "items"}…`);
       postDownload(`${MEDIA_URL}/dropbox-zip`, fields);
       exitSelect();
     } catch (e) {
@@ -382,7 +382,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           )}
           {box.count > 0 && !selecting && (
             <button
-              onClick={() => downloadZip()}
+              onClick={() => downloadZip(box.items)}
               disabled={zipping}
               className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border disabled:opacity-60"
             >
