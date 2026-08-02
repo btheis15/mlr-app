@@ -251,5 +251,15 @@ grant execute on function public.remove_drop_box_media(uuid) to authenticated;
 grant execute on function public.set_drop_box_media_status(uuid, text) to authenticated;
 
 -- Realtime so a photo someone else drops appears live in the open box.
-alter publication supabase_realtime add table public.drop_boxes;
-alter publication supabase_realtime add table public.drop_box_media;
+-- Guarded so re-running the migration doesn't error on "already a member".
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drop_boxes') then
+    alter publication supabase_realtime add table public.drop_boxes;
+  end if;
+  if not exists (select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drop_box_media') then
+    alter publication supabase_realtime add table public.drop_box_media;
+  end if;
+end $$;
