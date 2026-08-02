@@ -177,6 +177,20 @@ app.get("/geocode", geocodeLimiter, requireUser, async (req, res) => {
 // on posts/legacy so already-saved flat "/f/<uuid>.<ext>" URLs still resolve;
 // 3) a final 404 so misses don't hang.
 const staticOpts = { maxAge: "365d", immutable: true };
+// Opt-in download: `/f/…?dl=1` streams the exact same bytes but with a
+// Content-Disposition: attachment header, so the browser SAVES the file instead
+// of opening it inline. Set here (before express.static) because static ignores
+// the query string. Works cross-origin — unlike the HTML `download` attribute,
+// which browsers ignore for a cross-origin href (the app and the mini are
+// different origins). Drop boxes (0171) use this so members can pull originals
+// for photo books etc.; nothing else links with `?dl`, so inline stays default.
+app.use("/f", (req, res, next) => {
+  if (req.query.dl != null) {
+    const base = path.basename(req.path) || "download";
+    res.setHeader("Content-Disposition", `attachment; filename="${base.replace(/[^\w.\-]/g, "_")}"`);
+  }
+  next();
+});
 app.use("/f", express.static(MEDIA_DIR, staticOpts));
 app.use("/f", express.static(LEGACY_DIR, staticOpts));
 app.use("/f", (_req, res) => res.status(404).json({ error: "Not found." }));
@@ -184,6 +198,90 @@ app.use("/f", (_req, res) => res.status(404).json({ error: "Not found." }));
 // Small static app assets shipped with the repo (e.g. pay-method logos). Served
 // from here so they live on the mini (free) instead of Supabase storage.
 app.use("/assets", express.static(path.join(__dirname, "assets"), { maxAge: "30d" }));
+
+// Download drop-box media as one .zip (0171) — for photo books, etc. Two modes:
+//   • GET  /dropbox-zip?box=&token=            → the WHOLE folder (dropbox/<box>/)
+//   • POST /dropbox-zip  (box, token, path[])  → just the SELECTED files
+// The POST mode is a plain form submit (many `path` fields + the token as hidden
+// inputs), so a selection of any size rides along without URL-length limits and
+// the browser saves the streamed zip natively (no JS blob buffering). Auth via
+// token in the query/body (an <a>/<form> download can't set an Authorization
+// header) OR the usual Bearer header; validated against Supabase like
+// requireUser. Streams straight from the system `zip`, nothing buffered.
+async function serveDropboxZip(req, res, token, box, name, relPaths) {
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return res.status(401).json({ error: "Sign in required." });
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return res.status(401).json({ error: "Invalid or expired session." });
+  } catch {
+    return res.status(503).json({ error: "Couldn't reach the auth service." });
+  }
+  if (!box) return res.status(400).json({ error: "Missing folder." });
+  const dir = path.join(MEDIA_DIR, "dropbox", box);
+  try {
+    if (!fs.statSync(dir).isDirectory()) throw new Error("not a dir");
+  } catch {
+    return res.status(404).json({ error: "Nothing to download yet." });
+  }
+
+  // Build the zip args. With an explicit selection, list only those files (each
+  // sanitized to stay INSIDE the box dir — no path traversal); otherwise recurse
+  // the whole folder.
+  let args;
+  if (relPaths && relPaths.length) {
+    const safe = [];
+    for (const raw of relPaths) {
+      if (typeof raw !== "string" || !raw) continue;
+      const abs = path.join(dir, path.normalize(raw));
+      const rel = path.relative(dir, abs);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) continue; // escaped the box → skip
+      try {
+        if (fs.statSync(abs).isFile()) safe.push(rel);
+      } catch {
+        /* gone — skip */
+      }
+    }
+    if (!safe.length) return res.status(400).json({ error: "No files selected." });
+    args = ["-q", "-", ...safe]; // - = write archive to stdout
+  } else {
+    args = ["-r", "-q", "-", "."];
+  }
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${(name || box)}.zip"`);
+
+  const { spawn } = require("child_process");
+  const zip = spawn("zip", args, { cwd: dir });
+  zip.stdout.pipe(res);
+  zip.stderr.on("data", (d) => console.warn(`[dropbox-zip] ${String(d).trim()}`));
+  zip.on("error", (e) => {
+    console.error(`[dropbox-zip] spawn error: ${e.message}`);
+    if (!res.headersSent) res.status(500).json({ error: "Couldn't build the download." });
+  });
+  req.on("close", () => {
+    try { zip.kill(); } catch {}
+  });
+}
+
+function bearerToken(req) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
+  return m ? m[1] : "";
+}
+
+app.get("/dropbox-zip", (req, res) => {
+  const token = String(req.query.token || "").trim() || bearerToken(req);
+  serveDropboxZip(req, res, token, safeSeg(req.query.box, ""), safeSeg(req.query.name, "") || safeSeg(req.query.box, ""), null);
+});
+
+app.post("/dropbox-zip", express.urlencoded({ extended: true, limit: "512kb" }), (req, res) => {
+  const b = req.body || {};
+  const token = String(b.token || "").trim() || bearerToken(req);
+  let paths = b.path ?? [];
+  if (typeof paths === "string") paths = [paths];
+  serveDropboxZip(req, res, token, safeSeg(b.box, ""), safeSeg(b.name, "") || safeSeg(b.box, ""), Array.isArray(paths) ? paths : []);
+});
 
 // Public privacy policy (App Store requires a reachable, no-login URL). Served
 // from the repo file so it deploys with a normal git pull. → <PUBLIC_URL>/privacy
@@ -205,6 +303,11 @@ function uploadSubdir(req) {
   }
   if (category === "work") {
     return path.join("work", ym); // work-item attachments
+  }
+  if (category === "dropbox") {
+    // Shared drop-box folders (0171): file under dropbox/<box-id>/<ym>/. The
+    // box id rides in ?room, sanitized to [a-z0-9_-] like every other segment.
+    return path.join("dropbox", safeSeg(req.query.room, "misc"), ym);
   }
   return path.join("posts", ym); // default: Posts feed
 }

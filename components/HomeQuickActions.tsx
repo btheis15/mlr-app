@@ -35,6 +35,7 @@ const ACTIONS: {
   { href: "/help-requests", icon: "hand", tile: "bg-primary/12 text-primary", label: "Ask for Help", sub: "Request a hand at the resort." },
   { href: "/local-places", icon: "pin", tile: "bg-lake/12 text-lake", label: "Local Places", sub: "Tee times, food & favorites." },
   { href: "/request-stay", icon: "cabin", tile: "bg-dusk/12 text-dusk", label: "Cabin Stay", sub: "Reserve a room for any week." },
+  { href: "/drop", icon: "images", tile: "bg-campfire/12 text-campfire", label: "Drop Box", sub: "Dump & share photos — everyone can grab them." },
 ];
 
 export function HomeQuickActions() {

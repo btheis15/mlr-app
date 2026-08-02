@@ -13,9 +13,9 @@ export const MEDIA_URL = (
 ).replace(/\/+$/, "");
 
 export interface UploadOptions {
-  /** Folder bucket on the mini: "posts" (default), "chat", or "work". */
-  category?: "posts" | "chat" | "work";
-  /** For chat: the committee/house slug, so files group under chat/<room>/. */
+  /** Folder bucket on the mini: "posts" (default), "chat", "work", or "dropbox". */
+  category?: "posts" | "chat" | "work" | "dropbox";
+  /** The sub-folder within the bucket: a chat room slug, or a drop-box id. */
   room?: string;
   onProgress?: (loaded: number, total: number) => void;
 }

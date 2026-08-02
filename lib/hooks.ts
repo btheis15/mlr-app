@@ -25,6 +25,7 @@ import {
   type TournamentHost,
 } from "@/lib/tournaments";
 import { fetchPrivateActivities, type PrivateActivity } from "@/lib/privateActivities";
+import { fetchDropBoxes, fetchDropBox, type DropBox } from "@/lib/dropBoxes";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
@@ -895,6 +896,79 @@ export function usePrivateActivities(): {
   }, [userId, reload, schedule]);
 
   return { activities, loading, reload };
+}
+
+/**
+ * Every drop box the viewer can see (migration 0171), live. Mirrors
+ * usePrivateActivities: a uid-scoped SWR cache + a debounced Realtime
+ * subscription on both tables, so a box someone else creates — or a photo they
+ * drop — shows up without a refresh. Empty with no backend / pre-migration.
+ */
+export function useDropBoxes(): { boxes: DropBox[]; loading: boolean; reload: () => Promise<void> } {
+  const { userId, isAdmin } = useIdentity();
+  const [schedule] = useDebouncedCallback(250);
+  const key = isSupabaseConfigured && userId ? `dropBoxes.${userId}` : null;
+  const { data: boxes, loading, reload } = useCachedResource<DropBox[]>(
+    key,
+    [],
+    () => fetchDropBoxes(userId, isAdmin),
+    { persist: "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !userId) return;
+    const channel = sb
+      .channel(`drop-boxes-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "drop_boxes" }, () => schedule(reload))
+      .on("postgres_changes", { event: "*", schema: "public", table: "drop_box_media" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [userId, reload, schedule]);
+
+  return { boxes, loading, reload };
+}
+
+/**
+ * One drop box + its media (migration 0171), live. Pass `boxId = null` (an
+ * unresolved deep-link) for an inert no-op. Realtime is scoped to this box's
+ * media so an open folder fills in as others drop things into it.
+ */
+export function useDropBox(boxId: string | null): { box: DropBox | null; loading: boolean; reload: () => Promise<void> } {
+  const { userId, isAdmin } = useIdentity();
+  const [schedule] = useDebouncedCallback(250);
+  const key = isSupabaseConfigured && userId && boxId ? `dropBox.${userId}.${boxId}` : null;
+  const { data: box, loading, reload } = useCachedResource<DropBox | null>(
+    key,
+    null,
+    () => (boxId ? fetchDropBox(boxId, userId, isAdmin) : Promise.resolve(null)),
+    { persist: "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !userId || !boxId) return;
+    const channel = sb
+      .channel(`drop-box-${boxId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "drop_box_media", filter: `box_id=eq.${boxId}` },
+        () => schedule(reload),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "drop_boxes", filter: `id=eq.${boxId}` },
+        () => schedule(reload),
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [userId, boxId, reload, schedule]);
+
+  return { box, loading, reload };
 }
 
 /**
