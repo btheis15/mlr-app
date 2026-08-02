@@ -405,6 +405,59 @@ chat, the committee roster). The roster-name matcher that survives is
 [`nameMatches()`](lib/committees.ts), used only for **account linking** (mapping a
 static roster slot to a real profile), not for any badge.
 
+### Leads chat, lead-run rosters & the Feed sections (migration [`0172`](supabase/migrations/0172_committee_leads_chat_and_lead_roster.sql))
+
+Everything here keys off the **area lead** — a `committee_roster.roles[]` entry
+ending in `" · Lead"` (the "Lead" badge the roster shows, what
+`can_organize_meeting` uses), **not** `committee_members.role = 'Lead'`.
+
+- **A private "Leads" chat per committee.** A reserved channel value
+  `area = 'Leads'` on `committee_messages`, gated by a new branch in
+  `can_access_committee_area` to `is_committee_area_lead(cid)` — anyone holding
+  any `" · Lead"` role in that committee — with **no admin override** (an admin
+  who isn't a lead of the committee is deliberately NOT in its Leads room). A
+  `not exists(real 'Leads' area)` guard means the sentinel backs off to
+  ordinary-area behavior if an admin ever names a role literally "Leads", so it
+  can't hijack a real role (and we didn't have to reserve the word in
+  add_/rename_committee_area). `can_access_committee_area` was recreated
+  **verbatim from 0063** plus that one branch (the 0160 "recreate from current
+  production form" rule). No new tables — it reuses `committee_messages` /
+  `committee_area_reads` with the `'Leads'` string, so unread/mute/mark-read all
+  work unchanged. [`CommitteeChat`](components/CommitteeChat.tsx) needed **no
+  change**: it loads @mention members from `committee_members` (not
+  area-filtered) and only the message query keys on the area string.
+- **Leads get full roster control of their committee.** Three additive
+  permissive RLS policies (`committee_roster lead {insert,update,delete}`, gated
+  on `is_committee_area_lead_slug(committee_slug)`) OR onto the existing
+  admin-only `FOR ALL` write policy (0056), so a Lead can add/remove people,
+  edit them, assign areas, and set/unset other leads — **only within a committee
+  they lead**, never cross-committee. This just widens the direct-table writes in
+  [`lib/committeeRoster.ts`](lib/committeeRoster.ts) (`saveRosterEntry` /
+  `deleteRosterEntry`); no new RPC. [`CommitteeRoster`](components/CommitteeRoster.tsx)'s
+  add/edit affordances now gate on `canManage = (isAdmin || iAmLead) &&
+  !previewAsId` instead of `isAdmin`.
+- **Self-service on the committee page** ([`MyCommitteeCard`](components/MyCommitteeCard.tsx),
+  pinned at the top of [`CommitteeDetail`](components/CommitteeDetail.tsx)): your
+  roles at a glance, **step yourself down** from a Lead role (✕ on the chip —
+  you stay on the role as a volunteer), edit your areas, or leave. A lead/admin
+  edits via `saveRosterEntry` so their `" · Lead"` standing is preserved; a
+  plain member uses `set_my_committee_areas` (which strips leads, but they have
+  none). Self-hides for guests, non-members, seed-only committees; read-only in
+  "View as".
+- **Feed reorg** ([`FeedView`](components/FeedView.tsx)): the one "Committee
+  chats" section split into three, in order — **Lead chats** (`kind:'leads'`,
+  only shown where you lead something), **Helping crew** (`kind:'general'`, the
+  committee-wide `area IS NULL` channel — the old "General", retitled to the bare
+  committee name + "Helping crew" subtitle), and **Roles & subcommittees**
+  (`kind:'area'`, one row per role you hold). `Channel` gained a `kind`; the
+  Leads channel carries `area:'Leads'` and is skipped if a real "Leads" area
+  exists (mirrors the SQL guard). `openMembers` + the ⋯ "Email members" sheet
+  special-case `area === 'Leads'` to mean "everyone with a `· Lead` role."
+- ⚠️ **Not mirrored to the standalone `/committees/[slug]/chat` route** (which
+  only ever opens General) or to iOS yet — web Feed only. **Needs 0172 run** to
+  function: until then the Leads rooms render but reads/writes are RLS-denied and
+  a lead's roster edits fail.
+
 ## Houses (scoped chat + work items)
 
 A **House** is a group members are designated into (e.g. "MJT House"). Each member
