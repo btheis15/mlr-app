@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { formatDateRange, formatTime, formatEventTime, plural } from "@/lib/format";
+import { formatDateRange, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
 import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -153,7 +153,7 @@ export function FamilyFestSpotlight({
     // Wrap — nudge photos for two weeks.
     card = (
       <Link
-        href="/family-fest"
+        href="/posts"
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
@@ -161,10 +161,7 @@ export function FamilyFestSpotlight({
         </p>
         <p className="mt-1 text-lg font-semibold">Thanks for a great week Up North</p>
         <p className="mt-1 text-sm text-foreground/70">
-          Add the photos you didn&rsquo;t get to share yet
-          {season.wrapDaysLeft > 0
-            ? ` — album's open ${season.wrapDaysLeft} more ${plural(season.wrapDaysLeft, "day")}.`
-            : "."}
+          Add the photos you didn&rsquo;t get to share yet — post them to the Feed.
         </p>
         <p className="mt-2 text-xs font-medium text-campfire">Add your photos →</p>
       </Link>
