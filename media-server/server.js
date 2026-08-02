@@ -219,24 +219,25 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
     return res.status(503).json({ error: "Couldn't reach the auth service." });
   }
   if (!box) return res.status(400).json({ error: "Missing folder." });
-  const dir = path.join(MEDIA_DIR, "dropbox", box);
-  try {
-    if (!fs.statSync(dir).isDirectory()) throw new Error("not a dir");
-  } catch {
-    return res.status(404).json({ error: "Nothing to download yet." });
-  }
+  const boxDir = path.join(MEDIA_DIR, "dropbox", box);
 
-  // Build the zip args. With an explicit selection, list only those files (each
-  // sanitized to stay INSIDE the box dir — no path traversal); otherwise recurse
-  // the whole folder.
+  // Build the zip args + cwd. With an explicit file list (the normal path — the
+  // client sends every item's media-root-relative path), resolve each under the
+  // MEDIA ROOT, not the box folder, so an album can include files stored
+  // ANYWHERE in the tree — e.g. a Feed post's photo the user also added to the
+  // album lives under posts/, not dropbox/<box>/. Sanitize each against
+  // path traversal; `-j` flattens so the zip is one flat set of files.
+  // With NO list (fallback) recurse the box's own folder.
   let args;
+  let cwd;
   if (relPaths && relPaths.length) {
     const safe = [];
     for (const raw of relPaths) {
       if (typeof raw !== "string" || !raw) continue;
-      const abs = path.join(dir, path.normalize(raw));
-      const rel = path.relative(dir, abs);
-      if (rel.startsWith("..") || path.isAbsolute(rel)) continue; // escaped the box → skip
+      const clean = path.normalize(raw).replace(/^[/\\]+/, "");
+      const abs = path.join(MEDIA_DIR, clean);
+      const rel = path.relative(MEDIA_DIR, abs);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) continue; // escaped the root → skip
       try {
         if (fs.statSync(abs).isFile()) safe.push(rel);
       } catch {
@@ -244,16 +245,23 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
       }
     }
     if (!safe.length) return res.status(400).json({ error: "No files selected." });
-    args = ["-q", "-", ...safe]; // - = write archive to stdout
+    args = ["-j", "-q", "-", ...safe]; // -j flatten, - = write archive to stdout
+    cwd = MEDIA_DIR;
   } else {
+    try {
+      if (!fs.statSync(boxDir).isDirectory()) throw new Error("not a dir");
+    } catch {
+      return res.status(404).json({ error: "Nothing to download yet." });
+    }
     args = ["-r", "-q", "-", "."];
+    cwd = boxDir;
   }
 
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", `attachment; filename="${(name || box)}.zip"`);
 
   const { spawn } = require("child_process");
-  const zip = spawn("zip", args, { cwd: dir });
+  const zip = spawn("zip", args, { cwd });
   zip.stdout.pipe(res);
   zip.stderr.on("data", (d) => console.warn(`[dropbox-zip] ${String(d).trim()}`));
   zip.on("error", (e) => {
