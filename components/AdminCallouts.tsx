@@ -440,15 +440,15 @@ function CalloutSheet({
             taking sign-ups, this also adds a &ldquo;📝 Sign up&rdquo; button.
           </p>
         </Field>
-        <Field label="To a photo folder (Drop Box)">
+        <Field label="To a photo album">
           <select
             value={dropBoxId ?? ""}
             onChange={(e) => setDropBoxId(e.target.value || null)}
             className={`${FIELD} w-full`}
           >
-            <option value="">No photo folder</option>
+            <option value="">No album</option>
             {dropBoxId && !dropBoxOptions.some((b) => b.id === dropBoxId) && (
-              <option value={dropBoxId}>Linked folder</option>
+              <option value={dropBoxId}>Linked album</option>
             )}
             {dropBoxOptions.map((b) => (
               <option key={b.id} value={b.id}>
@@ -457,9 +457,9 @@ function CalloutSheet({
             ))}
           </select>
           <p className="mt-1.5 px-0.5 text-xs text-foreground/50">
-            Adds a &ldquo;📸 Add &amp; see photos&rdquo; button that opens the shared folder — where
-            everyone can dump and download the week&rsquo;s photos &amp; videos. (Make a folder from
-            Home → Drop Box first.)
+            Adds a &ldquo;📸 Add &amp; see photos&rdquo; button that opens the shared album — where
+            everyone can add and download the week&rsquo;s photos &amp; videos. (Make an album from
+            Home → Albums first.)
           </p>
         </Field>
         <EventTargetPicker value={eventTarget} onChange={setEventTarget} />
