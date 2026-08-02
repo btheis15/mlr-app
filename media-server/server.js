@@ -800,6 +800,14 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
             } else {
               moderation = { flagged: false };
             }
+          } else if (category === "dropbox") {
+            // Drop boxes ALLOW BY DEFAULT when the check can't run: a shared
+            // family album shouldn't strand photos in "held for review" just
+            // because the model was unreachable. No re-check is queued, so a
+            // moderation failure means allowed-and-final (a definitive FLAG
+            // above still holds it; member Report + admin remove are the
+            // backstop). See CLAUDE.md "Drop boxes".
+            console.log(`[moderate] ${rel} → not checked (model unavailable) — ALLOWED (dropbox fail-open, no re-check)`);
           } else {
             console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open) — queued for re-check`);
             enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
