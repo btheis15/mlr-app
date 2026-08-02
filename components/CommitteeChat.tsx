@@ -519,12 +519,18 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
   };
   // Identical in shape to the Main Feed composer's picker (useMediaPicker's
   // `add` in lib/hooks.ts) — a plain change handler on a plain hidden input,
-  // nothing clever around it.
+  // nothing clever around it. MATERIALIZE the picked files into a stable array
+  // BEFORE clearing the input: on iOS WebKit `input.files` is live, and the
+  // setPending updater runs *after* this handler returns — so if we clear
+  // `e.target.value` while the updater still holds a live `list`, `Array.from`
+  // runs against an already-emptied FileList and the pick silently vanishes
+  // (the "select photos, nothing happens" report). Read sync, then clear.
   const pickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
-    if (!list?.length) return;
-    setPending((p) => [...p, ...Array.from(list).map(pendingFromFile)]);
+    const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = "";
+    if (!files.length) return;
+    const items = files.map(pendingFromFile);
+    setPending((p) => [...p, ...items]);
   };
   // Paste images/files straight from the clipboard, iMessage-style. Text pastes
   // fall through to the textarea. Not while editing (media isn't part of an edit).

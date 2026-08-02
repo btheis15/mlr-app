@@ -210,11 +210,17 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   };
 
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
-    e.target.value = "";
-    if (!list?.length || !box) return;
+    const input = e.target;
+    // Copy the FileList into a stable array BEFORE resetting the input. On iOS
+    // WebKit `input.files` is live — clearing input.value first empties the very
+    // reference we're about to read, so Array.from() would yield nothing and the
+    // upload would silently no-op (exactly the "select photos, nothing happens"
+    // report). Read first, THEN clear — same order as the chat/useMediaPicker
+    // pickers. Never clear before the copy.
+    const files = input.files ? Array.from(input.files) : [];
+    input.value = "";
+    if (!files.length || !box) return;
     if (!user) { promptSignIn(); return; }
-    const files = Array.from(list);
     setMsg(null);
     setUploading(true);
     setPct(0);
