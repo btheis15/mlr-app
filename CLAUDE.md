@@ -1417,7 +1417,14 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   (`SignInWall`), like every private surface since 0081. So every upload is
   **attributed** and runs the **same Tier-2 AI moderation** as a Feed post — a
   flagged item is held (`status='pending'`), visible only to its uploader +
-  admins, until an admin Approves it right in the carousel.
+  admins, until an admin Approves it right in the carousel. **Fail-open, and
+  MORE lenient than posts on purpose:** when the model can't run (an outage —
+  common on the current on-device-FM-broken beta), a drop-box upload is
+  **allowed and final** — the mini does NOT queue it for a later re-check
+  (`category === "dropbox"` branch in `/upload`), so a shared family album never
+  strands photos in "held for review" over an unreachable checker. A definitive
+  FLAG (model reachable) still holds it; member Report + admin remove are the
+  backstop.
 - **Data model:** `drop_boxes` (title/emoji/`created_by`/`archived_at`) +
   `drop_box_media` (box_id, `storage_path` = the mini URL, `media_type`,
   moderation `status`, `uploaded_by`). Members-only reads, media read is
