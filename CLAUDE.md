@@ -446,9 +446,9 @@ ending in `" · Lead"` (the "Lead" badge the roster shows, what
   "View as".
 - **Feed reorg** ([`FeedView`](components/FeedView.tsx)): the one "Committee
   chats" section split into three, in order — **Lead chats** (`kind:'leads'`,
-  only shown where you lead something), **Helping crew** (`kind:'general'`, the
+  only shown where you lead something), **Full helping crew** (`kind:'general'`, the
   committee-wide `area IS NULL` channel — the old "General", retitled to the bare
-  committee name + "Helping crew" subtitle), and **Roles & subcommittees**
+  committee name + "Full helping crew" subtitle), and **Roles & subcommittees**
   (`kind:'area'`, one row per role you hold). `Channel` gained a `kind`; the
   Leads channel carries `area:'Leads'` and is skipped if a real "Leads" area
   exists (mirrors the SQL guard). `openMembers` + the ⋯ "Email members" sheet
