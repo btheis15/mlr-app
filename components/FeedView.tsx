@@ -32,7 +32,7 @@ import { useRouter } from "next/navigation";
  * (mirrors the iOS app's inset-grouped screen): "Family Feed" (the resort
  * posts) pinned on top, then "Your house", then the committee chats split into
  * three sections in order — "Lead chats" (a private per-committee Leads room,
- * only if you lead something there — migration 0172), "Helping crew" (each
+ * only if you lead something there — migration 0172), "Full helping crew" (each
  * committee's committee-wide channel, area IS NULL — the old "General"), and
  * "Roles & subcommittees" (one row per role/area you hold, e.g. Family Fest →
  * "Meals"). Each section is one card with inset dividers between its rows. Tap a
@@ -460,7 +460,7 @@ export function FeedView() {
           // "Helping crew" = the committee-wide channel (area IS NULL) — the old
           // "General", renamed. Title is just the committee name (the section
           // header says which crew), disambiguating multiple committees' rows.
-          const general: Channel = { key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, kind: "general", title: c.name, subtitle: "Helping crew" };
+          const general: Channel = { key: `${c.slug}|`, committeeId: c.id, slug: c.slug, name: c.name, emoji: c.emoji, area: null, kind: "general", title: c.name, subtitle: "Full helping crew" };
           (committeeArchived ? archived : built).push(general);
           // A private Leads room, only for people who lead something here (and
           // only when there's no real role literally named "Leads" to collide
@@ -912,7 +912,7 @@ export function FeedView() {
       )}
 
       {renderChannelSection("Lead chats", channels.filter((c) => c.kind === "leads"))}
-      {renderChannelSection("Helping crew", channels.filter((c) => c.kind === "general"))}
+      {renderChannelSection("Full helping crew", channels.filter((c) => c.kind === "general"))}
       {renderChannelSection("Roles & subcommittees", channels.filter((c) => c.kind === "area"))}
 
       {/* Search — at the foot of the conversation list. Semantic ("find it
