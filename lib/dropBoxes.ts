@@ -12,6 +12,7 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { CapturedAtSource, Media, MediaKind } from "@/lib/media";
+import { fetchProfiles } from "@/lib/roles";
 
 export type DropBoxMediaStatus = "visible" | "pending" | "hidden";
 
@@ -23,6 +24,8 @@ export interface DropBoxItem {
   type: MediaKind;
   status: DropBoxMediaStatus;
   uploadedBy: string;
+  /** Display name of whoever uploaded this item — resolved client-side from `profiles`. */
+  uploadedByName: string;
   createdAt: string;
   /** When the photo/video was actually taken (EXIF/container metadata) — null
    *  when it couldn't be read, in which case the album sorts by `createdAt`
@@ -35,6 +38,8 @@ export interface DropBox {
   title: string;
   emoji: string | null;
   createdBy: string;
+  /** Display name of whoever created this album — resolved client-side from `profiles`. */
+  createdByName: string;
   archivedAt: string | null;
   createdAt: string;
   items: DropBoxItem[];
@@ -75,7 +80,8 @@ interface BoxRow {
   drop_box_media: ItemRow[] | null;
 }
 
-function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropBox {
+function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean, names: Map<string, string>): DropBox {
+  const nameFor = (id: string) => names.get(id) || "Member";
   const items = (row.drop_box_media ?? [])
     .map(
       (m): DropBoxItem => ({
@@ -85,6 +91,7 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
         type: m.media_type,
         status: m.status,
         uploadedBy: m.uploaded_by,
+        uploadedByName: nameFor(m.uploaded_by),
         createdAt: m.created_at,
         capturedAt: m.captured_at ?? null,
       }),
@@ -98,12 +105,24 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
     title: row.title,
     emoji: row.emoji,
     createdBy: row.created_by,
+    createdByName: nameFor(row.created_by),
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     items,
     count: items.length,
     canManage: isAdmin || row.created_by === viewerId,
   };
+}
+
+/** Every distinct creator/uploader id across a batch of box rows — the input
+ *  to one bulk `fetchProfiles()` call rather than a query per name. */
+function idsIn(rows: BoxRow[]): string[] {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    ids.add(r.created_by);
+    for (const m of r.drop_box_media ?? []) ids.add(m.uploaded_by);
+  }
+  return Array.from(ids);
 }
 
 const SELECT =
@@ -139,7 +158,9 @@ export async function fetchDropBoxes(viewerId: string | null, isAdmin = false): 
       if (!isMissingTable(res.error)) console.warn("fetchDropBoxes: read error", res.error.message);
       return [];
     }
-    return ((res.data ?? []) as unknown as BoxRow[]).map((r) => assemble(r, viewerId, isAdmin));
+    const rows = (res.data ?? []) as unknown as BoxRow[];
+    const names = new Map((await fetchProfiles(idsIn(rows))).map((p) => [p.id, p.name]));
+    return rows.map((r) => assemble(r, viewerId, isAdmin, names));
   } catch {
     return [];
   }
@@ -162,7 +183,10 @@ export async function fetchDropBox(id: string, viewerId: string | null, isAdmin 
       if (!isMissingTable(res.error)) console.warn("fetchDropBox: read error", res.error.message);
       return null;
     }
-    return res.data ? assemble(res.data as unknown as BoxRow, viewerId, isAdmin) : null;
+    if (!res.data) return null;
+    const row = res.data as unknown as BoxRow;
+    const names = new Map((await fetchProfiles(idsIn([row]))).map((p) => [p.id, p.name]));
+    return assemble(row, viewerId, isAdmin, names);
   } catch {
     return null;
   }

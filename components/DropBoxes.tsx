@@ -195,7 +195,7 @@ function BoxCard({ box }: { box: DropBox }) {
           {box.title}
         </p>
         <p className="mt-0.5 text-xs text-muted">
-          {box.count === 0 ? "Empty" : `${box.count} ${box.count === 1 ? "item" : "items"}`}
+          {box.count === 0 ? "Empty" : `${box.count} ${box.count === 1 ? "item" : "items"}`} · by {box.createdByName}
         </p>
       </div>
     </Link>
@@ -523,6 +523,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           {box.count === 0 && visiblePending.length === 0
             ? "Empty — be the first to add something"
             : `${box.count} ${box.count === 1 ? "item" : "items"}`}
+          {" "}· created by {box.createdByName}
         </p>
       </div>
 
@@ -872,8 +873,11 @@ function FolderCarousel({
         <button aria-label="Close" onClick={onClose} className="press rounded-full bg-white/10 px-3 py-1.5 text-sm">
           ✕
         </button>
-        <span className="text-sm font-medium tabular-nums">
-          {active + 1} / {items.length}
+        <span className="flex flex-col items-center text-center leading-tight">
+          <span className="text-sm font-medium tabular-nums">
+            {active + 1} / {items.length}
+          </span>
+          <span className="text-[11px] text-white/60">by {item.uploadedByName}</span>
         </span>
         <button
           onClick={() => triggerDownload(downloadHref(item.url))}
