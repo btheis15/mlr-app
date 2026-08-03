@@ -686,13 +686,33 @@ function git(args) {
   return execFileSync("git", args, { cwd: REPO_DIR, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
+// Free/used space on the volume that actually holds MEDIA_DIR — so the owner can
+// see the drive filling up right from the app. Its own try/catch: a statfs hiccup
+// must not blank out the git status the page primarily relies on.
+function mediaDiskInfo() {
+  try {
+    const s = fs.statfsSync(MEDIA_DIR);
+    const total = s.blocks * s.bsize;
+    const free = s.bavail * s.bsize; // bavail = blocks free to a non-root user
+    return {
+      path: MEDIA_DIR,
+      external: MEDIA_DIR.startsWith("/Volumes/"),
+      totalBytes: total,
+      freeBytes: free,
+      usedBytes: total - free,
+    };
+  } catch {
+    return null;
+  }
+}
+
 app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
   try {
     git(["fetch", "origin", "main"]);
     const local = git(["rev-parse", "HEAD"]);
     const remote = git(["rev-parse", "origin/main"]);
     const behind = Number(git(["rev-list", "--count", `${local}..${remote}`]));
-    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT });
+    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo() });
   } catch (e) {
     res.status(500).json({ error: (e && e.message) || "Couldn't check git status." });
   }

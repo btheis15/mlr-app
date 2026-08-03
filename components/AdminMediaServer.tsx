@@ -3,8 +3,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, type MediaServerStatus } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, type MediaServerStatus, type MediaServerDisk } from "@/lib/admin";
 import { SkeletonCard } from "@/components/Skeleton";
+import { formatBytes } from "@/lib/format";
+
+/** Drive space for the media store — a usage bar + free/used/total, so the
+ *  owner can watch the drive fill up right from the app. */
+function StorageMeter({ disk }: { disk: MediaServerDisk }) {
+  const usedPct = disk.totalBytes > 0 ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
+  // Green normally; amber past 80%, red past 90% — a full media drive means
+  // uploads start failing, so surface the pressure before it's a problem.
+  const barColor = usedPct >= 90 ? "bg-accent" : usedPct >= 80 ? "bg-fest" : "bg-primary";
+  return (
+    <div className="space-y-1.5 border-t border-border pt-3">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-semibold">Storage</p>
+        <p className="text-xs text-muted">{disk.external ? "External drive" : "Internal disk"}</p>
+      </div>
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-background" role="progressbar" aria-valuenow={Math.round(usedPct)} aria-valuemin={0} aria-valuemax={100}>
+        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, Math.max(2, usedPct))}%` }} />
+      </div>
+      <p className="text-sm">
+        <span className="font-semibold">{formatBytes(disk.freeBytes)} free</span>
+        <span className="text-muted">
+          {" "}
+          · {formatBytes(disk.usedBytes)} used of {formatBytes(disk.totalBytes)} ({Math.round(usedPct)}%)
+        </span>
+      </p>
+    </div>
+  );
+}
 
 async function currentToken(): Promise<string | null> {
   const sb = supabase;
@@ -79,6 +107,7 @@ export function AdminMediaServer() {
               ? "Up to date with origin/main ✓"
               : `${status.behind} commit${status.behind === 1 ? "" : "s"} behind origin/main`}
           </p>
+          {status.disk ? <StorageMeter disk={status.disk} /> : null}
         </div>
       ) : null}
 
