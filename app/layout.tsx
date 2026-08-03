@@ -6,6 +6,7 @@ import { InstallHint } from "@/components/InstallHint";
 import { PushPrompt } from "@/components/PushPrompt";
 import { PushKeepAlive } from "@/components/PushKeepAlive";
 import { PushDeepLink } from "@/components/PushDeepLink";
+import { KeyboardInset } from "@/components/KeyboardInset";
 import { IdentityProvider } from "@/components/IdentityProvider";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { MemberSheetHost } from "@/components/MemberSheetHost";
@@ -96,6 +97,7 @@ export default async function RootLayout({
             <PushPrompt />
             <PushKeepAlive />
             <PushDeepLink />
+            <KeyboardInset />
             <ChunkErrorRecovery />
           {/* The one and only scroll container (see globals.css's #app-scroll
               note) — html/body never scroll, so the fixed TabBar below never
@@ -108,8 +110,10 @@ export default async function RootLayout({
               paddingTop: "env(safe-area-inset-top)",
               // Clear the fixed TabBar, which grows by the home-indicator inset
               // on notched iPhones — without the inset the last card hides
-              // behind the bar.
-              paddingBottom: "calc(6rem + env(safe-area-inset-bottom))",
+              // behind the bar. `--keyboard-inset` (set by KeyboardInset while
+              // the iOS keyboard is up) adds scroll room so bottom-anchored
+              // forms can clear the keyboard; it's 0 otherwise.
+              paddingBottom: "calc(6rem + env(safe-area-inset-bottom) + var(--keyboard-inset, 0px))",
             }}
           >
             <div className="mx-auto w-full max-w-md px-4 pt-2">
