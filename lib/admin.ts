@@ -83,6 +83,23 @@ export interface MediaServerDisk {
   usedBytes: number;
 }
 
+export interface MediaUsageCategory {
+  key: string;
+  /** e.g. "Photos", "Videos", "Other files". */
+  label: string;
+  /** Total bytes for this type — INCLUDES each object's auto-generated thumbnail. */
+  bytes: number;
+  /** Count of real objects (thumbnails are not counted as separate items). */
+  files: number;
+}
+
+export interface MediaServerUsage {
+  /** What the MLR app itself is storing under MEDIA_DIR (not the whole drive). */
+  totalBytes: number;
+  totalFiles: number;
+  categories: MediaUsageCategory[];
+}
+
 export interface MediaServerStatus {
   ok: boolean;
   commit: string;
@@ -92,6 +109,9 @@ export interface MediaServerStatus {
   /** Space on the drive holding the media. Optional — absent on an older mini
    *  that predates this field, so the UI must degrade gracefully. */
   disk?: MediaServerDisk | null;
+  /** Per-media-type breakdown of the app's own footprint. Optional — same
+   *  graceful-degrade reason as `disk`. */
+  usage?: MediaServerUsage | null;
 }
 
 /** Current git commit on the mini + how many commits behind origin/main it is. */
