@@ -322,6 +322,7 @@ export type WorkItemUrgency = "asap" | "this_year" | "nice_to_have";
 export interface WorkItemMedia {
   id: string;
   url: string;
+  thumbnailUrl?: string | null;
   type: "image" | "video";
   position: number;
 }

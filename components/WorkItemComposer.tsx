@@ -81,12 +81,13 @@ export function WorkItemComposer({
       const raw = media.files[i];
       const isVideo = raw.type.startsWith("video");
       const f = isVideo ? raw : await compressImage(raw);
-      const url = await uploadToMini(f, token, { category: "work" });
+      const uploaded = await uploadToMini(f, token, { category: "work" });
       const { error: mErr } = await addWorkItemMedia(
         workItemId,
-        url,
+        uploaded.url,
         isVideo ? "video" : "image",
         existingMedia.length + i,
+        uploaded.thumbnailUrl,
       );
       if (mErr) throw new Error(mErr);
     }

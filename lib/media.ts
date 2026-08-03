@@ -27,6 +27,16 @@ export interface Media {
   type: MediaKind;
   /** The mini path (for delete), when known. */
   path?: string;
+  /** Small preview url (grids/albums render this instead of the full-res `url`). */
+  thumbnailUrl?: string | null;
+}
+
+/** What the mini's /upload actually returns. */
+export interface UploadResult {
+  url: string;
+  thumbnailUrl: string | null;
+  type: MediaKind | "file";
+  path: string;
 }
 
 // Ask the mini to AI-grade a caption/post's text for inappropriate language.
@@ -51,7 +61,13 @@ export async function moderatePostText(text: string, token: string): Promise<boo
 }
 
 // XMLHttpRequest (not fetch) so we get real upload progress for the bar.
-export function uploadToMini(file: File, token: string, opts: UploadOptions = {}): Promise<string> {
+// Returns the full { url, thumbnailUrl } pair — the mini now generates a small
+// preview alongside the original at upload time (media-server/thumbnail.js),
+// so callers building a *_media row insert should carry `thumbnailUrl` through
+// alongside `url`/`storage_path` (grids/albums render it instead of the
+// full-res file). `thumbnailUrl` is null when generation failed — always a
+// safe fallback to the full-res url, never a reason to fail the upload.
+export function uploadToMini(file: File, token: string, opts: UploadOptions = {}): Promise<UploadResult> {
   const params = new URLSearchParams();
   if (opts.category) params.set("category", opts.category);
   if (opts.room) params.set("room", opts.room);
@@ -70,9 +86,9 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const json = JSON.parse(xhr.responseText) as { url?: string };
+          const json = JSON.parse(xhr.responseText) as Partial<UploadResult>;
           if (!json.url) return reject(new Error("media server returned no URL"));
-          resolve(json.url);
+          resolve({ url: json.url, thumbnailUrl: json.thumbnailUrl ?? null, type: json.type ?? "file", path: json.path ?? "" });
         } catch {
           reject(new Error("media server returned a bad response"));
         }

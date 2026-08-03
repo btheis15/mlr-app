@@ -562,8 +562,8 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         if (!token) throw new Error("Not signed in.");
         // Only photos are re-encoded; videos + files upload as-is.
         const f = p.type === "image" ? await compressImage(p.file) : p.file;
-        const url = await uploadToMini(f, token, { category: "chat", room: slug });
-        uploaded.push({ url, type: p.type, name: p.type === "file" ? p.name : undefined });
+        const res = await uploadToMini(f, token, { category: "chat", room: slug });
+        uploaded.push({ url: res.url, type: p.type, name: p.type === "file" ? p.name : undefined });
       }
 
       const { data: ins, error: insErr } = await sb

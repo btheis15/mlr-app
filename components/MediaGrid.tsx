@@ -64,8 +64,12 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
       className="press block aspect-square w-full cursor-zoom-in overflow-hidden rounded-xl bg-black/5"
       aria-label="View full photo"
     >
+      {/* The tile renders the small mini-generated preview when there is one —
+          the full-res file only loads once someone taps through to the
+          Lightbox (still m.url there). Falls back to the full image for rows
+          with no thumbnail yet (pre-migration, or generation failed). */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.url} alt="" className="h-full w-full object-cover" />
+      <img src={m.thumbnailUrl || m.url} alt="" className="h-full w-full object-cover" />
     </button>
   );
 }

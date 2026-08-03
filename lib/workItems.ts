@@ -24,6 +24,7 @@ function mapMedia(rows: Record<string, unknown>[] | null | undefined): WorkItemM
     .map((m) => ({
       id: m.id as string,
       url: m.storage_path as string,
+      thumbnailUrl: (m.thumbnail_url as string | null | undefined) ?? null,
       type: ((m.media_type as string) === "video" ? "video" : "image") as "image" | "video",
       position: (m.position as number | null) ?? 0,
     }))
@@ -115,14 +116,25 @@ export async function addWorkItemMedia(
   url: string,
   type: "image" | "video",
   position = 0,
+  thumbnailUrl?: string | null,
 ): Promise<{ id?: string; error?: string }> {
   if (!supabase) return { error: "Not connected" };
-  const { data, error } = await supabase.rpc("add_work_item_media", {
+  let { data, error } = await supabase.rpc("add_work_item_media", {
     p_work_item_id: workItemId,
     p_url: url,
     p_media_type: type,
     p_position: position,
+    p_thumbnail_url: thumbnailUrl ?? null,
   });
+  // Pre-0173 fallback: the RPC doesn't have the 5th param yet.
+  if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
+    ({ data, error } = await supabase.rpc("add_work_item_media", {
+      p_work_item_id: workItemId,
+      p_url: url,
+      p_media_type: type,
+      p_position: position,
+    }));
+  }
   if (error) return { error: error.message };
   return { id: data as string };
 }
