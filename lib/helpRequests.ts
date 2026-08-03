@@ -89,6 +89,28 @@ export function helpTargeting(
   };
 }
 
+/** Targeting for asking help AT one specific event — the CURRENT live one, or a
+ *  FUTURE one you're RSVP'd going to (schedule-ahead). `eligible` is just that
+ *  event; `strict` is set only when it's a day-RSVP event happening TODAY, so a
+ *  live day-RSVP event stays day-aware ("going today"), while a future event
+ *  matches anyone going to it on ANY day. The server's requester gate + the
+ *  `_help_recipients` resolver both key off these arrays against
+ *  `event_attendance`, so a future event id here reaches exactly that event's
+ *  going-attendees, and the requester passes the gate by being one of them —
+ *  no server change needed (migration 0037/0059/0100 logic already handles it).
+ *  This is what makes "ask now for Labor Day" work: you can only target an event
+ *  you're going to, so it can never reach random people, and it's always an MLR
+ *  event. */
+export function eventTargeting(
+  event: ResortEvent,
+  today: string,
+): { eligible: string[]; strict: string[] } {
+  return {
+    eligible: [event.id],
+    strict: event.dayRsvp && isOngoing(event, today) ? [event.id] : [],
+  };
+}
+
 /** Whether the viewer themselves is "at the resort" (so the Ask button is live).
  *  Mirrors the server's requester gate: effective-going to any eligible event,
  *  or an approved stay covering today. */

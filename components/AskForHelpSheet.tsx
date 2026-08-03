@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
-import { helpTargeting, requestHelp, mapsUrl, HELP_TYPES, DEFAULT_HELP_TYPE } from "@/lib/helpRequests";
+import { helpTargeting, eventTargeting, requestHelp, mapsUrl, HELP_TYPES, DEFAULT_HELP_TYPE } from "@/lib/helpRequests";
 import { fetchWorkItems } from "@/lib/workItems";
+import { formatDate } from "@/lib/format";
 import type { ResortEvent, WorkItem } from "@/lib/types";
 
 /** The "did this get done?" nudge fires at 9 PM resort-local today, or 8 AM the
@@ -52,18 +53,31 @@ function followupAtISO(): string {
 export function AskForHelpSheet({
   events,
   today,
+  futureEvents = [],
+  presentNow = false,
   onClose,
   onSubmitted,
 }: {
   events: ResortEvent[];
   /** Resort-local ISO date (YYYY-MM-DD). */
   today: string;
+  /** Upcoming events the requester is RSVP'd going to — schedule-ahead targets.
+   *  Picking one aims the request at that event's attendees. */
+  futureEvents?: ResortEvent[];
+  /** Whether the requester is at the resort today (so "Right now" is offered). */
+  presentNow?: boolean;
   onClose: () => void;
   /** Called after a successful post, with how many members it reached + which
    *  audience was targeted (for an honest confirmation message). */
   onSubmitted: (notified: number, audience: "present" | "all_willing") => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
+  // Which event this request is FOR: "now" (people here today) or a future
+  // event id (schedule-ahead → that event's attendees). Default to "now" when
+  // present, else the soonest upcoming event the requester is going to.
+  const [target, setTarget] = useState<string>(presentNow ? "now" : futureEvents[0]?.id ?? "now");
+  const scheduled = target !== "now";
+  const targetEvent = scheduled ? futureEvents.find((e) => e.id === target) ?? null : null;
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<string>(DEFAULT_HELP_TYPE);
   const [neededCount, setNeededCount] = useState(1);
@@ -122,10 +136,19 @@ export function AskForHelpSheet({
     if (!canSubmit) return;
     setPending(true);
     setError(null);
-    const { eligible, strict } = helpTargeting(events, today);
-    // datetime-local has no timezone; new Date() reads it as local, which is what
-    // we want (the requester's / resort's local clock).
-    const neededAt = later && neededLocal ? new Date(neededLocal).toISOString() : null;
+    // Targeting: a scheduled request aims at ONE future event (its attendees);
+    // a "now" request uses today's live-event snapshot. datetime-local has no
+    // timezone; new Date() reads it as local, which is the resort's clock.
+    const { eligible, strict } = scheduled && targetEvent ? eventTargeting(targetEvent, today) : helpTargeting(events, today);
+    const neededAt =
+      scheduled && targetEvent
+        ? new Date(`${targetEvent.startDate}T09:00:00`).toISOString() // morning of the event
+        : later && neededLocal
+          ? new Date(neededLocal).toISOString()
+          : null;
+    // "Notify everyone willing" is a here-and-now escape hatch; a scheduled
+    // request is deliberately scoped to the event's attendees, so force present.
+    const audience: "present" | "all_willing" = scheduled ? "present" : allWilling ? "all_willing" : "present";
     const { notified, error: err } = await requestHelp({
       description: description.trim(),
       category,
@@ -134,7 +157,7 @@ export function AskForHelpSheet({
       lng: coords?.lng ?? null,
       neededAt,
       neededCount,
-      audience: allWilling ? "all_willing" : "present",
+      audience,
       eligible,
       strict,
       today,
@@ -147,7 +170,7 @@ export function AskForHelpSheet({
       setError(err);
       return;
     }
-    onSubmitted(notified ?? 0, allWilling ? "all_willing" : "present");
+    onSubmitted(notified ?? 0, audience);
     close();
   };
 
@@ -182,6 +205,28 @@ export function AskForHelpSheet({
         </>
       }
     >
+      {/* When / which event — only shown when there's a schedule-ahead choice
+          (upcoming events the requester is going to). With none, it's implicitly
+          "right now" and this whole block is hidden, keeping the simple case simple. */}
+      {futureEvents.length > 0 && (
+        <div className="space-y-2">
+          <SectionLabel>When do you need help?</SectionLabel>
+          <select value={target} onChange={(e) => setTarget(e.target.value)} className={`${FIELD} w-full`}>
+            {presentNow && <option value="now">Right now — I&rsquo;m at the resort today</option>}
+            {futureEvents.map((e) => (
+              <option key={e.id} value={e.id}>
+                At {e.title} · {formatDate(e.startDate)}
+              </option>
+            ))}
+          </select>
+          <p className="px-0.5 text-xs text-faint">
+            {scheduled
+              ? "Goes out now to everyone RSVP'd going to this event, so they can plan to help."
+              : "Goes to willing members who are at the resort today."}
+          </p>
+        </div>
+      )}
+
       {/* Type */}
       <div className="space-y-2">
         <SectionLabel>Type of help</SectionLabel>
@@ -368,52 +413,63 @@ export function AskForHelpSheet({
         {locError && <p className="px-0.5 text-xs text-accent">{locError}</p>}
       </div>
 
-      {/* When */}
-      <div className="space-y-2">
-        <SectionLabel>When</SectionLabel>
+      {/* When — a specific time only applies to a "right now" request; a
+          scheduled one is anchored to its event's date. */}
+      {scheduled ? (
+        <p className="rounded-xl bg-primary/5 px-3 py-2.5 text-xs text-foreground/70 ring-1 ring-primary/15">
+          ⏰ This goes out <span className="font-semibold">now</span> so people can plan, and everyone RSVP&rsquo;d
+          going to <span className="font-semibold">{targetEvent?.title}</span> gets a reminder before it starts.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <SectionLabel>When</SectionLabel>
+          <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
+            <input
+              type="checkbox"
+              checked={later}
+              onChange={(e) => setLater(e.target.checked)}
+              className="h-4 w-4 accent-[var(--color-primary)]"
+            />
+            <span className="text-foreground/80">
+              I need help at a specific time
+              <span className="block text-xs text-faint">Off = right now.</span>
+            </span>
+          </label>
+          {later && (
+            <>
+              <input
+                type="datetime-local"
+                value={neededLocal}
+                onChange={(e) => setNeededLocal(e.target.value)}
+                className={`${FIELD} w-full`}
+              />
+              <p className="px-0.5 text-xs text-faint">
+                It goes out now so people can sign up. 15 minutes before, everyone who said they&rsquo;re coming
+                gets a reminder — and if you&rsquo;re still short, it asks people nearby again.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Reach — the "everyone willing" escape hatch is for a here-and-now
+          request; a scheduled one is deliberately scoped to its event's crew. */}
+      {!scheduled && (
         <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
           <input
             type="checkbox"
-            checked={later}
-            onChange={(e) => setLater(e.target.checked)}
+            checked={allWilling}
+            onChange={(e) => setAllWilling(e.target.checked)}
             className="h-4 w-4 accent-[var(--color-primary)]"
           />
           <span className="text-foreground/80">
-            I need help at a specific time
-            <span className="block text-xs text-faint">Off = right now.</span>
+            Notify everyone willing to help
+            <span className="block text-xs text-faint">
+              Not just people here right now — use if it&rsquo;s quiet at the resort.
+            </span>
           </span>
         </label>
-        {later && (
-          <>
-            <input
-              type="datetime-local"
-              value={neededLocal}
-              onChange={(e) => setNeededLocal(e.target.value)}
-              className={`${FIELD} w-full`}
-            />
-            <p className="px-0.5 text-xs text-faint">
-              It goes out now so people can sign up. 15 minutes before, everyone who said they&rsquo;re coming
-              gets a reminder — and if you&rsquo;re still short, it asks people nearby again.
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* Reach */}
-      <label className="flex items-center gap-3 rounded-xl bg-card px-3 py-3 text-sm ring-1 ring-border">
-        <input
-          type="checkbox"
-          checked={allWilling}
-          onChange={(e) => setAllWilling(e.target.checked)}
-          className="h-4 w-4 accent-[var(--color-primary)]"
-        />
-        <span className="text-foreground/80">
-          Notify everyone willing to help
-          <span className="block text-xs text-faint">
-            Not just people here right now — use if it&rsquo;s quiet at the resort.
-          </span>
-        </span>
-      </label>
+      )}
 
       {error && (
         <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">
