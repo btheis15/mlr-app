@@ -106,17 +106,23 @@ export default async function RootLayout({
           <main
             id="app-scroll"
             className="h-full w-full overflow-y-auto"
-            style={{
-              paddingTop: "env(safe-area-inset-top)",
-              // Clear the fixed TabBar, which grows by the home-indicator inset
-              // on notched iPhones — without the inset the last card hides
-              // behind the bar. `--keyboard-inset` (set by KeyboardInset while
-              // the iOS keyboard is up) adds scroll room so bottom-anchored
-              // forms can clear the keyboard; it's 0 otherwise.
-              paddingBottom: "calc(6rem + env(safe-area-inset-bottom) + var(--keyboard-inset, 0px))",
-            }}
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
-            <div className="mx-auto w-full max-w-md px-4 pt-2">
+            {/* The bottom spacing that clears the fixed TabBar lives HERE, on the
+                inner content wrapper — NOT as padding-bottom on #app-scroll.
+                iOS Safari ignores padding-bottom on an overflow-scroll container
+                (the scrollable region stops at its border box and drops the
+                padding), so the last content slid behind the tab bar on iPhone
+                while desktop — which honors it — looked fine. Padding on a normal
+                child is always counted in the scroll height, so content reliably
+                ends above the bar. Clears the TabBar (which grows by the
+                home-indicator inset on notched iPhones) plus `--keyboard-inset`
+                (set by KeyboardInset while the iOS keyboard is up so bottom forms
+                can scroll clear of it; 0 otherwise). */}
+            <div
+              className="mx-auto w-full max-w-md px-4 pt-2"
+              style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom) + var(--keyboard-inset, 0px))" }}
+            >
               <AppHeader />
               <div className="pt-1">
                 <UpdateBanner />
