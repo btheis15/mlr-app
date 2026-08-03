@@ -427,8 +427,14 @@ export function FeedView() {
     const loadChannels = async () => {
       if (!me) return;
       const meId = me;
-      const { data: ros } = await sb.from("committee_roster").select("committee_slug, roles").eq("linked_user_id", meId);
-      const rosterRows = (ros ?? []) as { committee_slug: string; roles: string[] | null }[];
+      // is_lead (committee-level lead, migration 0177) with a graceful fallback
+      // so the Feed still builds channels on a pre-0177 DB.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let rosRes: any = await sb.from("committee_roster").select("committee_slug, roles, is_lead").eq("linked_user_id", meId);
+      if (rosRes.error && (rosRes.error.code === "42703" || /column .* does not exist/i.test(rosRes.error.message ?? ""))) {
+        rosRes = await sb.from("committee_roster").select("committee_slug, roles").eq("linked_user_id", meId);
+      }
+      const rosterRows = (rosRes.data ?? []) as { committee_slug: string; roles: string[] | null; is_lead?: boolean | null }[];
       const slugs = Array.from(new Set(rosterRows.map((r) => r.committee_slug)));
       const built: Channel[] = [];
       const archived: Channel[] = [];
@@ -454,8 +460,11 @@ export function FeedView() {
         for (const c of committees) {
           const committeeArchived = Boolean(c.archived_at);
           const areaArchived = archivedAreas.get(c.slug) ?? new Set<string>();
-          const myRolesRaw = rosterRows.filter((r) => r.committee_slug === c.slug).flatMap((r) => r.roles ?? []);
-          const iAmLead = myRolesRaw.some((r) => r.endsWith(" · Lead"));
+          const myRows = rosterRows.filter((r) => r.committee_slug === c.slug);
+          const myRolesRaw = myRows.flatMap((r) => r.roles ?? []);
+          // A lead here = committee-level (is_lead) OR area lead ("· Lead" role),
+          // so a committee with no subcommittees can still open its Leads room.
+          const iAmLead = myRows.some((r) => r.is_lead) || myRolesRaw.some((r) => r.endsWith(" · Lead"));
           const myAreas = Array.from(new Set(myRolesRaw.map(stripLead).filter(Boolean)));
           // "Helping crew" = the committee-wide channel (area IS NULL) — the old
           // "General", renamed. Title is just the committee name (the section
@@ -631,16 +640,20 @@ export function FeedView() {
   const openMembers = async (ch: Channel) => {
     const sb = supabase;
     if (!sb) return;
-    const { data } = await sb
-      .from("committee_roster")
-      .select("name, roles, profiles:linked_user_id(display_name)")
-      .eq("committee_slug", ch.slug);
+    // is_lead (0177) with a graceful fallback so the members sheet still loads pre-migration.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = (data ?? []) as any[];
+    let mRes: any = await sb.from("committee_roster").select("name, roles, is_lead, profiles:linked_user_id(display_name)").eq("committee_slug", ch.slug);
+    if (mRes.error && (mRes.error.code === "42703" || /column .* does not exist/i.test(mRes.error.message ?? ""))) {
+      mRes = await sb.from("committee_roster").select("name, roles, profiles:linked_user_id(display_name)").eq("committee_slug", ch.slug);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (mRes.data ?? []) as any[];
+    const isLeadRow = (r: { roles?: string[] | null; is_lead?: boolean | null }) =>
+      !!r.is_lead || ((r.roles ?? []) as string[]).some((role) => role.endsWith(" · Lead"));
     const inArea =
       ch.area === LEADS_AREA
-        ? // The Leads room: everyone holding any "· Lead" role in the committee.
-          rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role.endsWith(" · Lead")))
+        ? // The Leads room: every lead of the committee (committee-level OR area).
+          rows.filter(isLeadRow)
         : ch.area
           ? rows.filter((r) => ((r.roles ?? []) as string[]).some((role) => role === ch.area || role === `${ch.area} · Lead`))
           : rows;
@@ -649,7 +662,7 @@ export function FeedView() {
         .map((r) => {
           const p = r.profiles;
           const displayName = (Array.isArray(p) ? p[0]?.display_name : p?.display_name) as string | undefined;
-          return { name: displayName || r.name, lead: ((r.roles ?? []) as string[]).some((x) => x.endsWith(" · Lead")) };
+          return { name: displayName || r.name, lead: isLeadRow(r) };
         })
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
