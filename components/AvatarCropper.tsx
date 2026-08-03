@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSheetDismiss } from "@/lib/hooks";
+import { ModalPortal } from "@/components/ModalPortal";
 
 // Drag to position + zoom a picked photo inside a circular frame, then export
 // a square 512×512 JPEG. The square's inscribed circle is exactly what shows
@@ -87,6 +88,7 @@ export function AvatarCropper({
   };
 
   return (
+    <ModalPortal>
     <div className={`fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`} role="dialog" aria-modal="true">
       <div className={`w-full max-w-sm space-y-4 rounded-3xl bg-background p-5 ring-1 ring-border ${closing ? "pop-close" : "pop-panel"}`}>
         <p className="text-center text-sm font-semibold">Position your photo</p>
@@ -120,5 +122,6 @@ export function AvatarCropper({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

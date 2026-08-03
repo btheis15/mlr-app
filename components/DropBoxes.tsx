@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useIdentity } from "@/components/IdentityProvider";
+import { ModalPortal } from "@/components/ModalPortal";
 import { SignInWall } from "@/components/Guard";
 import { Sheet, FIELD, SectionLabel } from "@/components/Sheet";
 import { SkeletonList } from "@/components/Skeleton";
@@ -794,6 +795,7 @@ function FolderCarousel({
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[65] flex flex-col bg-black">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
@@ -877,6 +879,7 @@ function FolderCarousel({
         </div>
       )}
     </div>
+    </ModalPortal>
   );
 }
 

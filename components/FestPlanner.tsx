@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { BackLink } from "@/components/BackLink";
+import { ModalPortal } from "@/components/ModalPortal";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
@@ -275,6 +276,7 @@ function Frame({ children, variant = "tabs" }: { children: React.ReactNode; vari
       // own full-viewport `fixed` overlay, so without a lower z-index here the
       // "＋ Add an event"/dinner/dues/activity sheets it opens would paint
       // behind this opaque background and look like the buttons do nothing.
+      <ModalPortal>
       <div className="fixed inset-0 z-[50] overflow-y-auto bg-background">
         <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
           <header className="mb-8 flex items-start justify-between gap-4 border-b border-border pb-5">
@@ -294,6 +296,7 @@ function Frame({ children, variant = "tabs" }: { children: React.ReactNode; vari
           <div className="space-y-12">{children}</div>
         </div>
       </div>
+      </ModalPortal>
     );
   }
 

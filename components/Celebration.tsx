@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useMemo } from "react";
+import { ModalPortal } from "@/components/ModalPortal";
 
 // Northwoods accent tokens — the confetti wears the resort palette (richer on P3
 // via the globals.css @supports layer).
@@ -61,6 +62,7 @@ export function Celebration({ onDone, count = 26 }: { onDone?: () => void; count
   if (reduce) return null;
 
   return (
+    <ModalPortal>
     <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center" aria-hidden>
       <div className="relative">
         {pieces.map((p, i) => (
@@ -80,5 +82,6 @@ export function Celebration({ onDone, count = 26 }: { onDone?: () => void; count
         ))}
       </div>
     </div>
+    </ModalPortal>
   );
 }
