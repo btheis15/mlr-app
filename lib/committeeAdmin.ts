@@ -238,6 +238,9 @@ export const updateCommittee = (
 
 export const archiveCommittee = (cid: string) => rpc("archive_committee", { cid });
 export const restoreCommittee = (cid: string) => rpc("restore_committee", { cid });
+/** PERMANENT delete (migration 0178) — purges the committee + all its chat
+ *  history/roster/roles. Admin-only, irreversible. Distinct from archive. */
+export const deleteCommittee = (cid: string) => rpc("delete_committee", { cid });
 
 // ── Role / area CRUD ──────────────────────────────────────────────────────────
 export const addCommitteeArea = (cid: string, area: string) =>
@@ -248,3 +251,7 @@ export const archiveCommitteeArea = (cid: string, area: string) =>
   rpc("archive_committee_area", { cid, p_area: area });
 export const restoreCommitteeArea = (cid: string, area: string) =>
   rpc("restore_committee_area", { cid, p_area: area });
+/** PERMANENT delete of a role (migration 0178) — removes it from the allow-list,
+ *  strips it off everyone's roles, and purges its chat history. Irreversible. */
+export const deleteCommitteeArea = (cid: string, area: string) =>
+  rpc("delete_committee_area", { cid, p_area: area });
