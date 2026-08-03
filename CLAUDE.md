@@ -3153,7 +3153,18 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
   `useSheetDismiss` in [`lib/hooks.ts`](lib/hooks.ts) (close animation + Escape
   + reduce-motion). `EventSheet` / `CabinRequestSheet` / `EventComposer` are the
   reference consumers; `Lightbox` / `AvatarCropper` use just the hook
-  (`MemberSheet` keeps its own drag-to-dismiss physics).
+  (`MemberSheet` keeps its own drag-to-dismiss physics). **Any full-viewport
+  overlay that isn't a `Sheet`** (a full-screen viewer / editor / lightbox)
+  must still portal to `<body>` via [`ModalPortal`](components/ModalPortal.tsx).
+  ⚠️ Rendering a bare `fixed inset-0` inline inside route content gets it
+  trapped UNDER the fixed TabBar on iOS — clipped to the page box AND its
+  z-index confined below `z-40` — because `.page-enter`'s slide-in transform
+  (app/template.tsx) makes that element a **permanent** containing block /
+  stacking context on iOS Safari (the `backwards` fill removes the transform at
+  rest, so desktop is fine and it looks correct in dev; this is a mobile-only
+  bug). Both `Sheet` and `ModalPortal` portal to body AND re-apply the
+  `.ff-section` theme by route. Never hand-roll a `fixed inset-0` page overlay
+  again — the whole app was swept onto these two (PRs #471/#472).
 - **Loading states** — async pages show pulsing card placeholders
   ([`components/Skeleton.tsx`](components/Skeleton.tsx) `SkeletonList`), not a
   bare "Loading…" line.
