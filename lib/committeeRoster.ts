@@ -49,18 +49,20 @@ export interface PendingPerson {
   phone: string | null;
 }
 
-/** Every account-LESS ("Pending verification") roster person across ALL
- *  committees, deduped by email (falling back to name). Lets the "Choose a
- *  member" picker offer someone already on the roster-but-not-in-the-app, so an
- *  admin/lead can add the same pending person to another committee without
- *  re-typing their name/email. `committee_roster` is members-readable (0081), so
- *  a signed-in admin/lead sees all rows. Empty on no backend / any error. */
+/** Every account-LESS ("Pending verification") person on the master **family
+ *  roster** (migration 0123 — the whole family who aren't on the app yet),
+ *  deduped by email (falling back to name). This is the superset that matters:
+ *  anyone added to a committee is auto-added to `family_roster` (migration 0125),
+ *  AND it includes family members who aren't on any committee yet — so the
+ *  "Choose a member" picker can offer, say, Rick Theis even though he's only on
+ *  the family roster. `family_roster` is members-readable (0123), so a signed-in
+ *  admin/lead sees all rows. Empty on no backend / before 0123 / any error. */
 export async function fetchPendingRosterPeople(): Promise<PendingPerson[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   try {
     const { data, error } = await sb
-      .from("committee_roster")
+      .from("family_roster")
       .select("name, email, phone")
       .is("linked_user_id", null);
     if (error || !data) return [];
