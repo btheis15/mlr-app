@@ -547,15 +547,37 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
 // (pre-migration rows, or a thumbnail that failed to generate). Videos with no
 // thumbnail fall back to a metadata-only <video> first frame (no full download).
 function Thumb({ item }: { item: DropBoxItem }) {
-  if (item.thumbnailUrl) {
+  const isVideo = item.type === "video";
+  // A video tile needs a visible ▶ badge: with a generated poster frame it is
+  // otherwise indistinguishable from a photo, and without one it's a black box.
+  const inner = item.thumbnailUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />;
-  }
-  if (item.type === "video") {
-    return <video src={item.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />;
-  }
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />;
+    <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+  ) : isVideo ? (
+    // No poster frame yet (pre-thumbnail upload, or generation failed) —
+    // `preload="metadata"` paints the first frame on most browsers, though iOS
+    // often leaves it black. The badge below is what keeps that readable as a
+    // video rather than a broken tile; the mini's backfill fills these in.
+    <video src={item.url} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+  ) : (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+  );
+
+  if (!isVideo) return inner;
+  return (
+    <div className="relative h-full w-full">
+      {inner}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex items-center justify-center"
+      >
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 pl-0.5 text-sm text-white ring-1 ring-white/25">
+          ▶
+        </span>
+      </span>
+    </div>
+  );
 }
 
 // Full-screen swipe carousel over EVERY item in the folder — swipe (native

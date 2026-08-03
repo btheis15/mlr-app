@@ -15,6 +15,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const sharp = require("sharp");
 
+const FFPROBE = process.env.FFPROBE_PATH || "ffprobe";
 const THUMB_DIM = Number(process.env.THUMB_DIM || 400);
 const THUMB_QUALITY = Number(process.env.THUMB_QUALITY || 70);
 
@@ -34,12 +35,41 @@ async function makeImageThumb(filePath) {
   return out;
 }
 
-// One ffmpeg pass: grab the first frame and scale it down in the same filter,
-// so there's no second decode/encode through sharp for video thumbnails.
-function extractFirstFrameThumb(videoPath, outJpg) {
+// How far into a clip to grab the poster frame. Frame 0 is a bad default for
+// real phone video: it's routinely black or a blurred half-exposure while the
+// camera is still settling, so a whole album of videos comes out as black
+// tiles. Seeking a moment in gets an actual picture of the scene.
+const SEEK_FRACTION = Number(process.env.THUMB_SEEK_FRACTION || 0.1); // 10% in
+const SEEK_MAX_S = Number(process.env.THUMB_SEEK_MAX_S || 3); // never past 3s
+
+function probeDurationSeconds(videoPath) {
+  return new Promise((resolve) => {
+    execFile(
+      FFPROBE,
+      ["-v", "quiet", "-print_format", "json", "-show_entries", "format=duration", videoPath],
+      { timeout: 15000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        try {
+          const d = Number(JSON.parse(stdout)?.format?.duration);
+          resolve(Number.isFinite(d) && d > 0 ? d : null);
+        } catch {
+          resolve(null);
+        }
+      },
+    );
+  });
+}
+
+// One ffmpeg pass: seek, grab a frame, and scale it down in the same filter, so
+// there's no second decode/encode through sharp. `-ss` BEFORE `-i` is the fast
+// (keyframe) seek — cheap even on a long clip.
+function grabFrame(videoPath, outJpg, atSeconds) {
   return new Promise((resolve, reject) => {
     const args = [
-      "-y", "-i", videoPath,
+      "-y",
+      ...(atSeconds > 0 ? ["-ss", String(atSeconds)] : []),
+      "-i", videoPath,
       "-frames:v", "1",
       "-vf", `scale='min(${THUMB_DIM},iw)':-2`,
       "-q:v", "4",
@@ -51,8 +81,24 @@ function extractFirstFrameThumb(videoPath, outJpg) {
 
 async function makeVideoThumb(filePath) {
   const out = thumbPathFor(filePath);
-  await extractFirstFrameThumb(filePath, out);
-  return out;
+  const duration = await probeDurationSeconds(filePath);
+  // Stay comfortably inside the clip — seeking at/past the end yields no frame
+  // at all, and a very short clip has nowhere to seek to.
+  let at = 0;
+  if (duration) at = Math.min(duration * SEEK_FRACTION, SEEK_MAX_S, Math.max(0, duration - 0.1));
+  try {
+    await grabFrame(filePath, out, at);
+    // A seek that lands past the last keyframe can produce nothing without
+    // erroring — treat an absent/empty file as a miss and retry from the start.
+    if (fs.existsSync(out) && fs.statSync(out).size > 0) return out;
+  } catch {
+    /* fall through to the frame-0 retry */
+  }
+  if (at > 0) {
+    await grabFrame(filePath, out, 0);
+    if (fs.existsSync(out) && fs.statSync(out).size > 0) return out;
+  }
+  throw new Error("no frame could be extracted");
 }
 
 // kind: "image" | "video". Returns the thumbnail's absolute path, or null on

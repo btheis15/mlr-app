@@ -2659,7 +2659,28 @@ the feed/room without being destroyed. **Live now (Tiers 0+1+2):**
     ([`media-server/thumbnail.js`](media-server/thumbnail.js) — sharp resize
     for photos, one ffmpeg frame grab for videos, ~400px, generated inline
     since it's fast) stored alongside the original under the same `/f` tree
-    and returned as `thumbnailUrl` in the `/upload` response. Every `*_media`
+    and returned as `thumbnailUrl` in the `/upload` response.
+    - ⚠️ **Generated INLINE at upload means it covers only NEW uploads** — at
+      the time [`thumbnail-backfill.js`](media-server/thumbnail-backfill.js)
+      was added, **every** row in every `*_media` table still had
+      `thumbnail_url = null` (0/48 album items, 0/45 post media), so grids were
+      universally falling back to the full-res file. The sweep generates the
+      missing previews from the files already on disk, across the four tables
+      whose UI actually reads the column, and only ever fills a NULL. Same
+      lesson as the `captured_at` sweep below: *an enrichment that only runs at
+      upload time silently covers none of the content already there.*
+    - **A video's poster frame is seeked, not frame 0.** Real phone video
+      routinely opens on a black or half-exposed frame while the camera
+      settles, so grabbing frame 0 gave a whole album of black tiles.
+      `makeVideoThumb` probes the duration and grabs ~10% in (capped at 3s,
+      always kept inside the clip), falling back to frame 0 if that seek yields
+      nothing — a seek past the last keyframe can produce an empty file
+      *without* erroring, so the output is size-checked rather than trusted.
+    - **A video tile still needs a ▶ badge** (the Drop Box grid's `Thumb`):
+      with a poster frame it's otherwise indistinguishable from a photo, and
+      without one it's a black box. `MediaGrid`/`PostsView` don't need it —
+      they render videos with native `controls`, which carries its own
+      affordance. Every `*_media`
     table has a nullable `thumbnail_url` column (migration
     [`0173`](supabase/migrations/0173_media_thumbnail_url.sql)) — grids/albums
     ([`MediaGrid`](components/MediaGrid.tsx), the Drop Box `Thumb()` in

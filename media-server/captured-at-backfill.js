@@ -22,26 +22,13 @@ const fs = require("fs");
 const path = require("path");
 
 const { extractCapturedAt } = require("./captured-at");
+const { localPathFor } = require("./media-paths");
 
 const SWEEP_MS = Number(process.env.CAPTURED_AT_SWEEP_MS || 6 * 60 * 60 * 1000); // 6h
 const FIRST_SWEEP_MS = Number(process.env.CAPTURED_AT_FIRST_MS || 45 * 1000); // 45s after boot
 const PER_SWEEP = Number(process.env.CAPTURED_AT_PER_SWEEP || 500);
 
-// A stored URL (…/f/<rel>) → the absolute file on disk. Returns null for
-// anything that isn't one of ours.
-function localPathFor(storagePath, publicUrl, mediaDir) {
-  if (typeof storagePath !== "string") return null;
-  const marker = "/f/";
-  const i = storagePath.indexOf(marker);
-  if (i === -1) return null;
-  const rel = storagePath.slice(i + marker.length);
-  if (!rel || rel.includes("..")) return null; // never walk out of the media dir
-  const abs = path.join(mediaDir, rel);
-  const root = path.resolve(mediaDir) + path.sep;
-  return path.resolve(abs).startsWith(root) ? abs : null;
-}
-
-async function sweepOnce({ admin, publicUrl, mediaDir }) {
+async function sweepOnce({ admin, mediaDir }) {
   if (!admin) return;
   // Rows still missing a real capture date: never resolved, or resolved only
   // from the weaker post-timestamp proxy.
@@ -64,7 +51,7 @@ async function sweepOnce({ admin, publicUrl, mediaDir }) {
   let missing = 0;
 
   for (const row of data) {
-    const abs = localPathFor(row.storage_path, publicUrl, mediaDir);
+    const abs = localPathFor(row.storage_path, mediaDir);
     if (!abs || !fs.existsSync(abs)) { missing++; continue; }
     const kind = row.media_type === "video" ? "video" : "image";
     let iso = null;
