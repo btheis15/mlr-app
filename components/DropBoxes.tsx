@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useIdentity } from "@/components/IdentityProvider";
 import { SignInWall } from "@/components/Guard";
 import { Sheet, FIELD, SectionLabel } from "@/components/Sheet";
@@ -9,7 +10,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { BackLink } from "@/components/BackLink";
 import { useDropBoxes, useDropBox, useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { supabase } from "@/lib/supabase";
-import { uploadToMini, compressImage, capturedAtForFile, MEDIA_URL } from "@/lib/media";
+import { uploadToMini, compressImage, capturedAtForFile, MEDIA_URL, type MediaKind } from "@/lib/media";
 import {
   createDropBox,
   updateDropBox,
@@ -101,6 +102,23 @@ function postDownload(action: string, fields: [string, string][]) {
   form.remove();
 }
 
+// An optimistic upload-in-progress tile. We paint one the instant files are
+// picked — a local object-URL preview + a progress ring — so the grid never
+// sits empty waiting on the realtime insert (which read as "nothing happened").
+// Each is handed off to its real DB row seamlessly and pruned afterward.
+interface Pending {
+  key: string;
+  file: File;
+  previewUrl: string;
+  type: MediaKind;
+  loaded: number;
+  total: number;
+  status: "uploading" | "done" | "error";
+  errorMsg?: string;
+  /** The mini url once uploaded — used to hide this tile the moment its real row lands. */
+  uploadedUrl?: string;
+}
+
 export function DropBoxes() {
   const boxId = useUrlParam("box");
   return (
@@ -189,8 +207,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   const { box, loading, reload } = useDropBox(boxId);
   const { user, userId, isAdmin, promptSignIn } = useIdentity();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [pct, setPct] = useState(0);
+  const [pending, setPending] = useState<Pending[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [managing, setManaging] = useState(false);
@@ -199,6 +216,34 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // ── Optimistic upload tiles ────────────────────────────────────────────────
+  const pendingRef = useRef<Pending[]>([]);
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  // Free every preview object-URL on unmount (nav away mid-upload).
+  useEffect(() => () => pendingRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl)), []);
+
+  const patchPending = (key: string, patch: Partial<Pending>) =>
+    setPending((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+  const dropPending = (key: string) =>
+    setPending((prev) => {
+      const t = prev.find((p) => p.key === key);
+      if (t) URL.revokeObjectURL(t.previewUrl);
+      return prev.filter((p) => p.key !== key);
+    });
+
+  // When a real row for an optimistic tile arrives (matched by url), drop the
+  // tile and free its preview. Depends only on `box`, and no-ops when nothing
+  // matched, so it can't loop.
+  useEffect(() => {
+    const urls = new Set((box?.items ?? []).map((i) => i.url));
+    setPending((prev) => {
+      const gone = prev.filter((p) => p.uploadedUrl && urls.has(p.uploadedUrl));
+      if (!gone.length) return prev;
+      gone.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return prev.filter((p) => !(p.uploadedUrl && urls.has(p.uploadedUrl)));
+    });
+  }, [box]);
 
   // Who may delete a given item: its uploader, the folder's creator, or an
   // admin (same rule the remove RPC enforces server-side). Regular members can
@@ -231,36 +276,51 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     if (!files.length || !box) return;
     if (!user) { promptSignIn(); return; }
     setMsg(null);
-    setUploading(true);
-    setPct(0);
-    try {
-      const token = (await supabase?.auth.getSession())?.data.session?.access_token;
-      if (!token) throw new Error("Finishing sign-in — try again in a second.");
-      const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
-      let doneBytes = 0;
-      for (const raw of files) {
-        const isVideo = raw.type.startsWith("video");
+
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+    if (!token) {
+      setMsg("Finishing sign-in — try again in a second.");
+      window.setTimeout(() => setMsg(null), 4000);
+      return;
+    }
+    const boxId = box.id;
+
+    // Paint the picked files as tiles immediately (newest first), each with a
+    // live progress ring — the grid fills the instant you pick, not when the
+    // upload finishes. Then upload them in the background.
+    const batch: Pending[] = files.map((raw) => ({
+      key: crypto.randomUUID(),
+      file: raw,
+      previewUrl: URL.createObjectURL(raw),
+      type: raw.type.startsWith("video") ? "video" : "image",
+      loaded: 0,
+      total: raw.size || 1,
+      status: "uploading",
+    }));
+    setPending((prev) => [...batch, ...prev]);
+
+    let added = 0;
+    let failed = 0;
+    const upload = async (p: Pending) => {
+      try {
+        const isVideo = p.type === "video";
         // Read "date taken" off the ORIGINAL file first — compressImage
-        // re-encodes photos via <canvas>, which strips every byte of
-        // metadata, so this has to happen before that. Videos aren't
-        // recompressed client-side; the mini reads their real capture date
-        // from the container itself (media-server/captured-at.js).
-        const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
+        // re-encodes photos via <canvas>, which strips every byte of metadata,
+        // so this must precede it. Videos aren't recompressed client-side; the
+        // mini reads their real capture date from the container itself
+        // (media-server/captured-at.js).
+        const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(p.file);
         // Photos → web JPEG (smaller/faster, fixes HDR/HEIC); videos as-is.
-        const f = isVideo ? raw : await compressImage(raw);
+        const f = isVideo ? p.file : await compressImage(p.file);
         const uploaded = await uploadToMini(f, token, {
           category: "dropbox",
-          room: box.id,
+          room: boxId,
           capturedAt: taken.iso,
           capturedAtSource: taken.source,
-          onProgress: (loaded, total) => {
-            const frac = total ? loaded / total : 0;
-            setPct(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
-          },
+          onProgress: (loaded, total) => patchPending(p.key, { loaded, total: total || p.total }),
         });
-        doneBytes += raw.size;
         const { error } = await addDropBoxMedia(
-          box.id,
+          boxId,
           uploaded.url,
           isVideo ? "video" : "image",
           uploaded.thumbnailUrl,
@@ -268,17 +328,38 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           uploaded.capturedAtSource,
         );
         if (error) throw new Error(error);
+        added++;
+        patchPending(p.key, { status: "done", uploadedUrl: uploaded.url, loaded: p.total });
+        // Safety net: if realtime/reload never repoints to this exact url (e.g.
+        // a background transcode swaps a .mov's url for its .mp4), don't strand
+        // the tile forever — drop it once the real row has surely landed.
+        window.setTimeout(() => dropPending(p.key), 12000);
+      } catch (err) {
+        failed++;
+        const m = err instanceof Error ? err.message : "";
+        const friendly = /too many|429/i.test(m)
+          ? "hit the upload limit — try again shortly"
+          : /max|size|large|exceed|413|payload/i.test(m)
+            ? "that file was too big"
+            : "upload failed";
+        patchPending(p.key, { status: "error", errorMsg: friendly });
       }
-      setPct(100);
-      // Realtime refills the grid; a nudge in case the channel is slow.
-      setMsg(`Added ${files.length} ${files.length === 1 ? "item" : "items"} ✓`);
-    } catch (err) {
-      const m = err instanceof Error ? err.message : "please try again";
-      const friendly = /max|size|large|exceed|413|payload/i.test(m) ? "one of those files was too big to upload." : m;
-      setMsg(`Couldn't add: ${friendly}`);
-    } finally {
-      setUploading(false);
-      setPct(0);
+    };
+
+    // Upload a few at a time so a big dump overlaps on the network instead of
+    // crawling one-by-one — without stampeding the mini's ffmpeg/moderation.
+    const LIMIT = 3;
+    let idx = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(LIMIT, batch.length) }, async () => {
+        while (idx < batch.length) await upload(batch[idx++]);
+      }),
+    );
+
+    // Realtime usually fills the real rows before we get here; this is the backstop.
+    await reload();
+    if (added || failed) {
+      setMsg(failed ? `Added ${added} · ${failed} couldn't upload` : `Added ${added} ${added === 1 ? "item" : "items"} ✓`);
       window.setTimeout(() => setMsg(null), 6000);
     }
   };
@@ -372,6 +453,16 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     );
   }
 
+  // Optimistic tiles still waiting on their real row (matched by url), and a
+  // batch-wide progress figure for the thin bar. Rendered ahead of box.items,
+  // so a tile whose row has landed simply stops rendering here — no dup frame.
+  const itemUrls = new Set(box.items.map((i) => i.url));
+  const visiblePending = pending.filter((p) => !(p.uploadedUrl && itemUrls.has(p.uploadedUrl)));
+  const uploadingCount = pending.filter((p) => p.status === "uploading").length;
+  const aggLoaded = pending.reduce((s, p) => (p.status === "uploading" ? s + p.loaded : s), 0);
+  const aggTotal = pending.reduce((s, p) => (p.status === "uploading" ? s + p.total : s), 0);
+  const aggPct = aggTotal ? Math.min(99, Math.round((aggLoaded / aggTotal) * 100)) : 0;
+
   return (
     <div className="space-y-4 pt-2">
       <BackLink href="/drop" label="All folders" />
@@ -382,7 +473,9 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           {box.title}
         </h1>
         <p className="mt-0.5 text-sm text-muted">
-          {box.count === 0 ? "Empty — be the first to add something" : `${box.count} ${box.count === 1 ? "item" : "items"}`}
+          {box.count === 0 && visiblePending.length === 0
+            ? "Empty — be the first to add something"
+            : `${box.count} ${box.count === 1 ? "item" : "items"}`}
         </p>
       </div>
 
@@ -465,31 +558,35 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         })()
       ) : (
         <>
-          {/* The one big "dump" button — a plain trigger + always-mounted input. */}
+          {/* The one big "dump" button — a plain trigger + always-mounted input.
+              Stays tappable during an upload so you can keep adding while the
+              first batch finishes; progress shows on the tiles themselves. */}
           <button
             onClick={() => (user ? inputRef.current?.click() : promptSignIn())}
-            disabled={uploading}
-            className="press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-sm font-semibold text-white disabled:opacity-60"
+            className="press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-sm font-semibold text-white"
           >
-            {uploading ? `Uploading… ${pct}%` : "＋ Add photos & videos"}
+            {uploadingCount > 0 ? `Adding ${uploadingCount}…  ＋ add more` : "＋ Add photos & videos"}
           </button>
           <input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={onPick} className="hidden" />
         </>
       )}
 
-      {uploading && (
+      {uploadingCount > 0 && (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${aggPct}%` }} />
         </div>
       )}
       {msg && <p className="text-center text-sm text-muted">{msg}</p>}
 
-      {box.count === 0 ? (
+      {box.count === 0 && visiblePending.length === 0 ? (
         <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted ring-1 ring-border">
           Nothing here yet.
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-1.5">
+          {visiblePending.map((p) => (
+            <PendingTile key={p.key} p={p} onDismiss={() => dropPending(p.key)} />
+          ))}
           {box.items.map((item, idx) => {
             const isSel = selected.has(item.id);
             return (
@@ -576,6 +673,47 @@ function Thumb({ item }: { item: DropBoxItem }) {
           ▶
         </span>
       </span>
+    </div>
+  );
+}
+
+// An optimistic upload-in-progress tile: the picked file's own local preview
+// (an object URL — instant, no network) under a scrim + progress ring, so a
+// dropped photo/video shows the moment it's picked and animates to done. On
+// failure it flips to a tappable "couldn't upload" state the user can dismiss.
+function PendingTile({ p, onDismiss }: { p: Pending; onDismiss: () => void }) {
+  const pct = p.total ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : 0;
+  const isError = p.status === "error";
+  const isBusy = p.status === "uploading" && pct < 100;
+  return (
+    <div className={`relative aspect-square overflow-hidden rounded-lg bg-primary/5 ${isError ? "ring-2 ring-red-500/60" : ""}`}>
+      {p.type === "video" ? (
+        <video src={p.previewUrl} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={p.previewUrl} alt="" className="h-full w-full object-cover" />
+      )}
+      {isError ? (
+        <button
+          onClick={onDismiss}
+          className="press absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-black/60 text-white"
+        >
+          <span className="text-lg leading-none">⚠</span>
+          <span className="px-1 text-center text-[9px] font-semibold leading-tight">{p.errorMsg} · tap to remove</span>
+        </button>
+      ) : (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-black/35" />
+          {isBusy && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            </span>
+          )}
+          <div className="pointer-events-none absolute inset-x-1 bottom-1 h-1 overflow-hidden rounded-full bg-white/25">
+            <div className="h-full rounded-full bg-white transition-[width]" style={{ width: `${pct}%` }} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -731,6 +869,7 @@ function FolderCarousel({
 // ── Sheets ────────────────────────────────────────────────────────────────────
 
 function NewBoxSheet({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
   const { closing, close } = useSheetDismiss(onClose);
   const [title, setTitle] = useState("");
   const [emoji, setEmoji] = useState("");
@@ -744,9 +883,11 @@ function NewBoxSheet({ onClose }: { onClose: () => void }) {
     const { id, error } = await createDropBox(title.trim(), emoji.trim() || null);
     setBusy(false);
     if (error || !id) { setErr(error || "Couldn't create the album."); return; }
-    // Land the creator straight in the new (empty) folder, ready to dump.
-    if (typeof window !== "undefined") window.location.assign(`/drop?box=${id}`);
+    // Land the creator straight in the new (empty) folder, ready to dump —
+    // client-side (the /drop screen swaps list→detail on the ?box param, and
+    // useUrlParam picks up a router.push), so no white-flash full reload.
     close();
+    router.push(`/drop?box=${id}`);
   };
 
   return (
@@ -795,6 +936,7 @@ function NewBoxSheet({ onClose }: { onClose: () => void }) {
 }
 
 function ManageBoxSheet({ box, onClose }: { box: DropBox; onClose: () => void }) {
+  const router = useRouter();
   const { closing, close } = useSheetDismiss(onClose);
   const [title, setTitle] = useState(box.title);
   const [emoji, setEmoji] = useState(box.emoji || "");
@@ -822,7 +964,8 @@ function ManageBoxSheet({ box, onClose }: { box: DropBox; onClose: () => void })
     const { error } = await deleteDropBox(box.id);
     setBusy(false);
     if (error) { setErr(error); return; }
-    if (typeof window !== "undefined") window.location.assign("/drop");
+    close();
+    router.push("/drop");
   };
 
   return (
