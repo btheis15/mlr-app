@@ -706,13 +706,84 @@ function mediaDiskInfo() {
   }
 }
 
+// What the APP itself is storing, broken down by media type — distinct from the
+// whole-drive `disk` numbers above (which include everything else on the volume).
+// One recursive walk of MEDIA_DIR, bucketed by extension. Each auto-generated
+// `<uuid>_thumb.jpg` preview is NOT its own item — its bytes are folded into the
+// object it previews (so a photo's size includes its thumbnail, and the photo
+// count stays the real number of photos). Own try/catch — a walk error can't
+// sink the status the page relies on.
+const PHOTO_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "tiff", "tif", "bmp"]);
+const VIDEO_EXT = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "hevc"]);
+function classifyMediaFile(name) {
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
+  if (PHOTO_EXT.has(ext)) return "photo";
+  if (VIDEO_EXT.has(ext)) return "video";
+  return "other";
+}
+function mediaUsageBreakdown() {
+  const buckets = {
+    photo: { bytes: 0, files: 0 },
+    video: { bytes: 0, files: 0 },
+    other: { bytes: 0, files: 0 },
+  };
+  let totalBytes = 0;
+  let totalFiles = 0;
+  try {
+    // Collect every file once, then two passes: real objects first (they set the
+    // per-uuid category + the counts), then thumbnails fold their bytes into the
+    // object they belong to.
+    const files = [];
+    for (const e of fs.readdirSync(MEDIA_DIR, { recursive: true, withFileTypes: true })) {
+      if (!e.isFile() || e.name.startsWith(".")) continue; // skip .DS_Store etc.
+      const dir = e.parentPath ?? e.path;
+      let size = 0;
+      try {
+        size = fs.statSync(path.join(dir, e.name)).size;
+      } catch {
+        continue; // vanished between readdir and stat
+      }
+      files.push({ dir, name: e.name, size, thumb: e.name.toLowerCase().endsWith("_thumb.jpg") });
+    }
+    const catByObject = new Map(); // `${dir}\0${uuid}` -> "photo" | "video" | "other"
+    for (const f of files) {
+      if (f.thumb) continue;
+      const cat = classifyMediaFile(f.name);
+      const uuid = f.name.includes(".") ? f.name.slice(0, f.name.lastIndexOf(".")) : f.name;
+      catByObject.set(`${f.dir}\0${uuid}`, cat);
+      buckets[cat].bytes += f.size;
+      buckets[cat].files += 1;
+      totalBytes += f.size;
+      totalFiles += 1;
+    }
+    for (const f of files) {
+      if (!f.thumb) continue;
+      const uuid = f.name.slice(0, f.name.length - "_thumb.jpg".length);
+      const cat = catByObject.get(`${f.dir}\0${uuid}`) ?? "photo"; // orphan thumb → count as a photo's
+      buckets[cat].bytes += f.size; // bytes only — a thumbnail isn't a separate item
+      totalBytes += f.size;
+    }
+  } catch {
+    return null;
+  }
+  const labels = { photo: "Photos", video: "Videos", other: "Other files" };
+  const order = ["photo", "video", "other"];
+  return {
+    totalBytes,
+    totalFiles,
+    categories: order
+      .map((k) => ({ key: k, label: labels[k], bytes: buckets[k].bytes, files: buckets[k].files }))
+      .filter((c) => c.files > 0),
+  };
+}
+
 app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
   try {
     git(["fetch", "origin", "main"]);
     const local = git(["rev-parse", "HEAD"]);
     const remote = git(["rev-parse", "origin/main"]);
     const behind = Number(git(["rev-list", "--count", `${local}..${remote}`]));
-    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo() });
+    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo(), usage: mediaUsageBreakdown() });
   } catch (e) {
     res.status(500).json({ error: (e && e.message) || "Couldn't check git status." });
   }

@@ -3,33 +3,99 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, type MediaServerStatus, type MediaServerDisk } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage } from "@/lib/admin";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
 
-/** Drive space for the media store — a usage bar + free/used/total, so the
- *  owner can watch the drive fill up right from the app. */
-function StorageMeter({ disk }: { disk: MediaServerDisk }) {
-  const usedPct = disk.totalBytes > 0 ? (disk.usedBytes / disk.totalBytes) * 100 : 0;
-  // Green normally; amber past 80%, red past 90% — a full media drive means
-  // uploads start failing, so surface the pressure before it's a problem.
-  const barColor = usedPct >= 90 ? "bg-accent" : usedPct >= 80 ? "bg-fest" : "bg-primary";
+// Segment/swatch color per media type (app breakdown). Kept on-brand rather than
+// a generic chart palette so it matches the rest of the card.
+const CAT_COLOR: Record<string, string> = {
+  photo: "bg-primary", // forest green
+  video: "bg-accent", // chestnut
+  other: "bg-muted", // grey
+};
+
+function Swatch({ className }: { className: string }) {
+  return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-sm ${className}`} />;
+}
+
+/**
+ * Whole-drive space, split three ways: what MLR itself stores (green), everything
+ * else on the drive — personal, non-app files (grey), and what's free. Lets the
+ * owner see at a glance that the app is a tiny sliver of a drive mostly holding
+ * their own stuff.
+ */
+function DriveStorage({ disk, appBytes }: { disk: MediaServerDisk; appBytes: number }) {
+  const total = disk.totalBytes || 1;
+  const app = Math.max(0, Math.min(appBytes, disk.usedBytes));
+  const other = Math.max(0, disk.usedBytes - app); // personal / non-app
+  const usedPct = (disk.usedBytes / total) * 100;
   return (
-    <div className="space-y-1.5 border-t border-border pt-3">
+    <div className="space-y-2 border-t border-border pt-3">
       <div className="flex items-baseline justify-between">
-        <p className="text-sm font-semibold">Storage</p>
-        <p className="text-xs text-muted">{disk.external ? "External drive" : "Internal disk"}</p>
+        <p className="text-sm font-semibold">Drive storage</p>
+        <p className="text-xs text-muted">
+          {disk.external ? "External drive" : "Internal disk"} · {Math.round(usedPct)}% full
+        </p>
       </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-background" role="progressbar" aria-valuenow={Math.round(usedPct)} aria-valuemin={0} aria-valuemax={100}>
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, Math.max(2, usedPct))}%` }} />
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-background">
+        {app > 0 && <div className="h-full bg-primary" style={{ width: `${Math.max((app / total) * 100, 0.5)}%` }} />}
+        {other > 0 && <div className="h-full bg-muted" style={{ width: `${(other / total) * 100}%` }} />}
       </div>
-      <p className="text-sm">
-        <span className="font-semibold">{formatBytes(disk.freeBytes)} free</span>
-        <span className="text-muted">
-          {" "}
-          · {formatBytes(disk.usedBytes)} used of {formatBytes(disk.totalBytes)} ({Math.round(usedPct)}%)
-        </span>
-      </p>
+      <div className="space-y-1 text-sm">
+        <p className="flex items-center gap-2">
+          <Swatch className="bg-primary" />
+          <span className="font-medium">MLR app</span>
+          <span className="ml-auto">{formatBytes(app)}</span>
+        </p>
+        <p className="flex items-center gap-2 text-muted">
+          <Swatch className="bg-muted" />
+          <span>Other (personal, non-app)</span>
+          <span className="ml-auto">{formatBytes(other)}</span>
+        </p>
+        <p className="flex items-center gap-2">
+          <Swatch className="bg-background ring-1 ring-border" />
+          <span className="font-medium">Free</span>
+          <span className="ml-auto font-semibold">{formatBytes(disk.freeBytes)}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The app's own footprint, broken down by media type — a proportional bar +
+ * per-type count/size. Each object's auto-generated thumbnail is folded into its
+ * size (a photo's bytes include its thumbnail), and counts are real objects.
+ */
+function AppUsage({ usage }: { usage: MediaServerUsage }) {
+  const total = usage.totalBytes || 1;
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-semibold">MLR App storage</p>
+        <p className="text-sm">
+          <span className="font-semibold">{formatBytes(usage.totalBytes)}</span>
+          <span className="text-muted"> · {usage.totalFiles.toLocaleString()} files</span>
+        </p>
+      </div>
+      {usage.categories.length > 0 && (
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-background">
+          {usage.categories.map((c) => (
+            <div key={c.key} className={`h-full ${CAT_COLOR[c.key] ?? "bg-muted"}`} style={{ width: `${(c.bytes / total) * 100}%` }} />
+          ))}
+        </div>
+      )}
+      <div className="space-y-1 text-sm">
+        {usage.categories.map((c) => (
+          <p key={c.key} className="flex items-center gap-2">
+            <Swatch className={CAT_COLOR[c.key] ?? "bg-muted"} />
+            <span className="font-medium">{c.label}</span>
+            <span className="text-muted">{c.files.toLocaleString()}</span>
+            <span className="ml-auto">{formatBytes(c.bytes)}</span>
+          </p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -107,7 +173,8 @@ export function AdminMediaServer() {
               ? "Up to date with origin/main ✓"
               : `${status.behind} commit${status.behind === 1 ? "" : "s"} behind origin/main`}
           </p>
-          {status.disk ? <StorageMeter disk={status.disk} /> : null}
+          {status.disk ? <DriveStorage disk={status.disk} appBytes={status.usage?.totalBytes ?? 0} /> : null}
+          {status.usage ? <AppUsage usage={status.usage} /> : null}
         </div>
       ) : null}
 

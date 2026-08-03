@@ -3041,11 +3041,17 @@ changed, then `process.exit(0)`. No `launchctl` call needed: the launchd
 plist (`com.mlr.media-server.plist`) already sets `KeepAlive`, so it
 relaunches on its own within the 10s `ThrottleInterval`, on the new code.
 `GET /admin/media-server-status` (same `requireOwner` gate) backs the status
-line the card shows before you tap anything — it also returns a `disk` block
-(`fs.statfsSync(MEDIA_DIR)` → total/free/used bytes + whether it's an external
-`/Volumes/…` volume), which [`AdminMediaServer`](components/AdminMediaServer.tsx)
-renders as a **Storage** usage meter (bar goes amber >80% / red >90%). The field
-is optional, so an older mini that predates it degrades to no meter.
+line the card shows before you tap anything. Beyond git state it returns two
+optional diagnostics blocks that [`AdminMediaServer`](components/AdminMediaServer.tsx)
+renders: **`disk`** (`fs.statfsSync(MEDIA_DIR)` → total/free/used bytes + whether
+it's an external `/Volumes/…` volume) → a **Drive storage** bar split into MLR-app
+(green) vs other/personal non-app (grey, = `disk.used − usage.total`) vs free; and
+**`usage`** (one recursive walk of MEDIA_DIR bucketed into photos/videos/other) →
+an **MLR App storage** breakdown bar + per-type count/size. Each object's
+auto-generated `<uuid>_thumb.jpg` thumbnail is folded into its parent object's
+bytes (a photo's size includes its thumbnail) and is NOT counted as a separate
+item. Both fields are optional, so an older mini that predates them degrades to no
+meter.
 
 ## Loading stability & the SWR cache
 
