@@ -242,7 +242,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         const isVideo = raw.type.startsWith("video");
         // Photos → web JPEG (smaller/faster, fixes HDR/HEIC); videos as-is.
         const f = isVideo ? raw : await compressImage(raw);
-        const url = await uploadToMini(f, token, {
+        const uploaded = await uploadToMini(f, token, {
           category: "dropbox",
           room: box.id,
           onProgress: (loaded, total) => {
@@ -251,7 +251,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           },
         });
         doneBytes += raw.size;
-        const { error } = await addDropBoxMedia(box.id, url, isVideo ? "video" : "image");
+        const { error } = await addDropBoxMedia(box.id, uploaded.url, isVideo ? "video" : "image", uploaded.thumbnailUrl);
         if (error) throw new Error(error);
       }
       setPct(100);
@@ -527,9 +527,16 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   );
 }
 
-// A single thumbnail — <img> for photos, a metadata-only <video> first frame
-// for videos (no separate poster needed).
+// A single thumbnail. Prefer the small, mini-generated preview (thumbnailUrl)
+// so scrolling a big album never re-downloads full-res photos/videos just to
+// fill a grid tile — falls back to the full asset when no thumbnail exists yet
+// (pre-migration rows, or a thumbnail that failed to generate). Videos with no
+// thumbnail fall back to a metadata-only <video> first frame (no full download).
 function Thumb({ item }: { item: DropBoxItem }) {
+  if (item.thumbnailUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />;
+  }
   if (item.type === "video") {
     return <video src={item.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />;
   }

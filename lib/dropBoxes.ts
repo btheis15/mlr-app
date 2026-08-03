@@ -18,6 +18,8 @@ export type DropBoxMediaStatus = "visible" | "pending" | "hidden";
 export interface DropBoxItem {
   id: string;
   url: string;
+  /** Small preview url — the grid renders this instead of the full-res `url`. */
+  thumbnailUrl: string | null;
   type: MediaKind;
   status: DropBoxMediaStatus;
   uploadedBy: string;
@@ -40,7 +42,7 @@ export interface DropBox {
 
 /** Adapt a drop-box item to the shared MediaGrid/Lightbox shape. */
 export function toMedia(item: DropBoxItem): Media {
-  return { url: item.url, type: item.type };
+  return { url: item.url, type: item.type, thumbnailUrl: item.thumbnailUrl };
 }
 
 type PgError = { code?: string; message?: string } | null;
@@ -52,6 +54,7 @@ function isMissingTable(error: PgError): boolean {
 interface ItemRow {
   id: string;
   storage_path: string;
+  thumbnail_url: string | null;
   media_type: MediaKind;
   status: DropBoxMediaStatus;
   uploaded_by: string;
@@ -73,6 +76,7 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
       (m): DropBoxItem => ({
         id: m.id,
         url: m.storage_path,
+        thumbnailUrl: m.thumbnail_url,
         type: m.media_type,
         status: m.status,
         uploadedBy: m.uploaded_by,
@@ -95,7 +99,15 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
 }
 
 const SELECT =
+  "id, title, emoji, created_by, archived_at, created_at, drop_box_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by, created_at)";
+// Pre-0173 fallback (thumbnail_url column doesn't exist yet on this project).
+const SELECT_NO_THUMB =
   "id, title, emoji, created_by, archived_at, created_at, drop_box_media(id, storage_path, media_type, status, uploaded_by, created_at)";
+
+function isMissingColumn(error: PgError): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /column .*thumbnail_url.* does not exist/i.test(error.message ?? "");
+}
 
 /** Every drop box the viewer can see (members-only), newest first, each with
  *  its items (RLS already hid anyone else's held media). Empty with no backend
@@ -104,12 +116,16 @@ export async function fetchDropBoxes(viewerId: string | null, isAdmin = false): 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   try {
-    const { data, error } = await sb.from("drop_boxes").select(SELECT).order("created_at", { ascending: false });
-    if (error) {
-      if (!isMissingTable(error)) console.warn("fetchDropBoxes: read error", error.message);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without thumbnail_url) can't share one inferred type
+    let res: any = await sb.from("drop_boxes").select(SELECT).order("created_at", { ascending: false });
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb.from("drop_boxes").select(SELECT_NO_THUMB).order("created_at", { ascending: false });
+    }
+    if (res.error) {
+      if (!isMissingTable(res.error)) console.warn("fetchDropBoxes: read error", res.error.message);
       return [];
     }
-    return ((data ?? []) as unknown as BoxRow[]).map((r) => assemble(r, viewerId, isAdmin));
+    return ((res.data ?? []) as unknown as BoxRow[]).map((r) => assemble(r, viewerId, isAdmin));
   } catch {
     return [];
   }
@@ -120,12 +136,16 @@ export async function fetchDropBox(id: string, viewerId: string | null, isAdmin 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return null;
   try {
-    const { data, error } = await sb.from("drop_boxes").select(SELECT).eq("id", id).maybeSingle();
-    if (error) {
-      if (!isMissingTable(error)) console.warn("fetchDropBox: read error", error.message);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without thumbnail_url) can't share one inferred type
+    let res: any = await sb.from("drop_boxes").select(SELECT).eq("id", id).maybeSingle();
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb.from("drop_boxes").select(SELECT_NO_THUMB).eq("id", id).maybeSingle();
+    }
+    if (res.error) {
+      if (!isMissingTable(res.error)) console.warn("fetchDropBox: read error", res.error.message);
       return null;
     }
-    return data ? assemble(data as unknown as BoxRow, viewerId, isAdmin) : null;
+    return res.data ? assemble(res.data as unknown as BoxRow, viewerId, isAdmin) : null;
   } catch {
     return null;
   }
@@ -163,10 +183,24 @@ export function deleteDropBox(id: string): Promise<Res> {
 }
 
 /** Attach one already-uploaded file (mini URL) to a box. */
-export async function addDropBoxMedia(boxId: string, url: string, type: MediaKind): Promise<IdRes> {
+export async function addDropBoxMedia(
+  boxId: string,
+  url: string,
+  type: MediaKind,
+  thumbnailUrl?: string | null,
+): Promise<IdRes> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { data, error } = await sb.rpc("add_drop_box_media", { p_box: boxId, p_url: url, p_type: type });
+  let { data, error } = await sb.rpc("add_drop_box_media", {
+    p_box: boxId,
+    p_url: url,
+    p_type: type,
+    p_thumbnail_url: thumbnailUrl ?? null,
+  });
+  // Pre-0173 fallback: the RPC doesn't have the 4th param yet.
+  if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
+    ({ data, error } = await sb.rpc("add_drop_box_media", { p_box: boxId, p_url: url, p_type: type }));
+  }
   return error ? { error: error.message } : { id: data as string };
 }
 

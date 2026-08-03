@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Media } from "@/lib/media";
+import { photoUrls, type Media } from "@/lib/media";
 import { Lightbox } from "@/components/Lightbox";
 
 // Shared photo/video renderer: a single item or a swipeable carousel, with photos
@@ -15,7 +15,11 @@ export function MediaGrid({ media }: { media: Media[] }) {
   return (
     <>
       <MediaCarousel media={media} onOpenPhoto={setLightbox} />
-      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} />}
+      {/* `photos` is this whole group, so the viewer swipes through the rest
+          of the item's photos instead of making you close and reopen. */}
+      {lightbox && (
+        <Lightbox key={lightbox} url={lightbox} photos={photoUrls(media)} onClose={() => setLightbox(null)} />
+      )}
     </>
   );
 }
@@ -64,8 +68,12 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
       className="press block aspect-square w-full cursor-zoom-in overflow-hidden rounded-xl bg-black/5"
       aria-label="View full photo"
     >
+      {/* The tile renders the small mini-generated preview when there is one —
+          the full-res file only loads once someone taps through to the
+          Lightbox (still m.url there). Falls back to the full image for rows
+          with no thumbnail yet (pre-migration, or generation failed). */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.url} alt="" className="h-full w-full object-cover" />
+      <img src={m.thumbnailUrl || m.url} alt="" className="h-full w-full object-cover" />
     </button>
   );
 }

@@ -2540,13 +2540,88 @@ the feed/room without being destroyed. **Live now (Tiers 0+1+2):**
   outage is re-queued and re-checked once the model is back
   ([`media-server/moderation-backfill.js`](media-server/moderation-backfill.js)).
   A flagged verdict is written to `media_moderation` (keyed by the media URL); a
-  trigger then holds the parent **post** (0043) or **chat message** (0128).
-  **The Main Feed moderates at post time; CHAT is optimistic** — a chat message
-  posts instantly and the mini checks its media ASYNChronously, so a flagged
-  verdict *retroactively* holds the message a few seconds later (the
-  media_moderation trigger, 0128). Chat text also rides the deterministic
-  blocklist floor. A dedicated `SensitiveContentAnalysis` nudity/CSAM signal is
-  still a possible future add (see the doc) — **no third-party CSAM API exists**.
+  trigger then holds the parent **post** (0043), **chat message/comment/work
+  item** (0128), or **drop-box item** (0171).
+  **Every category is now optimistic (perf pass, media-server/server.js's
+  `/upload`)** — this used to moderate posts/work/drop-box media INLINE
+  (blocking the upload response on the full `fm serve` round-trip) and only
+  chat was fire-and-forget; ALL categories now respond immediately and
+  moderate in the BACKGROUND, so a flagged verdict *retroactively* holds the
+  already-posted content a few seconds later (the same media_moderation
+  trigger, 0128/0171) instead of the uploader waiting on it. A model-
+  unavailable fail-open is re-queued for every category now too (
+  [`media-server/moderation-backfill.js`](media-server/moderation-backfill.js)) —
+  drop boxes used to skip the re-check on the theory that a slow inline check
+  was the whole point of allowing it through; that tradeoff is gone now that
+  nothing is inline. Chat text also rides the deterministic blocklist floor. A
+  dedicated `SensitiveContentAnalysis` nudity/CSAM signal is still a possible
+  future add (see the doc) — **no third-party CSAM API exists**.
+  - **Video transcoding is also off the request path** now
+    ([`media-server/transcode.js`](media-server/transcode.js)'s `maybeTranscode`
+    gained a `deleteOriginal` option) — the upload response carries the
+    ORIGINAL file's url immediately (photos and videos alike return near-
+    instantly), and `ffmpeg` re-encodes in the background. A same-extension
+    re-encode (already `uuid.mp4`) swaps in place atomically, so the url never
+    changes. A cross-extension transcode (`.mov` → `.mp4`) keeps the original
+    file — and its url fully playable — until every `*_media` row referencing
+    it has been repointed at the new url (`swapMediaStoragePath`, a best-effort
+    `PATCH` across all six `_media` tables keyed by `storage_path`), only then
+    deleting the original. So a viewer never sees a broken link; for a short
+    window after upload they just see the original (larger, possibly-HEVC)
+    file until the swap lands.
+  - **Every upload also gets a small preview thumbnail**
+    ([`media-server/thumbnail.js`](media-server/thumbnail.js) — sharp resize
+    for photos, one ffmpeg frame grab for videos, ~400px, generated inline
+    since it's fast) stored alongside the original under the same `/f` tree
+    and returned as `thumbnailUrl` in the `/upload` response. Every `*_media`
+    table has a nullable `thumbnail_url` column (migration
+    [`0173`](supabase/migrations/0173_media_thumbnail_url.sql)) — grids/albums
+    ([`MediaGrid`](components/MediaGrid.tsx), the Drop Box `Thumb()` in
+    [`DropBoxes.tsx`](components/DropBoxes.tsx), PostsView's own inline
+    carousel) render this instead of the full-res file, only loading the full
+    file once someone taps through to the Lightbox/carousel — this is what
+    makes scrolling a big album fast. `lib/media.ts`'s `uploadToMini()` now
+    returns `{ url, thumbnailUrl, type, path }` instead of a bare url string;
+    every caller threads `thumbnailUrl` through to its `*_media` insert
+    (`post_media`/`post_comment_media`/`work_item_media` direct inserts,
+    `add_work_item_media`/`add_drop_box_media` RPCs widened with a trailing
+    `p_thumbnail_url` param). **Not yet wired for chat bubbles**
+    (`committee_message_media`/`house_message_media` have the column, but
+    `CommitteeChat`/`HouseChat` don't pass a thumbnail through yet or render
+    one) — a chat bubble's media is small/inline already, so this was lower
+    priority than Feed/Drop Box; a clean follow-up.
+
+**The full-screen photo viewer swipes between a group's photos**
+([`Lightbox`](components/Lightbox.tsx)). Opening a photo used to be a
+dead-end — one photo, and you had to close and reopen to see the next one on
+the same post. It now takes an optional **`photos`** prop (every photo url in
+that group, in display order) and, when there's more than one, renders a
+scroll-snap **swipe carousel** starting on the tapped photo, with a `n / total`
+counter, edge arrows + ←/→ on desktop, and Escape/tap-the-backdrop to close.
+Same mechanism as the Drop Box's own `FolderCarousel`
+([`DropBoxes.tsx`](components/DropBoxes.tsx)), which predates it and is
+unchanged. With one photo (or no `photos` passed) it renders exactly as before,
+`pop-panel` animation and all — so the prop is purely additive.
+- Wired on **all four** surfaces that mount a Lightbox: the Feed's posts AND
+  its comment attachments ([`PostsView`](components/PostsView.tsx)), the shared
+  [`MediaGrid`](components/MediaGrid.tsx) (work items), and both chat rooms
+  ([`CommitteeChat`](components/CommitteeChat.tsx) /
+  [`HouseChat`](components/HouseChat.tsx) — a multi-photo message swipes too).
+  Each holds `{ url, photos }` in its lightbox state instead of a bare url
+  string, and still keys the Lightbox by `url` so tapping straight from one
+  group to another remounts cleanly.
+- The group comes from **`photoUrls(media)`** in [`lib/media.ts`](lib/media.ts)
+  — deliberately `type === "image"`, not `!== "video"`: chat media also carries
+  `file`/`gif`/`sticker` kinds, and only real photos belong in a photo
+  carousel. A video in a post is skipped entirely (it plays inline in the grid
+  and would render as a broken `<img>` in the viewer), so swiping moves photo →
+  photo past it.
+- Two details worth keeping: the carousel deliberately does **not** use
+  `pop-panel` (it animates a transform, which fights the scroller's initial
+  `scrollLeft` positioning — the scrim fade carries the open instead), and
+  tap-to-dismiss is guarded by a <10px pointer-movement check, since a
+  scroll-snap swipe can still fire a `click` and would otherwise close the
+  viewer mid-swipe.
 
 Data model: migrations [`0040`](supabase/migrations/0040_content_moderation.sql)
 (`status` columns + status-aware RLS, `moderation_blocklist`, `content_reports`,
@@ -2816,8 +2891,13 @@ former **Beta Tester** admin-assigned role/audience — `profiles.beta_tester`,
 
 **Mac-mini media server** ([`media-server/`](media-server/)) also now
 **transcodes uploaded videos** to web-friendly ≤1080p H.264 MP4 via `ffmpeg`
-([`transcode.js`](media-server/transcode.js)) — photos are left full quality —
-and hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
+([`transcode.js`](media-server/transcode.js)) — photos are left full quality,
+**and it now happens in the background** (see **Content safeguards** above for
+the full perf-pass writeup: async moderation everywhere, async transcode with a
+retroactive `storage_path` swap, and inline-generated thumbnails). `/upload`'s
+`req.setTimeout` dropped from 20 to 10 minutes accordingly — it only has to
+cover the multipart transfer now, not a multi-minute inline `ffmpeg` run — and
+hosts the optional [`alert-mailer.js`](media-server/alert-mailer.js) +
 [`push-sender.js`](media-server/push-sender.js) side jobs alongside uploads.
 The AI moderation path ([`moderation.js`](media-server/moderation.js)) uses
 `sharp` to downscale a **copy** of each image/sampled video frame to ≤1024px

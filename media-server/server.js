@@ -35,6 +35,7 @@ const { execFileSync } = require("child_process");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
+const { makeThumbnail } = require("./thumbnail");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
 
@@ -695,8 +696,10 @@ app.post("/admin/restart-media-server", requireOwner, async (req, res) => {
 const MOD_ENABLED = process.env.MOD_ENABLED !== "0" && process.env.MOD_ENABLED !== "false";
 
 // Record an AI moderation verdict for a flagged upload, keyed by its public URL
-// (the value the app stores as post_media.storage_path). Service-role write; the
-// 0043 trigger reads it on post_media insert to hold the parent post for review.
+// (the value the app stores as *_media.storage_path). Service-role write; the
+// hold triggers (0043 posts, 0128 chat/comments/work, 0171 drop boxes) read it
+// on the media row's insert (or retroactively, on UPDATE) to hold the parent
+// for admin review.
 async function recordMediaModeration(fileUrl, v) {
   if (!SUPABASE_URL || !SERVICE_KEY) return;
   try {
@@ -716,13 +719,92 @@ async function recordMediaModeration(fileUrl, v) {
   }
 }
 
+// Every table that stores a *_media row keyed by a mini URL in `storage_path`.
+// Used by the background-transcode swap below — when a video's on-disk
+// filename/extension changes (a .mov upload becomes .mp4), any row that
+// already stored the ORIGINAL url needs to be repointed at the new one.
+const MEDIA_URL_TABLES = [
+  "post_media",
+  "post_comment_media",
+  "work_item_media",
+  "drop_box_media",
+  "committee_message_media",
+  "house_message_media",
+];
+
+// Best-effort: repoint every *_media row's storage_path from the original
+// upload url to the transcoded file's url, across every table that might hold
+// it (a given url only ever lives in one, but we don't track which at upload
+// time). Runs AFTER the transcoded file is safely in place; the original file
+// is only deleted once this returns, so a row can never point at a deleted
+// file. Never throws — a missed swap just leaves the (still-valid, still
+// playable) original in place, same as any fail-open path here.
+async function swapMediaStoragePath(oldUrl, newUrl) {
+  if (!SUPABASE_URL || !SERVICE_KEY) return;
+  await Promise.all(
+    MEDIA_URL_TABLES.map(async (table) => {
+      try {
+        const resp = await fetch(
+          `${SUPABASE_URL}/rest/v1/${table}?storage_path=eq.${encodeURIComponent(oldUrl)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+              apikey: SERVICE_KEY,
+              authorization: `Bearer ${SERVICE_KEY}`,
+              prefer: "return=minimal",
+            },
+            body: JSON.stringify({ storage_path: newUrl }),
+          },
+        );
+        if (!resp.ok) console.error(`[transcode] swap ${table} HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      } catch (e) {
+        console.error(`[transcode] swap ${table} failed: ${e.message}`);
+      }
+    }),
+  );
+}
+
+// Transcode a just-uploaded video in the BACKGROUND, after the upload response
+// has already gone out carrying the ORIGINAL file's url. Mirrors the same
+// optimistic shape as chat's media moderation (0128): don't make the uploader
+// wait on work that can happen just as well a few seconds/minutes later.
+//   • Same-path swap (already uuid.mp4): maybeTranscode renames it into place
+//     atomically — the url never changes, so nothing else is needed.
+//   • Different-path swap (extension changes, e.g. .mov → .mp4): the original
+//     stays in place and fully playable until BOTH the transcode finishes AND
+//     every *_media row referencing the old url has been repointed at the new
+//     one — only then is the original deleted. So a viewer never sees a broken
+//     link; they just see the original (larger/possibly-HEVC) file for the
+//     short window until the swap lands.
+function transcodeInBackground(originalPath, mimetype, originalUrl) {
+  maybeTranscode(originalPath, mimetype, { deleteOriginal: false })
+    .then(async (r) => {
+      if (!r.transcoded) {
+        if (r.reason) console.log(`[transcode] (async) kept original (${r.reason})`);
+        return;
+      }
+      if (!r.pathChanged) {
+        console.log(`[transcode] (async) ${path.basename(originalPath)} re-encoded in place`);
+        return;
+      }
+      const rel = path.relative(MEDIA_DIR, r.path).split(path.sep).join("/");
+      const newUrl = `${PUBLIC_URL}/f/${rel}`;
+      console.log(`[transcode] (async) ${path.basename(originalPath)} → ${path.basename(r.path)}, repointing references`);
+      await swapMediaStoragePath(originalUrl, newUrl);
+      try { fs.unlinkSync(originalPath); } catch {}
+    })
+    .catch((e) => console.error(`[transcode] async error, original file kept as-is: ${e && e.message}`));
+}
+
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
 app.post("/upload", uploadLimiter, requireUser, (req, res) => {
-  // Transcoding a big video is synchronous, so give the request room to finish
-  // (the response carries the final URL). Photos return effectively instantly.
-  req.setTimeout(20 * 60 * 1000);
+  // The actual multipart transfer is the only thing this timeout needs to cover
+  // now — transcode and moderation both moved to the background (below), so
+  // this no longer has to wait out a multi-minute ffmpeg run.
+  req.setTimeout(10 * 60 * 1000);
   upload.single("file")(req, res, async (err) => {
     if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
     if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
@@ -741,91 +823,73 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     // What the client stores as media_type: 'image' | 'video' | 'file'.
     const mediaType = isMedia ? kind : "file";
 
-    // Videos → normalize to a web-friendly H.264 MP4 (≤1080p). Photos pass
-    // through untouched. Non-media chat files (PDFs/docs) are served as-is —
-    // never transcoded. Never fatal: on any hiccup we serve the original file.
-    let served = req.file.path;
-    if (isMedia) {
-      try {
-        const r = await maybeTranscode(req.file.path, req.file.mimetype);
-        served = r.path;
-        if (r.transcoded) console.log(`[transcode] ${req.file.filename} → ${path.basename(served)}`);
-        else if (r.reason) console.log(`[transcode] kept original (${r.reason})`);
-      } catch (e) {
-        console.error(`[transcode] error, keeping original: ${e && e.message}`);
-        served = req.file.path;
-      }
-    }
-
+    // The file we RESPOND with is always the just-saved original — videos are
+    // no longer transcoded inline (see transcodeInBackground below), so photos
+    // and videos alike return effectively instantly. The eventual, smaller
+    // ≤1080p H.264 file (when transcoding applies) lands a little later at
+    // either the same url (same-path re-encode) or, for an extension change, a
+    // repointed one — see transcodeInBackground's doc comment.
+    const served = req.file.path;
     const rel = path.relative(MEDIA_DIR, served).split(path.sep).join("/");
     const fileUrl = `${PUBLIC_URL}/f/${rel}`;
     let size = req.file.size;
     try { size = fs.statSync(served).size; } catch {}
     console.log(`[upload] saved ${rel} (${size} bytes)`);
 
-    // Tier-2 guard: AI moderation. A flagged image/video → record a verdict
-    // keyed by the public URL (== *_media.storage_path) so the hold triggers
-    // (0043 posts, 0128 chat) hold the parent for admin review. FAIL-OPEN: any
-    // error/unavailability just lets the upload through (member reports + the
-    // admin queue are the backstop).
-    //
-    //   • Main Feed (category=posts/work): moderate INLINE — the verdict is
-    //     recorded before we respond, so the post_media insert holds the post at
-    //     post time.
-    //   • CHAT (category=chat): OPTIMISTIC — respond IMMEDIATELY (assume good
-    //     intent, no send-time latency) and moderate in the BACKGROUND. A flagged
-    //     verdict is written to media_moderation afterward, and its trigger
-    //     (0128) RETROACTIVELY holds the already-posted message (RLS then hides
-    //     it from the room within a refetch).
-    let moderation = null;
-    if (MOD_ENABLED && isMedia) {
-      if (category === "chat") {
-        // Fire-and-forget — never blocks the upload response.
-        moderateMedia(served, kind)
-          .then((v) => {
-            if (v && v.flagged) {
-              console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
-              return recordMediaModeration(fileUrl, v);
-            }
-            if (v) {
-              console.log(`[moderate] (async) ${rel} → ok via ${v.model}`);
-            } else {
-              // Couldn't check (model unavailable) — queue for re-check so it
-              // gets moderated once the model is back (retroactive hold via 0128).
-              console.log(`[moderate] (async) ${rel} → not checked (fail-open) — queued for re-check`);
-              enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
-            }
-          })
-          .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
-      } else {
-        try {
-          const v = await moderateMedia(served, kind);
-          if (v) {
-            console.log(`[moderate] ${rel} → ${v.flagged ? `FLAGGED ${v.category} (${v.reason})` : "ok"} via ${v.model}`);
-            if (v.flagged) {
-              await recordMediaModeration(fileUrl, v);
-              moderation = { flagged: true, category: v.category };
-            } else {
-              moderation = { flagged: false };
-            }
-          } else if (category === "dropbox") {
-            // Drop boxes ALLOW BY DEFAULT when the check can't run: a shared
-            // family album shouldn't strand photos in "held for review" just
-            // because the model was unreachable. No re-check is queued, so a
-            // moderation failure means allowed-and-final (a definitive FLAG
-            // above still holds it; member Report + admin remove are the
-            // backstop). See CLAUDE.md "Drop boxes".
-            console.log(`[moderate] ${rel} → not checked (model unavailable) — ALLOWED (dropbox fail-open, no re-check)`);
-          } else {
-            console.log(`[moderate] ${rel} → not checked (model unavailable; fail-open) — queued for re-check`);
-            enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
-          }
-        } catch (e) {
-          console.error(`[moderate] error (fail-open): ${e.message}`);
+    if (isMedia) transcodeInBackground(served, req.file.mimetype, fileUrl);
+
+    // Small preview thumbnail — generated inline (a single fast decode, not the
+    // moderation/transcode cost) so the response can hand the client a ready-
+    // to-use small url immediately; grids/albums render this instead of the
+    // full-res file. Never fatal: null just means "no thumbnail yet", and every
+    // renderer falls back to the full-res url.
+    let thumbnailUrl = null;
+    if (isMedia) {
+      try {
+        const thumbPath = await makeThumbnail(served, kind);
+        if (thumbPath) {
+          const thumbRel = path.relative(MEDIA_DIR, thumbPath).split(path.sep).join("/");
+          thumbnailUrl = `${PUBLIC_URL}/f/${thumbRel}`;
         }
+      } catch (e) {
+        console.warn(`[thumb] error (non-fatal): ${e && e.message}`);
       }
     }
-    res.json({ url: fileUrl, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel, moderation });
+
+    // Tier-2 guard: AI moderation. A flagged image/video → record a verdict
+    // keyed by the public URL (== *_media.storage_path) so the hold triggers
+    // (0043 posts, 0128 chat/comments/work, 0171 drop boxes) hold the parent
+    // for admin review. FAIL-OPEN: any error/unavailability just lets the
+    // upload through (member reports + the admin queue are the backstop).
+    //
+    // EVERY category is OPTIMISTIC now (this used to be chat-only): respond
+    // IMMEDIATELY (assume good intent, no send-time latency) and moderate in
+    // the BACKGROUND. A flagged verdict is written to media_moderation
+    // afterward, and its trigger (0128) RETROACTIVELY holds the already-posted
+    // content (RLS then hides it from the feed/room/album within a refetch).
+    if (MOD_ENABLED && isMedia) {
+      // Fire-and-forget — never blocks the upload response, for any category.
+      moderateMedia(served, kind)
+        .then((v) => {
+          if (v && v.flagged) {
+            console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
+            return recordMediaModeration(fileUrl, v);
+          }
+          if (v) {
+            console.log(`[moderate] (async) ${rel} → ok via ${v.model}`);
+          } else {
+            // Couldn't check (model unavailable) — queue for re-check so it
+            // gets moderated once the model is back (retroactive hold via
+            // 0128). Every category re-checks now, including drop boxes: with
+            // moderation off the response's critical path, there's no longer a
+            // reason to let a fail-open at upload time go unrevisited forever.
+            console.log(`[moderate] (async) ${rel} → not checked (fail-open) — queued for re-check`);
+            enqueueRecheck({ url: fileUrl, relPath: rel, kind, category });
+          }
+        })
+        .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
+    }
+    res.json({ url: fileUrl, thumbnailUrl, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
   });
 });
 

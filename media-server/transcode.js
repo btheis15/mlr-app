@@ -109,7 +109,18 @@ const VIDEO_RE = /\.(mov|mp4|m4v|avi|mkv|webm|3gp|3g2|hevc|ts|mts|m2ts|wmv|flv)$
 // same folder and return that path; otherwise (photo, or transcode unavailable/
 // failed) return the original path untouched. Never throws — falls back to the
 // original so an upload always succeeds.
-async function maybeTranscode(savedPath, mimetype) {
+//
+// `deleteOriginal` (default true) controls whether the pre-transcode file is
+// removed once the new one is in place. When the output path is IDENTICAL to
+// the input (already-named uuid.mp4) the swap is always a same-path atomic
+// rename regardless of this flag — nothing else ever points at a stale name in
+// that case. It only matters when the output path DIFFERS (e.g. a .mov input
+// becomes .mp4): a caller who has already handed the ORIGINAL url out (server.js's
+// deferred/background transcode path, so the upload response doesn't wait on
+// ffmpeg) needs the original file to keep serving at its original url until it
+// has repointed any stored references at the new one — pass `deleteOriginal:
+// false` and remove the original yourself once that swap lands.
+async function maybeTranscode(savedPath, mimetype, { deleteOriginal = true } = {}) {
   const isVideo = String(mimetype || "").startsWith("video") || VIDEO_RE.test(savedPath);
   if (!ENABLED || !isVideo) return { path: savedPath, transcoded: false };
   if (!(await ffmpegAvailable())) return { path: savedPath, transcoded: false, reason: "ffmpeg not installed" };
@@ -126,12 +137,18 @@ async function maybeTranscode(savedPath, mimetype) {
 
     await transcodeVideo(savedPath, tmpOut);
 
-    if (savedPath !== tmpOut && savedPath !== finalOut) { try { fs.unlinkSync(savedPath); } catch {} }
-    if (tmpOut !== finalOut) {
-      try { fs.unlinkSync(savedPath); } catch {}
+    if (finalOut === savedPath) {
+      // Same-path swap: always safe to do immediately — the rename is atomic,
+      // so the url this file is served at never has a moment pointing at a
+      // partial write, and nothing else needs to change.
       fs.renameSync(tmpOut, finalOut);
+      return { path: finalOut, transcoded: true, pathChanged: false };
     }
-    return { path: finalOut, transcoded: true };
+    // Different-path swap (extension changed): the new file is ready at
+    // tmpOut === finalOut already (see the ternary above). Only remove the
+    // original here if the caller wants that done synchronously.
+    if (deleteOriginal) { try { fs.unlinkSync(savedPath); } catch {} }
+    return { path: finalOut, transcoded: true, pathChanged: true };
   } catch (e) {
     return { path: savedPath, transcoded: false, reason: (e && e.message) || "transcode failed" };
   }

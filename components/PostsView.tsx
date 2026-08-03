@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
+import { uploadToMini, compressImage, moderatePostText, photoUrls } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -23,6 +23,7 @@ interface Media {
   url: string;
   type: MediaType;
   path?: string; // raw post_media.storage_path — lets the editor remove this item (absent for legacy image_path)
+  thumbnailUrl?: string | null; // small preview — grids render this instead of the full-res url
 }
 interface Tag {
   id: string;
@@ -78,6 +79,7 @@ interface CommentRow {
 interface MediaRow {
   post_id: string;
   storage_path: string;
+  thumbnail_url?: string | null;
   media_type: string;
   position: number;
 }
@@ -97,6 +99,7 @@ interface CommentMentionRow {
 interface CommentMediaRow {
   comment_id: string;
   storage_path: string;
+  thumbnail_url?: string | null;
   media_type: string;
   position: number;
 }
@@ -107,6 +110,24 @@ const LS = { hidden: "posts-hidden" };
 // goes to the Mac-mini media server via lib/media's uploadToMini.)
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+
+// Insert a *_media row carrying the mini's generated thumbnail. Pre-0173 the
+// thumbnail_url column doesn't exist yet, and an unknown column fails the
+// WHOLE insert (42703) — which would take the photo down with it, not just the
+// thumbnail — so retry once without it. The usual pre-migration degrade: the
+// photo still attaches, it just renders full-res in grids until 0173 runs.
+// Returns the error (rather than throwing) so each call site keeps exactly the
+// error handling it had before.
+async function insertMediaRow(table: string, row: Record<string, unknown>) {
+  if (!supabase) return { error: null };
+  let { error } = await supabase.from(table).insert(row);
+  if (error && (error.code === "42703" || /thumbnail_url/i.test(error.message ?? ""))) {
+    const withoutThumb = { ...row };
+    delete withoutThumb.thumbnail_url;
+    ({ error } = await supabase.from(table).insert(withoutThumb));
+  }
+  return { error };
+}
 
 // How many posts the persisted cold-open snapshot keeps (see the write in
 // refetch): the visible top of the feed, not the history.
@@ -231,8 +252,11 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   }, [configured, uid]);
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
   // The Lightbox owns its open/close animation; keying it by url remounts it
-  // cleanly when you tap from one photo straight to another.
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  // cleanly when you tap from one photo straight to another. `photos` carries
+  // every photo in the same post/comment so the viewer can SWIPE between them
+  // without closing and reopening (videos are excluded — they play inline).
+  const [lightbox, setLightbox] = useState<{ url: string; photos: string[] } | null>(null);
+  const openPhoto = (url: string, photos: string[]) => setLightbox({ url, photos });
   // Deep-link from the Notifications tab (/posts?post=<id>): once the real
   // feed data has loaded (feedLoaded — NOT the unrelated `loaded` flag above,
   // which just tracks a localStorage read), scroll that post into view and
@@ -259,7 +283,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     const sb = supabase;
     if (!sb) return;
     const others = Promise.all([
-      sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true }),
+      sb.from("post_media").select("post_id, storage_path, thumbnail_url, media_type, position").order("position", { ascending: true }),
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
@@ -267,7 +291,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       // Comment attachments (0162). Pre-migration this errors (42P01) and
       // supabase-js hands back `{ data: null }` rather than throwing, so the
       // feed simply renders comments with no media — same degrade as elsewhere.
-      sb.from("post_comment_media").select("comment_id, storage_path, media_type, position").order("position", { ascending: true }),
+      sb.from("post_comment_media").select("comment_id, storage_path, thumbnail_url, media_type, position").order("position", { ascending: true }),
       sb.from("profiles").select("id, display_name, full_name, avatar_url"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
@@ -300,6 +324,20 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     }
     setHasOccurredAt(occ);
     const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, commentMediaRes, profilesRes] = await others;
+    // Pre-0173 fallback: thumbnail_url doesn't exist on this project yet — retry
+    // without it rather than losing post/comment media entirely (an unknown
+    // column makes the whole select error, so `mediaRes.data` would otherwise
+    // come back null and the feed would render with no photos at all).
+    let mediaRows = (mediaRes.data ?? []) as unknown as MediaRow[];
+    if (mediaRes.error) {
+      const retry = await sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true });
+      mediaRows = (retry.data ?? []) as unknown as MediaRow[];
+    }
+    let commentMediaRows = (commentMediaRes.data ?? []) as unknown as CommentMediaRow[];
+    if (commentMediaRes.error) {
+      const retry = await sb.from("post_comment_media").select("comment_id, storage_path, media_type, position").order("position", { ascending: true });
+      commentMediaRows = (retry.data ?? []) as unknown as CommentMediaRow[];
+    }
 
     const names = new Map<string, string>();
     const avatars = new Map<string, string | null>();
@@ -318,13 +356,14 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     const avatarOf = (id: string) => avatars.get(id) ?? null;
 
     const mediaByPost: Record<string, Media[]> = {};
-    for (const m of (mediaRes.data ?? []) as unknown as MediaRow[]) {
+    for (const m of mediaRows) {
       (mediaByPost[m.post_id] ||= []).push({
         url: m.storage_path.startsWith("http")
           ? m.storage_path
           : sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
         type: m.media_type === "video" ? "video" : "image",
         path: m.storage_path,
+        thumbnailUrl: m.thumbnail_url ?? null,
       });
     }
 
@@ -360,13 +399,14 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     }
 
     const mediaByComment: Record<string, Media[]> = {};
-    for (const m of (commentMediaRes.data ?? []) as unknown as CommentMediaRow[]) {
+    for (const m of commentMediaRows) {
       (mediaByComment[m.comment_id] ||= []).push({
         url: m.storage_path.startsWith("http")
           ? m.storage_path
           : sb.storage.from(BUCKET).getPublicUrl(m.storage_path).data.publicUrl,
         type: m.media_type === "video" ? "video" : "image",
         path: m.storage_path,
+        thumbnailUrl: m.thumbnail_url ?? null,
       });
     }
 
@@ -524,19 +564,19 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
         let doneBytes = 0;
         setProgress(0);
-        const uploaded: { path: string; type: MediaType }[] = [];
+        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const path = await uploadToMini(f, token, {
+          const res = await uploadToMini(f, token, {
             onProgress: (loaded, total) => {
               const frac = total ? loaded / total : 0;
               setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
             },
           });
           doneBytes += raw.size;
-          uploaded.push({ path, type: isVideo ? "video" : "image" });
+          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl });
         }
         setProgress(100);
         // Backdate when the author chose a different moment (and the DB supports
@@ -552,7 +592,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const { data: rpcPostId, error: rpcErr } = await supabase.rpc("create_post", {
           p_caption: caption || null,
           p_occurred_at: occurredAt,
-          p_media: uploaded.map((u) => ({ path: u.path, type: u.type })),
+          p_media: uploaded.map((u) => ({ path: u.path, type: u.type, thumbnail: u.thumbnailUrl })),
           p_tags: tagIds,
           p_held: heldForText,
         });
@@ -572,9 +612,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           if (!postId) throw new Error("Could not create the post.");
           newPostId = postId;
           for (let i = 0; i < uploaded.length; i++) {
-            const { error: medErr } = await supabase
-              .from("post_media")
-              .insert({ post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i });
+            const { error: medErr } = await insertMediaRow("post_media", {
+              post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i, thumbnail_url: uploaded[i].thumbnailUrl,
+            });
             if (medErr) throw medErr;
           }
           if (tagIds.length) {
@@ -721,10 +761,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         for (const raw of commentFiles) {
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const url = await uploadToMini(f, token);
-          await supabase
-            .from("post_comment_media")
-            .insert({ comment_id: commentId, storage_path: url, media_type: isVideo ? "video" : "image", position: pos++ });
+          const res = await uploadToMini(f, token);
+          await insertMediaRow("post_comment_media", {
+            comment_id: commentId, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
+          });
         }
       }
     }
@@ -1075,7 +1115,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
+                <MediaCarousel media={p.media} onOpenPhoto={openPhoto} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
@@ -1143,7 +1183,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                           </button>
                           {c.text && <p className="whitespace-pre-wrap break-words text-xs text-foreground/80"><MentionText text={c.text} mentions={c.mentions} members={members} /></p>}
                         </div>
-                        {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={setLightbox} />}
+                        {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={openPhoto} />}
                         <div className="mt-1 flex items-center gap-3 px-3 text-[11px] text-faint">
                           <span>{timeAgo(c.ts)}</span>
                           {isAdmin || (!!uid && c.authorId === uid) ? (
@@ -1172,7 +1212,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         ))}
       </div>
 
-      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && (
+        <Lightbox key={lightbox.url} url={lightbox.url} photos={lightbox.photos} onClose={() => setLightbox(null)} />
+      )}
 
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
@@ -1246,8 +1288,10 @@ function EditPostPanel({
         for (const raw of files) {
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
-          const url = await uploadToMini(f, token);
-          await supabase.from("post_media").insert({ post_id: post.id, storage_path: url, media_type: isVideo ? "video" : "image", position: pos++ });
+          const res = await uploadToMini(f, token);
+          await insertMediaRow("post_media", {
+            post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
+          });
         }
       }
       const orig = post.tags.map((t) => t.id);
@@ -1354,15 +1398,17 @@ function EditPostPanel({
   );
 }
 
-function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
+function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string, photos: string[]) => void }) {
   const [active, setActive] = useState(0);
-  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={onOpenPhoto} /></div>;
+  const photos = photoUrls(media);
+  const open = (u: string) => onOpenPhoto?.(u, photos);
+  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={open} /></div>;
   return (
     <div className="relative mt-3">
       <div onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} className="flex snap-x snap-mandatory overflow-x-auto">
         {media.map((m, i) => (
           <div key={i} className="w-full shrink-0 snap-center">
-            <MediaItem m={m} onOpen={onOpenPhoto} />
+            <MediaItem m={m} onOpen={open} />
           </div>
         ))}
       </div>
@@ -1394,8 +1440,12 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
       className="press block aspect-square w-full cursor-zoom-in bg-black/5"
       aria-label="View full photo"
     >
+      {/* Renders the small mini-generated preview when there is one — the
+          full-res photo only loads once someone taps through to the
+          Lightbox (still m.url there). Falls back to the full image for
+          rows with no thumbnail yet. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.url} alt="" className="h-full w-full object-cover" />
+      <img src={m.thumbnailUrl || m.url} alt="" className="h-full w-full object-cover" />
     </button>
   );
 }
@@ -1405,12 +1455,13 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
 // item in a list, so its photos read as thumbnails: a capped-width row that
 // wraps, reusing MediaItem so photos still open in the Lightbox and videos still
 // play inline exactly as they do on a post.
-function CommentMedia({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
+function CommentMedia({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string, photos: string[]) => void }) {
+  const photos = photoUrls(media);
   return (
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {media.map((m, i) => (
         <div key={i} className="w-24 overflow-hidden rounded-xl ring-1 ring-border">
-          <MediaItem m={m} onOpen={onOpenPhoto} />
+          <MediaItem m={m} onOpen={(u) => onOpenPhoto?.(u, photos)} />
         </div>
       ))}
     </div>
