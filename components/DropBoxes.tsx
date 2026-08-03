@@ -264,6 +264,87 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     setSelected(new Set());
   };
 
+  // Upload one already-queued file. Shared by the initial pick AND by retry —
+  // the Pending keeps its raw File in memory, so a failed tile can be re-sent in
+  // place with no re-picking. Returns true on success; never calls reload itself
+  // (callers batch that). Mirrors the client error-wording the tiles show.
+  const uploadOne = async (p: Pending, token: string, boxId: string): Promise<boolean> => {
+    try {
+      const isVideo = p.type === "video";
+      const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(p.file);
+      const f = isVideo ? p.file : await compressImage(p.file);
+      const uploaded = await uploadToMini(f, token, {
+        category: "dropbox",
+        room: boxId,
+        capturedAt: taken.iso,
+        capturedAtSource: taken.source,
+        onProgress: (loaded, total) => patchPending(p.key, { loaded, total: total || p.total }),
+      });
+      const { error } = await addDropBoxMedia(
+        boxId,
+        uploaded.url,
+        isVideo ? "video" : "image",
+        uploaded.thumbnailUrl,
+        uploaded.capturedAt,
+        uploaded.capturedAtSource,
+      );
+      if (error) throw new Error(error);
+      patchPending(p.key, { status: "done", uploadedUrl: uploaded.url, loaded: p.total });
+      // Safety net: if realtime/reload never repoints to this exact url (a bg
+      // transcode can swap a .mov's url), don't strand the tile — drop it once
+      // the real row has surely landed.
+      window.setTimeout(() => dropPending(p.key), 12000);
+      return true;
+    } catch (err) {
+      const m = err instanceof Error ? err.message : "";
+      const friendly = /too many|429/i.test(m)
+        ? "hit the upload limit — try again shortly"
+        : /max|size|large|exceed|413|payload/i.test(m)
+          ? "that file was too big"
+          : "upload failed";
+      patchPending(p.key, { status: "error", errorMsg: friendly });
+      return false;
+    }
+  };
+
+  const freshToken = async (): Promise<string | null> => {
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token ?? null;
+    if (!token) {
+      setMsg("Finishing sign-in — try again in a second.");
+      window.setTimeout(() => setMsg(null), 4000);
+    }
+    return token;
+  };
+
+  /** Re-send a single failed tile (its File is still in memory). */
+  const retry = async (p: Pending) => {
+    if (!box) return;
+    if (!user) return promptSignIn();
+    const token = await freshToken();
+    if (!token) return;
+    patchPending(p.key, { status: "uploading", loaded: 0, errorMsg: undefined });
+    if (await uploadOne(p, token, box.id)) await reload();
+  };
+
+  /** Re-send every failed tile at once — the "these all hit the limit" case. */
+  const retryAllFailed = async () => {
+    if (!box) return;
+    if (!user) return promptSignIn();
+    const stuck = pending.filter((p) => p.status === "error");
+    if (!stuck.length) return;
+    const token = await freshToken();
+    if (!token) return;
+    const boxId = box.id;
+    stuck.forEach((p) => patchPending(p.key, { status: "uploading", loaded: 0, errorMsg: undefined }));
+    let idx = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(3, stuck.length) }, async () => {
+        while (idx < stuck.length) await uploadOne(stuck[idx++], token, boxId);
+      }),
+    );
+    await reload();
+  };
+
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
     // Copy the FileList into a stable array BEFORE resetting the input. On iOS
@@ -302,58 +383,17 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
 
     let added = 0;
     let failed = 0;
-    const upload = async (p: Pending) => {
-      try {
-        const isVideo = p.type === "video";
-        // Read "date taken" off the ORIGINAL file first — compressImage
-        // re-encodes photos via <canvas>, which strips every byte of metadata,
-        // so this must precede it. Videos aren't recompressed client-side; the
-        // mini reads their real capture date from the container itself
-        // (media-server/captured-at.js).
-        const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(p.file);
-        // Photos → web JPEG (smaller/faster, fixes HDR/HEIC); videos as-is.
-        const f = isVideo ? p.file : await compressImage(p.file);
-        const uploaded = await uploadToMini(f, token, {
-          category: "dropbox",
-          room: boxId,
-          capturedAt: taken.iso,
-          capturedAtSource: taken.source,
-          onProgress: (loaded, total) => patchPending(p.key, { loaded, total: total || p.total }),
-        });
-        const { error } = await addDropBoxMedia(
-          boxId,
-          uploaded.url,
-          isVideo ? "video" : "image",
-          uploaded.thumbnailUrl,
-          uploaded.capturedAt,
-          uploaded.capturedAtSource,
-        );
-        if (error) throw new Error(error);
-        added++;
-        patchPending(p.key, { status: "done", uploadedUrl: uploaded.url, loaded: p.total });
-        // Safety net: if realtime/reload never repoints to this exact url (e.g.
-        // a background transcode swaps a .mov's url for its .mp4), don't strand
-        // the tile forever — drop it once the real row has surely landed.
-        window.setTimeout(() => dropPending(p.key), 12000);
-      } catch (err) {
-        failed++;
-        const m = err instanceof Error ? err.message : "";
-        const friendly = /too many|429/i.test(m)
-          ? "hit the upload limit — try again shortly"
-          : /max|size|large|exceed|413|payload/i.test(m)
-            ? "that file was too big"
-            : "upload failed";
-        patchPending(p.key, { status: "error", errorMsg: friendly });
-      }
-    };
-
     // Upload a few at a time so a big dump overlaps on the network instead of
     // crawling one-by-one — without stampeding the mini's ffmpeg/moderation.
+    // uploadOne is component-scoped so a failed tile can be retried in place.
     const LIMIT = 3;
     let idx = 0;
     await Promise.all(
       Array.from({ length: Math.min(LIMIT, batch.length) }, async () => {
-        while (idx < batch.length) await upload(batch[idx++]);
+        while (idx < batch.length) {
+          if (await uploadOne(batch[idx++], token, boxId)) added++;
+          else failed++;
+        }
       }),
     );
 
@@ -465,6 +505,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   const itemUrls = new Set(box.items.map((i) => i.url));
   const visiblePending = pending.filter((p) => !(p.uploadedUrl && itemUrls.has(p.uploadedUrl)));
   const uploadingCount = pending.filter((p) => p.status === "uploading").length;
+  const failedCount = pending.filter((p) => p.status === "error").length;
   const aggLoaded = pending.reduce((s, p) => (p.status === "uploading" ? s + p.loaded : s), 0);
   const aggTotal = pending.reduce((s, p) => (p.status === "uploading" ? s + p.total : s), 0);
   const aggPct = aggTotal ? Math.min(99, Math.round((aggLoaded / aggTotal) * 100)) : 0;
@@ -584,6 +625,15 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
       )}
       {msg && <p className="text-center text-sm text-muted">{msg}</p>}
 
+      {failedCount > 0 && (
+        <button
+          onClick={retryAllFailed}
+          className="press flex w-full items-center justify-center gap-2 rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent ring-1 ring-accent/20"
+        >
+          ↻ Retry {failedCount} that didn&rsquo;t upload
+        </button>
+      )}
+
       {box.count === 0 && visiblePending.length === 0 ? (
         <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted ring-1 ring-border">
           Nothing here yet.
@@ -591,7 +641,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
       ) : (
         <div className="grid grid-cols-3 gap-1.5">
           {visiblePending.map((p) => (
-            <PendingTile key={p.key} p={p} onDismiss={() => dropPending(p.key)} />
+            <PendingTile key={p.key} p={p} onDismiss={() => dropPending(p.key)} onRetry={() => retry(p)} />
           ))}
           {box.items.map((item, idx) => {
             const isSel = selected.has(item.id);
@@ -687,7 +737,7 @@ function Thumb({ item }: { item: DropBoxItem }) {
 // (an object URL — instant, no network) under a scrim + progress ring, so a
 // dropped photo/video shows the moment it's picked and animates to done. On
 // failure it flips to a tappable "couldn't upload" state the user can dismiss.
-function PendingTile({ p, onDismiss }: { p: Pending; onDismiss: () => void }) {
+function PendingTile({ p, onDismiss, onRetry }: { p: Pending; onDismiss: () => void; onRetry: () => void }) {
   const pct = p.total ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : 0;
   const isError = p.status === "error";
   const isBusy = p.status === "uploading" && pct < 100;
@@ -700,13 +750,20 @@ function PendingTile({ p, onDismiss }: { p: Pending; onDismiss: () => void }) {
         <img src={p.previewUrl} alt="" className="h-full w-full object-cover" />
       )}
       {isError ? (
-        <button
-          onClick={onDismiss}
-          className="press absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-black/60 text-white"
-        >
-          <span className="text-lg leading-none">⚠</span>
-          <span className="px-1 text-center text-[9px] font-semibold leading-tight">{p.errorMsg} · tap to remove</span>
-        </button>
+        // Tap the tile to RETRY (its file is still in memory), or the ✕ to remove.
+        <div className="absolute inset-0 bg-black/60 text-white">
+          <button onClick={onRetry} className="press flex h-full w-full flex-col items-center justify-center gap-0.5" aria-label="Retry upload">
+            <span className="text-lg leading-none">↻</span>
+            <span className="px-1 text-center text-[9px] font-semibold leading-tight">{p.errorMsg} · tap to retry</span>
+          </button>
+          <button
+            onClick={onDismiss}
+            aria-label="Remove"
+            className="press absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs font-bold text-white"
+          >
+            ✕
+          </button>
+        </div>
       ) : (
         <>
           <div className="pointer-events-none absolute inset-0 bg-black/35" />
