@@ -1264,9 +1264,12 @@ function EditPostPanel({
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // "Also add these photos to an album" — same idea as the composer's own
-  // toggle (see `alsoAlbum` above): reference the newly-added files into a
-  // shared album too, no re-upload. Only offered once new files are picked
-  // and at least one album exists.
+  // toggle (see `alsoAlbum` above): reference media into a shared album too,
+  // no re-upload. Covers BOTH newly-picked files here in the editor AND the
+  // post's already-existing photos/videos (kept, un-removed) — so an admin
+  // editing an old post can retroactively add its photos to an album, not
+  // just ones attached during this edit. Only offered once there's at least
+  // one photo (new or existing) and at least one album exists.
   const [albumOptions, setAlbumOptions] = useState<DropBox[]>([]);
   const [alsoAlbum, setAlsoAlbum] = useState(false);
   const [albumId, setAlbumId] = useState<string | null>(null);
@@ -1316,6 +1319,15 @@ function EditPostPanel({
           if (alsoAlbum && albumId) {
             try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl); } catch { /* keep going */ }
           }
+        }
+      }
+      // Also reference the post's already-existing (kept, un-removed) photos/
+      // videos into the album — same no-re-upload idiom, just pointing the
+      // album row at each one's already-stored url/thumbnail. This is what
+      // lets an admin retroactively add an old post's photos to an album.
+      if (alsoAlbum && albumId && keptMedia.length) {
+        for (const m of keptMedia) {
+          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null); } catch { /* keep going */ }
         }
       }
       const orig = post.tags.map((t) => t.id);
@@ -1392,10 +1404,12 @@ function EditPostPanel({
         <button type="button" onClick={() => setTagOpen((o) => !o)} className="press rounded-full bg-card px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-border">🏷️ {tagIds.length ? `Tags (${tagIds.length})` : "Tag people"}</button>
       </div>
 
-      {/* Also add the newly-added photos/videos to a shared album — mirrors
-          the composer's own toggle. Only offered once new files are picked
-          and at least one album exists. */}
-      {previews.length > 0 && albumOptions.length > 0 && (
+      {/* Also add this post's photos/videos to a shared album — mirrors the
+          composer's own toggle, but covers both newly-picked files AND the
+          post's already-existing (kept) media, so an old post's photos can be
+          added to an album retroactively too. Only offered once there's at
+          least one photo (new or existing) and at least one album exists. */}
+      {(keptMedia.length > 0 || previews.length > 0) && albumOptions.length > 0 && (
         <div className="space-y-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
           <label className="flex items-start gap-2">
             <input
@@ -1405,7 +1419,7 @@ function EditPostPanel({
               className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
             />
             <span className="text-foreground/70">
-              <span className="font-semibold text-foreground">📸 Also add to an album</span> — save these new photos to a shared album too, so you don&rsquo;t have to add them twice.
+              <span className="font-semibold text-foreground">📸 Also add to an album</span> — save {keptMedia.length > 0 ? "this post's" : "these new"} photos to a shared album too, so you don&rsquo;t have to add them twice.
             </span>
           </label>
           {alsoAlbum && (
