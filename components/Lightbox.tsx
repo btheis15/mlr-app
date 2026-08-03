@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSheetDismiss } from "@/lib/hooks";
+import { ModalPortal } from "@/components/ModalPortal";
 
 /**
  * Full-screen photo viewer — tap a photo to see the whole, uncropped image.
@@ -39,6 +40,7 @@ export function Lightbox({
 
   if (!list) {
     return (
+      <ModalPortal>
       <div
         className={`fixed inset-0 ${z} flex items-center justify-center bg-black/90 p-4 ${closing ? "scrim-out pointer-events-none" : "scrim-in"}`}
         onClick={close}
@@ -60,10 +62,15 @@ export function Lightbox({
           onClick={(e) => e.stopPropagation()}
         />
       </div>
+      </ModalPortal>
     );
   }
 
-  return <PhotoCarousel photos={list} startIndex={startIndex} closing={closing} close={close} z={z} />;
+  return (
+    <ModalPortal>
+      <PhotoCarousel photos={list} startIndex={startIndex} closing={closing} close={close} z={z} />
+    </ModalPortal>
+  );
 }
 
 // Swipe between every photo in the group — native scroll-snap (the same

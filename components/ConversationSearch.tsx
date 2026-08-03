@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FIELD } from "@/components/Sheet";
+import { ModalPortal } from "@/components/ModalPortal";
 import { timeAgo } from "@/lib/format";
 import { searchConversations, type SearchResult } from "@/lib/search";
 
@@ -115,6 +116,7 @@ export function ConversationSearch({ channels, houseChannel, onOpenResult, onClo
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[60] flex flex-col bg-background" role="dialog" aria-modal="true" aria-label="Search conversations">
       {/* Search bar */}
       <div className="flex items-center gap-2 border-b border-border px-3 pb-3" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
@@ -179,5 +181,6 @@ export function ConversationSearch({ channels, houseChannel, onOpenResult, onClo
         )}
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ModalPortal } from "@/components/ModalPortal";
 
 // Structured address entry with a "check on map" step. The member picks a country
 // (defaults to United States), fills the country-appropriate fields, then geocodes
@@ -125,6 +126,7 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
   const mx = p.country === "MX";
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center" onClick={onClose}>
       <div
         className="relative max-h-[88dvh] w-full max-w-sm space-y-3 overflow-y-auto rounded-3xl bg-background p-5 ring-1 ring-border"
@@ -205,5 +207,6 @@ function AddressModal({ initial, onClose, onClear, onSave }: { initial: string; 
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
