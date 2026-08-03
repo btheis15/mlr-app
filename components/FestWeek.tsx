@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { formatDateLong, formatTime, formatEventTime } from "@/lib/format";
-import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { eventsForDay, dinnerForDay, dayTimeline } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
 import { Protected, PrivateName } from "@/components/Guard";
 import { CallTextButtons } from "@/components/CallTextButtons";
@@ -147,28 +147,33 @@ export function FestWeek({
                 <p className="text-sm font-semibold">{formatDateLong(day)}</p>
               </div>
               <ul>
-                {dayEvents.map((e) => (
-                  <EventRow
-                    key={e.id}
-                    event={e}
-                    uid={uid}
-                    canEditAll={canEditAll}
-                    draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
-                    days={festDayOptions}
-                    members={members}
-                    onSaved={onSaved}
-                  />
-                ))}
-                {dinner && (
-                  <DinnerRow
-                    dinner={dinner}
-                    uid={uid}
-                    canEditAll={canEditAll}
-                    draft={dinnerDrafts.find((d) => d.id === dinner.id) ?? null}
-                    days={festDayOptions}
-                    members={members}
-                    onSaved={onSaved}
-                  />
+                {/* Events + the dinner in one time-ordered timeline, so the
+                    dinner sits where it falls (e.g. before a later event), not
+                    pinned to the bottom of the day. */}
+                {dayTimeline(dayEvents, dinner).map((it) =>
+                  it.kind === "event" ? (
+                    <EventRow
+                      key={it.event.id}
+                      event={it.event}
+                      uid={uid}
+                      canEditAll={canEditAll}
+                      draft={scheduleDrafts.find((d) => d.id === it.event.id) ?? null}
+                      days={festDayOptions}
+                      members={members}
+                      onSaved={onSaved}
+                    />
+                  ) : (
+                    <DinnerRow
+                      key={`dinner-${it.dinner.id}`}
+                      dinner={it.dinner}
+                      uid={uid}
+                      canEditAll={canEditAll}
+                      draft={dinnerDrafts.find((d) => d.id === it.dinner.id) ?? null}
+                      days={festDayOptions}
+                      members={members}
+                      onSaved={onSaved}
+                    />
+                  ),
                 )}
                 {dayEvents.length === 0 && !dinner && (
                   <li className="px-4 py-3 text-xs text-foreground/45">Nothing scheduled yet.</li>

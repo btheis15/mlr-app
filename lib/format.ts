@@ -70,6 +70,15 @@ function parseTimeParts(raw: string): { h: number; m: number } | null {
   return null;
 }
 
+/** Minutes since midnight for a "HH:MM" (24h) or "H:MM AM/PM" time — used to
+ *  SORT mixed schedule items (events + dinners) into one timeline. An unset or
+ *  unparseable time (a "TBD" item) returns +Infinity so it sorts to the end. */
+export function timeToMinutes(input?: string): number {
+  if (!input || !input.trim()) return Number.POSITIVE_INFINITY;
+  const parts = parseTimeParts(input);
+  return parts ? parts.h * 60 + parts.m : Number.POSITIVE_INFINITY;
+}
+
 /** "18:00" or "6:00 PM" → "6:00 PM". Never returns "Invalid Date" — anything
  *  it can't confidently parse is shown back as-typed instead. */
 export function formatTime(input?: string): string {
