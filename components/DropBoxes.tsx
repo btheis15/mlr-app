@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -744,14 +744,27 @@ function FolderCarousel({
   onClose: () => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const didInit = useRef(false);
   const [active, setActive] = useState(startIndex);
   const [busy, setBusy] = useState(false);
 
-  // Jump to the tapped item on open (no smooth-scroll — it should already be there).
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (el) el.scrollLeft = startIndex * el.clientWidth;
-  }, [startIndex]);
+  // Jump to the tapped item on open — via a CALLBACK REF, not a mount effect,
+  // so it fires exactly when the scroller attaches to the DOM. ModalPortal
+  // mounts its children one tick late (its `mounted` gate), so a plain
+  // useEffect([startIndex]) ran while scrollerRef was still null and never
+  // re-ran — leaving the viewer stuck at scrollLeft 0 (slide 0, which is
+  // windowed-out → black) while `active` said 44. That also broke next/prev:
+  // step() read scrollLeft 0 → jumped to slide 1 instead of stepping from 44.
+  const attachScroller = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollerRef.current = el;
+      if (el && !didInit.current) {
+        didInit.current = true;
+        el.scrollLeft = startIndex * el.clientWidth;
+      }
+    },
+    [startIndex],
+  );
 
   // Escape closes; ←/→ step (desktop niceties, harmless on mobile).
   useEffect(() => {
@@ -815,7 +828,7 @@ function FolderCarousel({
 
       {/* Swipeable slides */}
       <div
-        ref={scrollerRef}
+        ref={attachScroller}
         onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
         className="flex flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-contain"
       >
