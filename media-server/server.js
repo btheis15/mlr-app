@@ -852,17 +852,27 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     let capturedAtSource = null;
     if (isMedia) {
       const clientCapturedAt = typeof req.body?.capturedAt === "string" ? req.body.capturedAt.trim() : "";
+      const claimed = typeof req.body?.capturedAtSource === "string" ? req.body.capturedAtSource.trim() : "";
       if (clientCapturedAt) {
         const d = new Date(clientCapturedAt);
-        if (!Number.isNaN(d.getTime())) { capturedAt = d.toISOString(); capturedAtSource = "exif"; }
+        if (!Number.isNaN(d.getTime())) {
+          capturedAt = d.toISOString();
+          // Trust only the two the client can legitimately produce; anything
+          // else (or nothing) is treated as the weaker file-mtime guess.
+          capturedAtSource = claimed === "exif" ? "exif" : "file";
+        }
       }
-      // No client-read date? The stored bytes may still carry it — compressImage
-      // leaves a photo untouched whenever re-encoding wouldn't shrink it, and a
-      // video is never recompressed client-side at all.
-      if (!capturedAt) {
+      // Read the stored bytes when the client had nothing — or had only the
+      // weak file-mtime guess, since real metadata always wins. This is what
+      // catches a HEIC (sharp can open it; the client's JPEG parser can't) and
+      // any photo compressImage decided not to re-encode, plus every video.
+      if (!capturedAt || capturedAtSource === "file") {
         try {
-          capturedAt = await extractCapturedAt(served, kind);
-          if (capturedAt) capturedAtSource = kind === "video" ? "video" : "exif";
+          const fromFile = await extractCapturedAt(served, kind);
+          if (fromFile) {
+            capturedAt = fromFile;
+            capturedAtSource = kind === "video" ? "video" : "exif";
+          }
         } catch (e) {
           console.warn(`[captured-at] error (non-fatal): ${e && e.message}`);
         }

@@ -48,7 +48,7 @@ async function sweepOnce({ admin, publicUrl, mediaDir }) {
   const { data, error } = await admin
     .from("drop_box_media")
     .select("id, storage_path, media_type, captured_at, captured_at_source")
-    .or("captured_at.is.null,captured_at_source.eq.post")
+    .or("captured_at.is.null,captured_at_source.in.(post,file)")
     .limit(PER_SWEEP);
 
   if (error) {
@@ -74,7 +74,11 @@ async function sweepOnce({ admin, publicUrl, mediaDir }) {
       console.warn(`[captured-at] ${path.basename(abs)}: ${e && e.message}`);
     }
     if (!iso) continue; // genuinely no metadata left — leave it to fall back
-    if (row.captured_at && row.captured_at_source !== "post") continue;
+    // Only ever move UP: fill an empty date, or replace one of the weaker
+    // guesses ('post' proxy, 'file' mtime) with the real thing. Never overwrite
+    // metadata already read off the file itself.
+    const isProxy = row.captured_at_source === "post" || row.captured_at_source === "file";
+    if (row.captured_at && !isProxy) continue;
 
     const { error: upErr } = await admin
       .from("drop_box_media")

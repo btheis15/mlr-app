@@ -1499,11 +1499,42 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
        composer even lets you backdate), and for the live album it spread 41
        photos back across **6 distinct days of the real fest week** instead of
        one upload second.
-    The sweep only ever **upgrades** `'post'` → real `'exif'`/`'video'`, never
-    the reverse. **Takeaway: a metadata read that only runs at upload time
-    silently covers none of the content that's already there** — and with a
-    null-tolerant sort ("fall back to upload time") the failure is invisible,
-    since it looks exactly like "these photos have no metadata."
+    The sweep only ever **upgrades** toward real metadata, never the reverse.
+    **Takeaway: a metadata read that only runs at upload time silently covers
+    none of the content that's already there** — and with a null-tolerant sort
+    ("fall back to upload time") the failure is invisible, since it looks
+    exactly like "these photos have no metadata."
+- **Maximum coverage on every NEW photo (migration 0176 + the 0175 sources).**
+  `captured_at_source` ranks four providers, best first — `'exif'`/`'video'`
+  (read from the file itself) > `'file'` (the picked file's mtime) > `'post'`
+  (the source post's timestamp) — and any sweep may only move a row *up* that
+  list. Filling every gap took a fix at each layer:
+  - **HEIC.** [`extractExifCapturedAt`](lib/media.ts) parses JPEG only, so an
+    iPhone HEIC returned null — then `compressImage` re-encoded it to JPEG and
+    destroyed the EXIF, leaving the mini nothing either. The mini now falls
+    back to **`sharp`/libvips** (`readExifViaSharp` in
+    [`media-server/captured-at.js`](media-server/captured-at.js)), which opens
+    HEIC/WebP/AVIF/TIFF and hands back the raw EXIF blob — parsed by the same
+    IFD walk (`parseTiffForDate`) the JPEG scanner uses, so client and server
+    can't disagree about a tag. Tried second, after the zero-decode byte scan.
+  - **`file.lastModified` as a floor** (`capturedAtForFile`): for a camera-roll
+    pick this is usually the shot date, and it's the only signal available when
+    EXIF can't be reached. Guarded hard — rejected if missing, implausible
+    (pre-1995 / future), or **within 60s of now**, which means the picker handed
+    over a freshly-stamped temp copy and the value is upload time in disguise.
+    Sent as `'file'` so the server and the sweep both know to overwrite it the
+    moment real metadata turns up; `/upload` re-reads the stored bytes whenever
+    the client's claim is only `'file'`.
+  - **Feed photos keep their date** (`post_media.captured_at`, 0176). The
+    composer was computing a capture date for every photo and **throwing it
+    away** unless that upload was album-bound — so "add this post's photos to an
+    album" months later fell back to the 0175 post-timestamp proxy even though
+    the real date had been in hand at post time. `create_post` now persists it
+    (two extra optional jsonb keys — no signature change), `EditPostPanel` reads
+    it back, and a backfill recovers it from any album row that already resolved
+    real metadata for the same file. `insertMediaRow`'s pre-migration retry
+    became a **column-group ladder** (0176's pair, then 0173's `thumbnail_url`)
+    since an unknown column fails the whole insert and would drop the photo.
 - **Downloads** (the deliberate difference from the Feed):
   - **Per file** — `⬇ Save` in the carousel hits `<mini>/f/…?dl=1`, which the
     media server serves with `Content-Disposition: attachment` (works

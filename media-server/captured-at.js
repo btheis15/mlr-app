@@ -110,6 +110,36 @@ function parseExifDateString(s) {
   return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
 }
 
+// Walk one TIFF block (the payload of an EXIF blob, starting at its "II"/"MM"
+// byte-order mark) for a date. DateTimeOriginal in the Exif SubIFD wins; IFD0's
+// plain DateTime is the fallback.
+function parseTiffForDate(view, tiffStart) {
+  if (tiffStart + 8 > view.byteLength) return null;
+  const bom = view.getUint16(tiffStart, false);
+  if (bom !== 0x4949 && bom !== 0x4d4d) return null;
+  const le = bom === 0x4949; // "II" little-endian, "MM" big-endian
+  const ifd0Abs = tiffStart + view.getUint32(tiffStart + 4, le);
+  const subIfdOffset = findLongTag(view, ifd0Abs, 0x8769, le); // ExifIFDPointer
+  if (subIfdOffset != null) {
+    const raw = findAsciiTag(view, tiffStart, tiffStart + subIfdOffset, 0x9003, le); // DateTimeOriginal
+    const parsed = raw && parseExifDateString(raw);
+    if (parsed) return parsed;
+  }
+  const rawDateTime = findAsciiTag(view, tiffStart, ifd0Abs, 0x0132, le); // DateTime
+  return (rawDateTime && parseExifDateString(rawDateTime)) || null;
+}
+
+// A raw EXIF blob as handed over by an image library (sharp/libvips), which may
+// or may not still carry the leading "Exif\0\0" marker.
+function parseExifBlob(buf) {
+  if (!buf || buf.length < 8) return null;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const hasMarker =
+    view.getUint32(0, false) === 0x45786966 && view.getUint16(4, false) === 0x0000;
+  return parseTiffForDate(view, hasMarker ? 6 : 0);
+}
+
+// A whole JPEG file: walk its segment markers to the APP1/Exif one.
 function parseExifFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -129,21 +159,8 @@ function parseExifFromBuffer(buf) {
         view.getUint32(segStart, false) === 0x45786966 && // "Exif"
         view.getUint16(segStart + 4, false) === 0x0000;
       if (isExif) {
-        const tiffStart = segStart + 6;
-        const bom = view.getUint16(tiffStart, false);
-        const le = bom === 0x4949; // "II" little-endian, "MM" big-endian
-        if (bom === 0x4949 || bom === 0x4d4d) {
-          const ifd0Abs = tiffStart + view.getUint32(tiffStart + 4, le);
-          const subIfdOffset = findLongTag(view, ifd0Abs, 0x8769, le); // ExifIFDPointer
-          if (subIfdOffset != null) {
-            const raw = findAsciiTag(view, tiffStart, tiffStart + subIfdOffset, 0x9003, le); // DateTimeOriginal
-            const parsed = raw && parseExifDateString(raw);
-            if (parsed) return parsed;
-          }
-          const rawDateTime = findAsciiTag(view, tiffStart, ifd0Abs, 0x0132, le); // DateTime
-          const parsed = rawDateTime && parseExifDateString(rawDateTime);
-          if (parsed) return parsed;
-        }
+        const parsed = parseTiffForDate(view, segStart + 6);
+        if (parsed) return parsed;
       }
     }
     offset += 2 + size;
@@ -151,28 +168,51 @@ function parseExifFromBuffer(buf) {
   return null;
 }
 
-// Read EXIF straight off a file already on disk. Returns an ISO string or null.
-function readImageCapturedAt(filePath) {
+// sharp/libvips surfaces the EXIF blob for every format it can decode — HEIC
+// (iPhone's default), WebP, AVIF, TIFF — not just JPEG, so this covers the
+// formats the hand-rolled JPEG marker walk above can't even open. Kept as the
+// SECOND attempt because the raw scan needs no decode at all and handles the
+// overwhelmingly common case; this one costs a libvips open.
+async function readExifViaSharp(filePath) {
+  try {
+    const sharp = require("sharp");
+    const meta = await sharp(filePath, { failOn: "none" }).metadata();
+    if (meta && meta.exif) return parseExifBlob(meta.exif);
+  } catch {
+    /* unsupported format, no libheif, corrupt file — all just "no date" */
+  }
+  return null;
+}
+
+// Read the capture date off an image already on disk. Returns ISO or null.
+async function readImageCapturedAt(filePath) {
   let fd = null;
   try {
     fd = fs.openSync(filePath, "r");
     const buf = Buffer.alloc(EXIF_SCAN_BYTES);
     const read = fs.readSync(fd, buf, 0, EXIF_SCAN_BYTES, 0);
-    return parseExifFromBuffer(buf.subarray(0, read));
+    const fromJpeg = parseExifFromBuffer(buf.subarray(0, read));
+    if (fromJpeg) return fromJpeg;
   } catch {
-    return null;
+    /* fall through to sharp */
   } finally {
     if (fd !== null) { try { fs.closeSync(fd); } catch {} }
   }
+  return readExifViaSharp(filePath);
 }
 
 // kind: "image" | "video". Returns an ISO timestamp or null — never throws.
 async function extractCapturedAt(filePath, kind) {
   try {
-    return kind === "video" ? await videoCreationTime(filePath) : readImageCapturedAt(filePath);
+    return kind === "video" ? await videoCreationTime(filePath) : await readImageCapturedAt(filePath);
   } catch {
     return null;
   }
 }
 
-module.exports = { extractCapturedAt, readImageCapturedAt, parseExifFromBuffer };
+module.exports = {
+  extractCapturedAt,
+  readImageCapturedAt,
+  parseExifFromBuffer,
+  parseExifBlob,
+};

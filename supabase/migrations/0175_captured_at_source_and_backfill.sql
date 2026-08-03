@@ -28,7 +28,7 @@
 
 alter table public.drop_box_media
   add column if not exists captured_at_source text
-  check (captured_at_source is null or captured_at_source in ('exif', 'video', 'post'));
+  check (captured_at_source is null or captured_at_source in ('exif', 'video', 'file', 'post'));
 
 -- Anything 0174 already stored came from real metadata at upload time.
 update public.drop_box_media
@@ -85,7 +85,7 @@ begin
       nullif(btrim(coalesce(p_thumbnail_url, '')), ''),
       p_captured_at,
       case when p_captured_at is null then null
-           when p_captured_at_source in ('exif', 'video', 'post') then p_captured_at_source
+           when p_captured_at_source in ('exif', 'video', 'file', 'post') then p_captured_at_source
            else 'exif' end
     )
     returning id into v_id;
