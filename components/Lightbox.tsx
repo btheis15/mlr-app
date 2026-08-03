@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSheetDismiss } from "@/lib/hooks";
 import { ModalPortal } from "@/components/ModalPortal";
 
@@ -91,16 +91,26 @@ function PhotoCarousel({
   z: string;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const didInit = useRef(false);
   const [active, setActive] = useState(startIndex);
   // Distinguish a tap-to-dismiss from the tail of a swipe: a scroll-snap drag
   // can still fire a click, which would close the viewer mid-swipe.
   const down = useRef({ x: 0, y: 0 });
 
-  // Open on the tapped photo (no smooth-scroll — it should already be there).
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (el) el.scrollLeft = startIndex * el.clientWidth;
-  }, [startIndex]);
+  // Open on the tapped photo — via a CALLBACK REF so it fires when the scroller
+  // actually attaches. ModalPortal mounts its children one tick late, so a
+  // mount effect ran with scrollerRef still null and never re-ran, opening the
+  // viewer on the first photo instead of the tapped one.
+  const attachScroller = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollerRef.current = el;
+      if (el && !didInit.current) {
+        didInit.current = true;
+        el.scrollLeft = startIndex * el.clientWidth;
+      }
+    },
+    [startIndex],
+  );
 
   const step = (dir: number) => {
     const el = scrollerRef.current;
@@ -145,7 +155,7 @@ function PhotoCarousel({
       </div>
 
       <div
-        ref={scrollerRef}
+        ref={attachScroller}
         onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
         onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
         onClick={(e) => {
