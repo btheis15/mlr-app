@@ -171,7 +171,7 @@ function BoxCard({ box }: { box: DropBox }) {
         )}
       </div>
       <div className="p-3">
-        <p className="truncate text-sm font-semibold">
+        <p className="line-clamp-2 text-sm font-semibold">
           {box.emoji ? `${box.emoji} ` : ""}
           {box.title}
         </p>
@@ -361,47 +361,46 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     <div className="space-y-4 pt-2">
       <BackLink href="/drop" label="All folders" />
 
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold tracking-tight">
-            {box.emoji ? `${box.emoji} ` : ""}
-            {box.title}
-          </h1>
-          <p className="mt-0.5 text-sm text-muted">
-            {box.count === 0 ? "Empty — be the first to add something" : `${box.count} ${box.count === 1 ? "item" : "items"}`}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {box.count > 0 && !selecting && (
-            <button
-              onClick={() => setSelecting(true)}
-              className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
-            >
-              Select
-            </button>
-          )}
-          {box.count > 0 && !selecting && (
-            <button
-              onClick={() => downloadZip(box.items)}
-              disabled={zipping}
-              className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border disabled:opacity-60"
-            >
-              {zipping ? "…" : "⬇ All"}
-            </button>
-          )}
-          <button onClick={share} className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
-            {copied ? "Copied ✓" : "Share"}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {box.emoji ? `${box.emoji} ` : ""}
+          {box.title}
+        </h1>
+        <p className="mt-0.5 text-sm text-muted">
+          {box.count === 0 ? "Empty — be the first to add something" : `${box.count} ${box.count === 1 ? "item" : "items"}`}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {box.count > 0 && !selecting && (
+          <button
+            onClick={() => setSelecting(true)}
+            className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
+          >
+            Select
           </button>
-          {box.canManage && (
-            <button
-              onClick={() => setManaging(true)}
-              aria-label="Album settings"
-              className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
-            >
-              ⋯
-            </button>
-          )}
-        </div>
+        )}
+        {box.count > 0 && !selecting && (
+          <button
+            onClick={() => downloadZip(box.items)}
+            disabled={zipping}
+            className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border disabled:opacity-60"
+          >
+            {zipping ? "…" : "⬇ All"}
+          </button>
+        )}
+        <button onClick={share} className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border">
+          {copied ? "Copied ✓" : "Share"}
+        </button>
+        {box.canManage && (
+          <button
+            onClick={() => setManaging(true)}
+            aria-label="Album settings"
+            className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
+          >
+            ⋯
+          </button>
+        )}
       </div>
 
       {box.archivedAt && (

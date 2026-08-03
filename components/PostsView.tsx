@@ -630,7 +630,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // post that already succeeded.
         if (alsoAlbum && albumId && uploaded.length) {
           for (const u of uploaded) {
-            try { await addDropBoxMedia(albumId, u.path, u.type); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl); } catch { /* keep going */ }
           }
         }
         await refetch();
@@ -1263,6 +1263,23 @@ function EditPostPanel({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // "Also add these photos to an album" — same idea as the composer's own
+  // toggle (see `alsoAlbum` above): reference the newly-added files into a
+  // shared album too, no re-upload. Only offered once new files are picked
+  // and at least one album exists.
+  const [albumOptions, setAlbumOptions] = useState<DropBox[]>([]);
+  const [alsoAlbum, setAlsoAlbum] = useState(false);
+  const [albumId, setAlbumId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!supabase || !uid) return;
+    let alive = true;
+    fetchDropBoxes(uid, false).then((bs) => {
+      if (alive) setAlbumOptions(bs.filter((b) => !b.archivedAt));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [uid]);
 
   const { closing, close } = useSheetDismiss(onClose);
   const keptMedia = post.media.filter((m) => !(m.path && removed.includes(m.path)));
@@ -1292,6 +1309,13 @@ function EditPostPanel({
           await insertMediaRow("post_media", {
             post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
           });
+          // Optionally reference this same upload into a shared album too — NO
+          // re-upload, the album row just points at the same mini URL (mirrors
+          // the composer's own `alsoAlbum` flow). Best-effort: never undoes the
+          // edit that already saved.
+          if (alsoAlbum && albumId) {
+            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl); } catch { /* keep going */ }
+          }
         }
       }
       const orig = post.tags.map((t) => t.id);
@@ -1367,6 +1391,36 @@ function EditPostPanel({
         <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={addFiles} className="hidden" />
         <button type="button" onClick={() => setTagOpen((o) => !o)} className="press rounded-full bg-card px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-border">🏷️ {tagIds.length ? `Tags (${tagIds.length})` : "Tag people"}</button>
       </div>
+
+      {/* Also add the newly-added photos/videos to a shared album — mirrors
+          the composer's own toggle. Only offered once new files are picked
+          and at least one album exists. */}
+      {previews.length > 0 && albumOptions.length > 0 && (
+        <div className="space-y-2 rounded-xl bg-background px-3 py-2.5 text-xs ring-1 ring-border">
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={alsoAlbum}
+              onChange={(e) => { setAlsoAlbum(e.target.checked); if (e.target.checked && !albumId) setAlbumId(albumOptions[0].id); }}
+              className="mt-0.5 h-4 w-4 accent-[var(--color-primary)]"
+            />
+            <span className="text-foreground/70">
+              <span className="font-semibold text-foreground">📸 Also add to an album</span> — save these new photos to a shared album too, so you don&rsquo;t have to add them twice.
+            </span>
+          </label>
+          {alsoAlbum && (
+            <select
+              value={albumId ?? ""}
+              onChange={(e) => setAlbumId(e.target.value || null)}
+              className="w-full rounded-lg bg-card px-2 py-1.5 ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+            >
+              {albumOptions.map((b) => (
+                <option key={b.id} value={b.id}>{b.emoji ? `${b.emoji} ` : ""}{b.title}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {tagOpen && (
         <div className="space-y-2 rounded-lg bg-card p-2 ring-1 ring-border">
