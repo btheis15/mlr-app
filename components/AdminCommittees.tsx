@@ -327,9 +327,31 @@ function RolesManager({ committeeId }: { committeeId: string }) {
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null); // the area whose edit form (name + description) is open
   const [renameTo, setRenameTo] = useState("");
+  const [renameDesc, setRenameDesc] = useState("");
   const [openRole, setOpenRole] = useState<string | null>(null);
+
+  // Save a role's edit: rename (if the name changed — the six-way cascade) and/or
+  // set its description. Description is written against the (possibly new) name.
+  const saveRoleEdit = (oldArea: string) => {
+    const newName = renameTo.trim();
+    const desc = renameDesc.trim();
+    if (!newName) return;
+    void run(
+      async () => {
+        if (newName !== oldArea) {
+          const r = await renameCommitteeArea(committeeId, oldArea, newName);
+          if (r.error) return r;
+        }
+        return setCommitteeAreaDescription(committeeId, newName, desc);
+      },
+      () => {
+        setRenaming(null);
+        if (openRole === oldArea && newName !== oldArea) setOpenRole(newName);
+      },
+    );
+  };
 
   const load = useCallback(async () => {
     // We need the committee slug to read areas; committeeAdmin keys areas by
@@ -404,7 +426,7 @@ function RolesManager({ committeeId }: { committeeId: string }) {
     <div className="space-y-2 rounded-xl bg-card p-3 ring-1 ring-border">
       <p className="text-xs font-bold uppercase tracking-wide text-faint">Roles &amp; subcommittees</p>
       <p className="text-[11px] text-faint">
-        Each role is its own chat channel. Tap one to see who&rsquo;s on it and add people.
+        Each role is its own chat channel. Tap a role to see who&rsquo;s on it and add people; tap ✎ to rename it or give it a description.
       </p>
 
       {live.map((a) => {
@@ -414,15 +436,28 @@ function RolesManager({ committeeId }: { committeeId: string }) {
         return (
           <div key={a.area} className="overflow-hidden rounded-lg bg-background ring-1 ring-border">
             {renaming === a.area ? (
-              <div className="flex items-center gap-2 p-2">
+              // Edit the role: name AND description together (mirrors "Edit
+              // committee details"). Save renames if the name changed, then sets
+              // the description.
+              <div className="space-y-2 p-2">
                 <input
                   value={renameTo}
                   onChange={(e) => setRenameTo(e.target.value)}
                   autoFocus
-                  className="min-w-0 flex-1 rounded-lg bg-card px-2 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="Role name"
+                  className="w-full rounded-lg bg-card px-2 py-1.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
                 />
-                <button type="button" disabled={busy || !renameTo.trim()} onClick={() => run(() => renameCommitteeArea(committeeId, a.area, renameTo.trim()), () => { setRenaming(null); if (openRole === a.area) setOpenRole(renameTo.trim()); })} className="press shrink-0 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50">Save</button>
-                <button type="button" onClick={() => setRenaming(null)} className="press shrink-0 px-1.5 text-xs text-foreground/50">Cancel</button>
+                <textarea
+                  value={renameDesc}
+                  onChange={(e) => setRenameDesc(e.target.value)}
+                  rows={2}
+                  placeholder="Description — what this role/subcommittee does (optional)"
+                  className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <div className="flex gap-2">
+                  <button type="button" disabled={busy || !renameTo.trim()} onClick={() => saveRoleEdit(a.area)} className="press shrink-0 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Save</button>
+                  <button type="button" onClick={() => setRenaming(null)} className="press shrink-0 px-1.5 text-xs text-foreground/50">Cancel</button>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 p-2">
@@ -430,15 +465,20 @@ function RolesManager({ committeeId }: { committeeId: string }) {
                   type="button"
                   onClick={() => setOpenRole(isOpen ? null : a.area)}
                   aria-expanded={isOpen}
-                  className="press flex min-w-0 flex-1 items-center gap-2 text-left"
+                  className="press flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.area}</span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${on.length ? "bg-primary/10 text-primary" : "bg-card text-faint ring-1 ring-border"}`}>
-                    {on.length === 0 ? "nobody yet" : `${on.length} ${on.length === 1 ? "person" : "people"}`}
+                  <span className="flex w-full items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.area}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${on.length ? "bg-primary/10 text-primary" : "bg-card text-faint ring-1 ring-border"}`}>
+                      {on.length === 0 ? "nobody yet" : `${on.length} ${on.length === 1 ? "person" : "people"}`}
+                    </span>
+                    <span className={`shrink-0 text-foreground/40 transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${isOpen ? "rotate-90" : ""}`} aria-hidden>›</span>
                   </span>
-                  <span className={`shrink-0 text-foreground/40 transition-transform duration-[var(--dur-tap)] ease-[var(--ease-spring)] ${isOpen ? "rotate-90" : ""}`} aria-hidden>›</span>
+                  <span className={`w-full truncate text-[11px] ${a.description ? "text-faint" : "text-primary/60"}`}>
+                    {a.description || "+ Add a description"}
+                  </span>
                 </button>
-                <button type="button" onClick={() => { setRenaming(a.area); setRenameTo(a.area); }} className="press shrink-0 rounded-full px-1.5 text-foreground/40 hover:text-primary" aria-label={`Rename the ${a.area} role`}>✎</button>
+                <button type="button" onClick={() => { setRenaming(a.area); setRenameTo(a.area); setRenameDesc(a.description); }} className="press shrink-0 rounded-full px-1.5 text-foreground/40 hover:text-primary" aria-label={`Edit the ${a.area} role`}>✎</button>
                 <button
                   type="button"
                   onClick={() => {
@@ -453,7 +493,6 @@ function RolesManager({ committeeId }: { committeeId: string }) {
 
             {isOpen && renaming !== a.area && (
               <div className="space-y-1.5 border-t border-border/60 bg-card/60 p-2">
-                <AreaDescriptionEditor committeeId={committeeId} area={a.area} description={a.description} onSaved={load} />
                 {on.map((m) => {
                   const lead = isAreaLead(m.areas, a.area);
                   return (
@@ -544,75 +583,6 @@ function RolesManager({ committeeId }: { committeeId: string }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Set/clear a role's description (migration 0179), inline in its expanded panel.
- *  Admin-only; shows the current blurb with a one-tap edit (mirrors the
- *  committee-details editor). Degrades to an error toast pre-migration. */
-function AreaDescriptionEditor({
-  committeeId,
-  area,
-  description,
-  onSaved,
-}: {
-  committeeId: string;
-  area: string;
-  description: string;
-  onSaved: () => void | Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(description);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setValue(description);
-  }, [description]);
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    const { error } = await setCommitteeAreaDescription(committeeId, area, value.trim());
-    setBusy(false);
-    if (error) setError(error);
-    else {
-      setEditing(false);
-      await onSaved();
-    }
-  };
-
-  if (!editing) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg bg-background px-2 py-1.5">
-        <p className={`min-w-0 flex-1 text-[11px] ${description ? "text-foreground/70" : "italic text-faint"}`}>
-          {description || "No description yet."}
-        </p>
-        <button type="button" onClick={() => setEditing(true)} className="press shrink-0 text-[11px] font-semibold text-primary">
-          {description ? "Edit" : "+ Describe"}
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-1.5 rounded-lg bg-background p-2">
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        rows={2}
-        autoFocus
-        placeholder="What this role/subcommittee does…"
-        className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-      />
-      {error && <p className="text-[11px] font-medium text-accent">{error}</p>}
-      <div className="flex gap-2">
-        <button type="button" onClick={save} disabled={busy} className="press rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">
-          {busy ? "…" : "Save"}
-        </button>
-        <button type="button" onClick={() => { setEditing(false); setValue(description); }} className="press px-2 text-xs font-medium text-foreground/50">
-          Cancel
-        </button>
-      </div>
     </div>
   );
 }
