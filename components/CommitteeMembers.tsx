@@ -32,6 +32,11 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [allProfiles, setAllProfiles] = useState<{ id: string; name: string; avatar: string | null }[]>([]);
+  // "Add someone not in the app yet" — a name-only (account-less) roster entry,
+  // "Pending verification" until they sign in with a matching email.
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [pendingName, setPendingName] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
   const [editingAreas, setEditingAreas] = useState<string | null>(null);
   const [areaSelection, setAreaSelection] = useState<string[]>([]);
 
@@ -111,6 +116,33 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
           isLead: false,
         }),
       () => setQuery(""),
+    );
+  };
+  // Add a name-only person (no app account) to the committee. Their email is the
+  // auto-link key — with it, their spot links to a real account the moment they
+  // sign in / are invited (migration 0056/0060 triggers); without it they stay
+  // "Pending" indefinitely, so we nudge for it but don't require it.
+  const addPending = () => {
+    const nm = pendingName.trim();
+    if (!nm) return;
+    rosterThenReload(
+      "pending-new",
+      () =>
+        saveRosterEntry({
+          committeeSlug: slug,
+          name: nm,
+          email: pendingEmail.trim() || null,
+          phone: null,
+          roles: [],
+          linkedUserId: null,
+          isLead: false,
+        }),
+      () => {
+        setPendingName("");
+        setPendingEmail("");
+        setPendingOpen(false);
+        setAdding(false);
+      },
     );
   };
   const leaveSelf = () => {
@@ -339,10 +371,57 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
             {q && addable.length === 0 && (
               <p className="px-2 py-1 text-xs text-faint">No one matches (or already a member).</p>
             )}
+
+            {/* Add someone who isn't in the app yet — a "Pending" roster entry. */}
+            {!pendingOpen ? (
+              <button
+                onClick={() => {
+                  setPendingOpen(true);
+                  setPendingName(query.trim());
+                }}
+                className="press border-t border-border/60 px-2 pt-2 text-left text-xs font-semibold text-primary"
+              >
+                + Add someone not in the app yet
+              </button>
+            ) : (
+              <div className="space-y-1.5 border-t border-border/60 pt-2">
+                <input
+                  value={pendingName}
+                  onChange={(e) => setPendingName(e.target.value)}
+                  autoFocus
+                  placeholder="Full name"
+                  className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <input
+                  value={pendingEmail}
+                  onChange={(e) => setPendingEmail(e.target.value)}
+                  type="email"
+                  placeholder="Email (so their spot links up when they join)"
+                  className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+                <p className="px-0.5 text-[10px] text-faint">
+                  They&rsquo;ll show as <span className="font-semibold">Pending</span> and can be put on subcommittees now. Their spot links to a real account automatically when they sign in with that email.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={addPending}
+                    disabled={busy === "pending-new" || !pendingName.trim()}
+                    className="press rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {busy === "pending-new" ? "…" : "Add"}
+                  </button>
+                  <button onClick={() => setPendingOpen(false)} className="press px-2 text-xs text-foreground/50">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={() => {
                 setAdding(false);
                 setQuery("");
+                setPendingOpen(false);
               }}
               className="press px-2 text-xs text-foreground/50"
             >

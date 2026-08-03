@@ -5,7 +5,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { AdminJoinRequests } from "@/components/AdminJoinRequests";
 import { CommitteeMembers } from "@/components/CommitteeMembers";
 import { Avatar } from "@/components/Avatar";
-import { fetchCommitteeRoster } from "@/lib/committeeRoster";
+import { fetchCommitteeRoster, saveRosterEntry } from "@/lib/committeeRoster";
 import {
   isOnArea,
   isAreaLead,
@@ -306,24 +306,41 @@ function CommitteeDetailsEditor({ committee, onSaved }: { committee: CommitteeRo
  * picker to put more of the committee's people on it and a one-tap lead toggle —
  * because "who's on Beautification?" is the question an admin actually has.
  * (The per-member chips in `CommitteeMembers` below answer the inverse, "what is
- * this one person on?"; both write the same `set_committee_areas` RPC, and its
- * `committee_members` UPDATE fires the realtime tick that re-syncs the other.)
+ * this one person on?".)
  *
- * Assignment is scoped to people already IN the committee — a role is a
- * subdivision of the committee, not a separate group, and `set_committee_areas`
- * only touches an existing `committee_members` row. So the empty state points at
- * the roster card below rather than offering a second way to add people.
+ * Assignment writes `committee_roster` directly (`saveRosterEntry`, the same
+ * roster-is-source-of-truth path CommitteeMembers + the committee page use since
+ * 0057), NOT the account-keyed `set_committee_areas` RPC. That's what lets an
+ * account-LESS roster person — someone on the roster who hasn't joined the app
+ * yet (`linked_user_id` null, shown "Pending verification") — be put on a
+ * subcommittee just like everyone else; the old RPC keyed on `user_id` and so
+ * silently skipped them, making them invisible here.
+ *
+ * Assignment is still scoped to people already IN the committee — a role is a
+ * subdivision of it, not a separate group. So the empty state points at the
+ * roster card below rather than offering a second way to add people.
  */
 interface RoleMember {
+  /** committee_roster row id — assignment writes the row, not a user_id. */
   id: string;
+  /** Display name (the linked account's name if linked, else the roster name). */
   name: string;
+  /** The roster row's OWN name — preserved verbatim on write so a linked slot
+   *  isn't renamed to its account's display name. */
+  rosterName: string;
+  email: string | null;
+  phone: string | null;
   avatar: string | null;
   areas: string[];
+  linkedUserId: string | null;
+  /** No app account yet — assignable, but shown as "Pending verification". */
+  pending: boolean;
 }
 
 function RolesManager({ committeeId }: { committeeId: string }) {
   const [areas, setAreas] = useState<CommitteeAreaRow[] | null>(null);
   const [members, setMembers] = useState<RoleMember[]>([]);
+  const [slug, setSlug] = useState<string | null>(null); // resolved from committeeId; needed for saveRosterEntry
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -359,25 +376,35 @@ function RolesManager({ committeeId }: { committeeId: string }) {
     const sb = supabase;
     if (!sb) return;
     const { data } = await sb.from("committees").select("slug").eq("id", committeeId).maybeSingle();
-    const slug = (data as { slug: string } | null)?.slug;
-    if (!slug) { setAreas([]); return; }
+    const resolvedSlug = (data as { slug: string } | null)?.slug;
+    setSlug(resolvedSlug ?? null);
+    if (!resolvedSlug) { setAreas([]); return; }
     // Members + their roles come from committee_roster (the source of truth since
     // 0057). The old committee_members read here under-counted anyone added the
     // modern way — which is what made this panel's roles show "nobody yet" while
     // the committee page grouped people under those very roles.
     const [areaRows, roster] = await Promise.all([
-      fetchCommitteeAreas(slug, true),
-      fetchCommitteeRoster(slug),
+      fetchCommitteeAreas(resolvedSlug, true),
+      fetchCommitteeRoster(resolvedSlug),
     ]);
     setAreas(areaRows);
+    // Include EVERYONE on the roster, account or not. Account-less people
+    // (linked_user_id null) are assignable to roles just like anyone else —
+    // assignment writes the roster row directly (see setMemberAreas) — and are
+    // flagged `pending` so the UI can mark them "Pending verification".
     setMembers(
       roster
-        .filter((r) => !!r.linkedUserId) // role assignment targets a real account (set_committee_areas keys on user_id)
+        .filter((r) => !!r.id)
         .map((r) => ({
-          id: r.linkedUserId as string,
+          id: r.id as string,
           name: r.linkedName || r.name,
+          rosterName: r.name,
+          email: r.email ?? null,
+          phone: r.phone ?? null,
           avatar: r.linkedAvatarUrl ?? null,
           areas: r.roles ?? [],
+          linkedUserId: r.linkedUserId ?? null,
+          pending: !r.linkedUserId,
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -385,8 +412,9 @@ function RolesManager({ committeeId }: { committeeId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Keep in step with the roster card below (and any other surface) — both write
-  // committee_members, so one subscription keeps the counts honest.
+  // Keep in step with the roster card below (and any other surface) — every
+  // assignment now writes committee_roster, so one subscription on that table
+  // keeps this panel's roles honest.
   useEffect(() => {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb) return;
@@ -410,13 +438,22 @@ function RolesManager({ committeeId }: { committeeId: string }) {
     else { after?.(); await load(); }
   };
 
-  /** Write one person's full role list (the RPC is a full replace, not a delta). */
+  /** Write one person's full role list. Goes through the roster (not the
+   *  account-keyed `set_committee_areas` RPC) so it works for account-less
+   *  people too. `next` is the full replacement list. isLead is omitted so the
+   *  person's committee-level lead flag (0177) is left untouched. */
   const setMemberAreas = (m: RoleMember, next: string[]) =>
     run(async () => {
-      const sb = supabase;
-      if (!sb) return { error: "Not available." };
-      const { error } = await sb.rpc("set_committee_areas", { cid: committeeId, target: m.id, areas: next });
-      return error ? { error: error.message } : {};
+      if (!slug) return { error: "Committee not resolved yet — try again." };
+      return saveRosterEntry({
+        id: m.id,
+        committeeSlug: slug,
+        name: m.rosterName,
+        email: m.email,
+        phone: m.phone,
+        roles: next,
+        linkedUserId: m.linkedUserId,
+      });
     });
 
   const live = (areas ?? []).filter((a) => !a.archivedAt);
@@ -499,6 +536,14 @@ function RolesManager({ committeeId }: { committeeId: string }) {
                     <div key={m.id} className="flex items-center gap-2 rounded-lg bg-background px-2 py-1.5">
                       <Avatar name={m.name} url={m.avatar} size={24} />
                       <span className="min-w-0 flex-1 truncate text-xs font-medium">{m.name}</span>
+                      {m.pending && (
+                        <span
+                          title="Hasn't joined the app yet — their spot links up automatically when they sign in with a matching email."
+                          className="shrink-0 rounded-full bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-faint ring-1 ring-border"
+                        >
+                          Pending
+                        </span>
+                      )}
                       {lead && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Lead</span>}
                       <button
                         type="button"
@@ -633,6 +678,7 @@ function RoleMemberPicker({
           >
             <Avatar name={m.name} url={m.avatar} size={22} />
             <span className="min-w-0 flex-1 truncate">{m.name}</span>
+            {m.pending && <span className="shrink-0 text-[10px] font-medium text-faint">pending</span>}
             <span className="shrink-0 font-semibold text-primary">+ Add</span>
           </button>
         ))}
