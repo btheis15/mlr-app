@@ -3,43 +3,35 @@
 import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
-import { getCurrentUserId, fetchProfiles, profileMap } from "@/lib/roles";
+import { getCurrentUserId, fetchProfiles } from "@/lib/roles";
 import { useBusyAction, useManagedCommittee } from "@/lib/hooks";
-import {
-  fetchLiveAreaNames,
-  baseArea,
-  isOnArea,
-  isAreaLead,
-  withArea,
-  withoutArea,
-} from "@/lib/committeeAdmin";
+import { fetchLiveAreaNames, baseArea, isOnArea, isAreaLead, withArea, withoutArea, isCommitteeLead } from "@/lib/committeeAdmin";
+import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
 
 /**
  * "X members" panel — the people with app/chat access to this committee.
- * Shown to its **Lead** or an **app admin** (migration 0015). There is no
- * separate "committee admin" tier (deliberately removed, migration 0076) —
- * within a committee you're either a plain member or a Lead; the only admins
- * are overall app admins. Leads can add/remove regular members and, as of
- * migration 0051, can promote/demote leads too (was admin-only). Area
- * assignments live in committee_members.areas (migration 0051) and are
- * editable inline here. All writes go through the gated set_committee_member /
- * set_committee_lead / set_committee_areas RPCs.
+ * Shown to its **Lead** or an **app admin**.
+ *
+ * Reads and writes **committee_roster**, the single source of truth for
+ * membership + chat access since migration 0057 (and where the public committee
+ * page, the Feed pills, and lead/area access all read). It used to read the
+ * legacy `committee_members` table, which drifted badly out of sync — anyone
+ * added the modern way (straight into the roster) was invisible here, so this
+ * card under-counted (3 vs the roster's 20). Now every add/remove/lead/area edit
+ * goes through the roster (`saveRosterEntry`/`deleteRosterEntry`, RLS-open to a
+ * committee's admins + leads), so this card and the committee page always agree,
+ * and a future add via ANY surface lands in the one place.
+ *
+ * A "Lead" is a committee-level lead (`is_lead`, 0177) OR an area lead (a
+ * "· Lead" role, 0172). Area assignments are the roster's `roles[]`.
  */
-interface Row {
-  id: string;
-  name: string;
-  avatar?: string | null;
-  role: string | null;
-  areas: string[];
-}
-
 export function CommitteeMembers({ slug, name }: { slug: string; name: string }) {
-  const [members, setMembers] = useState<Row[]>([]);
+  const [members, setMembers] = useState<RosterEntry[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const { busy, run } = useBusyAction();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const [allProfiles, setAllProfiles] = useState<Row[]>([]);
+  const [allProfiles, setAllProfiles] = useState<{ id: string; name: string; avatar: string | null }[]>([]);
   const [editingAreas, setEditingAreas] = useState<string | null>(null);
   const [areaSelection, setAreaSelection] = useState<string[]>([]);
 
@@ -49,86 +41,82 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
   useEffect(() => {
     let alive = true;
     fetchLiveAreaNames(slug).then((a) => alive && setAreaOptions(a));
+    // Profiles power the "+ Add a member" search (anyone with an account).
+    fetchProfiles().then((profs) => alive && setAllProfiles(profs.map((p) => ({ id: p.id, name: p.name, avatar: p.avatarUrl }))));
     return () => {
       alive = false;
     };
   }, [slug]);
 
-  const load = async (cid: string) => {
-    const sb = supabase;
-    if (!sb) return;
-    const [{ data: mem }, profs] = await Promise.all([
-      sb.from("committee_members").select("user_id, role, areas").eq("committee_id", cid),
-      fetchProfiles(),
-    ]);
+  const load = async () => {
+    const roster = await fetchCommitteeRoster(slug);
+    // Leads first, then by name — the same order the card always used.
+    roster.sort((a, b) => Number(isCommitteeLead(b)) - Number(isCommitteeLead(a)) || (a.linkedName || a.name).localeCompare(b.linkedName || b.name));
+    setMembers(roster);
     setMeId(await getCurrentUserId());
-    const pm = profileMap(profs);
-    const rows: Row[] = (
-      (mem ?? []) as { user_id: string; role: string | null; areas: string[] | null }[]
-    ).map((m) => ({
-      id: m.user_id,
-      name: pm.get(m.user_id)?.name || "Member",
-      avatar: pm.get(m.user_id)?.avatarUrl ?? null,
-      role: m.role,
-      areas: m.areas ?? [],
-    }));
-    rows.sort((a, b) => (a.role === "Lead" ? -1 : b.role === "Lead" ? 1 : 0) || a.name.localeCompare(b.name));
-    setMembers(rows);
-    setAllProfiles(profs.map((p) => ({ id: p.id, name: p.name, avatar: p.avatarUrl, role: null, areas: [] })));
   };
 
   const { committeeId, canManage, setCanManage, isAdmin } = useManagedCommittee(slug, {
-    watch: "committee_members",
+    watch: "committee_roster",
     load,
   });
 
-  // True if the logged-in user is a lead of this committee (as opposed to just
-  // an app admin). Used to gate the Make/Unset lead button for non-app-admins.
-  const selfIsLead = members.find((m) => m.id === meId)?.role === "Lead";
+  // Am I a lead of this committee (vs. just an app admin)? Gates the
+  // Make/Unset-lead button for non-admins.
+  const selfIsLead = members.some((m) => m.linkedUserId === meId && isCommitteeLead(m));
 
-  const rpcThenReload = (
-    id: string,
-    rpc: () => PromiseLike<{ error: { message: string } | null }>,
-    after?: () => void,
-  ) =>
+  // Run a roster write, then reload. Roster helpers return { error?: string }.
+  const rosterThenReload = (id: string, fn: () => Promise<{ error?: string }>, after?: () => void) =>
     run(id, async () => {
-      if (!committeeId) return;
-      const { error } = await rpc();
-      if (error) window.alert(error.message);
+      const { error } = await fn();
+      if (error) window.alert(error);
       else {
-        await load(committeeId);
+        await load();
         after?.();
       }
     });
 
-  const remove = (m: Row) => {
-    const sb = supabase;
-    if (!sb || !committeeId) return;
-    if (!window.confirm(`Remove ${m.name} from ${name}?`)) return;
-    rpcThenReload(m.id, () =>
-      sb.rpc("set_committee_member", { cid: committeeId, target: m.id, is_member: false }),
+  const remove = (m: RosterEntry) => {
+    if (!m.id) return;
+    const who = m.linkedName || m.name;
+    if (!window.confirm(`Remove ${who} from ${name}?`)) return;
+    rosterThenReload(m.id, () => deleteRosterEntry(m.id!));
+  };
+  const setLead = (m: RosterEntry, makeLead: boolean) => {
+    if (!m.id) return;
+    rosterThenReload(m.id, () =>
+      saveRosterEntry({
+        id: m.id,
+        committeeSlug: slug,
+        name: m.name,
+        email: m.email ?? null,
+        phone: m.phone ?? null,
+        roles: m.roles ?? [],
+        linkedUserId: m.linkedUserId,
+        isLead: makeLead,
+      }),
     );
   };
-  const setLead = (m: Row, makeLead: boolean) => {
-    const sb = supabase;
-    if (!sb || !committeeId) return;
-    rpcThenReload(m.id, () =>
-      sb.rpc("set_committee_lead", { cid: committeeId, target: m.id, is_lead: makeLead }),
-    );
-  };
-  const add = (p: Row) => {
-    const sb = supabase;
-    if (!sb || !committeeId) return;
-    rpcThenReload(
+  const add = (p: { id: string; name: string }) => {
+    rosterThenReload(
       p.id,
-      () => sb.rpc("set_committee_member", { cid: committeeId, target: p.id, is_member: true }),
+      () =>
+        saveRosterEntry({
+          committeeSlug: slug,
+          name: p.name,
+          email: null,
+          phone: null,
+          roles: [],
+          linkedUserId: p.id,
+          isLead: false,
+        }),
       () => setQuery(""),
     );
   };
   const leaveSelf = () => {
     const sb = supabase;
     if (!sb || !committeeId || !meId) return;
-    const selfLead = members.find((m) => m.id === meId)?.role === "Lead";
+    const selfLead = selfIsLead;
     const msg = selfLead
       ? `Leave ${name}? You're a Lead — another lead or admin will need to assign a new one. You can ask to rejoin later.`
       : `Leave ${name}? You'll lose access to its chat (you can ask to rejoin later).`;
@@ -140,38 +128,45 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
         return;
       }
       setCanManage(isAdmin);
-      if (isAdmin) await load(committeeId);
+      if (isAdmin) await load();
     });
   };
 
-  const startEditAreas = (m: Row) => {
-    setAreaSelection([...m.areas]);
-    setEditingAreas(m.id);
+  const startEditAreas = (m: RosterEntry) => {
+    setAreaSelection([...(m.roles ?? [])]);
+    setEditingAreas(m.id ?? null);
   };
   // Match on the base role name, not the raw string: an entry can carry a
   // trailing " · Lead" (the area-lead marker), and an exact-match toggle would
   // both fail to light the chip for a lead AND strip their lead standing on save.
-  // Toggling ON preserves whatever standing they already had.
   const toggleArea = (area: string) =>
     setAreaSelection((prev) =>
       isOnArea(prev, area) ? withoutArea(prev, area) : withArea(prev, area, isAreaLead(prev, area)),
     );
-  const saveAreas = (m: Row) => {
-    const sb = supabase;
-    if (!sb || !committeeId) return;
-    rpcThenReload(
+  const saveAreas = (m: RosterEntry) => {
+    if (!m.id) return;
+    rosterThenReload(
       m.id,
-      () => sb.rpc("set_committee_areas", { cid: committeeId, target: m.id, areas: areaSelection }),
+      () =>
+        saveRosterEntry({
+          id: m.id,
+          committeeSlug: slug,
+          name: m.name,
+          email: m.email ?? null,
+          phone: m.phone ?? null,
+          roles: areaSelection,
+          linkedUserId: m.linkedUserId,
+        }),
       () => setEditingAreas(null),
     );
   };
 
   if (!canManage || !isSupabaseConfigured) return null;
 
-  const memberIds = new Set(members.map((m) => m.id));
+  const linkedIds = new Set(members.map((m) => m.linkedUserId).filter(Boolean));
   const q = query.trim().toLowerCase();
   const addable = q
-    ? allProfiles.filter((p) => !memberIds.has(p.id) && p.name.toLowerCase().includes(q)).slice(0, 6)
+    ? allProfiles.filter((p) => !linkedIds.has(p.id) && p.name.toLowerCase().includes(q)).slice(0, 6)
     : [];
 
   return (
@@ -189,25 +184,37 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
 
       <ul className="space-y-1.5">
         {members.map((m) => {
-          const isMe = m.id === meId;
-          const lead = m.role === "Lead";
+          const rowId = m.id ?? m.name;
+          const isMe = !!m.linkedUserId && m.linkedUserId === meId;
+          const lead = isCommitteeLead(m);
+          const display = m.linkedName || m.name;
+          const pending = !m.linkedUserId;
+          const roles = m.roles ?? [];
           return (
-            <li key={m.id} className="overflow-hidden rounded-xl bg-background ring-1 ring-border">
+            <li key={rowId} className="overflow-hidden rounded-xl bg-background ring-1 ring-border">
               {/* Name row */}
               <div className="flex items-center gap-3 p-2.5">
-                <Avatar name={m.name} url={m.avatar} size={32} />
+                <Avatar name={display} url={m.linkedAvatarUrl} size={32} />
                 <p className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-medium">
-                  <span className="truncate">{m.name}</span>
+                  <span className="truncate">{display}</span>
                   {isMe && <span className="shrink-0 text-xs text-faint">(you)</span>}
                   {lead && (
                     <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                       Lead
                     </span>
                   )}
+                  {pending && (
+                    <span
+                      className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted"
+                      title="Hasn't signed in to claim their account yet — links up automatically when they join"
+                    >
+                      Pending
+                    </span>
+                  )}
                 </p>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {/* Leads and app admins can promote/demote leads (migration 0051) */}
-                  {(isAdmin || selfIsLead) && (
+                  {/* Leads and app admins can promote/demote leads. */}
+                  {(isAdmin || selfIsLead) && m.id && (
                     <button
                       onClick={() => setLead(m, !lead)}
                       disabled={busy === m.id}
@@ -219,12 +226,12 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                   {isMe ? (
                     <button
                       onClick={leaveSelf}
-                      disabled={busy === m.id}
+                      disabled={busy === meId}
                       className="press rounded-full bg-background px-2.5 py-1.5 text-xs font-semibold text-accent ring-1 ring-accent/40 disabled:opacity-50"
                     >
-                      {busy === m.id ? "…" : "Leave"}
+                      {busy === meId ? "…" : "Leave"}
                     </button>
-                  ) : (isAdmin || !lead) ? (
+                  ) : (isAdmin || !lead) && m.id ? (
                     <button
                       onClick={() => remove(m)}
                       disabled={busy === m.id}
@@ -250,9 +257,7 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                               type="button"
                               onClick={() => toggleArea(area)}
                               className={`press rounded-full px-2 py-0.5 text-xs font-medium ring-1 transition-colors ${
-                                on
-                                  ? "bg-primary text-white ring-primary"
-                                  : "bg-card ring-border text-foreground/60"
+                                on ? "bg-primary text-white ring-primary" : "bg-card ring-border text-foreground/60"
                               }`}
                             >
                               {area}
@@ -278,12 +283,9 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-1">
-                      {m.areas.length > 0 ? (
-                        m.areas.map((a) => (
-                          <span
-                            key={a}
-                            className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
-                          >
+                      {roles.length > 0 ? (
+                        roles.map((a) => (
+                          <span key={a} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                             {baseArea(a)}
                             {a !== baseArea(a) && <span className="font-bold"> · Lead</span>}
                           </span>
@@ -291,13 +293,13 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
                       ) : (
                         <span className="text-[10px] text-faint">No area yet</span>
                       )}
-                      {canManage && (
+                      {m.id && (
                         <button
                           type="button"
                           onClick={() => startEditAreas(m)}
                           className="press ml-0.5 text-[10px] font-semibold text-primary"
                         >
-                          {m.areas.length > 0 ? "· Edit" : "+ Add"}
+                          {roles.length > 0 ? "· Edit" : "+ Add"}
                         </button>
                       )}
                     </div>

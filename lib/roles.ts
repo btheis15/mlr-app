@@ -152,7 +152,13 @@ export async function fetchCommitteeId(slug: string): Promise<string | null> {
   return (data as { id: string } | null)?.id ?? null;
 }
 
-/** My role in a committee: "Lead", "member", or null (not a member / signed out). */
+/** My role in a committee: "Lead", "member", or null (not a member / signed out).
+ *  Reads `committee_roster` — the source of truth since migration 0057 — NOT the
+ *  legacy `committee_members.role`, which only the old admin path ever set. A
+ *  lead is a committee-level lead (`is_lead`, 0177) OR an area lead (a "· Lead"
+ *  role, 0172); anyone else linked to a roster slot is a plain member. This is
+ *  what gates the manage panels (via useManagedCommittee), so it MUST agree with
+ *  the roster the committee page shows. */
 export async function fetchMyCommitteeRole(committeeId: string, userId?: string): Promise<"Lead" | "member" | null> {
   const sb = supabase;
   if (!sb) return null;
@@ -160,12 +166,17 @@ export async function fetchMyCommitteeRole(committeeId: string, userId?: string)
   // role rather than the real signed-in admin's; omit it for the signed-in user.
   const uid = userId ?? (await sb.auth.getUser()).data.user?.id;
   if (!uid) return null;
-  const { data } = await sb
-    .from("committee_members")
-    .select("role")
-    .eq("committee_id", committeeId)
-    .eq("user_id", uid)
-    .maybeSingle();
-  if (!data) return null;
-  return (data as { role: string | null }).role === "Lead" ? "Lead" : "member";
+  const { data: committee } = await sb.from("committees").select("slug").eq("id", committeeId).maybeSingle();
+  const slug = (committee as { slug: string } | null)?.slug;
+  if (!slug) return null;
+  // Prefer is_lead (0177); fall back if that column isn't there yet.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without is_lead) can't share one inferred type
+  let res: any = await sb.from("committee_roster").select("roles, is_lead").eq("committee_slug", slug).eq("linked_user_id", uid).maybeSingle();
+  if (res.error && (res.error.code === "42703" || /column .* does not exist/i.test(res.error.message ?? ""))) {
+    res = await sb.from("committee_roster").select("roles").eq("committee_slug", slug).eq("linked_user_id", uid).maybeSingle();
+  }
+  const row = (res.data ?? null) as { roles: string[] | null; is_lead?: boolean | null } | null;
+  if (!row) return null;
+  const isLead = !!row.is_lead || (row.roles ?? []).some((r) => r.endsWith(" · Lead"));
+  return isLead ? "Lead" : "member";
 }

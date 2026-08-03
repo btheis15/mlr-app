@@ -283,7 +283,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_message_media" }, scheduleRefetch)
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_message_reactions" }, scheduleRefetch)
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_message_mentions" }, scheduleRefetch)
-        .on("postgres_changes", { event: "*", schema: "public", table: "committee_members", filter: `committee_id=eq.${cid}` }, () => loadAccess(cid))
+        .on("postgres_changes", { event: "*", schema: "public", table: "committee_roster", filter: `committee_slug=eq.${slug}` }, () => loadAccess(cid))
         .on("postgres_changes", { event: "*", schema: "public", table: "committee_join_requests", filter: `committee_id=eq.${cid}` }, () => loadAccess(cid))
         .subscribe();
     })();
@@ -346,7 +346,10 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       ids.length ? sb.from("committee_message_reactions").select("message_id, user_id, emoji").in("message_id", ids) : Promise.resolve({ data: [] }),
       ids.length ? sb.from("committee_message_mentions").select("message_id, mentioned_user_id").in("message_id", ids) : Promise.resolve({ data: [] }),
       sb.from("profiles").select("id, display_name, avatar_url"),
-      sb.from("committee_members").select("user_id, role").eq("committee_id", cid),
+      // @mention candidates = the committee's roster-linked members (the source
+      // of truth since 0057). Reading committee_members here missed anyone added
+      // the modern way, so they couldn't be tagged.
+      sb.from("committee_roster").select("linked_user_id").eq("committee_slug", slug).not("linked_user_id", "is", null),
     ]);
 
     const names = new Map<string, string>();
@@ -355,8 +358,10 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
       names.set(p.id, p.display_name?.trim() || "Member");
       avatars.set(p.id, p.avatar_url);
     }
-    const roster: Member[] = ((rosterRes.data ?? []) as { user_id: string }[])
-      .map((r) => ({ id: r.user_id, name: names.get(r.user_id) || "Member", avatarUrl: avatars.get(r.user_id) ?? null }))
+    const roster: Member[] = ((rosterRes.data ?? []) as { linked_user_id: string | null }[])
+      .map((r) => r.linked_user_id)
+      .filter((id): id is string => !!id)
+      .map((id) => ({ id, name: names.get(id) || "Member", avatarUrl: avatars.get(id) ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name));
     setMembers(roster);
 

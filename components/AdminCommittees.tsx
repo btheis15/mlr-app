@@ -5,7 +5,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { AdminJoinRequests } from "@/components/AdminJoinRequests";
 import { CommitteeMembers } from "@/components/CommitteeMembers";
 import { Avatar } from "@/components/Avatar";
-import { fetchProfiles, profileMap } from "@/lib/roles";
+import { fetchCommitteeRoster } from "@/lib/committeeRoster";
 import {
   isOnArea,
   isAreaLead,
@@ -319,20 +319,23 @@ function RolesManager({ committeeId }: { committeeId: string }) {
     const { data } = await sb.from("committees").select("slug").eq("id", committeeId).maybeSingle();
     const slug = (data as { slug: string } | null)?.slug;
     if (!slug) { setAreas([]); return; }
-    const [areaRows, { data: mem }, profs] = await Promise.all([
+    // Members + their roles come from committee_roster (the source of truth since
+    // 0057). The old committee_members read here under-counted anyone added the
+    // modern way — which is what made this panel's roles show "nobody yet" while
+    // the committee page grouped people under those very roles.
+    const [areaRows, roster] = await Promise.all([
       fetchCommitteeAreas(slug, true),
-      sb.from("committee_members").select("user_id, areas").eq("committee_id", committeeId),
-      fetchProfiles(),
+      fetchCommitteeRoster(slug),
     ]);
-    const pm = profileMap(profs);
     setAreas(areaRows);
     setMembers(
-      ((mem ?? []) as { user_id: string; areas: string[] | null }[])
-        .map((m) => ({
-          id: m.user_id,
-          name: pm.get(m.user_id)?.name || "Member",
-          avatar: pm.get(m.user_id)?.avatarUrl ?? null,
-          areas: m.areas ?? [],
+      roster
+        .filter((r) => !!r.linkedUserId) // role assignment targets a real account (set_committee_areas keys on user_id)
+        .map((r) => ({
+          id: r.linkedUserId as string,
+          name: r.linkedName || r.name,
+          avatar: r.linkedAvatarUrl ?? null,
+          areas: r.roles ?? [],
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -346,10 +349,10 @@ function RolesManager({ committeeId }: { committeeId: string }) {
     const sb = supabase;
     if (!isSupabaseConfigured || !sb) return;
     const ch = sb
-      .channel(`roles-members-${committeeId}`)
+      .channel(`roles-roster-${committeeId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "committee_members", filter: `committee_id=eq.${committeeId}` },
+        { event: "*", schema: "public", table: "committee_roster" },
         () => void load(),
       )
       .subscribe();
