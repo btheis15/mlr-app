@@ -9,7 +9,7 @@ import { useCachedResource } from "@/lib/swrCache";
 import { useSheetDismiss } from "@/lib/hooks";
 import { Sheet } from "@/components/Sheet";
 import { MemberSheet } from "@/components/MemberSheet";
-import { presentFromAttendance, presentFromCabins, mergePresence, type PresentMember } from "@/lib/presence";
+import { presentFromAttendance, presentFromCabins, presentFromHouseStays, mergePresence, type PresentMember } from "@/lib/presence";
 
 const MAX_SHOWN = 8;
 
@@ -18,23 +18,25 @@ function firstName(name: string): string {
 }
 
 /**
- * Members-only "who's up north today" strip. Presence is derived from
- * lib/presence.ts's `presentFromAttendance` (a widened, WhosUpNorth-only cousin
- * of Ask for Help's single-viewer `amIPresent`, lib/helpRequests.ts):
- * RSVP'd going to an event whose ±2-day window covers today — day-aware
- * (`days[today]`) on a REAL event day, and on the ±grace shoulder (arriving
- * early / lingering after) widened around the PERSON'S OWN picked days rather
- * than the event's whole run, so someone who only RSVP'd Tue–Thu isn't shown
- * as already up north on the preceding Sunday just because the fest's overall
- * window covers it — OR an approved cabin booking covering today. Reads via
- * `fetchEvents()`/`fetchAttendance()` (lib/events.ts) — the same functions
- * `useEvents()` itself calls — rather than that hook, because the hook only
- * exposes pre-grouped `summaries` (going/maybe/not-going rolled up over an
- * event's WHOLE run), which loses the per-day `days` map this card needs for
- * the "going today specifically" check. `today` comes from `useDemoDate()` —
- * the same "see the app as if it's this day" override Ask for Help honors, so
- * a demo date test also moves this card. Null for guests or when nobody's
- * present / the data isn't reachable.
+ * Members-only "who's up north today" strip. It appears ONLY when something
+ * concrete puts people at the resort today, and clears the moment nothing does.
+ * Presence is the union of three sources (lib/presence.ts):
+ *   • `presentFromAttendance` — RSVP'd going to an event that's actually
+ *     happening today (started, not past its end; NO lingering-after grace, so
+ *     the card goes away when the event ends), day-aware (`days[today]`) on a
+ *     real event day;
+ *   • `presentFromCabins` — an approved cabin booking covering today;
+ *   • `presentFromHouseStays` — a house-calendar stay covering today.
+ * So a fest that ended yesterday no longer shows its whole crew, but someone
+ * who booked the cabin or a house-calendar stay through this week still does.
+ * Reads events via `fetchEvents()`/`fetchAttendance()` (lib/events.ts) — the
+ * same functions `useEvents()` calls — rather than that hook, because the hook
+ * only exposes pre-grouped `summaries` (rolled up over an event's WHOLE run),
+ * which loses the per-day `days` map this card needs for the "going today
+ * specifically" check. `today` comes from `useDemoDate()` — the same "see the
+ * app as if it's this day" override Ask for Help honors, so a demo date test
+ * also moves this card. Null for guests or when nobody's present / the data
+ * isn't reachable.
  *
  * Wording is deliberately soft ("Up North today", not "right now") — this is
  * derived from RSVPs/bookings, not live location, so it can't promise someone
@@ -59,8 +61,16 @@ export function WhosUpNorthCard() {
     user && userId && today ? `whosUpNorth.${userId}.${today}` : null,
     [],
     async () => {
-      const [events, rows, cabin] = await Promise.all([fetchEvents(), fetchAttendance(), presentFromCabins(today!)]);
-      return mergePresence(presentFromAttendance(events, rows, today!), cabin);
+      const [events, rows, cabin, house] = await Promise.all([
+        fetchEvents(),
+        fetchAttendance(),
+        presentFromCabins(today!),
+        presentFromHouseStays(today!),
+      ]);
+      // Union of everyone concretely up north today: RSVP'd going to an event
+      // happening today (no lingering grace — presentFromAttendance defaults to
+      // 0), plus anyone with a cabin stay or house-calendar stay covering today.
+      return mergePresence(presentFromAttendance(events, rows, today!), [...cabin, ...house]);
     },
     { persist: "local", ttlMs: 30 * 60 * 1000 },
   );
