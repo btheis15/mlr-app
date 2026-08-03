@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
@@ -96,9 +97,12 @@ export function MyCommitteeCard({
   if (!entry) return null;
 
   const displayName = entry.linkedName || entry.name;
+  // Am I a lead of this committee — committee-level (is_lead, 0177) OR an area
+  // lead (any "· Lead" role, 0172)? Gates the "You're a lead"/Leads-chat surface.
+  const amLead = entry.isLead || leadAreas.length > 0;
   // A lead (or admin) writes the roster row directly, so their edits preserve
   // their "· Lead" standing; a plain member goes through set_my_committee_areas.
-  const canManageRoster = !isPreview && entry.id != null && (isAdmin || leadAreas.length > 0);
+  const canManageRoster = !isPreview && entry.id != null && (isAdmin || amLead);
 
   const startEdit = () => {
     setSelection([...myAreas]);
@@ -186,6 +190,12 @@ export function MyCommitteeCard({
 
       {/* What you do here — role chips, leads flagged with a one-tap step-down. */}
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* Committee-level Lead standing (independent of any area). */}
+        {entry.isLead && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-white">
+            ★ Lead of this committee
+          </span>
+        )}
         {myAreas.length > 0 ? (
           myAreas.map((area) => {
             const lead = leadAreas.includes(area);
@@ -217,10 +227,23 @@ export function MyCommitteeCard({
               </span>
             );
           })
-        ) : (
+        ) : entry.isLead ? null : (
           <span className="text-xs text-muted">On the committee — no specific area yet.</span>
         )}
       </div>
+
+      {/* Leads get a private side-chat for this committee. Deep-link into the
+          Feed's Leads room (which resolves ?c=&area=Leads) so it's reachable
+          right from the committee page, not only the Feed tab. */}
+      {amLead && (
+        <Link
+          href={`/posts?c=${committee.slug}&area=Leads`}
+          className="press flex items-center justify-between gap-2 rounded-xl bg-primary px-3.5 py-2.5 text-sm font-semibold text-white"
+        >
+          <span>💬 Open the Leads chat</span>
+          <span aria-hidden className="opacity-80">›</span>
+        </Link>
+      )}
 
       {/* Self-service area editing. */}
       {editing ? (

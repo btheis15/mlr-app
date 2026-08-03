@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
-import { fetchLiveAreaNames, baseArea, isOnArea, isAreaLead } from "@/lib/committeeAdmin";
+import { fetchLiveAreaNames, baseArea, isOnArea, isAreaLead, isCommitteeLead } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
 import type { Committee } from "@/lib/types";
 
@@ -55,7 +55,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   const [members, setMembers] = useState<RosterEntry[]>(
     () =>
       rosterCache.get(committee.slug) ??
-      (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null })),
+      (committee.members ?? []).map((m) => ({ ...m, linkedUserId: null, linkedName: null, linkedAvatarUrl: null, isLead: false })),
   );
   const reload = () =>
     fetchCommitteeRoster(committee.slug).then((r) => {
@@ -177,12 +177,12 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   }, [rosterEmails, guest]);
 
   // Who can add/remove/edit roster slots and assign roles: app admins, plus a
-  // Lead of THIS committee (anyone holding a "· Lead" role here) — migration
-  // 0172 opens the committee_roster write RLS to match. Never during a "View
-  // as" preview (read-only). The direct-table writes in saveRosterEntry /
-  // deleteRosterEntry now succeed for a lead server-side.
+  // Lead of THIS committee — either a committee-level lead (is_lead, migration
+  // 0177) OR an area lead (any "· Lead" role, 0172); the roster write RLS opens
+  // to match. Never during a "View as" preview (read-only). The direct-table
+  // writes in saveRosterEntry / deleteRosterEntry now succeed for a lead server-side.
   const iAmLead = members.some(
-    (m) => m.linkedUserId && m.linkedUserId === effectiveUserId && (m.roles ?? []).some((r) => r.endsWith(" · Lead")),
+    (m) => m.linkedUserId && m.linkedUserId === effectiveUserId && isCommitteeLead(m),
   );
   const canManage = (isAdmin || iAmLead) && !previewAsId;
 
@@ -270,9 +270,9 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   );
 
   const everyoneMail = mailtoFor(members, `${committee.name} — Muskellunge Lake Resort`);
-  // The committee's leads (anyone holding a "· Lead" role) — so you can reach
-  // just the people running it, without hunting down each of their emails.
-  const leads = members.filter((m) => (m.roles ?? []).some((r) => r.endsWith(" · Lead")));
+  // The committee's leads (committee-level OR area leads) — so you can reach just
+  // the people running it, without hunting down each of their emails.
+  const leads = members.filter((m) => isCommitteeLead(m));
   const leadsMail = mailtoFor(leads, `${committee.name} leads — Muskellunge Lake Resort`);
 
   return (
@@ -338,7 +338,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
               <div className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
                 <h3 className="text-sm font-semibold">On the committee</h3>
                 <ul className="space-y-1.5">
-                  {none.map((m) => <Row key={m.name} m={m} />)}
+                  {none.map((m) => <Row key={m.name} m={m} isLead={isCommitteeLead(m)} />)}
                 </ul>
               </div>
             );
@@ -349,7 +349,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Members</h2>
           {adminBar}
           <ul className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
-            {members.map((m) => <Row key={m.name} m={m} />)}
+            {members.map((m) => <Row key={m.name} m={m} isLead={isCommitteeLead(m)} />)}
           </ul>
         </section>
       )}
@@ -417,6 +417,7 @@ function RosterEditor({
   const [leads, setLeads] = useState<Set<string>>(
     () => new Set((entry?.roles ?? []).filter((r) => r.endsWith(" · Lead")).map((r) => r.slice(0, -" · Lead".length))),
   );
+  const [isLead, setIsLead] = useState<boolean>(entry?.isLead ?? false);
   const [pickQuery, setPickQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -454,6 +455,7 @@ function RosterEditor({
       phone: phone.trim() || null,
       roles: roleBased ? roles() : [],
       linkedUserId,
+      isLead,
     });
     setBusy(false);
     if (error) setError(error);
@@ -536,6 +538,28 @@ function RosterEditor({
           placeholder="Phone (optional)"
           className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
         />
+
+        {/* Committee-LEVEL lead (migration 0177), independent of any subcommittee.
+            Always available — it's the ONLY lead mechanism for a committee with no
+            roles (e.g. Resort Maintenance), and an "overall lead" on top of area
+            leads for one that has them. Leads get the private Leads chat + roster
+            control. Name as many as you like. */}
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => setIsLead((v) => !v)}
+            className={`press flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm ring-1 ${
+              isLead ? "bg-primary/10 text-primary ring-primary/30" : "bg-card text-foreground/70 ring-border"
+            }`}
+          >
+            <span className="text-base leading-none">{isLead ? "★" : "☆"}</span>
+            <span className="min-w-0 flex-1 text-left font-semibold">Lead of this committee</span>
+            <span className="text-xs font-medium opacity-70">{isLead ? "Yes" : "No"}</span>
+          </button>
+          <p className="px-0.5 text-xs text-faint">
+            Leads get a private “Leads” chat for this committee to discuss and decide on the side, and can manage its roster. Name as many as you like.
+          </p>
+        </div>
 
         {roleBased && (
           <div className="space-y-1.5">

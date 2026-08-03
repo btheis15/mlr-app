@@ -189,13 +189,22 @@ async function start() {
     if (!committee) return;
 
     // Recipients are the committee's roster members — for a role channel, only
-    // those who hold that area ('Meals' or 'Meals · Lead'); for General, all.
-    const { data: roster } = await sb.from("committee_roster").select("linked_user_id, roles").eq("committee_slug", committee.slug);
+    // those who hold that area ('Meals' or 'Meals · Lead'); for General, all; for
+    // the private Leads channel (area 'Leads'), every lead of the committee —
+    // committee-level (is_lead, migration 0177) OR area lead ("· Lead" role).
+    // is_lead is selected with a graceful fallback (pre-0177 → area leads only).
+    let rosterRes = await sb.from("committee_roster").select("linked_user_id, roles, is_lead").eq("committee_slug", committee.slug);
+    if (rosterRes.error && (rosterRes.error.code === "42703" || /column .* does not exist/i.test(rosterRes.error.message || ""))) {
+      rosterRes = await sb.from("committee_roster").select("linked_user_id, roles").eq("committee_slug", committee.slug);
+    }
+    const roster = rosterRes.data || [];
+    const isLeadRow = (r) => r.is_lead === true || (r.roles || []).some((x) => x.endsWith(" · Lead"));
+    const inChannel = (r) =>
+      msg.area === "Leads"
+        ? isLeadRow(r)
+        : !msg.area || (r.roles || []).includes(msg.area) || (r.roles || []).includes(`${msg.area} · Lead`);
     const memberIds = Array.from(new Set(
-      (roster || [])
-        .filter((r) => r.linked_user_id)
-        .filter((r) => !msg.area || (r.roles || []).includes(msg.area) || (r.roles || []).includes(`${msg.area} · Lead`))
-        .map((r) => r.linked_user_id),
+      roster.filter((r) => r.linked_user_id).filter(inChannel).map((r) => r.linked_user_id),
     ));
     const others = memberIds.filter((id) => id !== msg.author_id);
     if (!others.length) return;

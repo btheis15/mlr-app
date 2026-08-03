@@ -16,6 +16,10 @@ export interface RosterEntry extends CommitteeMember {
   linkedUserId: string | null;
   linkedName: string | null;
   linkedAvatarUrl: string | null;
+  /** Committee-LEVEL lead (migration 0177) — a lead of the whole committee,
+   *  independent of any subcommittee/area. Gates the private Leads chat + scoped
+   *  roster control alongside the "· Lead" area-lead notion. */
+  isLead: boolean;
 }
 
 interface RosterRow {
@@ -26,10 +30,19 @@ interface RosterRow {
   roles: string[] | null;
   position: number;
   linked_user_id: string | null;
+  is_lead?: boolean | null;
   profiles: { display_name: string | null; avatar_url: string | null } | null;
 }
 
-/** Create or update a roster entry (admin-gated by RLS). */
+// The is_lead column arrives with migration 0177; until it's applied, selecting
+// or writing it errors 42703. Everything here degrades gracefully (retry without
+// it) so the committee pages keep working before the migration runs.
+function isMissingColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
+}
+
+/** Create or update a roster entry (admin- or lead-gated by RLS). */
 export async function saveRosterEntry(input: {
   id?: string;
   committeeSlug: string;
@@ -38,11 +51,14 @@ export async function saveRosterEntry(input: {
   phone: string | null;
   roles: string[];
   linkedUserId: string | null;
+  /** Committee-level lead flag (migration 0177). Omit to leave unchanged on an
+   *  edit / default false on a new row. */
+  isLead?: boolean;
 }): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
   const uid = (await sb.auth.getUser()).data.user?.id ?? null;
-  const row = {
+  const base = {
     committee_slug: input.committeeSlug,
     name: input.name,
     email: input.email,
@@ -52,9 +68,16 @@ export async function saveRosterEntry(input: {
     updated_at: new Date().toISOString(),
     updated_by: uid,
   };
-  const { error } = input.id
-    ? await sb.from("committee_roster").update(row).eq("id", input.id)
-    : await sb.from("committee_roster").insert(row);
+  const write = (row: Record<string, unknown>) =>
+    input.id
+      ? sb.from("committee_roster").update(row).eq("id", input.id)
+      : sb.from("committee_roster").insert(row);
+  // Try with is_lead; if the column isn't there yet (pre-0177), retry without it
+  // so the rest of the edit still saves.
+  let { error } = await write(input.isLead === undefined ? base : { ...base, is_lead: input.isLead });
+  if (error && isMissingColumn(error) && input.isLead !== undefined) {
+    ({ error } = await write(base));
+  }
   return error ? { error: error.message } : {};
 }
 
@@ -92,17 +115,21 @@ export async function fetchCommitteeRoster(slug: string): Promise<RosterEntry[]>
     linkedUserId: null,
     linkedName: null,
     linkedAvatarUrl: null,
+    isLead: false,
   }));
 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return seed;
   try {
-    const { data } = await sb
-      .from("committee_roster")
-      .select("id, name, email, phone, roles, position, linked_user_id, profiles:linked_user_id(display_name, avatar_url)")
-      .eq("committee_slug", slug)
-      .order("position");
-    const rows = (data ?? []) as unknown as RosterRow[];
+    const withLead = "id, name, email, phone, roles, position, linked_user_id, is_lead, profiles:linked_user_id(display_name, avatar_url)";
+    const noLead = "id, name, email, phone, roles, position, linked_user_id, profiles:linked_user_id(display_name, avatar_url)";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without is_lead) can't share one inferred type
+    let res: any = await sb.from("committee_roster").select(withLead).eq("committee_slug", slug).order("position");
+    if (res.error && isMissingColumn(res.error)) {
+      // Pre-0177: no is_lead column yet — fall back so the roster still loads.
+      res = await sb.from("committee_roster").select(noLead).eq("committee_slug", slug).order("position");
+    }
+    const rows = (res.data ?? []) as unknown as RosterRow[];
     if (!rows.length) return seed;
     return rows.map((r) => ({
       id: r.id,
@@ -113,6 +140,7 @@ export async function fetchCommitteeRoster(slug: string): Promise<RosterEntry[]>
       linkedUserId: r.linked_user_id,
       linkedName: r.profiles?.display_name?.trim() || null,
       linkedAvatarUrl: r.profiles?.avatar_url ?? null,
+      isLead: r.is_lead ?? false,
     }));
   } catch {
     return seed;

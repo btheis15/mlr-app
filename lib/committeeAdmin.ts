@@ -201,6 +201,22 @@ export const withArea = (areas: string[], area: string, lead = false): string[] 
 export const withoutArea = (areas: string[], area: string): string[] =>
   areas.filter((a) => baseArea(a) !== area);
 
+/** Does this role list contain any area lead (a "· Lead" entry)? */
+export const rolesIncludeAreaLead = (roles: string[] | null | undefined): boolean =>
+  (roles ?? []).some((r) => r.endsWith(LEAD_SUFFIX));
+
+/**
+ * Is this roster entry a LEAD of the committee — unified across the two notions:
+ * a **committee-level** lead (the `is_lead` flag, migration 0177, independent of
+ * any subcommittee) OR an **area** lead (any "· Lead" role, migration 0172). This
+ * is the single check everything that gates the private Leads chat, scoped roster
+ * control, and lead notifications should use, so a committee with NO subcommittees
+ * can still have leads. Admins are intentionally NOT folded in here (the Leads
+ * room is leads-only by design — an admin who isn't a lead isn't in it).
+ */
+export const isCommitteeLead = (m: { roles?: string[] | null; isLead?: boolean | null }): boolean =>
+  !!m?.isLead || rolesIncludeAreaLead(m?.roles);
+
 type RpcResult = { error?: string };
 const rpc = async (fn: string, args: Record<string, unknown>): Promise<RpcResult> => {
   const sb = supabase;
