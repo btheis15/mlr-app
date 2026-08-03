@@ -10,7 +10,7 @@ import { useCachedResource } from "@/lib/swrCache";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, formatEventTime } from "@/lib/format";
-import { eventsForDay, dinnerForDay } from "@/lib/schedule";
+import { eventsForDay, dinnerForDay, dayTimeline } from "@/lib/schedule";
 import { FEST_ALBUM_HREF } from "@/lib/data";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
@@ -145,28 +145,32 @@ export function FestStatus({
           </p>
         </div>
 
-        {today.map((e) => (
-          <TodayEvent
-            key={e.id}
-            e={e}
-            uid={uid}
-            canEditAll={canEditAll}
-            draft={scheduleDrafts.find((d) => d.id === e.id) ?? null}
-            days={festDayOptions}
-            members={members}
-            onSaved={onSaved}
-          />
-        ))}
-        {dinner && (
-          <TodayDinner
-            d={dinner}
-            uid={uid}
-            canEditAll={canEditAll}
-            draft={dinnerDrafts.find((d) => d.id === dinner.id) ?? null}
-            days={festDayOptions}
-            members={members}
-            onSaved={onSaved}
-          />
+        {/* Events + the dinner in one time-ordered timeline, so the dinner
+            appears where it falls in the day, not always last. */}
+        {dayTimeline(today, dinner).map((it) =>
+          it.kind === "event" ? (
+            <TodayEvent
+              key={it.event.id}
+              e={it.event}
+              uid={uid}
+              canEditAll={canEditAll}
+              draft={scheduleDrafts.find((d) => d.id === it.event.id) ?? null}
+              days={festDayOptions}
+              members={members}
+              onSaved={onSaved}
+            />
+          ) : (
+            <TodayDinner
+              key={`dinner-${it.dinner.id}`}
+              d={it.dinner}
+              uid={uid}
+              canEditAll={canEditAll}
+              draft={dinnerDrafts.find((d) => d.id === it.dinner.id) ?? null}
+              days={festDayOptions}
+              members={members}
+              onSaved={onSaved}
+            />
+          ),
         )}
         {today.length === 0 && !dinner && (
           <p className="rounded-2xl bg-card p-4 text-center text-sm text-foreground/60 ring-1 ring-border">
