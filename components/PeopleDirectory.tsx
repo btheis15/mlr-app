@@ -12,6 +12,7 @@ import { firstName } from "@/lib/privacy";
 import { plural } from "@/lib/format";
 import { payActions, type Action, type MemberContact } from "@/lib/contact";
 import { isApple } from "@/lib/push";
+import { isReviewerAccount } from "@/lib/reviewer";
 
 // One member as the directory needs them: identity for the row + the contact/pay
 // fields we turn into the quick-action bar. These are the same private columns
@@ -62,7 +63,10 @@ export function PeopleDirectory() {
         throw new Error(e.message);
       }
       setError(null);
-      return (data ?? []) as Person[];
+      // Hide the Apple App Review demo account from the family-facing directory
+      // (and, since the count derives from this list, from the member count too).
+      // It stays fully functional and visible in admin tools.
+      return ((data ?? []) as Person[]).filter((p) => !isReviewerAccount(p));
     },
     { persist: "local" },
   );
