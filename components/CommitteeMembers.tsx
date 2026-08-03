@@ -171,15 +171,9 @@ export function CommitteeMembers({ slug, name }: { slug: string; name: string })
 
   return (
     <section className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
-          {isAdmin ? "Admin" : "Lead"}
-        </span>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-semibold">{name} members</h2>
-          <p className="text-xs text-faint">App access · chat · management</p>
-        </div>
-        <span className="text-xs text-faint">{members.length}</span>
+      <div className="flex items-baseline gap-2">
+        <h2 className="min-w-0 flex-1 text-sm font-semibold">{name} members</h2>
+        <span className="shrink-0 text-xs text-faint">{members.length}</span>
       </div>
 
       <ul className="space-y-1.5">
