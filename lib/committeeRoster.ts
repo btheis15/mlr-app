@@ -42,6 +42,44 @@ function isMissingColumn(error: { code?: string; message?: string } | null): boo
   return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
 }
 
+/** A "Pending" (account-less) roster person, for reuse in the member picker. */
+export interface PendingPerson {
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+/** Every account-LESS ("Pending verification") roster person across ALL
+ *  committees, deduped by email (falling back to name). Lets the "Choose a
+ *  member" picker offer someone already on the roster-but-not-in-the-app, so an
+ *  admin/lead can add the same pending person to another committee without
+ *  re-typing their name/email. `committee_roster` is members-readable (0081), so
+ *  a signed-in admin/lead sees all rows. Empty on no backend / any error. */
+export async function fetchPendingRosterPeople(): Promise<PendingPerson[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  try {
+    const { data, error } = await sb
+      .from("committee_roster")
+      .select("name, email, phone")
+      .is("linked_user_id", null);
+    if (error || !data) return [];
+    const seen = new Set<string>();
+    const out: PendingPerson[] = [];
+    for (const r of data as { name: string; email: string | null; phone: string | null }[]) {
+      const nm = (r.name ?? "").trim();
+      if (!nm) continue;
+      const key = (r.email && r.email.trim().toLowerCase()) || `name:${nm.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name: nm, email: r.email?.trim() || null, phone: r.phone?.trim() || null });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
 /** Create or update a roster entry (admin- or lead-gated by RLS). */
 export async function saveRosterEntry(input: {
   id?: string;
