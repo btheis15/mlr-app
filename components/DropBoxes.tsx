@@ -9,7 +9,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { BackLink } from "@/components/BackLink";
 import { useDropBoxes, useDropBox, useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { supabase } from "@/lib/supabase";
-import { uploadToMini, compressImage, extractExifCapturedAt, MEDIA_URL } from "@/lib/media";
+import { uploadToMini, compressImage, capturedAtForFile, MEDIA_URL } from "@/lib/media";
 import {
   createDropBox,
   updateDropBox,
@@ -240,18 +240,19 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
       let doneBytes = 0;
       for (const raw of files) {
         const isVideo = raw.type.startsWith("video");
-        // Read EXIF "date taken" off the ORIGINAL file first — compressImage
+        // Read "date taken" off the ORIGINAL file first — compressImage
         // re-encodes photos via <canvas>, which strips every byte of
         // metadata, so this has to happen before that. Videos aren't
         // recompressed client-side; the mini reads their real capture date
         // from the container itself (media-server/captured-at.js).
-        const capturedAt = isVideo ? null : await extractExifCapturedAt(raw);
+        const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
         // Photos → web JPEG (smaller/faster, fixes HDR/HEIC); videos as-is.
         const f = isVideo ? raw : await compressImage(raw);
         const uploaded = await uploadToMini(f, token, {
           category: "dropbox",
           room: box.id,
-          capturedAt,
+          capturedAt: taken.iso,
+          capturedAtSource: taken.source,
           onProgress: (loaded, total) => {
             const frac = total ? loaded / total : 0;
             setPct(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
@@ -264,6 +265,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           isVideo ? "video" : "image",
           uploaded.thumbnailUrl,
           uploaded.capturedAt,
+          uploaded.capturedAtSource,
         );
         if (error) throw new Error(error);
       }

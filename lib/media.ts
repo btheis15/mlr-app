@@ -19,13 +19,14 @@ export interface UploadOptions {
   room?: string;
   onProgress?: (loaded: number, total: number) => void;
   /**
-   * When the caller already knows the real "date taken" (from
-   * `extractExifCapturedAt`, read off the ORIGINAL file before it's
-   * compressed away), pass it here so the mini can store it — for a video the
-   * server derives its own from the container instead, so this is
-   * photo-only. ISO string.
+   * When the caller already knows the "date taken" (from `capturedAtForFile`,
+   * read off the ORIGINAL file before it's compressed away), pass it here so
+   * the mini can store it — for a video the server derives its own from the
+   * container instead, so this is photo-only. ISO string, plus where it came
+   * from so a weaker guess can be upgraded later.
    */
   capturedAt?: string | null;
+  capturedAtSource?: CapturedAtSource | null;
 }
 
 /** A single photo/video attachment (shared across posts, work items, etc.). */
@@ -51,6 +52,11 @@ export function photoUrls(media: { url: string; type: string }[]): string[] {
   return media.filter((m) => m.type === "image").map((m) => m.url);
 }
 
+/** Where a `capturedAt` came from — real file metadata, or a weaker proxy.
+ *  Stored alongside the date so the mini's sweep can later upgrade a proxy to
+ *  real metadata without ever downgrading. */
+export type CapturedAtSource = "exif" | "video" | "file" | "post";
+
 /** What the mini's /upload actually returns. */
 export interface UploadResult {
   url: string;
@@ -58,6 +64,7 @@ export interface UploadResult {
   /** When the file was actually taken/recorded (EXIF for photos, container metadata for
    *  videos), ISO string — null when it couldn't be determined (falls back to upload time). */
   capturedAt: string | null;
+  capturedAtSource: CapturedAtSource | null;
   type: MediaKind | "file";
   path: string;
 }
@@ -99,6 +106,7 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
     const fd = new FormData();
     fd.append("file", file);
     if (opts.capturedAt) fd.append("capturedAt", opts.capturedAt);
+    if (opts.capturedAtSource) fd.append("capturedAtSource", opts.capturedAtSource);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${MEDIA_URL}/upload${qs ? `?${qs}` : ""}`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -116,6 +124,7 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
             url: json.url,
             thumbnailUrl: json.thumbnailUrl ?? null,
             capturedAt: json.capturedAt ?? null,
+            capturedAtSource: json.capturedAtSource ?? null,
             type: json.type ?? "file",
             path: json.path ?? "",
           });
@@ -242,6 +251,43 @@ export async function extractExifCapturedAt(file: File): Promise<string | null> 
   } catch {
     return null;
   }
+}
+
+/**
+ * Best-effort capture date for a file the user just picked, with its
+ * provenance — call this on the ORIGINAL File, before `compressImage` (which
+ * re-encodes photos through a `<canvas>` and destroys EXIF).
+ *
+ * Two tiers, because EXIF isn't always reachable here:
+ *  1. `exif` — the real thing, parsed from a JPEG's own metadata.
+ *  2. `file` — the file's `lastModified`. For a photo picked out of a camera
+ *     roll this is normally the shot's own date, and it's the only signal
+ *     available for a **HEIC** (iPhone's default format), which the JPEG
+ *     parser can't open at all. Guarded hard: a timestamp that's missing,
+ *     implausible, or suspiciously close to *now* is rejected, since a
+ *     picker that hands over a freshly-made temp copy stamps it with the
+ *     current time — which would be upload time wearing a disguise.
+ *
+ * Returns `{ iso: null, source: null }` when nothing trustworthy is available;
+ * the mini gets its own shot at the stored bytes afterward (and can read HEIC
+ * via sharp when the original survives uncompressed), and a later sweep
+ * upgrades a `file` guess to real EXIF if it finds any.
+ */
+export async function capturedAtForFile(
+  file: File,
+): Promise<{ iso: string | null; source: CapturedAtSource | null }> {
+  const exif = await extractExifCapturedAt(file);
+  if (exif) return { iso: exif, source: "exif" };
+
+  const lm = file.lastModified;
+  if (!lm || !Number.isFinite(lm)) return { iso: null, source: null };
+  const now = Date.now();
+  const EARLIEST = Date.UTC(1995, 0, 1); // older than any phone photo
+  const FRESH_COPY_MS = 60_000; // ≈now ⇒ the picker stamped a temp copy
+  if (lm < EARLIEST || lm > now + 60_000 || now - lm < FRESH_COPY_MS) {
+    return { iso: null, source: null };
+  }
+  return { iso: new Date(lm).toISOString(), source: "file" };
 }
 
 // Downscale + re-encode photos to web JPEGs before upload (smaller + faster,

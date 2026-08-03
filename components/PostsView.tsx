@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, extractExifCapturedAt, moderatePostText, photoUrls } from "@/lib/media";
+import { uploadToMini, compressImage, capturedAtForFile, moderatePostText, photoUrls, type CapturedAtSource } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -24,6 +24,11 @@ interface Media {
   type: MediaType;
   path?: string; // raw post_media.storage_path — lets the editor remove this item (absent for legacy image_path)
   thumbnailUrl?: string | null; // small preview — grids render this instead of the full-res url
+  // When the photo was actually taken (0176) — carried so that adding this
+  // post's photos to an album later can use the real date instead of falling
+  // back to the post's own timestamp.
+  capturedAt?: string | null;
+  capturedAtSource?: CapturedAtSource | null;
 }
 interface Tag {
   id: string;
@@ -82,6 +87,8 @@ interface MediaRow {
   thumbnail_url?: string | null;
   media_type: string;
   position: number;
+  captured_at?: string | null;
+  captured_at_source?: string | null;
 }
 interface ReactionRow {
   post_id: string;
@@ -111,20 +118,27 @@ const LS = { hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
-// Insert a *_media row carrying the mini's generated thumbnail. Pre-0173 the
-// thumbnail_url column doesn't exist yet, and an unknown column fails the
-// WHOLE insert (42703) — which would take the photo down with it, not just the
-// thumbnail — so retry once without it. The usual pre-migration degrade: the
-// photo still attaches, it just renders full-res in grids until 0173 runs.
-// Returns the error (rather than throwing) so each call site keeps exactly the
-// error handling it had before.
+// Insert a *_media row carrying the mini's generated thumbnail (0173) and the
+// photo's capture date (0176). An unknown column fails the WHOLE insert
+// (42703) — which would take the photo down with it, not just the extra field
+// — so on that error the optional columns are dropped and it retries, newest
+// migration first. The usual pre-migration degrade: the photo still attaches,
+// it just loses the enrichment until the migration runs. Returns the error
+// (rather than throwing) so each call site keeps the handling it had before.
+const OPTIONAL_MEDIA_COLUMNS = [
+  ["captured_at", "captured_at_source"], // 0176
+  ["thumbnail_url"], // 0173
+];
 async function insertMediaRow(table: string, row: Record<string, unknown>) {
   if (!supabase) return { error: null };
-  let { error } = await supabase.from(table).insert(row);
-  if (error && (error.code === "42703" || /thumbnail_url/i.test(error.message ?? ""))) {
-    const withoutThumb = { ...row };
-    delete withoutThumb.thumbnail_url;
-    ({ error } = await supabase.from(table).insert(withoutThumb));
+  let attempt = { ...row };
+  let { error } = await supabase.from(table).insert(attempt);
+  for (const cols of OPTIONAL_MEDIA_COLUMNS) {
+    if (!error || error.code !== "42703") break;
+    if (!cols.some((c) => c in attempt)) continue;
+    attempt = { ...attempt };
+    for (const c of cols) delete attempt[c];
+    ({ error } = await supabase.from(table).insert(attempt));
   }
   return { error };
 }
@@ -283,7 +297,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     const sb = supabase;
     if (!sb) return;
     const others = Promise.all([
-      sb.from("post_media").select("post_id, storage_path, thumbnail_url, media_type, position").order("position", { ascending: true }),
+      sb.from("post_media").select("post_id, storage_path, thumbnail_url, media_type, position, captured_at, captured_at_source").order("position", { ascending: true }),
       sb.from("post_comments").select("id, post_id, text, created_at, author_id").order("created_at", { ascending: true }),
       sb.from("post_reactions").select("post_id, user_id, emoji"),
       sb.from("post_tags").select("post_id, tagged_user_id"),
@@ -330,8 +344,15 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     // come back null and the feed would render with no photos at all).
     let mediaRows = (mediaRes.data ?? []) as unknown as MediaRow[];
     if (mediaRes.error) {
-      const retry = await sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true });
-      mediaRows = (retry.data ?? []) as unknown as MediaRow[];
+      // Step back one migration at a time: 0176's capture date, then 0173's
+      // thumbnail — losing an enrichment beats losing every photo.
+      const retryNoTaken = await sb.from("post_media").select("post_id, storage_path, thumbnail_url, media_type, position").order("position", { ascending: true });
+      if (!retryNoTaken.error) {
+        mediaRows = (retryNoTaken.data ?? []) as unknown as MediaRow[];
+      } else {
+        const retry = await sb.from("post_media").select("post_id, storage_path, media_type, position").order("position", { ascending: true });
+        mediaRows = (retry.data ?? []) as unknown as MediaRow[];
+      }
     }
     let commentMediaRows = (commentMediaRes.data ?? []) as unknown as CommentMediaRow[];
     if (commentMediaRes.error) {
@@ -364,6 +385,8 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         type: m.media_type === "video" ? "video" : "image",
         path: m.storage_path,
         thumbnailUrl: m.thumbnail_url ?? null,
+        capturedAt: m.captured_at ?? null,
+        capturedAtSource: (m.captured_at_source as CapturedAtSource | null) ?? null,
       });
     }
 
@@ -564,24 +587,26 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
         let doneBytes = 0;
         setProgress(0);
-        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null }[] = [];
+        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null; capturedAtSource: CapturedAtSource | null }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
-          // EXIF "date taken" has to be read off the ORIGINAL file —
-          // compressImage strips it. Only relevant if this photo also ends up
-          // in an album (below); harmless to compute either way.
-          const capturedAt = isVideo ? null : await extractExifCapturedAt(raw);
+          // "Date taken" has to be read off the ORIGINAL file — compressImage
+          // strips it. Captured for every post photo (not just album-bound
+          // ones) so it's stored on post_media and still available if these
+          // photos are added to an album later.
+          const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
           const f = isVideo ? raw : await compressImage(raw);
           const res = await uploadToMini(f, token, {
-            capturedAt,
+            capturedAt: taken.iso,
+            capturedAtSource: taken.source,
             onProgress: (loaded, total) => {
               const frac = total ? loaded / total : 0;
               setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
             },
           });
           doneBytes += raw.size;
-          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt });
+          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt, capturedAtSource: res.capturedAtSource });
         }
         setProgress(100);
         // Backdate when the author chose a different moment (and the DB supports
@@ -597,7 +622,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const { data: rpcPostId, error: rpcErr } = await supabase.rpc("create_post", {
           p_caption: caption || null,
           p_occurred_at: occurredAt,
-          p_media: uploaded.map((u) => ({ path: u.path, type: u.type, thumbnail: u.thumbnailUrl })),
+          p_media: uploaded.map((u) => ({ path: u.path, type: u.type, thumbnail: u.thumbnailUrl, capturedAt: u.capturedAt, capturedAtSource: u.capturedAtSource })),
           p_tags: tagIds,
           p_held: heldForText,
         });
@@ -619,6 +644,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           for (let i = 0; i < uploaded.length; i++) {
             const { error: medErr } = await insertMediaRow("post_media", {
               post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i, thumbnail_url: uploaded[i].thumbnailUrl,
+              captured_at: uploaded[i].capturedAt, captured_at_source: uploaded[i].capturedAtSource,
             });
             if (medErr) throw medErr;
           }
@@ -635,7 +661,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // post that already succeeded.
         if (alsoAlbum && albumId && uploaded.length) {
           for (const u of uploaded) {
-            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl, u.capturedAt); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl, u.capturedAt, u.capturedAtSource); } catch { /* keep going */ }
           }
         }
         await refetch();
@@ -1312,20 +1338,21 @@ function EditPostPanel({
         let pos = post.media.length;
         for (const raw of files) {
           const isVideo = raw.type.startsWith("video");
-          // EXIF "date taken" has to come off the ORIGINAL file — compressImage
+          // "Date taken" has to come off the ORIGINAL file — compressImage
           // strips it.
-          const capturedAt = isVideo ? null : await extractExifCapturedAt(raw);
+          const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
           const f = isVideo ? raw : await compressImage(raw);
-          const res = await uploadToMini(f, token, { capturedAt });
+          const res = await uploadToMini(f, token, { capturedAt: taken.iso, capturedAtSource: taken.source });
           await insertMediaRow("post_media", {
             post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
+            captured_at: res.capturedAt, captured_at_source: res.capturedAtSource,
           });
           // Optionally reference this same upload into a shared album too — NO
           // re-upload, the album row just points at the same mini URL (mirrors
           // the composer's own `alsoAlbum` flow). Best-effort: never undoes the
           // edit that already saved.
           if (alsoAlbum && albumId) {
-            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt, res.capturedAtSource); } catch { /* keep going */ }
           }
         }
       }
@@ -1333,9 +1360,23 @@ function EditPostPanel({
       // videos into the album — same no-re-upload idiom, just pointing the
       // album row at each one's already-stored url/thumbnail. This is what
       // lets an admin retroactively add an old post's photos to an album.
+      //
+      // The original File is long gone for these (only a URL remains), so
+      // there's nothing to read EXIF from here. Best available, in order:
+      //   1. the date stored on post_media when the photo was first posted
+      //      (0176) — the real thing, read back rather than re-derived;
+      //   2. the POST's own timestamp as a proxy, for anything posted before
+      //      0176 shipped. The family's own statement of when the moment
+      //      happened, and far better for album ordering than the upload
+      //      second, which is identical for every photo in one bulk add.
+      // Tagged so the mini's sweep can still upgrade a proxy to real metadata
+      // if the stored bytes turn out to carry any (compressImage leaves a
+      // photo untouched whenever re-encoding wouldn't shrink it).
       if (alsoAlbum && albumId && keptMedia.length) {
         for (const m of keptMedia) {
-          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null); } catch { /* keep going */ }
+          const taken = m.capturedAt ?? post.ts;
+          const source: CapturedAtSource = m.capturedAt ? m.capturedAtSource ?? "exif" : "post";
+          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null, taken, source); } catch { /* keep going */ }
         }
       }
       const orig = post.tags.map((t) => t.id);

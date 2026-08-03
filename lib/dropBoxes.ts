@@ -11,7 +11,7 @@
 // never throws, the lib/polls.ts idiom.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { Media, MediaKind } from "@/lib/media";
+import type { CapturedAtSource, Media, MediaKind } from "@/lib/media";
 
 export type DropBoxMediaStatus = "visible" | "pending" | "hidden";
 
@@ -200,26 +200,44 @@ export function deleteDropBox(id: string): Promise<Res> {
 }
 
 /** Attach one already-uploaded file (mini URL) to a box. `capturedAt` (ISO,
- *  when known — see extractExifCapturedAt / the mini's video ffprobe read)
- *  drives the album's most-recent-first sort ahead of upload time. */
+ *  when known) drives the album's most-recent-first sort ahead of upload time;
+ *  `capturedAtSource` says whether that's real file metadata (`exif`/`video`,
+ *  from extractExifCapturedAt or the mini's ffprobe read) or the weaker
+ *  source-post proxy (`post`), so the mini's sweep can upgrade the proxy later
+ *  without ever downgrading real metadata. */
 export async function addDropBoxMedia(
   boxId: string,
   url: string,
   type: MediaKind,
   thumbnailUrl?: string | null,
   capturedAt?: string | null,
+  capturedAtSource?: CapturedAtSource | null,
 ): Promise<IdRes> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
+  const isStale = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === "PGRST202" || /find the function|schema cache/i.test(e.message ?? ""));
+
   let { data, error } = await sb.rpc("add_drop_box_media", {
     p_box: boxId,
     p_url: url,
     p_type: type,
     p_thumbnail_url: thumbnailUrl ?? null,
     p_captured_at: capturedAt ?? null,
+    p_captured_at_source: capturedAtSource ?? null,
   });
-  // Pre-0174 fallback: the RPC doesn't have the 5th param yet.
-  if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
+  // Pre-0175 fallback: no p_captured_at_source param yet.
+  if (isStale(error)) {
+    ({ data, error } = await sb.rpc("add_drop_box_media", {
+      p_box: boxId,
+      p_url: url,
+      p_type: type,
+      p_thumbnail_url: thumbnailUrl ?? null,
+      p_captured_at: capturedAt ?? null,
+    }));
+  }
+  // Pre-0174 fallback: no p_captured_at either.
+  if (isStale(error)) {
     ({ data, error } = await sb.rpc("add_drop_box_media", {
       p_box: boxId,
       p_url: url,
@@ -227,8 +245,8 @@ export async function addDropBoxMedia(
       p_thumbnail_url: thumbnailUrl ?? null,
     }));
   }
-  // Pre-0173 fallback: the RPC doesn't have the 4th param either yet.
-  if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
+  // Pre-0173 fallback: no p_thumbnail_url either.
+  if (isStale(error)) {
     ({ data, error } = await sb.rpc("add_drop_box_media", { p_box: boxId, p_url: url, p_type: type }));
   }
   return error ? { error: error.message } : { id: data as string };
