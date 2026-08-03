@@ -21,6 +21,8 @@ import {
   renameCommitteeArea,
   archiveCommitteeArea,
   restoreCommitteeArea,
+  deleteCommittee,
+  deleteCommitteeArea,
   type CommitteeRow,
   type CommitteeAreaRow,
 } from "@/lib/committeeAdmin";
@@ -193,9 +195,26 @@ export function AdminCommittees() {
               >
                 Restore
               </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (
+                    !window.confirm(
+                      `Permanently delete "${c.name}"? This erases it and ALL its chat history, roster, and roles for good — it can't be restored. (Use Restore instead if you just want it back.)`,
+                    )
+                  )
+                    return;
+                  const { error } = await deleteCommittee(c.id);
+                  if (error) window.alert(error);
+                  else void reload();
+                }}
+                className="press shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-accent ring-1 ring-accent/40"
+              >
+                Delete forever
+              </button>
             </div>
           ))}
-          <p className="text-[11px] text-faint">Old chat history stays under &ldquo;Archived chats&rdquo; on the Feed tab. Restore brings the committee fully back, roster and all.</p>
+          <p className="text-[11px] text-faint">Old chat history stays under &ldquo;Archived chats&rdquo; on the Feed tab. Restore brings the committee fully back, roster and all. <span className="text-accent">Delete forever</span> erases it permanently — no undo.</p>
         </div>
       )}
     </div>
@@ -509,6 +528,16 @@ function RolesManager({ committeeId }: { committeeId: string }) {
             <div key={a.area} className="flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-sm text-foreground/50">{a.area}</span>
               <button type="button" onClick={() => run(() => restoreCommitteeArea(committeeId, a.area))} className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Restore</button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.confirm(`Permanently delete the "${a.area}" role? This erases its chat history and removes it from everyone — no undo.`)) return;
+                  void run(() => deleteCommitteeArea(committeeId, a.area));
+                }}
+                className="press shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-accent ring-1 ring-accent/40"
+              >
+                Delete forever
+              </button>
             </div>
           ))}
         </div>
