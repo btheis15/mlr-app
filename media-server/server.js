@@ -102,7 +102,12 @@ const globalLimiter = rateLimit({
 });
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 30, // uploads/hour/IP — generous for a burst of fest photos, not for scraping the disk full
+  // uploads/hour/IP. Sized for the REAL core use case: dumping a whole album
+  // (a fest is easily 200-500 photos from one phone), and a lake full of family
+  // shares one WiFi/IP — behind the tunnel they can collapse to a single key,
+  // so 30 (the old value) 429'd a single dump at photo #31. Still a floor
+  // against a runaway loop; every upload is auth'd + magic-sniffed + MAX_MB-capped.
+  limit: Number(process.env.UPLOAD_LIMIT_PER_HOUR) || 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many uploads from this device recently. Try again in a bit." },
