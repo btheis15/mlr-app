@@ -401,12 +401,17 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         if (rel) { fields.push(["path", rel]); n++; }
       }
       if (!n) throw new Error("Couldn't resolve those files.");
-      setMsg(`Preparing ${n} ${n === 1 ? "item" : "items"}…`);
+      setMsg(`Preparing ${n} ${n === 1 ? "item" : "items"} — your download will start shortly…`);
       postDownload(`${MEDIA_URL}/dropbox-zip`, fields);
       exitSelect();
+      // The mini zips + streams server-side; the browser hands off to its own
+      // download UI once bytes arrive. There's no client signal for "started,"
+      // so hold the busy state briefly rather than snapping the button back to
+      // idle the instant the form submits (which read as "nothing happened").
+      window.setTimeout(() => setZipping(false), 2500);
+      window.setTimeout(() => setMsg(null), 6000);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Couldn't start the download.");
-    } finally {
       setZipping(false);
       window.setTimeout(() => setMsg(null), 6000);
     }
@@ -593,7 +598,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
               <button
                 key={item.id}
                 onClick={() => (selecting ? toggleSelect(item.id) : setViewerIndex(idx))}
-                className={`press relative aspect-square overflow-hidden rounded-lg bg-primary/5 ${
+                className={`press cv-tile relative aspect-square overflow-hidden rounded-lg bg-primary/5 ${
                   selecting && isSel ? "ring-2 ring-primary" : ""
                 }`}
               >
@@ -812,16 +817,25 @@ function FolderCarousel({
         onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
         className="flex flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-contain"
       >
-        {items.map((it) => (
-          <div key={it.id} className="flex w-full shrink-0 snap-center items-center justify-center">
-            {it.type === "video" ? (
-              <video src={it.url} controls playsInline preload="metadata" className="max-h-full max-w-full" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={it.url} alt="" className="max-h-full max-w-full object-contain" />
-            )}
-          </div>
-        ))}
+        {items.map((it, i) => {
+          // Windowed: only the current slide and its immediate neighbors mount
+          // real media. Every slide still renders a full-width spacer div so the
+          // scroll geometry (and the scrollLeft math above) is unchanged — a
+          // 2,000-item album keeps ≤3 <img>/<video> elements alive at once
+          // instead of thousands, and the neighbor is already loaded by the time
+          // you swipe onto it.
+          const near = Math.abs(i - active) <= 1;
+          return (
+            <div key={it.id} className="flex w-full shrink-0 snap-center items-center justify-center">
+              {!near ? null : it.type === "video" ? (
+                <video src={it.url} controls playsInline preload="metadata" className="max-h-full max-w-full" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={it.url} alt="" className="max-h-full max-w-full object-contain" />
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Edge arrows (mainly desktop; swipe is primary on touch) */}

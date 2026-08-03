@@ -403,6 +403,16 @@ html[data-splash] #app-logo { opacity: 0; }
   transition-timing-function: var(--ease-ios);
 }
 
+/* Album/grid tiles: let the browser skip rendering off-screen tiles so a big
+   album (hundreds/thousands of items) scrolls cheaply. The tile's own
+   aspect-ratio already reserves its box size, so layout/scroll height is
+   unaffected; contain-intrinsic-size is a fallback for the rare browser that
+   needs it. Ignored gracefully where unsupported (older iOS) — full render. */
+.cv-tile {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
 /* Honor the OS reduce-motion toggle: collapse everything to a 1ms fade. */
 @media (prefers-reduced-motion: reduce) {
   .page-enter, .sheet-panel, .sheet-close, .pop-panel, .pop-close,
