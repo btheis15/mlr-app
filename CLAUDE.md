@@ -1469,6 +1469,41 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   time). `add_drop_box_media` carries a matching `p_captured_at` param
   (pre-migration calls degrade gracefully, same idiom as `p_thumbnail_url`
   in 0173).
+  - ⚠️ **0174 alone did almost nothing in practice, because the dominant path
+    into an album can't read EXIF at all (fixed by
+    [`0175`](supabase/migrations/0175_captured_at_source_and_backfill.sql)).**
+    The Family Fest album was 48 items: 41 referenced in from existing Feed
+    posts, 7 direct uploads that predated the feature — so **every single row
+    had `captured_at = null`** and the album fell back to upload order. Worse,
+    a bulk "add to album" writes every row inside the SAME SECOND, so those 41
+    had no meaningful order at all, and near-duplicate shots (the same photo
+    uploaded once directly and once via a post — different files, different
+    URLs, so no dedupe catches them) scattered instead of sitting together.
+    The root cause is structural: `extractExifCapturedAt` reads the ORIGINAL
+    `File` before `compressImage` strips it, but a photo referenced from an
+    existing post has **no File on the client, only a URL**. 0175 adds two
+    recovery sources, best-first, plus `drop_box_media.captured_at_source`
+    (`'exif' | 'video' | 'post'`) so they can be ranked:
+    1. **Real metadata read off the stored file, server-side**
+       ([`media-server/captured-at-backfill.js`](media-server/captured-at-backfill.js),
+       a periodic sweep). This works more often than it sounds: `compressImage`
+       **returns the untouched original** whenever re-encoding wouldn't shrink
+       the file (`blob.size >= file.size`), so those stored bytes still carry
+       full EXIF. `captured-at.js` gained a hand-rolled JPEG/TIFF/IFD reader
+       (no new dependency) mirroring the client's tag order exactly, so the two
+       can't disagree; `/upload` uses it too, as the fallback when the client
+       sent nothing.
+    2. **The source post's own timestamp**, as an explicitly-marked proxy —
+       both backfilled in 0175 and passed by `EditPostPanel` for kept media.
+       It's the family's own statement of when the moment happened (the
+       composer even lets you backdate), and for the live album it spread 41
+       photos back across **6 distinct days of the real fest week** instead of
+       one upload second.
+    The sweep only ever **upgrades** `'post'` → real `'exif'`/`'video'`, never
+    the reverse. **Takeaway: a metadata read that only runs at upload time
+    silently covers none of the content that's already there** — and with a
+    null-tolerant sort ("fall back to upload time") the failure is invisible,
+    since it looks exactly like "these photos have no metadata."
 - **Downloads** (the deliberate difference from the Feed):
   - **Per file** — `⬇ Save` in the carousel hits `<mini>/f/…?dl=1`, which the
     media server serves with `Content-Disposition: attachment` (works

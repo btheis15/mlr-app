@@ -37,6 +37,7 @@ const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 const { makeThumbnail } = require("./thumbnail");
 const { extractCapturedAt } = require("./captured-at");
+const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
 
@@ -848,15 +849,20 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
     // before the background transcode replaces the file. Never fatal — null
     // just means "no captured date," and the album falls back to upload time.
     let capturedAt = null;
+    let capturedAtSource = null;
     if (isMedia) {
       const clientCapturedAt = typeof req.body?.capturedAt === "string" ? req.body.capturedAt.trim() : "";
       if (clientCapturedAt) {
         const d = new Date(clientCapturedAt);
-        if (!Number.isNaN(d.getTime())) capturedAt = d.toISOString();
+        if (!Number.isNaN(d.getTime())) { capturedAt = d.toISOString(); capturedAtSource = "exif"; }
       }
+      // No client-read date? The stored bytes may still carry it — compressImage
+      // leaves a photo untouched whenever re-encoding wouldn't shrink it, and a
+      // video is never recompressed client-side at all.
       if (!capturedAt) {
         try {
           capturedAt = await extractCapturedAt(served, kind);
+          if (capturedAt) capturedAtSource = kind === "video" ? "video" : "exif";
         } catch (e) {
           console.warn(`[captured-at] error (non-fatal): ${e && e.message}`);
         }
@@ -914,7 +920,7 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
         })
         .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
     }
-    res.json({ url: fileUrl, thumbnailUrl, capturedAt, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
+    res.json({ url: fileUrl, thumbnailUrl, capturedAt, capturedAtSource, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
   });
 });
 
@@ -1061,6 +1067,16 @@ try {
   startBackfill({ moderateMedia, recordMediaModeration, mediaDir: MEDIA_DIR });
 } catch (e) {
   console.error("[recheck] not started:", e && e.message);
+}
+
+// Recover "date taken" for album items whose metadata the client couldn't read
+// — anything added before the feature shipped, and anything referenced into an
+// album from an existing Feed post (no original File left on the client, only a
+// URL). The bytes are still here, so EXIF is read straight off disk.
+try {
+  startCapturedAtBackfill({ admin: adminClient(), publicUrl: PUBLIC_URL, mediaDir: MEDIA_DIR });
+} catch (e) {
+  console.error("[captured-at] not started:", e && e.message);
 }
 
 // Optional: keep the semantic-search index fresh (embeds new/edited posts + chat

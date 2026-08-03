@@ -51,6 +51,11 @@ export function photoUrls(media: { url: string; type: string }[]): string[] {
   return media.filter((m) => m.type === "image").map((m) => m.url);
 }
 
+/** Where a `capturedAt` came from — real file metadata, or a weaker proxy.
+ *  Stored alongside the date so the mini's sweep can later upgrade a proxy to
+ *  real metadata without ever downgrading. */
+export type CapturedAtSource = "exif" | "video" | "post";
+
 /** What the mini's /upload actually returns. */
 export interface UploadResult {
   url: string;
@@ -58,6 +63,7 @@ export interface UploadResult {
   /** When the file was actually taken/recorded (EXIF for photos, container metadata for
    *  videos), ISO string — null when it couldn't be determined (falls back to upload time). */
   capturedAt: string | null;
+  capturedAtSource: CapturedAtSource | null;
   type: MediaKind | "file";
   path: string;
 }
@@ -116,6 +122,7 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
             url: json.url,
             thumbnailUrl: json.thumbnailUrl ?? null,
             capturedAt: json.capturedAt ?? null,
+            capturedAtSource: json.capturedAtSource ?? null,
             type: json.type ?? "file",
             path: json.path ?? "",
           });

@@ -264,6 +264,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           isVideo ? "video" : "image",
           uploaded.thumbnailUrl,
           uploaded.capturedAt,
+          uploaded.capturedAtSource,
         );
         if (error) throw new Error(error);
       }

@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, extractExifCapturedAt, moderatePostText, photoUrls } from "@/lib/media";
+import { uploadToMini, compressImage, extractExifCapturedAt, moderatePostText, photoUrls, type CapturedAtSource } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -564,7 +564,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
         let doneBytes = 0;
         setProgress(0);
-        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null }[] = [];
+        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null; capturedAtSource: CapturedAtSource | null }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
@@ -581,7 +581,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
             },
           });
           doneBytes += raw.size;
-          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt });
+          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt, capturedAtSource: res.capturedAtSource });
         }
         setProgress(100);
         // Backdate when the author chose a different moment (and the DB supports
@@ -635,7 +635,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // post that already succeeded.
         if (alsoAlbum && albumId && uploaded.length) {
           for (const u of uploaded) {
-            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl, u.capturedAt); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl, u.capturedAt, u.capturedAtSource); } catch { /* keep going */ }
           }
         }
         await refetch();
@@ -1325,7 +1325,7 @@ function EditPostPanel({
           // the composer's own `alsoAlbum` flow). Best-effort: never undoes the
           // edit that already saved.
           if (alsoAlbum && albumId) {
-            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt, res.capturedAtSource); } catch { /* keep going */ }
           }
         }
       }
@@ -1333,9 +1333,18 @@ function EditPostPanel({
       // videos into the album — same no-re-upload idiom, just pointing the
       // album row at each one's already-stored url/thumbnail. This is what
       // lets an admin retroactively add an old post's photos to an album.
+      //
+      // These carry NO client-readable capture date: the original File is long
+      // gone (only a URL remains), so there's nothing to read EXIF from. Pass
+      // the POST's own timestamp as a proxy — the family's own statement of
+      // when the moment happened, and far better for album ordering than the
+      // upload second, which is identical for every photo in one bulk add.
+      // Tagged 'post' so the mini's sweep can upgrade it to real EXIF if the
+      // stored bytes turn out to still carry any (compressImage leaves a photo
+      // untouched whenever re-encoding wouldn't shrink it).
       if (alsoAlbum && albumId && keptMedia.length) {
         for (const m of keptMedia) {
-          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null); } catch { /* keep going */ }
+          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null, post.ts, "post"); } catch { /* keep going */ }
         }
       }
       const orig = post.tags.map((t) => t.id);
