@@ -11,6 +11,8 @@ import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
 import { fetchCommitteeAreas, baseArea, isOnArea, isAreaLead, isCommitteeLead } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
+import { Sheet } from "@/components/Sheet";
+import { useSheetDismiss } from "@/lib/hooks";
 import type { Committee } from "@/lib/types";
 
 /**
@@ -427,6 +429,7 @@ function RosterEditor({
   const [pickQuery, setPickQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { closing, close, dismissThen } = useSheetDismiss(onClose);
 
   const roles = () =>
     areas.filter((a) => selected.has(a)).map((a) => (leads.has(a) ? `${a} · Lead` : a));
@@ -465,7 +468,7 @@ function RosterEditor({
     });
     setBusy(false);
     if (error) setError(error);
-    else onSaved();
+    else dismissThen(onSaved);
   };
 
   const remove = async () => {
@@ -475,21 +478,51 @@ function RosterEditor({
     const { error } = await deleteRosterEntry(entry.id);
     setBusy(false);
     if (error) setError(error);
-    else onSaved();
+    else dismissThen(onSaved);
   };
 
   const matches = pickQuery.trim()
     ? profiles.filter((p) => p.name.toLowerCase().includes(pickQuery.trim().toLowerCase())).slice(0, 6)
     : [];
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 px-4 pb-6 sm:items-center" onClick={onClose}>
-      <div
-        className="relative max-h-[88dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-3xl bg-background p-5 ring-1 ring-border"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-bold">{isNew ? "Add member" : "Edit member"}</h2>
+  // Actions live in the Sheet's pinned, safe-area-aware footer so Save/Cancel/
+  // Remove are always reachable above the tab bar and the on-screen keyboard —
+  // never buried at the bottom of the scrolling form.
+  const footer = (
+    <div className="space-y-2">
+      {error && <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={close} className="press flex-1 rounded-xl bg-card py-2.5 text-sm font-semibold ring-1 ring-border">Cancel</button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy || !name.trim()}
+          className="press flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {!isNew && (
+        <button
+          type="button"
+          onClick={remove}
+          disabled={busy}
+          className="press w-full rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent disabled:opacity-50"
+        >
+          Remove from committee
+        </button>
+      )}
+    </div>
+  );
 
+  return (
+    <Sheet
+      closing={closing}
+      onDismiss={close}
+      labelledBy="roster-editor-title"
+      header={<h2 id="roster-editor-title" className="text-lg font-bold">{isNew ? "Add member" : "Edit member"}</h2>}
+      footer={footer}
+    >
         {/* Primary path: pick someone who already has an app account. */}
         {linkedUserId ? (
           <div className="flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2 text-sm ring-1 ring-primary/20">
@@ -606,31 +639,6 @@ function RosterEditor({
           </div>
         )}
 
-        {error && <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">{error}</p>}
-
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="press flex-1 rounded-xl bg-card py-2.5 text-sm font-semibold ring-1 ring-border">Cancel</button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || !name.trim()}
-            className="press flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {busy ? "Saving…" : "Save"}
-          </button>
-        </div>
-
-        {!isNew && (
-          <button
-            type="button"
-            onClick={remove}
-            disabled={busy}
-            className="press w-full rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent disabled:opacity-50"
-          >
-            Remove from committee
-          </button>
-        )}
-      </div>
-    </div>
+    </Sheet>
   );
 }
