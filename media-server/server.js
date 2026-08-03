@@ -36,6 +36,7 @@ const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_ED
 const { moderateMedia, moderateText } = require("./moderation");
 const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 const { makeThumbnail } = require("./thumbnail");
+const { extractCapturedAt } = require("./captured-at");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
 
@@ -838,6 +839,30 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
 
     if (isMedia) transcodeInBackground(served, req.file.mimetype, fileUrl);
 
+    // "When was this actually taken" for Drop Box album sorting (0174). For a
+    // photo, the client already extracted EXIF DateTimeOriginal from the
+    // ORIGINAL file (before compressing it away, which strips EXIF) and sends
+    // it as a plain form field — this server has no way to recover it once
+    // the compressed bytes arrive. For a video (never recompressed
+    // client-side), ffprobe reads the container's own creation_time here,
+    // before the background transcode replaces the file. Never fatal — null
+    // just means "no captured date," and the album falls back to upload time.
+    let capturedAt = null;
+    if (isMedia) {
+      const clientCapturedAt = typeof req.body?.capturedAt === "string" ? req.body.capturedAt.trim() : "";
+      if (clientCapturedAt) {
+        const d = new Date(clientCapturedAt);
+        if (!Number.isNaN(d.getTime())) capturedAt = d.toISOString();
+      }
+      if (!capturedAt) {
+        try {
+          capturedAt = await extractCapturedAt(served, kind);
+        } catch (e) {
+          console.warn(`[captured-at] error (non-fatal): ${e && e.message}`);
+        }
+      }
+    }
+
     // Small preview thumbnail — generated inline (a single fast decode, not the
     // moderation/transcode cost) so the response can hand the client a ready-
     // to-use small url immediately; grids/albums render this instead of the
@@ -889,7 +914,7 @@ app.post("/upload", uploadLimiter, requireUser, (req, res) => {
         })
         .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
     }
-    res.json({ url: fileUrl, thumbnailUrl, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
+    res.json({ url: fileUrl, thumbnailUrl, capturedAt, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
   });
 });
 

@@ -1449,6 +1449,26 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   — native scroll-snap swipe + desktop edge arrows + Esc), so you page through
   photos/videos without close/reopen. Each slide has **Save** (that one file),
   plus Remove (uploader/creator/admin) and Approve (admin, held items).
+- **Sorted by when it was actually TAKEN, not uploaded (migration 0174).**
+  `drop_box_media.captured_at` holds the real shot date/time when it could be
+  read off the file, and the grid sorts most-recent-first by that (falling
+  back to upload time — `created_at` — for anything without readable
+  metadata, never hiding an item for lacking it). Photos: EXIF
+  `DateTimeOriginal` is read **client-side, from the ORIGINAL file**, by
+  [`extractExifCapturedAt`](lib/media.ts) — this has to happen *before*
+  `compressImage` re-encodes the photo through a `<canvas>`, which strips
+  every byte of EXIF, so the mini would have nothing left to read even if it
+  tried. Videos aren't recompressed client-side, so the mini reads the
+  container's own `creation_time` tag via `ffprobe`
+  ([`media-server/captured-at.js`](media-server/captured-at.js)) during
+  `/upload`, before the background transcode replaces the file. Threaded
+  through everywhere a file becomes an album item: the Drop Box composer
+  itself, the Main Feed post composer's "Also add to an album" flow, and the
+  post editor's (both new AND already-posted photos — the latter simply has
+  no original file left to re-read EXIF from, so it falls back to upload
+  time). `add_drop_box_media` carries a matching `p_captured_at` param
+  (pre-migration calls degrade gracefully, same idiom as `p_thumbnail_url`
+  in 0173).
 - **Downloads** (the deliberate difference from the Feed):
   - **Per file** — `⬇ Save` in the carousel hits `<mini>/f/…?dl=1`, which the
     media server serves with `Content-Disposition: attachment` (works

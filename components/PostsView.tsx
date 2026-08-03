@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, moderatePostText, photoUrls } from "@/lib/media";
+import { uploadToMini, compressImage, extractExifCapturedAt, moderatePostText, photoUrls } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -564,19 +564,24 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
         let doneBytes = 0;
         setProgress(0);
-        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null }[] = [];
+        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
           const isVideo = raw.type.startsWith("video");
+          // EXIF "date taken" has to be read off the ORIGINAL file —
+          // compressImage strips it. Only relevant if this photo also ends up
+          // in an album (below); harmless to compute either way.
+          const capturedAt = isVideo ? null : await extractExifCapturedAt(raw);
           const f = isVideo ? raw : await compressImage(raw);
           const res = await uploadToMini(f, token, {
+            capturedAt,
             onProgress: (loaded, total) => {
               const frac = total ? loaded / total : 0;
               setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
             },
           });
           doneBytes += raw.size;
-          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl });
+          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt });
         }
         setProgress(100);
         // Backdate when the author chose a different moment (and the DB supports
@@ -630,7 +635,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // post that already succeeded.
         if (alsoAlbum && albumId && uploaded.length) {
           for (const u of uploaded) {
-            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl, u.capturedAt); } catch { /* keep going */ }
           }
         }
         await refetch();
@@ -1307,8 +1312,11 @@ function EditPostPanel({
         let pos = post.media.length;
         for (const raw of files) {
           const isVideo = raw.type.startsWith("video");
+          // EXIF "date taken" has to come off the ORIGINAL file — compressImage
+          // strips it.
+          const capturedAt = isVideo ? null : await extractExifCapturedAt(raw);
           const f = isVideo ? raw : await compressImage(raw);
-          const res = await uploadToMini(f, token);
+          const res = await uploadToMini(f, token, { capturedAt });
           await insertMediaRow("post_media", {
             post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
           });
@@ -1317,7 +1325,7 @@ function EditPostPanel({
           // the composer's own `alsoAlbum` flow). Best-effort: never undoes the
           // edit that already saved.
           if (alsoAlbum && albumId) {
-            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt); } catch { /* keep going */ }
           }
         }
       }
