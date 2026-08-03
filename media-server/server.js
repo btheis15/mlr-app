@@ -38,6 +38,7 @@ const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
 const { makeThumbnail } = require("./thumbnail");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
+const { startThumbnailBackfill } = require("./thumbnail-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
 
@@ -1087,6 +1088,15 @@ try {
   startCapturedAtBackfill({ admin: adminClient(), publicUrl: PUBLIC_URL, mediaDir: MEDIA_DIR });
 } catch (e) {
   console.error("[captured-at] not started:", e && e.message);
+}
+
+// Generate the grid/album previews for media uploaded before thumbnails
+// existed. Without this every tile downloads the full-res file, and a video
+// with no poster frame renders as a black box on iOS.
+try {
+  startThumbnailBackfill({ admin: adminClient(), publicUrl: PUBLIC_URL, mediaDir: MEDIA_DIR });
+} catch (e) {
+  console.error("[thumb-backfill] not started:", e && e.message);
 }
 
 // Optional: keep the semantic-search index fresh (embeds new/edited posts + chat
