@@ -2591,6 +2591,38 @@ the feed/room without being destroyed. **Live now (Tiers 0+1+2):**
     one) — a chat bubble's media is small/inline already, so this was lower
     priority than Feed/Drop Box; a clean follow-up.
 
+**The full-screen photo viewer swipes between a group's photos**
+([`Lightbox`](components/Lightbox.tsx)). Opening a photo used to be a
+dead-end — one photo, and you had to close and reopen to see the next one on
+the same post. It now takes an optional **`photos`** prop (every photo url in
+that group, in display order) and, when there's more than one, renders a
+scroll-snap **swipe carousel** starting on the tapped photo, with a `n / total`
+counter, edge arrows + ←/→ on desktop, and Escape/tap-the-backdrop to close.
+Same mechanism as the Drop Box's own `FolderCarousel`
+([`DropBoxes.tsx`](components/DropBoxes.tsx)), which predates it and is
+unchanged. With one photo (or no `photos` passed) it renders exactly as before,
+`pop-panel` animation and all — so the prop is purely additive.
+- Wired on **all four** surfaces that mount a Lightbox: the Feed's posts AND
+  its comment attachments ([`PostsView`](components/PostsView.tsx)), the shared
+  [`MediaGrid`](components/MediaGrid.tsx) (work items), and both chat rooms
+  ([`CommitteeChat`](components/CommitteeChat.tsx) /
+  [`HouseChat`](components/HouseChat.tsx) — a multi-photo message swipes too).
+  Each holds `{ url, photos }` in its lightbox state instead of a bare url
+  string, and still keys the Lightbox by `url` so tapping straight from one
+  group to another remounts cleanly.
+- The group comes from **`photoUrls(media)`** in [`lib/media.ts`](lib/media.ts)
+  — deliberately `type === "image"`, not `!== "video"`: chat media also carries
+  `file`/`gif`/`sticker` kinds, and only real photos belong in a photo
+  carousel. A video in a post is skipped entirely (it plays inline in the grid
+  and would render as a broken `<img>` in the viewer), so swiping moves photo →
+  photo past it.
+- Two details worth keeping: the carousel deliberately does **not** use
+  `pop-panel` (it animates a transform, which fights the scroller's initial
+  `scrollLeft` positioning — the scrim fade carries the open instead), and
+  tap-to-dismiss is guarded by a <10px pointer-movement check, since a
+  scroll-snap swipe can still fire a `click` and would otherwise close the
+  viewer mid-swipe.
+
 Data model: migrations [`0040`](supabase/migrations/0040_content_moderation.sql)
 (`status` columns + status-aware RLS, `moderation_blocklist`, `content_reports`,
 `content_moderation_events`, the `moderate_content_text`/`apply_content_report`

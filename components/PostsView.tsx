@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, moderatePostText } from "@/lib/media";
+import { uploadToMini, compressImage, moderatePostText, photoUrls } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -234,8 +234,11 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   }, [configured, uid]);
   // Full-screen photo viewer (tap a photo to see the whole, uncropped image).
   // The Lightbox owns its open/close animation; keying it by url remounts it
-  // cleanly when you tap from one photo straight to another.
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  // cleanly when you tap from one photo straight to another. `photos` carries
+  // every photo in the same post/comment so the viewer can SWIPE between them
+  // without closing and reopening (videos are excluded — they play inline).
+  const [lightbox, setLightbox] = useState<{ url: string; photos: string[] } | null>(null);
+  const openPhoto = (url: string, photos: string[]) => setLightbox({ url, photos });
   // Deep-link from the Notifications tab (/posts?post=<id>): once the real
   // feed data has loaded (feedLoaded — NOT the unrelated `loaded` flag above,
   // which just tracks a localStorage read), scroll that post into view and
@@ -1094,7 +1097,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
               )}
 
               {p.media.length > 0 ? (
-                <MediaCarousel media={p.media} onOpenPhoto={setLightbox} />
+                <MediaCarousel media={p.media} onOpenPhoto={openPhoto} />
               ) : p.gradient ? (
                 <div className={`mt-3 flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br text-5xl ${p.gradient}`}>{p.emoji}</div>
               ) : null}
@@ -1162,7 +1165,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                           </button>
                           {c.text && <p className="whitespace-pre-wrap break-words text-xs text-foreground/80"><MentionText text={c.text} mentions={c.mentions} members={members} /></p>}
                         </div>
-                        {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={setLightbox} />}
+                        {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={openPhoto} />}
                         <div className="mt-1 flex items-center gap-3 px-3 text-[11px] text-faint">
                           <span>{timeAgo(c.ts)}</span>
                           {isAdmin || (!!uid && c.authorId === uid) ? (
@@ -1191,7 +1194,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         ))}
       </div>
 
-      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && (
+        <Lightbox key={lightbox.url} url={lightbox.url} photos={lightbox.photos} onClose={() => setLightbox(null)} />
+      )}
 
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatar} onClose={() => setMemberSheet(null)} />
@@ -1373,15 +1378,17 @@ function EditPostPanel({
   );
 }
 
-function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
+function MediaCarousel({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string, photos: string[]) => void }) {
   const [active, setActive] = useState(0);
-  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={onOpenPhoto} /></div>;
+  const photos = photoUrls(media);
+  const open = (u: string) => onOpenPhoto?.(u, photos);
+  if (media.length === 1) return <div className="mt-3"><MediaItem m={media[0]} onOpen={open} /></div>;
   return (
     <div className="relative mt-3">
       <div onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} className="flex snap-x snap-mandatory overflow-x-auto">
         {media.map((m, i) => (
           <div key={i} className="w-full shrink-0 snap-center">
-            <MediaItem m={m} onOpen={onOpenPhoto} />
+            <MediaItem m={m} onOpen={open} />
           </div>
         ))}
       </div>
@@ -1428,12 +1435,13 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
 // item in a list, so its photos read as thumbnails: a capped-width row that
 // wraps, reusing MediaItem so photos still open in the Lightbox and videos still
 // play inline exactly as they do on a post.
-function CommentMedia({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string) => void }) {
+function CommentMedia({ media, onOpenPhoto }: { media: Media[]; onOpenPhoto?: (url: string, photos: string[]) => void }) {
+  const photos = photoUrls(media);
   return (
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {media.map((m, i) => (
         <div key={i} className="w-24 overflow-hidden rounded-xl ring-1 ring-border">
-          <MediaItem m={m} onOpen={onOpenPhoto} />
+          <MediaItem m={m} onOpen={(u) => onOpenPhoto?.(u, photos)} />
         </div>
       ))}
     </div>

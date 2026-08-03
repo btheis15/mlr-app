@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Media } from "@/lib/media";
+import { photoUrls, type Media } from "@/lib/media";
 import { Lightbox } from "@/components/Lightbox";
 
 // Shared photo/video renderer: a single item or a swipeable carousel, with photos
@@ -15,7 +15,11 @@ export function MediaGrid({ media }: { media: Media[] }) {
   return (
     <>
       <MediaCarousel media={media} onOpenPhoto={setLightbox} />
-      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} />}
+      {/* `photos` is this whole group, so the viewer swipes through the rest
+          of the item's photos instead of making you close and reopen. */}
+      {lightbox && (
+        <Lightbox key={lightbox} url={lightbox} photos={photoUrls(media)} onClose={() => setLightbox(null)} />
+      )}
     </>
   );
 }

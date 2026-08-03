@@ -31,6 +31,18 @@ export interface Media {
   thumbnailUrl?: string | null;
 }
 
+/**
+ * Every PHOTO url in one group (a post's media, a comment's, a chat message's),
+ * in display order — what the Lightbox swipes through when you tap any one of
+ * them. Deliberately `=== "image"` rather than `!== "video"`: chat media also
+ * carries "file"/"gif"/"sticker" kinds, and only real photos belong in a
+ * full-screen photo carousel. Structurally typed so every surface's own Media
+ * shape (lib's, PostsView's, chat's ChatMedia) can pass its list straight in.
+ */
+export function photoUrls(media: { url: string; type: string }[]): string[] {
+  return media.filter((m) => m.type === "image").map((m) => m.url);
+}
+
 /** What the mini's /upload actually returns. */
 export interface UploadResult {
   url: string;

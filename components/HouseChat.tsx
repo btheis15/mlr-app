@@ -12,7 +12,7 @@ import { ChatPollCard } from "@/components/ChatPollCard";
 import { ChatPollComposer } from "@/components/ChatPollComposer";
 import { closeChatPoll, deleteChatPoll, setChatPollVotes, useChatPolls, type ChatPoll, type ChatPollScope } from "@/lib/chatPolls";
 import { StickerArt } from "@/components/Stickers";
-import { uploadToMini, compressImage } from "@/lib/media";
+import { uploadToMini, compressImage, photoUrls } from "@/lib/media";
 import { motion } from "framer-motion";
 import { useDebouncedCallback, useTypingChannel, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { TypingIndicator } from "@/components/TypingIndicator";
@@ -144,7 +144,9 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [memberSheet, setMemberSheet] = useState<Member | null>(null);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  // `photos` = every photo on that one message, so the full-screen viewer can
+  // swipe through the rest of them without closing and reopening.
+  const [lightbox, setLightbox] = useState<{ url: string; photos: string[] } | null>(null);
   const [pollComposing, setPollComposing] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -777,7 +779,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
                     onEdit={() => startEdit(m)}
                     onDelete={() => deleteMessage(m.id)}
                     onOpenMember={(mm) => setMemberSheet(mm)}
-                    onOpenPhoto={(u) => setLightbox(u)}
+                    onOpenPhoto={(u, ph) => setLightbox({ url: u, photos: ph })}
                     onJumpToReply={scrollToMessage}
                   />
                 </motion.div>
@@ -926,7 +928,9 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
         </div>
       </div>
 
-      {lightbox && <Lightbox key={lightbox} url={lightbox} onClose={() => setLightbox(null)} z="z-[55]" />}
+      {lightbox && (
+        <Lightbox key={lightbox.url} url={lightbox.url} photos={lightbox.photos} onClose={() => setLightbox(null)} z="z-[55]" />
+      )}
       {memberSheet && (
         <MemberSheet key={memberSheet.id} id={memberSheet.id} name={memberSheet.name} avatarUrl={memberSheet.avatarUrl} onClose={() => setMemberSheet(null)} />
       )}
@@ -1010,7 +1014,7 @@ function MessageRow({
   m: Msg; mine: boolean; grouped: boolean; uid: string | null; canDelete: boolean; canEdit: boolean;
   reply?: Msg; members: Member[]; reacting: boolean; flash?: boolean;
   onOpenReact: () => void; onReact: (emoji: string) => void; onReply: () => void; onEdit: () => void; onDelete: () => void;
-  onOpenMember: (m: Member) => void; onOpenPhoto: (url: string) => void; onJumpToReply: (id: string) => void;
+  onOpenMember: (m: Member) => void; onOpenPhoto: (url: string, photos: string[]) => void; onJumpToReply: (id: string) => void;
 }) {
   const [dx, setDx] = useState(0);
   // Which emoji's reactor list is expanded (tap a reaction pill to reveal who
@@ -1105,7 +1109,7 @@ function MessageRow({
                   <span className={`shrink-0 text-xs ${mine ? "text-white/70" : "text-foreground/50"}`}>↓</span>
                 </a>
               ) : (
-                <button type="button" onClick={() => onOpenPhoto(md.url)} className="press block">
+                <button type="button" onClick={() => onOpenPhoto(md.url, photoUrls(m.media))} className="press block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={md.url} alt="" className="max-h-60 rounded-xl object-cover" />
                 </button>
