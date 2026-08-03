@@ -73,12 +73,25 @@ export interface InviteLinkResult {
 export const inviteByEmailLink = (entries: { email: string; name?: string }[], token: string) =>
   postAdminJson<{ results: InviteLinkResult[] }>("/admin/invite-link", token, { entries }).then((r) => r.results);
 
+export interface MediaServerDisk {
+  /** Absolute MEDIA_DIR the server is storing files under. */
+  path: string;
+  /** True when MEDIA_DIR is an external volume (/Volumes/…). */
+  external: boolean;
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+}
+
 export interface MediaServerStatus {
   ok: boolean;
   commit: string;
   upToDate: boolean;
   behind: number;
   startedAt: string;
+  /** Space on the drive holding the media. Optional — absent on an older mini
+   *  that predates this field, so the UI must degrade gracefully. */
+  disk?: MediaServerDisk | null;
 }
 
 /** Current git commit on the mini + how many commits behind origin/main it is. */

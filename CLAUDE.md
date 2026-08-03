@@ -3041,7 +3041,11 @@ changed, then `process.exit(0)`. No `launchctl` call needed: the launchd
 plist (`com.mlr.media-server.plist`) already sets `KeepAlive`, so it
 relaunches on its own within the 10s `ThrottleInterval`, on the new code.
 `GET /admin/media-server-status` (same `requireOwner` gate) backs the status
-line the card shows before you tap anything.
+line the card shows before you tap anything — it also returns a `disk` block
+(`fs.statfsSync(MEDIA_DIR)` → total/free/used bytes + whether it's an external
+`/Volumes/…` volume), which [`AdminMediaServer`](components/AdminMediaServer.tsx)
+renders as a **Storage** usage meter (bar goes amber >80% / red >90%). The field
+is optional, so an older mini that predates it degrades to no meter.
 
 ## Loading stability & the SWR cache
 

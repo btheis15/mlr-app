@@ -33,6 +33,25 @@ export function formatDate(input: string | number | Date): string {
   });
 }
 
+/**
+ * Human byte size, e.g. "793.4 GB" / "206 MB" / "512 KB". Decimal units (÷1000,
+ * GB not GiB) to match how macOS/Finder and drive-capacity labels report space,
+ * so "999.8 GB" here lines up with what the drive is sold/shown as. One decimal
+ * from GB up, whole numbers below.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let i = 0;
+  let n = bytes;
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
+    i++;
+  }
+  const decimals = i >= 3 ? 1 : 0; // one decimal at GB+, whole numbers for B/KB/MB
+  return `${n.toFixed(decimals)} ${units[i]}`;
+}
+
 /** Long form, e.g. "Saturday, July 11". Accepts an ISO date string. */
 export function formatDateLong(input: string | number | Date): string {
   const d = input instanceof Date ? input : new Date(`${input}T00:00:00`);
