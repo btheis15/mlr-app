@@ -111,6 +111,24 @@ const LS = { hidden: "posts-hidden" };
 const BUCKET = "post-photos";
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
+// Insert a *_media row carrying the mini's generated thumbnail. Pre-0173 the
+// thumbnail_url column doesn't exist yet, and an unknown column fails the
+// WHOLE insert (42703) — which would take the photo down with it, not just the
+// thumbnail — so retry once without it. The usual pre-migration degrade: the
+// photo still attaches, it just renders full-res in grids until 0173 runs.
+// Returns the error (rather than throwing) so each call site keeps exactly the
+// error handling it had before.
+async function insertMediaRow(table: string, row: Record<string, unknown>) {
+  if (!supabase) return { error: null };
+  let { error } = await supabase.from(table).insert(row);
+  if (error && (error.code === "42703" || /thumbnail_url/i.test(error.message ?? ""))) {
+    const withoutThumb = { ...row };
+    delete withoutThumb.thumbnail_url;
+    ({ error } = await supabase.from(table).insert(withoutThumb));
+  }
+  return { error };
+}
+
 // How many posts the persisted cold-open snapshot keeps (see the write in
 // refetch): the visible top of the feed, not the history.
 const POSTS_SNAPSHOT_COUNT = 15;
@@ -594,9 +612,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           if (!postId) throw new Error("Could not create the post.");
           newPostId = postId;
           for (let i = 0; i < uploaded.length; i++) {
-            const { error: medErr } = await supabase
-              .from("post_media")
-              .insert({ post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i, thumbnail_url: uploaded[i].thumbnailUrl });
+            const { error: medErr } = await insertMediaRow("post_media", {
+              post_id: postId, storage_path: uploaded[i].path, media_type: uploaded[i].type, position: i, thumbnail_url: uploaded[i].thumbnailUrl,
+            });
             if (medErr) throw medErr;
           }
           if (tagIds.length) {
@@ -744,9 +762,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
           const res = await uploadToMini(f, token);
-          await supabase
-            .from("post_comment_media")
-            .insert({ comment_id: commentId, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl });
+          await insertMediaRow("post_comment_media", {
+            comment_id: commentId, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
+          });
         }
       }
     }
@@ -1271,7 +1289,9 @@ function EditPostPanel({
           const isVideo = raw.type.startsWith("video");
           const f = isVideo ? raw : await compressImage(raw);
           const res = await uploadToMini(f, token);
-          await supabase.from("post_media").insert({ post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl });
+          await insertMediaRow("post_media", {
+            post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
+          });
         }
       }
       const orig = post.tags.map((t) => t.id);
