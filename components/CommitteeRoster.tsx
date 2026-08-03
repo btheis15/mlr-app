@@ -10,7 +10,7 @@ import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
 import { fetchCommitteeAreas, baseArea, isOnArea, isAreaLead, isCommitteeLead } from "@/lib/committeeAdmin";
-import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
+import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, fetchPendingRosterPeople, type RosterEntry, type PendingPerson } from "@/lib/committeeRoster";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import type { Committee } from "@/lib/types";
@@ -431,6 +431,28 @@ function RosterEditor({
   const [error, setError] = useState<string | null>(null);
   const { closing, close, dismissThen } = useSheetDismiss(onClose);
 
+  // Pending (account-less) roster people from every committee, so the picker can
+  // offer someone already on the roster-but-not-in-the-app for reuse.
+  const [pendingPeople, setPendingPeople] = useState<PendingPerson[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchPendingRosterPeople().then((p) => alive && setPendingPeople(p));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Reuse a pending person — prefill their name/email/phone; they stay
+   *  account-less (linkedUserId null → "Pending") until they actually sign in. */
+  const pickPending = (person: PendingPerson) => {
+    setName(person.name);
+    if (person.email) setEmail(person.email);
+    if (person.phone) setPhone(person.phone);
+    setLinkedUserId(null);
+    setLinkedName(null);
+    setPickQuery("");
+  };
+
   const roles = () =>
     areas.filter((a) => selected.has(a)).map((a) => (leads.has(a) ? `${a} · Lead` : a));
 
@@ -481,8 +503,22 @@ function RosterEditor({
     else dismissThen(onSaved);
   };
 
-  const matches = pickQuery.trim()
-    ? profiles.filter((p) => p.name.toLowerCase().includes(pickQuery.trim().toLowerCase())).slice(0, 6)
+  const q = pickQuery.trim().toLowerCase();
+  const matches = q ? profiles.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6) : [];
+  // Pending people whose name matches — minus any already covered by an account
+  // match (the real account is the better pick) and anyone already on THIS
+  // committee's roster (no point re-adding them here).
+  const onThisCommittee = new Set((committee.members ?? []).map((m) => m.name.toLowerCase()));
+  const accountNames = new Set(matches.map((p) => p.name.toLowerCase()));
+  const pendingMatches = q
+    ? pendingPeople
+        .filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) &&
+            !accountNames.has(p.name.toLowerCase()) &&
+            !onThisCommittee.has(p.name.toLowerCase()),
+        )
+        .slice(0, 6)
     : [];
 
   // Actions live in the Sheet's pinned, safe-area-aware footer so Save/Cancel/
@@ -537,7 +573,7 @@ function RosterEditor({
               placeholder="🔎 Choose a member — search by name…"
               className="w-full rounded-xl bg-card px-3 py-2.5 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
             />
-            {matches.length > 0 && (
+            {(matches.length > 0 || pendingMatches.length > 0) && (
               <ul className="overflow-hidden rounded-xl ring-1 ring-border">
                 {matches.map((p) => (
                   <li key={p.id}>
@@ -551,10 +587,30 @@ function RosterEditor({
                     </button>
                   </li>
                 ))}
+                {pendingMatches.map((p) => (
+                  <li key={`pending-${p.email ?? p.name}`}>
+                    <button
+                      type="button"
+                      onClick={() => pickPending(p)}
+                      className="press flex w-full items-center gap-2 bg-card px-3 py-2 text-left text-sm hover:bg-background"
+                    >
+                      <Avatar name={p.name} url={null} size={22} />
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      <span
+                        title="Already on another committee's roster but hasn't joined the app yet — reuse them here; their spot links up when they sign in."
+                        className="shrink-0 rounded-full bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-faint ring-1 ring-border"
+                      >
+                        Pending
+                      </span>
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
             <p className="px-0.5 text-xs text-faint">
-              Pick someone with an account — that brings their name, photo, and chat access. Only fill in the fields below for someone not in the app yet (a one-off).
+              Pick someone with an account — that brings their name, photo, and chat access. A{" "}
+              <span className="font-medium">Pending</span> match is already on the roster but not in the app yet — reuse
+              them and they link up when they join. Or fill in the fields below for someone brand-new.
             </p>
           </div>
         )}
