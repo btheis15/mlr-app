@@ -444,11 +444,15 @@ export function useManagedCommittee(
       if (!manage) return;
       await loadRef.current(cid);
       if (cancelled) return;
+      // committee_roster is keyed by slug (no committee_id column); every other
+      // watched table is keyed by committee_id.
+      const watchFilter =
+        opts.watch === "committee_roster" ? `committee_slug=eq.${slug}` : `committee_id=eq.${cid}`;
       channel = sb
         .channel(`mc-${opts.watch}-${slug}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: opts.watch, filter: `committee_id=eq.${cid}` },
+          { event: "*", schema: "public", table: opts.watch, filter: watchFilter },
           () => loadRef.current(cid),
         )
         .subscribe();
