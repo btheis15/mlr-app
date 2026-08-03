@@ -24,6 +24,10 @@ export interface DropBoxItem {
   status: DropBoxMediaStatus;
   uploadedBy: string;
   createdAt: string;
+  /** When the photo/video was actually taken (EXIF/container metadata) — null
+   *  when it couldn't be read, in which case the album sorts by `createdAt`
+   *  (upload time) instead. See migration 0174. */
+  capturedAt: string | null;
 }
 
 export interface DropBox {
@@ -59,6 +63,7 @@ interface ItemRow {
   status: DropBoxMediaStatus;
   uploaded_by: string;
   created_at: string;
+  captured_at?: string | null;
 }
 interface BoxRow {
   id: string;
@@ -81,10 +86,13 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
         status: m.status,
         uploadedBy: m.uploaded_by,
         createdAt: m.created_at,
+        capturedAt: m.captured_at ?? null,
       }),
     )
-    // Newest first — a drop box reads like a camera roll, most recent on top.
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    // Most-recent-first, by when the photo/video was actually TAKEN when
+    // that's known (capturedAt) — falling back to upload time (createdAt)
+    // for anything without readable metadata, so nothing drops out of order.
+    .sort((a, b) => (b.capturedAt ?? b.createdAt).localeCompare(a.capturedAt ?? a.createdAt));
   return {
     id: row.id,
     title: row.title,
@@ -99,14 +107,17 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean): DropB
 }
 
 const SELECT =
+  "id, title, emoji, created_by, archived_at, created_at, drop_box_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by, created_at, captured_at)";
+// Pre-0174 fallback (captured_at column doesn't exist yet on this project).
+const SELECT_NO_CAPTURED =
   "id, title, emoji, created_by, archived_at, created_at, drop_box_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by, created_at)";
-// Pre-0173 fallback (thumbnail_url column doesn't exist yet on this project).
+// Pre-0173 fallback (thumbnail_url column doesn't exist yet on this project either).
 const SELECT_NO_THUMB =
   "id, title, emoji, created_by, archived_at, created_at, drop_box_media(id, storage_path, media_type, status, uploaded_by, created_at)";
 
 function isMissingColumn(error: PgError): boolean {
   if (!error) return false;
-  return error.code === "42703" || /column .*thumbnail_url.* does not exist/i.test(error.message ?? "");
+  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
 }
 
 /** Every drop box the viewer can see (members-only), newest first, each with
@@ -116,8 +127,11 @@ export async function fetchDropBoxes(viewerId: string | null, isAdmin = false): 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without thumbnail_url) can't share one inferred type
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- three select shapes (full / no-captured_at / no-thumbnail_url) can't share one inferred type
     let res: any = await sb.from("drop_boxes").select(SELECT).order("created_at", { ascending: false });
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb.from("drop_boxes").select(SELECT_NO_CAPTURED).order("created_at", { ascending: false });
+    }
     if (res.error && isMissingColumn(res.error)) {
       res = await sb.from("drop_boxes").select(SELECT_NO_THUMB).order("created_at", { ascending: false });
     }
@@ -136,8 +150,11 @@ export async function fetchDropBox(id: string, viewerId: string | null, isAdmin 
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with/without thumbnail_url) can't share one inferred type
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- three select shapes (full / no-captured_at / no-thumbnail_url) can't share one inferred type
     let res: any = await sb.from("drop_boxes").select(SELECT).eq("id", id).maybeSingle();
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb.from("drop_boxes").select(SELECT_NO_CAPTURED).eq("id", id).maybeSingle();
+    }
     if (res.error && isMissingColumn(res.error)) {
       res = await sb.from("drop_boxes").select(SELECT_NO_THUMB).eq("id", id).maybeSingle();
     }
@@ -182,12 +199,15 @@ export function deleteDropBox(id: string): Promise<Res> {
   return rpc("delete_drop_box", { p_box: id });
 }
 
-/** Attach one already-uploaded file (mini URL) to a box. */
+/** Attach one already-uploaded file (mini URL) to a box. `capturedAt` (ISO,
+ *  when known — see extractExifCapturedAt / the mini's video ffprobe read)
+ *  drives the album's most-recent-first sort ahead of upload time. */
 export async function addDropBoxMedia(
   boxId: string,
   url: string,
   type: MediaKind,
   thumbnailUrl?: string | null,
+  capturedAt?: string | null,
 ): Promise<IdRes> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -196,8 +216,18 @@ export async function addDropBoxMedia(
     p_url: url,
     p_type: type,
     p_thumbnail_url: thumbnailUrl ?? null,
+    p_captured_at: capturedAt ?? null,
   });
-  // Pre-0173 fallback: the RPC doesn't have the 4th param yet.
+  // Pre-0174 fallback: the RPC doesn't have the 5th param yet.
+  if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
+    ({ data, error } = await sb.rpc("add_drop_box_media", {
+      p_box: boxId,
+      p_url: url,
+      p_type: type,
+      p_thumbnail_url: thumbnailUrl ?? null,
+    }));
+  }
+  // Pre-0173 fallback: the RPC doesn't have the 4th param either yet.
   if (error && (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? ""))) {
     ({ data, error } = await sb.rpc("add_drop_box_media", { p_box: boxId, p_url: url, p_type: type }));
   }

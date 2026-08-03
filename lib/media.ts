@@ -18,6 +18,14 @@ export interface UploadOptions {
   /** The sub-folder within the bucket: a chat room slug, or a drop-box id. */
   room?: string;
   onProgress?: (loaded: number, total: number) => void;
+  /**
+   * When the caller already knows the real "date taken" (from
+   * `extractExifCapturedAt`, read off the ORIGINAL file before it's
+   * compressed away), pass it here so the mini can store it — for a video the
+   * server derives its own from the container instead, so this is
+   * photo-only. ISO string.
+   */
+  capturedAt?: string | null;
 }
 
 /** A single photo/video attachment (shared across posts, work items, etc.). */
@@ -47,6 +55,9 @@ export function photoUrls(media: { url: string; type: string }[]): string[] {
 export interface UploadResult {
   url: string;
   thumbnailUrl: string | null;
+  /** When the file was actually taken/recorded (EXIF for photos, container metadata for
+   *  videos), ISO string — null when it couldn't be determined (falls back to upload time). */
+  capturedAt: string | null;
   type: MediaKind | "file";
   path: string;
 }
@@ -87,6 +98,7 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", file);
+    if (opts.capturedAt) fd.append("capturedAt", opts.capturedAt);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${MEDIA_URL}/upload${qs ? `?${qs}` : ""}`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -100,7 +112,13 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
         try {
           const json = JSON.parse(xhr.responseText) as Partial<UploadResult>;
           if (!json.url) return reject(new Error("media server returned no URL"));
-          resolve({ url: json.url, thumbnailUrl: json.thumbnailUrl ?? null, type: json.type ?? "file", path: json.path ?? "" });
+          resolve({
+            url: json.url,
+            thumbnailUrl: json.thumbnailUrl ?? null,
+            capturedAt: json.capturedAt ?? null,
+            type: json.type ?? "file",
+            path: json.path ?? "",
+          });
         } catch {
           reject(new Error("media server returned a bad response"));
         }
@@ -111,6 +129,119 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
     xhr.onerror = () => reject(new Error("Couldn't reach the media server."));
     xhr.send(fd);
   });
+}
+
+// Read a tag's raw value-field bytes out of one IFD (a flat list of 12-byte
+// entries after a uint16 count) — used by extractExifCapturedAt below. Only
+// handles ASCII (EXIF type 2), which is all a date string ever is.
+function findAsciiTag(view: DataView, tiffStart: number, ifdAbs: number, wantTag: number, le: boolean): string | null {
+  if (ifdAbs + 2 > view.byteLength) return null;
+  const entryCount = view.getUint16(ifdAbs, le);
+  for (let i = 0; i < entryCount; i++) {
+    const entryAbs = ifdAbs + 2 + i * 12;
+    if (entryAbs + 12 > view.byteLength) break;
+    const tag = view.getUint16(entryAbs, le);
+    if (tag !== wantTag) continue;
+    const type = view.getUint16(entryAbs + 2, le);
+    const count = view.getUint32(entryAbs + 4, le);
+    const valueFieldOffset = entryAbs + 8;
+    if (type !== 2) return null; // ASCII only — a date is never anything else
+    const dataAbs = count <= 4 ? valueFieldOffset : tiffStart + view.getUint32(valueFieldOffset, le);
+    if (dataAbs < 0 || dataAbs + count > view.byteLength) return null;
+    let s = "";
+    for (let j = 0; j < count; j++) {
+      const c = view.getUint8(dataAbs + j);
+      if (c === 0) break;
+      s += String.fromCharCode(c);
+    }
+    return s || null;
+  }
+  return null;
+}
+
+// A LONG (type 4, single value) tag's value sits inline in the entry's value
+// field — used to follow the ExifIFDPointer (0x8769) to the Exif SubIFD.
+function findLongTag(view: DataView, ifdAbs: number, wantTag: number, le: boolean): number | null {
+  if (ifdAbs + 2 > view.byteLength) return null;
+  const entryCount = view.getUint16(ifdAbs, le);
+  for (let i = 0; i < entryCount; i++) {
+    const entryAbs = ifdAbs + 2 + i * 12;
+    if (entryAbs + 12 > view.byteLength) break;
+    if (view.getUint16(entryAbs, le) === wantTag) return view.getUint32(entryAbs + 8, le);
+  }
+  return null;
+}
+
+// EXIF dates read "YYYY:MM:DD HH:MM:SS" with no timezone — treated as a plain
+// local wall-clock moment (good enough for SORTING purposes, which is all
+// this is for).
+function parseExifDateString(s: string): string | null {
+  const m = /^(\d{4}):(\d{2}):(\d{2})\s(\d{2}):(\d{2}):(\d{2})/.exec(s.trim());
+  if (!m) return null;
+  const [, y, mo, d, h, mi, se] = m.map(Number);
+  const dt = new Date(y, mo - 1, d, h, mi, se);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+}
+
+/**
+ * Read the shot's real date/time straight out of a JPEG's EXIF, BEFORE
+ * `compressImage` re-encodes it via <canvas> and strips every byte of
+ * metadata — this has to run on the ORIGINAL file. Prefers
+ * DateTimeOriginal (Exif SubIFD, 0x9003) and falls back to the plain
+ * DateTime tag (IFD0, 0x0132). Only reads the first ~256KB (EXIF always sits
+ * near the front) so this is fast even on a big phone photo. Non-JPEG, no
+ * EXIF, or anything unparseable → null, never throws — callers fall back to
+ * upload time.
+ */
+export async function extractExifCapturedAt(file: File): Promise<string | null> {
+  try {
+    if (!/jpe?g$/i.test(file.type) && !/\.jpe?g$/i.test(file.name)) return null;
+    const buf = await file.slice(0, 262144).arrayBuffer();
+    const view = new DataView(buf);
+    if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) return null;
+
+    let offset = 2;
+    while (offset + 4 <= view.byteLength) {
+      const marker = view.getUint16(offset, false);
+      if ((marker & 0xff00) !== 0xff00) break; // not a marker — bail
+      if (marker === 0xffd8) { offset += 2; continue; }
+      if (marker === 0xffda) break; // start of scan — no metadata follows
+
+      const size = view.getUint16(offset + 2, false);
+      if (size < 2) break;
+
+      if (marker === 0xffe1) {
+        const segStart = offset + 4;
+        const isExif =
+          segStart + 6 <= view.byteLength &&
+          view.getUint32(segStart, false) === 0x45786966 && // "Exif"
+          view.getUint16(segStart + 4, false) === 0x0000;
+        if (isExif) {
+          const tiffStart = segStart + 6;
+          const bom = view.getUint16(tiffStart, false);
+          const le = bom === 0x4949; // "II" little-endian; "MM" is big-endian
+          if (bom === 0x4949 || bom === 0x4d4d) {
+            const ifd0Offset = view.getUint32(tiffStart + 4, le);
+            const ifd0Abs = tiffStart + ifd0Offset;
+
+            const subIfdOffset = findLongTag(view, ifd0Abs, 0x8769, le); // ExifIFDPointer
+            if (subIfdOffset != null) {
+              const raw = findAsciiTag(view, tiffStart, tiffStart + subIfdOffset, 0x9003, le); // DateTimeOriginal
+              const parsed = raw && parseExifDateString(raw);
+              if (parsed) return parsed;
+            }
+            const rawDateTime = findAsciiTag(view, tiffStart, ifd0Abs, 0x0132, le); // DateTime
+            const parsed = rawDateTime && parseExifDateString(rawDateTime);
+            if (parsed) return parsed;
+          }
+        }
+      }
+      offset += 2 + size;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // Downscale + re-encode photos to web JPEGs before upload (smaller + faster,
