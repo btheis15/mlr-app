@@ -5,19 +5,22 @@
 // viewer. Extracted here rather than duplicated so both features stay in sync
 // if the presence rule ever changes.
 //
-// Presence = RSVP'd "going" to an event that has ALREADY STARTED (no early-
-// arrival grace — we can't assume anyone's arrival time) and whose end is
-// widened by +EVENT_PRESENCE_GRACE_DAYS for lingering after — day-aware
-// (`days[today]`) on a REAL event day for day-RSVP events, and on the
-// lingering-after shoulder widened around the PERSON'S OWN last "going" day,
-// not the event's whole run — OR an approved cabin booking covering today.
-// See lib/helpRequests.ts for the original (single-viewer) version of this
-// rule, which DOES grace the "before" side too (arriving early to help set up
-// is a reasonable assumption there; showing someone as already "up north" on
-// a Home card before the event they're RSVP'd to has even started is not).
+// Presence = RSVP'd "going" to an event that is ACTUALLY HAPPENING today —
+// started, and not past its end (no early-arrival grace since we can't assume
+// arrival time, and no lingering-after grace either: when the event's over,
+// this card should clear, not keep showing everyone for a couple more days).
+// Day-aware (`days[today]`) on a REAL event day for day-RSVP events — OR an
+// approved cabin booking (`presentFromCabins`) OR a house-calendar stay
+// (`presentFromHouseStays`) covering today. So the card only appears when
+// something concrete puts a person up north right now, and vanishes the moment
+// the last such booking/event ends. See lib/helpRequests.ts for the original
+// (single-viewer) Ask-for-Help version, which DOES grace both sides (arriving
+// early to help set up / lingering after is reasonable there); this card is
+// stricter on purpose. `grace` defaults to 0 here for that reason — a caller
+// can still widen it, but WhosUpNorth wants the tight window.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { eligibleEvents, EVENT_PRESENCE_GRACE_DAYS } from "@/lib/helpRequests";
+import { eligibleEvents } from "@/lib/helpRequests";
 import { addDays } from "@/lib/cabins";
 import { effectiveStatus, isOngoing } from "@/lib/events";
 import type { EventAttendance, ResortEvent } from "@/lib/types";
@@ -37,10 +40,11 @@ export function presentFromAttendance(
   events: ResortEvent[],
   rows: EventAttendance[],
   today: string,
-  grace: number = EVENT_PRESENCE_GRACE_DAYS,
+  grace: number = 0,
 ): PresentMember[] {
   // graceBefore=0: an event that hasn't started yet is never "live" for this
-  // card, no matter how close — see the module note above.
+  // card, no matter how close. graceAfter=`grace` (0 by default): once the
+  // event ends the card clears — see the module note above.
   const live = eligibleEvents(events, today, 0, grace);
   if (!live.length) return [];
   const liveById = new Map(live.map((e) => [e.id, e]));
@@ -106,6 +110,48 @@ export async function presentFromCabins(today: string): Promise<PresentMember[]>
       const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
       return {
         userId: r.user_id,
+        name: (p?.display_name && p.display_name.trim()) || "Member",
+        avatarUrl: p?.avatar_url ?? null,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+interface HouseStayPresenceRow {
+  created_by: string;
+  profiles?:
+    | { display_name: string | null; avatar_url: string | null }
+    | { display_name: string | null; avatar_url: string | null }[]
+    | null;
+}
+
+/**
+ * Members with a house-calendar stay (`house_stays`, migration 0071) covering
+ * `today` (ISO "YYYY-MM-DD"). `end_date` is INCLUSIVE (a one-night stay has
+ * end = start), so today is covered when `start_date <= today <= end_date`.
+ * Like `presentFromCabins`, RLS scopes this to what the viewer can see — a
+ * house's stays are readable only to that house's members (`is_house_member`,
+ * migration 0065/0071) — so a viewer sees their own house's crew, and a
+ * non-member simply gets fewer rows, never an error. Only the booking member
+ * (`created_by`) is surfaced; free-text `guest_names` have no account/profile
+ * to show. Empty on any failure / no backend — never throws.
+ */
+export async function presentFromHouseStays(today: string): Promise<PresentMember[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return [];
+  try {
+    const { data, error } = await sb
+      .from("house_stays")
+      .select("created_by, profiles:created_by(display_name, avatar_url)")
+      .lte("start_date", today)
+      .gte("end_date", today);
+    if (error || !data) return [];
+    return (data as unknown as HouseStayPresenceRow[]).map((r) => {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+      return {
+        userId: r.created_by,
         name: (p?.display_name && p.display_name.trim()) || "Member",
         avatarUrl: p?.avatar_url ?? null,
       };
