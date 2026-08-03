@@ -66,6 +66,33 @@ const MAX_MB = Number(process.env.MAX_MB || 256); // per-file cap (MB); your dis
 const MEDIA_DIR = process.env.MEDIA_DIR || path.join(__dirname, "media");
 const LEGACY_DIR = path.join(MEDIA_DIR, "posts", "legacy");
 
+// If MEDIA_DIR lives on an external volume (/Volumes/<name>/…), make sure that
+// volume is actually MOUNTED before we touch it. Otherwise the mkdirSync below
+// would happily recreate the path as an empty folder on the internal disk — and
+// then every existing photo/video 404s while new uploads silently misfile onto
+// the boot drive. Detect it by comparing filesystem device ids: a real mount
+// sits on a different device than "/"; a stale/empty dir left at the mountpoint
+// (or a missing path) is on the same device as "/". Fail loud and exit — launchd
+// (KeepAlive + 10s ThrottleInterval) will retry until the drive is back, rather
+// than come up writing to the wrong place. The default ./media (internal, dev)
+// is unaffected — the guard only runs for a /Volumes path.
+if (MEDIA_DIR.startsWith("/Volumes/")) {
+  const volRoot = "/" + MEDIA_DIR.split("/").slice(1, 3).join("/"); // /Volumes/<name>
+  let mounted = false;
+  try {
+    mounted = fs.statSync(volRoot).dev !== fs.statSync("/").dev;
+  } catch {
+    mounted = false; // volRoot doesn't even exist → not mounted
+  }
+  if (!mounted) {
+    console.error(
+      `FATAL: MEDIA_DIR is ${MEDIA_DIR} but the volume ${volRoot} is not mounted. ` +
+        `Refusing to start so media isn't misfiled onto the internal disk — plug in / remount the drive.`
+    );
+    process.exit(1);
+  }
+}
+
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 fs.mkdirSync(LEGACY_DIR, { recursive: true });
 
