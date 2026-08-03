@@ -9,6 +9,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useBusyAction, useEvents, useHelpRequests } from "@/lib/hooks";
 import { amIPresent, claimHelpItem, helpType, mapsUrl, respondToHelp, setHelpStatus, withdrawHelp } from "@/lib/helpRequests";
+import { effectiveStatus } from "@/lib/events";
 import { fetchMyBookings } from "@/lib/cabins";
 import type { BringItem, HelpRequest } from "@/lib/types";
 
@@ -79,10 +80,29 @@ export function HelpRequestsView() {
     () => (today ? amIPresent(mine, events, today, bookingCoversToday) : false),
     [mine, events, today, bookingCoversToday],
   );
-  // Admins can post from anywhere (to test/demo); everyone else must be present.
+  // Upcoming events the viewer is RSVP'd GOING to (starts after today) — the
+  // targets for a scheduled-ahead request. You can ask for help now for, say,
+  // Labor Day weekend, and everyone attending it gets notified. Only events
+  // you're going to (so it can never reach random people, and it's always an
+  // MLR event). Rolled-up `effectiveStatus` handles day-RSVP events too.
+  const goingFuture = useMemo(
+    () =>
+      !today
+        ? []
+        : events
+            .filter((e) => e.startDate > today)
+            .filter((e) => {
+              const a = mine[e.id];
+              return a ? effectiveStatus(a.status, a.days) === "going" : false;
+            })
+            .sort((a, b) => a.startDate.localeCompare(b.startDate)),
+    [events, mine, today],
+  );
+  // Admins can post from anywhere (to test/demo); everyone else must be present
+  // OR have a future event they're going to that they can schedule help for.
   // Never true while previewing — "view as" is read-only (see `previewAsId`
   // guards below), so there's no CTA to ask as the previewed member.
-  const canAsk = !previewAsId && (atResort || isAdmin);
+  const canAsk = !previewAsId && (atResort || goingFuture.length > 0 || isAdmin);
 
   const { active, done } = useMemo(() => {
     const active = requests.filter((r) => r.status === "open");
@@ -169,9 +189,10 @@ export function HelpRequestsView() {
           )}
           {!canAsk && !isAdmin && (
             <p className="px-1 text-xs text-muted">
-              Requests only reach people when you&rsquo;re RSVP&rsquo;d{" "}
-              <span className="font-medium">going</span> to a current event (or have an approved cabin stay). Feel
-              free to explore the form — it&rsquo;ll go live automatically once you&rsquo;re checked in.
+              Requests only reach people at MLR — when you&rsquo;re RSVP&rsquo;d{" "}
+              <span className="font-medium">going</span> to a current event (or have an approved cabin stay), or by
+              scheduling ahead for an upcoming event you&rsquo;re going to. RSVP{" "}
+              <span className="font-medium">going</span> to an event and it&rsquo;ll go live automatically.
             </p>
           )}
         </div>
@@ -227,6 +248,8 @@ export function HelpRequestsView() {
         <AskForHelpSheet
           events={events}
           today={today}
+          futureEvents={goingFuture}
+          presentNow={atResort}
           onClose={() => setSheetOpen(false)}
           onSubmitted={(n, audience) => {
             void reload();

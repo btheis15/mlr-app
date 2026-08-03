@@ -1975,6 +1975,25 @@ Profile) — it was originally gated behind a `profiles.beta_tester` role, dropp
 in migration [`0100`](supabase/migrations/0100_remove_beta_tester.sql) along with
 the Beta Tester concept entirely.
 
+- **Schedule ahead for a future event (client-only, no migration).** Beyond
+  "right now," you can post a request for an **upcoming event you're RSVP'd going
+  to** — e.g. ask now for Labor Day weekend, and everyone attending it gets
+  notified today so they can plan. [`AskForHelpSheet`](components/AskForHelpSheet.tsx)
+  shows a **"When do you need help?"** selector (Right now · or an upcoming event)
+  built from `HelpRequestsView`'s `goingFuture` (events with `startDate > today`
+  the viewer is `effectiveStatus === "going"` to). Picking a future event routes
+  targeting through `eventTargeting(event, today)` in
+  [`lib/helpRequests.ts`](lib/helpRequests.ts) — `eligible = [event.id]`,
+  `strict = []` (so it matches anyone going to it on ANY day, not just today) —
+  and sets `needed_at` to the event's morning. **No server change was needed:**
+  the existing `request_help` requester-gate and `_help_recipients` already key
+  off `event_attendance` for whatever event ids they're handed, so a future event
+  id reaches exactly that event's going-attendees, and the requester passes the
+  gate by being one of them. This keeps help **event-gated** (you can only target
+  an event you're going to → never random off-resort asks). The "notify everyone
+  willing" escape hatch + the specific-time picker are hidden for a scheduled
+  request (it's scoped to the event's crew and anchored to the event date); the
+  0039 reminder cron then nudges signed-up helpers before the event.
 - **Presence with no geolocation.** A PWA can't track location in the background,
   so "at the resort right now" is derived from data we already have: you're present
   if you're RSVP'd **going** to an event whose window **±2 days**
