@@ -281,12 +281,22 @@ that role, with a picker over the committee's other members and a one-tap
 **Make lead / Unset lead** — because "who's on Beautification?" is the question
 an admin actually has, and the old layout made you open three separate member
 rows to put three people on one role. The per-member chips in `CommitteeMembers`
-answer the inverse ("what is this one person on?") and both remain: they write
-the same `set_committee_areas` RPC, whose `committee_members` UPDATE fires the
-realtime tick that re-syncs the other card. Assignment is scoped to people
-already in the committee (a role is a subdivision of it, and the RPC only
-touches an existing `committee_members` row), so the empty state points at the
-members card instead of offering a second way to add people.
+answer the inverse ("what is this one person on?") and both remain: both write
+`committee_roster` directly via `saveRosterEntry` (the roster-is-source-of-truth
+path since 0057), and the shared `committee_roster` realtime subscription
+re-syncs the other card. **Account-less roster people (no app account yet,
+`linked_user_id` null) are first-class here** — they appear in `RolesManager`
+and can be put on subcommittees like anyone else, shown with a **"Pending"**
+chip; assignment used to go through the account-keyed `set_committee_areas` RPC
+(which silently skipped them, since it keys on `user_id`), so they were
+invisible. `CommitteeMembers` also gained an **"Add someone not in the app yet"**
+name-(+optional-email-)only add, so a pending person can be created from the
+admin card, not just the public committee page's roster editor. Assignment is
+still scoped to people already in the committee (a role is a subdivision of it),
+so the empty state points at the members card instead of offering a second way
+to add people. Their email is the auto-link key (0056/0060): the Pending spot
+links to a real account automatically when they sign in / are invited with a
+matching email.
 - **The `" · Lead"` suffix now has ONE home.** A role entry in
   `committee_members.areas` / `committee_roster.roles[]` is either the plain
   name or the name plus `" · Lead"`, and `can_access_committee_area` accepts
