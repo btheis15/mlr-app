@@ -125,20 +125,18 @@ const globalLimiter = rateLimit({
   limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === "/health", // don't count uptime checks against anyone
+  // Don't count uptime checks — OR uploads — against anyone. Uploads are
+  // deliberately UNLIMITED (see below): a whole family shares one WiFi/IP at the
+  // lake (and can collapse to a single key behind the tunnel), so a big album
+  // dump would otherwise trip this floor too. /upload is still auth'd,
+  // magic-byte-sniffed, and MAX_MB-capped, so removing the count cap opens no
+  // abuse hole — disk space (watchable on the Admin storage meter) is the ceiling.
+  skip: (req) => req.path === "/health" || req.path === "/upload",
 });
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  // uploads/hour/IP. Sized for the REAL core use case: dumping a whole album
-  // (a fest is easily 200-500 photos from one phone), and a lake full of family
-  // shares one WiFi/IP — behind the tunnel they can collapse to a single key,
-  // so 30 (the old value) 429'd a single dump at photo #31. Still a floor
-  // against a runaway loop; every upload is auth'd + magic-sniffed + MAX_MB-capped.
-  limit: Number(process.env.UPLOAD_LIMIT_PER_HOUR) || 500,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many uploads from this device recently. Try again in a bit." },
-});
+// NOTE: uploads are intentionally NOT rate-limited. The core use case is dumping
+// a whole album (a fest/outing is easily hundreds of photos from one phone), and
+// any per-hour cap 429'd real family uploads mid-dump. Safety comes from auth +
+// magic-byte sniff + MAX_MB, not a count limit.
 const moderateTextLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 60, // 60/min — one per caption keystroke-pause is plenty
@@ -926,7 +924,7 @@ function transcodeInBackground(originalPath, mimetype, originalUrl) {
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
-app.post("/upload", uploadLimiter, requireUser, (req, res) => {
+app.post("/upload", requireUser, (req, res) => {
   // The actual multipart transfer is the only thing this timeout needs to cover
   // now — transcode and moderation both moved to the background (below), so
   // this no longer has to wait out a multi-minute ffmpeg run.
