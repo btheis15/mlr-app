@@ -630,7 +630,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         // post that already succeeded.
         if (alsoAlbum && albumId && uploaded.length) {
           for (const u of uploaded) {
-            try { await addDropBoxMedia(albumId, u.path, u.type); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, u.path, u.type, u.thumbnailUrl); } catch { /* keep going */ }
           }
         }
         await refetch();
