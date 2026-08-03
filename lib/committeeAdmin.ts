@@ -27,6 +27,8 @@ export interface CommitteeRow {
 /** A role/subcommittee within a committee, with its archived state. */
 export interface CommitteeAreaRow {
   area: string;
+  /** Admin-set blurb (migration 0179) — "" when none / pre-migration. */
+  description: string;
   archivedAt: string | null;
 }
 
@@ -94,30 +96,29 @@ export async function fetchCommitteeAreas(
   includeArchived = false,
 ): Promise<CommitteeAreaRow[]> {
   const seed: CommitteeAreaRow[] =
-    slug === "family-fest" ? FAMILY_FEST_AREAS.map((area) => ({ area, archivedAt: null })) : [];
+    slug === "family-fest" ? FAMILY_FEST_AREAS.map((area) => ({ area, description: "", archivedAt: null })) : [];
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return seed;
   try {
-    const primary = await sb
+    // Column ladder: description (0179) and archived_at (0112) are both additive,
+    // so retry progressively narrower selects on a 42703 so this reads at any
+    // migration level.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let res: any = await sb
       .from("committee_areas")
-      .select("area, archived_at")
+      .select("area, description, archived_at")
       .eq("committee_slug", slug)
       .order("area", { ascending: true });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let data: any[] | null = primary.data;
-    if (primary.error && primary.error.code === MISSING_COLUMN) {
-      const fb = await sb
-        .from("committee_areas")
-        .select("area")
-        .eq("committee_slug", slug)
-        .order("area", { ascending: true });
-      data = fb.data;
-    } else if (primary.error) {
-      return seed; // missing table (42P01) or any other read error
+    if (res.error && res.error.code === MISSING_COLUMN) {
+      res = await sb.from("committee_areas").select("area, archived_at").eq("committee_slug", slug).order("area", { ascending: true });
     }
-    const rows = (data ?? []) as { area: string; archived_at?: string | null }[];
+    if (res.error && res.error.code === MISSING_COLUMN) {
+      res = await sb.from("committee_areas").select("area").eq("committee_slug", slug).order("area", { ascending: true });
+    }
+    if (res.error) return seed; // missing table (42P01) or any other read error
+    const rows = (res.data ?? []) as { area: string; description?: string | null; archived_at?: string | null }[];
     if (!rows.length) return seed;
-    const mapped = rows.map((r) => ({ area: r.area, archivedAt: r.archived_at ?? null }));
+    const mapped = rows.map((r) => ({ area: r.area, description: r.description ?? "", archivedAt: r.archived_at ?? null }));
     return includeArchived ? mapped : mapped.filter((r) => !r.archivedAt);
   } catch {
     return seed;
@@ -255,3 +256,6 @@ export const restoreCommitteeArea = (cid: string, area: string) =>
  *  strips it off everyone's roles, and purges its chat history. Irreversible. */
 export const deleteCommitteeArea = (cid: string, area: string) =>
   rpc("delete_committee_area", { cid, p_area: area });
+/** Set (or clear, with "") a role's description (migration 0179). Admin-only. */
+export const setCommitteeAreaDescription = (cid: string, area: string, description: string) =>
+  rpc("set_committee_area_description", { cid, p_area: area, p_description: description });

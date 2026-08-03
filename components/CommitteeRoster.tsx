@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { MemberSheet } from "@/components/MemberSheet";
 import { PrivateName, useGuest } from "@/components/Guard";
 import { CommitteeMemberContact } from "@/components/CommitteeMemberContact";
-import { fetchLiveAreaNames, baseArea, isOnArea, isAreaLead, isCommitteeLead } from "@/lib/committeeAdmin";
+import { fetchCommitteeAreas, baseArea, isOnArea, isAreaLead, isCommitteeLead } from "@/lib/committeeAdmin";
 import { fetchCommitteeRoster, saveRosterEntry, deleteRosterEntry, type RosterEntry } from "@/lib/committeeRoster";
 import type { Committee } from "@/lib/types";
 
@@ -78,9 +78,14 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
   // even before anyone holds it. Falls back to whatever roles people already
   // carry until the fetch lands (and pre-migration).
   const [areas, setAreas] = useState<string[]>([]);
+  const [areaDesc, setAreaDesc] = useState<Record<string, string>>({});
   useEffect(() => {
     let alive = true;
-    fetchLiveAreaNames(committee.slug).then((a) => alive && setAreas(a));
+    fetchCommitteeAreas(committee.slug, false).then((rows) => {
+      if (!alive) return;
+      setAreas(rows.map((r) => r.area));
+      setAreaDesc(Object.fromEntries(rows.map((r) => [r.area, r.description])));
+    });
     return () => {
       alive = false;
     };
@@ -318,6 +323,7 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
                     <a href={mail} className="press shrink-0 text-xs font-semibold text-primary">✉️ Email</a>
                   )}
                 </div>
+                {areaDesc[area] && <p className="-mt-1 text-xs text-muted">{areaDesc[area]}</p>}
                 {inArea.length ? (
                   <ul className="space-y-1.5">
                     {inArea.map(({ m, lead: isLead }) => (

@@ -23,6 +23,7 @@ import {
   restoreCommitteeArea,
   deleteCommittee,
   deleteCommitteeArea,
+  setCommitteeAreaDescription,
   type CommitteeRow,
   type CommitteeAreaRow,
 } from "@/lib/committeeAdmin";
@@ -452,6 +453,7 @@ function RolesManager({ committeeId }: { committeeId: string }) {
 
             {isOpen && renaming !== a.area && (
               <div className="space-y-1.5 border-t border-border/60 bg-card/60 p-2">
+                <AreaDescriptionEditor committeeId={committeeId} area={a.area} description={a.description} onSaved={load} />
                 {on.map((m) => {
                   const lead = isAreaLead(m.areas, a.area);
                   return (
@@ -542,6 +544,75 @@ function RolesManager({ committeeId }: { committeeId: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Set/clear a role's description (migration 0179), inline in its expanded panel.
+ *  Admin-only; shows the current blurb with a one-tap edit (mirrors the
+ *  committee-details editor). Degrades to an error toast pre-migration. */
+function AreaDescriptionEditor({
+  committeeId,
+  area,
+  description,
+  onSaved,
+}: {
+  committeeId: string;
+  area: string;
+  description: string;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(description);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setValue(description);
+  }, [description]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const { error } = await setCommitteeAreaDescription(committeeId, area, value.trim());
+    setBusy(false);
+    if (error) setError(error);
+    else {
+      setEditing(false);
+      await onSaved();
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg bg-background px-2 py-1.5">
+        <p className={`min-w-0 flex-1 text-[11px] ${description ? "text-foreground/70" : "italic text-faint"}`}>
+          {description || "No description yet."}
+        </p>
+        <button type="button" onClick={() => setEditing(true)} className="press shrink-0 text-[11px] font-semibold text-primary">
+          {description ? "Edit" : "+ Describe"}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5 rounded-lg bg-background p-2">
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={2}
+        autoFocus
+        placeholder="What this role/subcommittee does…"
+        className="w-full rounded-lg bg-card px-2 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+      />
+      {error && <p className="text-[11px] font-medium text-accent">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={save} disabled={busy} className="press rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">
+          {busy ? "…" : "Save"}
+        </button>
+        <button type="button" onClick={() => { setEditing(false); setValue(description); }} className="press px-2 text-xs font-medium text-foreground/50">
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
