@@ -204,6 +204,20 @@ export function FeedView() {
   // Opened from the House hub (/posts?house=slug): back should return to /house,
   // and we hold the feed/list render until loaded so we don't flash it on the way.
   const openedFromHouseRef = useRef(false);
+  // Same idea for a committee page's chat tiles (/posts?c=slug[&area=]&from=
+  // committee): Back should return to that committee, not dump you on the Chats
+  // list. Those tiles link through the Feed because the standalone
+  // /committees/<slug>/chat route fails outright in the installed PWA — see
+  // ChatEntryButton's note — so this preserves the Back target that route's
+  // own header "‹" used to give.
+  //
+  // ⚠️ Read via useUrlParam (an EFFECT), never a useState initializer that
+  // touches window.location: this component is prerendered, so a render-time
+  // read makes the first client render disagree with the served HTML and React
+  // throws a hydration error (#418) — which is what silently killed every link
+  // on the committee page in PR #493. It only feeds a Back label/target, so
+  // resolving a tick late costs nothing.
+  const fromCommittee = useUrlParam("from");
   const [bootHouseSlug] = useState<string | null>(() =>
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("house") : null
   );
@@ -822,7 +836,15 @@ export function FeedView() {
         <div ref={chatBoxRef} className={`${chatAnim} fixed inset-x-0 top-0 z-50 mx-auto flex max-w-md flex-col bg-background`} style={{ height: "calc(100dvh - 64px)", paddingTop: "env(safe-area-inset-top)" }}>
           <div key={active} aria-hidden className="chat-unmask pointer-events-none absolute inset-0 z-20 bg-background" />
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-            <BackButton label="Feed" onClick={() => closeChat(() => setActive("list"))} />
+            <BackButton
+              label={fromCommittee ? "Committee" : "Feed"}
+              onClick={() =>
+                closeChat(() => {
+                  if (fromCommittee) router.push(`/committees/${fromCommittee}`);
+                  else setActive("list");
+                })
+              }
+            />
             <div className="min-w-0 flex-1 text-center">
               <p className="truncate text-sm font-bold">{activeChannel.emoji} {activeChannel.title}</p>
               {activeChannel.subtitle && <p className="truncate text-[11px] text-foreground/45">{activeChannel.subtitle}</p>}

@@ -194,19 +194,25 @@ export function CommitteeDetail({ slug }: { slug: string }) {
     ...(live && onCommittee === true
       ? [{ id: "chat", node: <ChatEntryButton slug={committee.slug} name={committee.name} variant="tile" /> }]
       : []),
-    // Leads get a private side-chat (the reserved 'Leads' channel, 0172). Links
-    // to its own real route — NOT `/posts?c=&area=Leads` (which lands on the
-    // Feed's all-chats list first and then jumps into the room: a visible flash
-    // and a Back that wrongly returned to the chats list), and NOT
-    // `/chat?area=Leads` either, which broke outright in the installed PWA —
-    // see app/committees/[slug]/leads/page.tsx. A bare path, like every other
-    // link in the app.
+    // Leads get a private side-chat (the reserved 'Leads' channel, 0172).
+    //
+    // Both chat tiles route through the FEED (`/posts?c=&area=`), not the
+    // standalone /committees/<slug>/chat routes. Those routes render
+    // CommitteeChat un-embedded, i.e. inside ChatShell's `fixed inset-0`
+    // full-screen overlay — and in the INSTALLED PWA navigating to them fails
+    // with WebKit's own "This page couldn't load" page, before React ever runs.
+    // Opening the same room from the Feed works, because the Feed renders it
+    // `embedded` (a plain inline column, no overlay). Two attempts to keep the
+    // standalone routes failed on-device (a ?area= query param, then a
+    // dedicated /leads path), so the routes are no longer linked from here.
+    // The Feed's own deep-link resolution now holds a spinner instead of
+    // flashing the chats list, which was the only real drawback of this path.
     ...(live && amLead
       ? [{
           id: "leads",
           emoji: "🔑",
           label: "Leads chat",
-          href: `/committees/${committee.slug}/leads`,
+          href: `/posts?c=${committee.slug}&area=Leads&from=${committee.slug}`,
           internal: true,
           tone: "primary" as const,
         }]
