@@ -33,6 +33,43 @@ export interface DropBoxItem {
   capturedAt: string | null;
 }
 
+/**
+ * How an album's grid is ordered. **Purely a per-viewer VIEWING preference** —
+ * it's applied client-side over the already-fetched items and is never written
+ * to the database, so changing it can't reorder the album for anybody else.
+ * Persisted per device in localStorage (one setting for every album).
+ *
+ * - `"uploaded"` (**default**) — newest upload first, so your own photos land at
+ *   the front of the grid the moment they finish uploading. This is the default
+ *   specifically because capture order made a fresh upload scatter into the
+ *   middle of the album by its shot date, which reads as the app glitching or
+ *   losing the photos rather than as intentional sorting.
+ * - `"captured"` — when the photo/video was actually TAKEN (EXIF / video
+ *   container metadata, migration 0174/0175/0176), falling back to upload time
+ *   for anything whose metadata couldn't be read, so nothing drops out of the
+ *   list for lacking it. The chronological "how the week actually happened"
+ *   view — good for building a photo book.
+ */
+export type DropBoxSort = "uploaded" | "captured";
+
+export const DROP_BOX_SORT_DEFAULT: DropBoxSort = "uploaded";
+/** localStorage key for the viewer's own sort choice (device-local, not synced). */
+export const DROP_BOX_SORT_KEY = "mlr.dropbox.sort";
+
+/** Most-recent-first comparator for the given order. Capture order falls back
+ *  to upload time when `capturedAt` is null (unreadable metadata). */
+export function dropBoxItemComparator(sort: DropBoxSort) {
+  return (a: DropBoxItem, b: DropBoxItem) =>
+    sort === "captured"
+      ? (b.capturedAt ?? b.createdAt).localeCompare(a.capturedAt ?? a.createdAt)
+      : b.createdAt.localeCompare(a.createdAt);
+}
+
+/** Re-order a copy of `items` for the viewer's chosen sort. */
+export function sortDropBoxItems(items: DropBoxItem[], sort: DropBoxSort): DropBoxItem[] {
+  return [...items].sort(dropBoxItemComparator(sort));
+}
+
 export interface DropBox {
   id: string;
   title: string;
@@ -96,10 +133,9 @@ function assemble(row: BoxRow, viewerId: string | null, isAdmin: boolean, names:
         capturedAt: m.captured_at ?? null,
       }),
     )
-    // Most-recent-first, by when the photo/video was actually TAKEN when
-    // that's known (capturedAt) — falling back to upload time (createdAt)
-    // for anything without readable metadata, so nothing drops out of order.
-    .sort((a, b) => (b.capturedAt ?? b.createdAt).localeCompare(a.capturedAt ?? a.createdAt));
+    // Newest upload first — the DEFAULT order (see sortDropBoxItems). The
+    // viewer can switch to capture order in the UI.
+    .sort(dropBoxItemComparator("uploaded"));
   return {
     id: row.id,
     title: row.title,
