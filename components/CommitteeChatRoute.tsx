@@ -4,20 +4,28 @@ import { useEffect, useState } from "react";
 import { CommitteeChat } from "@/components/CommitteeChat";
 import { COMMITTEES } from "@/lib/data";
 import { fetchCommitteeBySlug } from "@/lib/committeeAdmin";
+import { useUrlParam } from "@/lib/hooks";
 
 /**
- * The channel this route opens, from `?area=`. Read SYNCHRONOUSLY in a
- * `useState` initializer rather than via `useUrlParam` (which resolves in an
- * effect, so the first render would mount the General channel and swap to the
- * requested one a tick later — the very flash this route exists to avoid).
- * Safe to read `window` here because it's only reached on the client: the
- * prerender path takes the `typeof window` branch and yields General, matching
- * the static HTML, and the real value lands on the first client render.
+ * The channel this route opens, from `?area=`.
+ *
+ * ⚠️ Read in an EFFECT, never in a `useState` initializer. This route is
+ * statically prerendered, so the server HTML is always the General channel;
+ * reading the query string during the initializer makes the first CLIENT
+ * render disagree with that HTML, and React resolves the hydration mismatch by
+ * throwing the tree away — which left every link on the screen inert (an
+ * un-hydrated page has no event handlers at all). That cost the whole page to
+ * save one frame.
+ *
+ * Deferring by a tick costs nothing visible here: `CommitteeChat` shows its
+ * neutral spinner until access resolves over the network anyway, which lands
+ * long after this effect, so `area` is already correct by the time any message
+ * query runs. `useUrlParam` is the shared helper for exactly this and also
+ * keeps up with in-place URL changes.
  */
-function initialArea(): string | null {
-  if (typeof window === "undefined") return null;
-  const a = new URLSearchParams(window.location.search).get("area");
-  return a && a.trim() ? a : null;
+function useAreaParam(): string | null {
+  const raw = useUrlParam("area");
+  return raw && raw.trim() ? raw : null;
 }
 
 /**
@@ -35,7 +43,7 @@ function initialArea(): string | null {
  * Now it's one direct navigation, exactly like the General chat tile.
  */
 export function CommitteeChatRoute({ slug }: { slug: string }) {
-  const [area] = useState<string | null>(initialArea);
+  const area = useAreaParam();
   const seed = COMMITTEES.find((c) => c.slug === slug);
   const [meta, setMeta] = useState<{ name: string; emoji: string }>(
     { name: seed?.name ?? "Committee", emoji: seed?.emoji ?? "🌲" },
@@ -53,5 +61,9 @@ export function CommitteeChatRoute({ slug }: { slug: string }) {
   // The header shows which channel you're in, so a Leads/role room doesn't look
   // identical to the committee's General chat.
   const name = area ? `${meta.name} · ${area}` : meta.name;
-  return <CommitteeChat slug={slug} name={name} emoji={meta.emoji} area={area} />;
+  // Keyed on the channel so CommitteeChat REMOUNTS when `area` lands from the
+  // effect above. Its message-load effect depends on [isMember, committeeId] —
+  // not on `area` — so without this a fast access resolve could load General's
+  // messages and then never refetch for the real channel.
+  return <CommitteeChat key={area ?? ""} slug={slug} name={name} emoji={meta.emoji} area={area} />;
 }
