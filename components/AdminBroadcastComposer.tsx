@@ -10,6 +10,7 @@ import { EventTargetPicker, type EventTarget } from "@/components/EventTargetPic
 import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
 import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
 import { fetchFestContent } from "@/lib/festContent";
+import { fetchDropBoxes, type DropBox } from "@/lib/dropBoxes";
 import { activityReminderDefaults, FAMILY_FEST_EVENT_ID } from "@/lib/activityNotify";
 import type { ScheduleEvent } from "@/lib/types";
 
@@ -81,10 +82,16 @@ export function AdminBroadcastComposer() {
   // when/where), tap-through to it, and target Family Fest attendees.
   const [activityOptions, setActivityOptions] = useState<ScheduleEvent[]>([]);
   const [activityLinkId, setActivityLinkId] = useState<string>("");
+  // Albums, so "send them straight to this album" is a pick rather than a path
+  // the admin has to know (/drop?box=<uuid>).
+  const [dropBoxOptions, setDropBoxOptions] = useState<DropBox[]>([]);
   useEffect(() => {
     let alive = true;
     fetchFestContent().then((c) => {
       if (alive) setActivityOptions(c.schedule);
+    });
+    fetchDropBoxes(null, true).then((boxes) => {
+      if (alive) setDropBoxOptions(boxes.filter((b) => !b.archivedAt));
     });
     return () => {
       alive = false;
@@ -291,12 +298,41 @@ export function AdminBroadcastComposer() {
                   </button>
                 ))}
               </div>
-              <input
-                value={feedUrl}
-                onChange={(e) => setFeedUrl(e.target.value)}
-                placeholder="Link when tapped (optional) — e.g. /posts"
-                className="w-full rounded-lg bg-card px-2.5 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-              />
+              {/* Where a tap lands — on the phone (push) and in the Activity
+                  tab. This was a bare text box, which meant knowing a path like
+                  /drop?box=<uuid> by heart; the picker fills it in for the
+                  common destinations so the link is actually usable. */}
+              <div className="space-y-1">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) setFeedUrl(e.target.value);
+                  }}
+                  className="w-full rounded-lg bg-card px-2.5 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Send them to… (pick to fill in below)</option>
+                  <option value="/">Home</option>
+                  <option value="/posts?feed=main">The Family Feed</option>
+                  <option value="/drop">Albums (the list)</option>
+                  <option value="/events">Events</option>
+                  <option value="/polls">Polls</option>
+                  {dropBoxOptions.length > 0 && (
+                    <optgroup label="A specific album">
+                      {dropBoxOptions.map((b) => (
+                        <option key={b.id} value={`/drop?box=${b.id}`}>
+                          {b.emoji ? `${b.emoji} ` : ""}{b.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                <input
+                  value={feedUrl}
+                  onChange={(e) => setFeedUrl(e.target.value)}
+                  placeholder="Link when tapped (optional) — e.g. /posts"
+                  className="w-full rounded-lg bg-card px-2.5 py-1.5 text-xs ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
               <label className="flex items-center justify-between gap-2 text-xs text-foreground/70">
                 <span>Stop counting toward the badge after</span>
                 <select
