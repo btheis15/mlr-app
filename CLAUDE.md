@@ -1579,6 +1579,19 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   nobody can attribute an upload to someone else. The composer's own
   `alsoAlbum` flow (a brand-new post) doesn't pass it — the poster IS the
   caller there, so there's nothing to redirect.
+  - **One-time backfill (no migration — a data correction, not schema).** This
+    only fixes credit on NEW adds going forward; the live Family Fest 2026
+    album already had **41 pre-existing rows** (the same 41 items referenced
+    in from Feed posts described in the 0175 incident above) mis-credited to
+    whichever admin had clicked "also add to an album" before this feature
+    existed. Corrected in place with a one-off `update drop_box_media set
+    uploaded_by = <post's author_id> where uploaded_by <> <post's author_id>`,
+    joined on `storage_path` back to `post_media`/`posts` (verified first that
+    no `storage_path` matched more than one distinct author, so the join was
+    unambiguous). Same "the fix only covers what happens next, not what
+    already exists" lesson as the `captured_at`/thumbnail backfills elsewhere
+    in this doc — check for this pattern whenever a new derived-from-a-post
+    field ships.
 - **The official Family Fest 2026 album is a well-known box** with a **fixed
   id** (`FEST_ALBUM_BOX_ID` / `FEST_ALBUM_HREF` in [`lib/data.ts`](lib/data.ts) =
   `0000fe57-2026-4000-8000-000000000001`), seeded in Supabase so the app can
