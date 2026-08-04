@@ -93,7 +93,7 @@ export function ChatEntryButton({
     return (
       <Link
         href={`/posts?c=${slug}&from=${slug}`}
-        className="press relative flex h-full min-h-[72px] flex-col justify-between gap-1 rounded-2xl bg-primary p-3 text-white shadow-sm"
+        className="press relative flex h-[72px] w-full flex-col justify-between gap-1 rounded-2xl bg-primary p-3 text-white shadow-sm"
       >
         <span aria-hidden className="text-lg leading-none">💬</span>
         <span className="text-sm font-semibold leading-tight">Committee chat</span>

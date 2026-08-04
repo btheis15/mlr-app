@@ -52,11 +52,12 @@ type ActionTileProps = {
 function ActionTile(props: ActionTileProps) {
   if (props.node) return <>{props.node}</>;
   const { emoji, label, href, internal, onClick, tone } = props;
-  // Deliberately generous (72px) and identical for every action: these all live
-  // inside a collapsible now, so the height costs nothing at rest and buys a
-  // target nobody has to aim for. `items-start` + h-full keeps every tile the
-  // same size even when a label wraps to two lines.
-  const cls = `press flex h-full min-h-[72px] flex-col justify-between gap-1 rounded-2xl p-3 text-left ${
+  // Every tile is EXACTLY the same size: `w-full` + `h-full` inside a
+  // grid-cols-2 cell. `w-full` is load-bearing — an <a>/<Link> is inline, so
+  // `flex` alone sets the display mode but the box still shrinks to its label,
+  // which is what left "Schedule a meeting" narrower than "Email everyone".
+  // Fixed 72px (not min-h) so a one-line and a two-line label are equal too.
+  const cls = `press flex h-[72px] w-full flex-col justify-between gap-1 rounded-2xl p-3 text-left ${
     tone === "primary" ? "bg-primary text-white shadow-sm" : "bg-card ring-1 ring-border text-foreground"
   }`;
   const inner = (
@@ -282,16 +283,13 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           icon="💬"
           subtitle={reachSubtitle}
         >
+          {/* A plain uniform grid: every cell the same width, every tile
+              filling its cell. An odd last tile stays at column width — a
+              half-row gap reads as an even grid, whereas stretching it across
+              both columns (which this used to do) made it the odd shape out. */}
           <div className="grid grid-cols-2 gap-2">
-            {reachActions.map((a, i) => (
-              // An odd count would leave a lone half-width tile on the last
-              // row; stretch it across both columns so the grid stays even.
-              <div
-                key={a.id}
-                className={i === reachActions.length - 1 && reachActions.length % 2 === 1 ? "col-span-2" : undefined}
-              >
-                <ActionTile {...a} />
-              </div>
+            {reachActions.map((a) => (
+              <ActionTile key={a.id} {...a} />
             ))}
           </div>
         </CollapsibleSection>
