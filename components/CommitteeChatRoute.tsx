@@ -42,8 +42,12 @@ function useAreaParam(): string | null {
  * and then jumping into the room, a visible flash and a wrong Back target.
  * Now it's one direct navigation, exactly like the General chat tile.
  */
-export function CommitteeChatRoute({ slug }: { slug: string }) {
-  const area = useAreaParam();
+export function CommitteeChatRoute({ slug, area: fixedArea }: { slug: string; area?: string | null }) {
+  // A route may pin the channel (`/committees/<slug>/leads`), which is the
+  // preferred form — see that route's note on installed-PWA navigation. The
+  // `?area=` read stays as a fallback so existing links keep working.
+  const paramArea = useAreaParam();
+  const area = fixedArea ?? paramArea;
   const seed = COMMITTEES.find((c) => c.slug === slug);
   const [meta, setMeta] = useState<{ name: string; emoji: string }>(
     { name: seed?.name ?? "Committee", emoji: seed?.emoji ?? "🌲" },

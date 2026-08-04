@@ -195,16 +195,18 @@ export function CommitteeDetail({ slug }: { slug: string }) {
       ? [{ id: "chat", node: <ChatEntryButton slug={committee.slug} name={committee.name} variant="tile" /> }]
       : []),
     // Leads get a private side-chat (the reserved 'Leads' channel, 0172). Links
-    // STRAIGHT to the committee's own chat route with ?area=Leads — NOT through
-    // `/posts?c=&area=Leads`, which lands on the Feed's all-chats list first and
-    // then jumps into the room (a visible flash, and a Back that wrongly
-    // returned to the chats list). Same reasoning as ChatEntryButton's docstring.
+    // to its own real route — NOT `/posts?c=&area=Leads` (which lands on the
+    // Feed's all-chats list first and then jumps into the room: a visible flash
+    // and a Back that wrongly returned to the chats list), and NOT
+    // `/chat?area=Leads` either, which broke outright in the installed PWA —
+    // see app/committees/[slug]/leads/page.tsx. A bare path, like every other
+    // link in the app.
     ...(live && amLead
       ? [{
           id: "leads",
           emoji: "🔑",
           label: "Leads chat",
-          href: `/committees/${committee.slug}/chat?area=Leads`,
+          href: `/committees/${committee.slug}/leads`,
           internal: true,
           tone: "primary" as const,
         }]
