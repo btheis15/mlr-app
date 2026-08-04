@@ -194,7 +194,12 @@ export interface AppNotification {
   actorAvatarUrl: string | null;
   title: string;
   body: string | null;
-  /** In-app deep-link target, e.g. "/posts?post=…" or "/committees/slug/chat?m=…". */
+  /** In-app deep-link target, e.g. "/posts?post=…" or "/posts?c=slug&m=…".
+   *  ⚠️ Chat deep-links go through the FEED (`/posts?c=`), which is what the
+   *  current trigger emits (migration 0063 superseded 0030's
+   *  `/committees/slug/chat?m=`). Don't point a notification at the standalone
+   *  `/committees/<slug>/chat` route — it fails outright in the installed PWA
+   *  (see ChatEntryButton's note), so a tap would dead-end. */
   url: string | null;
   /** ISO timestamps. */
   createdAt: string;

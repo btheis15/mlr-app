@@ -3234,6 +3234,27 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
   bug). Both `Sheet` and `ModalPortal` portal to body AND re-apply the
   `.ff-section` theme by route. Never hand-roll a `fixed inset-0` page overlay
   again — the whole app was swept onto these two (PRs #471/#472).
+- ⚠️⚠️ **Open a committee/house chat through the FEED (`/posts?c=<slug>[&area=]`),
+  never the standalone `/committees/<slug>/chat` route.** In the **installed
+  PWA** (macOS dock / iOS home screen) navigating to that route fails with
+  WebKit's own **"This page couldn't load"** page: the navigation dies in the app
+  container *before React runs*, so nothing in-app can catch or report it and the
+  screen isn't one the app renders. Opening the **same room** from the Feed works,
+  because the Feed renders [`CommitteeChat`](components/CommitteeChat.tsx)
+  **`embedded`** (a plain inline column) while the route renders it inside
+  `ChatShell`'s `fixed inset-0` full-screen overlay + visualViewport handler —
+  the only structural difference. **Every server-side check comes back healthy**
+  (HTML 200, RSC payload 200, clean console, in-scope manifest, no redirect), so
+  this is invisible outside a real installed PWA — don't "verify" it with curl or
+  a headless browser and conclude it's fine. Three fixes failed before the cause
+  was found (PR #492 moved to `?area=`, #494 added a `/leads` path, both still
+  failed on-device; #495 routed through the Feed). The Feed path's two old
+  drawbacks are both already handled: `FeedView`'s **`bootChannelKey`** gate holds
+  a "Loading…" instead of flashing the chats list while a `?c=` deep-link
+  resolves, and **`&from=<slug>`** makes its Back button return to the committee
+  page. Notification deep-links already use the Feed form (migration 0063
+  superseded 0030's `/chat?m=`) — keep it that way. The standalone `/chat` +
+  `/leads` routes still exist and work as typed URLs; just don't link to them.
 - **Loading states** — async pages show pulsing card placeholders
   ([`components/Skeleton.tsx`](components/Skeleton.tsx) `SkeletonList`), not a
   bare "Loading…" line.
