@@ -1562,6 +1562,23 @@ route segment, the `/house` `?house=` / Events `?activity=` idiom), so the
   - `relPathForItem()` derives each item's on-disk path (relative to
     `dropbox/<box>/`) from its URL; the zip endpoint sanitizes every `path`
     against traversal before handing it to `zip`.
+- **Creator/uploader attribution (migration 0180).** Every album shows who
+  made it — a "by {name}" line on the list tile ([`BoxCard`](components/DropBoxes.tsx))
+  and "created by {name}" in the detail header — and the carousel
+  ([`FolderCarousel`](components/DropBoxes.tsx)) shows who uploaded the item
+  currently open. Names are resolved with one bulk `fetchProfiles()` call
+  (`lib/roles.ts`) per fetch, keyed by each row's `created_by`/`uploaded_by`.
+  **When a Feed post's photo/video is referenced into an album from
+  `EditPostPanel`'s "also add to an album" checkbox, credit goes to the
+  POST'S AUTHOR, not whoever clicked the checkbox** — the common case is an
+  admin retroactively adding a member's old post to an album (e.g. this
+  feature shipping after the photo was already posted), and it's still that
+  member's photo either way. `add_drop_box_media` grew a trailing
+  `p_credit_user_id` param, honored only when the caller is an admin (and the
+  target id is a real profile) — a non-admin's value is silently ignored, so
+  nobody can attribute an upload to someone else. The composer's own
+  `alsoAlbum` flow (a brand-new post) doesn't pass it — the poster IS the
+  caller there, so there's nothing to redirect.
 - **The official Family Fest 2026 album is a well-known box** with a **fixed
   id** (`FEST_ALBUM_BOX_ID` / `FEST_ALBUM_HREF` in [`lib/data.ts`](lib/data.ts) =
   `0000fe57-2026-4000-8000-000000000001`), seeded in Supabase so the app can

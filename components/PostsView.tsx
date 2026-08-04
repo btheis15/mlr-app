@@ -1350,9 +1350,11 @@ function EditPostPanel({
           // Optionally reference this same upload into a shared album too — NO
           // re-upload, the album row just points at the same mini URL (mirrors
           // the composer's own `alsoAlbum` flow). Best-effort: never undoes the
-          // edit that already saved.
+          // edit that already saved. Credited to the POST's author, not
+          // whoever is editing (an admin editing someone else's post) — it's
+          // still their photo either way.
           if (alsoAlbum && albumId) {
-            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt, res.capturedAtSource); } catch { /* keep going */ }
+            try { await addDropBoxMedia(albumId, res.url, isVideo ? "video" : "image", res.thumbnailUrl, res.capturedAt, res.capturedAtSource, post.authorId); } catch { /* keep going */ }
           }
         }
       }
@@ -1372,11 +1374,16 @@ function EditPostPanel({
       // Tagged so the mini's sweep can still upgrade a proxy to real metadata
       // if the stored bytes turn out to carry any (compressImage leaves a
       // photo untouched whenever re-encoding wouldn't shrink it).
+      //
+      // Credited to the POST's author — this is the whole point of doing it
+      // from the editor: an admin retroactively adding e.g. Cass's old post to
+      // an album should still show Cass as who it's from in the album, not
+      // the admin who happened to click the checkbox.
       if (alsoAlbum && albumId && keptMedia.length) {
         for (const m of keptMedia) {
           const taken = m.capturedAt ?? post.ts;
           const source: CapturedAtSource = m.capturedAt ? m.capturedAtSource ?? "exif" : "post";
-          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null, taken, source); } catch { /* keep going */ }
+          try { await addDropBoxMedia(albumId, m.url, m.type, m.thumbnailUrl ?? null, taken, source, post.authorId); } catch { /* keep going */ }
         }
       }
       const orig = post.tags.map((t) => t.id);
