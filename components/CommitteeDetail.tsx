@@ -235,7 +235,7 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   const hasReach = chatTiles.length > 0 || quickActions.length > 0;
 
   return (
-    <div className="space-y-5 pt-2">
+    <div className="space-y-4 pt-2">
       <BackLink href="/committees" label="Committees" />
 
       <header className="space-y-1">
@@ -263,8 +263,11 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           stack was most of a screen of chrome before the roster (the thing
           people actually come here for) came into view. */}
       {hasReach && (
-        <section className="space-y-2.5 rounded-2xl bg-card p-3 ring-1 ring-border">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Reach the group</h2>
+        // No outer card: this was a bordered box wrapping two more boxes plus a
+        // pill row — boxes-inside-boxes, which is most of what read as clutter.
+        // The heading + the tiles' own shapes group it well enough on their own.
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-accent">Reach the group</h2>
           {chatTiles.length > 0 && (
             <div className={`grid gap-2 ${chatTiles.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
               {chatTiles.map((a) => (

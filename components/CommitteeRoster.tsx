@@ -241,7 +241,7 @@ export function CommitteeRoster({
     const display = link?.name ?? m.name;
     const pending = !link && !!m.email;
     return (
-      <li className="flex items-center gap-2">
+      <li className="flex min-h-9 items-center gap-2">
         {link ? (
           <button
             type="button"
@@ -254,15 +254,15 @@ export function CommitteeRoster({
         ) : (
           <span className="truncate text-sm"><PrivateName name={display} /></span>
         )}
-        {isLead && (
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Lead</span>
-        )}
+        {/* A plain text marker, not a filled pill: on a role where most people
+            are leads, seven identical badges just added noise. */}
+        {isLead && <span className="shrink-0 text-[11px] font-semibold text-primary">Lead</span>}
         {pending && (
           <span
-            className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-muted"
+            className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted"
             title="Hasn't signed in to claim their account yet — manage their info on Admin → Members → Family roster; their spot here links up automatically when they join"
           >
-            Pending verification
+            Pending
           </span>
         )}
         <span className="ml-auto flex items-center gap-1.5">
@@ -311,11 +311,16 @@ export function CommitteeRoster({
       />
 
       {isRoleBased ? (
-        <section className="space-y-3">
+        <section className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Roles &amp; who&rsquo;s on them</h2>
             {adminBar}
           </div>
+          {/* ONE card with hairline dividers, not a ringed card per role. The
+              page already stacks several bordered cards before this point, so a
+              further N boxes-inside-boxes was the bulk of the "cluttered" read.
+              Each role is still a clearly labelled group. */}
+          <div className="divide-y divide-border overflow-hidden rounded-2xl bg-card ring-1 ring-border">
           {layoutAreas.map((area) => {
             const inArea = members
               .map((m) => ({ m, lead: isAreaLead(m.roles ?? [], area) }))
@@ -328,16 +333,16 @@ export function CommitteeRoster({
             const mail =
               user && inArea.length ? mailtoFor(inArea.map((x) => x.m), `${area} — ${committee.name}`) : null;
             return (
-              <div key={area} className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
+              <div key={area} className="space-y-1.5 p-3.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="text-sm font-semibold">{area}</h3>
                   {mail && (
                     <a href={mail} className="press shrink-0 text-xs font-semibold text-primary">✉️ Email</a>
                   )}
                 </div>
-                {areaDesc[area] && <p className="-mt-1 text-xs text-muted">{areaDesc[area]}</p>}
+                {areaDesc[area] && <p className="text-xs leading-snug text-muted">{areaDesc[area]}</p>}
                 {inArea.length ? (
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-0.5">
                     {inArea.map(({ m, lead: isLead }) => (
                       <Row key={m.name} m={m} isLead={isLead} />
                     ))}
@@ -348,19 +353,21 @@ export function CommitteeRoster({
               </div>
             );
           })}
-          {/* Anyone on the committee with no area yet. */}
+          {/* Anyone on the committee with no area yet — the last group INSIDE
+              the same card, so the roster reads as one continuous list. */}
           {(() => {
             const none = members.filter((m) => !m.roles || m.roles.length === 0);
             if (!none.length) return null;
             return (
-              <div className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
+              <div className="space-y-1.5 p-3.5">
                 <h3 className="text-sm font-semibold">On the committee</h3>
-                <ul className="space-y-1.5">
+                <ul className="space-y-0.5">
                   {none.map((m) => <Row key={m.name} m={m} isLead={isCommitteeLead(m)} />)}
                 </ul>
               </div>
             );
           })()}
+          </div>
         </section>
       ) : (
         <section className="space-y-2">
@@ -373,10 +380,6 @@ export function CommitteeRoster({
           </ul>
         </section>
       )}
-
-      <p className="text-center text-xs text-faint">
-        Contact buttons + profile links appear as members link their accounts.
-      </p>
 
       {sheet && (
         <MemberSheet
