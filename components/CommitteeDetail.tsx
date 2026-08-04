@@ -194,14 +194,17 @@ export function CommitteeDetail({ slug }: { slug: string }) {
     ...(live && onCommittee === true
       ? [{ id: "chat", node: <ChatEntryButton slug={committee.slug} name={committee.name} variant="tile" /> }]
       : []),
-    // Leads get a private side-chat. Deep-links into the Feed's Leads room
-    // (which resolves ?c=&area=Leads) so it's reachable from here, not just Feed.
+    // Leads get a private side-chat (the reserved 'Leads' channel, 0172). Links
+    // STRAIGHT to the committee's own chat route with ?area=Leads — NOT through
+    // `/posts?c=&area=Leads`, which lands on the Feed's all-chats list first and
+    // then jumps into the room (a visible flash, and a Back that wrongly
+    // returned to the chats list). Same reasoning as ChatEntryButton's docstring.
     ...(live && amLead
       ? [{
           id: "leads",
           emoji: "🔑",
           label: "Leads chat",
-          href: `/posts?c=${committee.slug}&area=Leads`,
+          href: `/committees/${committee.slug}/chat?area=Leads`,
           internal: true,
           tone: "primary" as const,
         }]
