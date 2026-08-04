@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -20,8 +20,12 @@ import {
   addDropBoxMedia,
   removeDropBoxMedia,
   setDropBoxMediaStatus,
+  sortDropBoxItems,
+  DROP_BOX_SORT_DEFAULT,
+  DROP_BOX_SORT_KEY,
   type DropBox,
   type DropBoxItem,
+  type DropBoxSort,
 } from "@/lib/dropBoxes";
 
 // Drop boxes (migration 0171): a shared "dump the photos/videos here, everyone
@@ -217,6 +221,31 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // The viewer's own sort choice — a VIEWING preference only. It's applied
+  // client-side below and stored per device, so switching it never reorders the
+  // album for anyone else. Read post-mount (not in the initializer) so the first
+  // client render matches the prerendered HTML.
+  const [sort, setSort] = useState<DropBoxSort>(DROP_BOX_SORT_DEFAULT);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(DROP_BOX_SORT_KEY);
+      if (saved === "uploaded" || saved === "captured") setSort(saved);
+    } catch {
+      /* private mode / storage disabled — just use the default */
+    }
+  }, []);
+  const chooseSort = (next: DropBoxSort) => {
+    setSort(next);
+    try {
+      window.localStorage.setItem(DROP_BOX_SORT_KEY, next);
+    } catch {
+      /* non-fatal: the choice just won't persist */
+    }
+  };
+  // One sorted list backing BOTH the grid and the full-screen carousel, so a
+  // tapped tile always opens the same item the viewer pressed.
+  const items = useMemo(() => sortDropBoxItems(box?.items ?? [], sort), [box?.items, sort]);
 
   // ── Optimistic upload tiles ────────────────────────────────────────────────
   const pendingRef = useRef<Pending[]>([]);
@@ -462,7 +491,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   // enforces this, so anything not theirs is simply skipped (not attempted).
   const deleteSelected = async () => {
     if (deleting || !box) return;
-    const targets = box.items.filter((i) => selected.has(i.id) && canManageItem(i));
+    const targets = items.filter((i) => selected.has(i.id) && canManageItem(i));
     if (!targets.length) return;
     if (!window.confirm(`Delete ${targets.length} ${targets.length === 1 ? "item" : "items"} from the album? This can't be undone.`)) return;
     setDeleting(true);
@@ -500,9 +529,9 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
   }
 
   // Optimistic tiles still waiting on their real row (matched by url), and a
-  // batch-wide progress figure for the thin bar. Rendered ahead of box.items,
+  // batch-wide progress figure for the thin bar. Rendered ahead of items,
   // so a tile whose row has landed simply stops rendering here — no dup frame.
-  const itemUrls = new Set(box.items.map((i) => i.url));
+  const itemUrls = new Set(items.map((i) => i.url));
   const visiblePending = pending.filter((p) => !(p.uploadedUrl && itemUrls.has(p.uploadedUrl)));
   const uploadingCount = pending.filter((p) => p.status === "uploading").length;
   const failedCount = pending.filter((p) => p.status === "error").length;
@@ -528,6 +557,23 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* Sort is the VIEWER'S OWN choice (device-local, never written to the
+            album), so switching it can't reorder anyone else's view. Defaults to
+            newest-upload so your just-added photos are at the front instead of
+            scattered by shot date, which reads as the app glitching. */}
+        {box.count > 1 && !selecting && (
+          <button
+            onClick={() => chooseSort(sort === "uploaded" ? "captured" : "uploaded")}
+            title={
+              sort === "uploaded"
+                ? "Sorted by when it was added — tap to sort by when it was taken"
+                : "Sorted by when it was taken — tap to sort by when it was added"
+            }
+            className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border"
+          >
+            {sort === "uploaded" ? "↕ Newest added" : "↕ Date taken"}
+          </button>
+        )}
         {box.count > 0 && !selecting && (
           <button
             onClick={() => setSelecting(true)}
@@ -538,7 +584,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         )}
         {box.count > 0 && !selecting && (
           <button
-            onClick={() => downloadZip(box.items)}
+            onClick={() => downloadZip(items)}
             disabled={zipping}
             className="press rounded-full bg-card px-3 py-2 text-sm font-medium text-foreground/70 ring-1 ring-border disabled:opacity-60"
           >
@@ -568,7 +614,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
       {selecting ? (
         // Selection toolbar (replaces the dump button while picking).
         (() => {
-          const deletableCount = box.items.filter((i) => selected.has(i.id) && canManageItem(i)).length;
+          const deletableCount = items.filter((i) => selected.has(i.id) && canManageItem(i)).length;
           return (
             <div className="space-y-2.5 rounded-2xl bg-card p-3 ring-1 ring-border">
               <div className="flex items-center justify-between gap-2">
@@ -577,7 +623,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
                 </button>
                 <span className="text-sm font-semibold tabular-nums">{selected.size} selected</span>
                 <button
-                  onClick={() => setSelected(new Set(box.items.map((i) => i.id)))}
+                  onClick={() => setSelected(new Set(items.map((i) => i.id)))}
                   className="press rounded-full bg-background px-3 py-1.5 text-sm font-medium text-foreground/70 ring-1 ring-border"
                 >
                   Select all
@@ -585,7 +631,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => downloadZip(box.items.filter((i) => selected.has(i.id)))}
+                  onClick={() => downloadZip(items.filter((i) => selected.has(i.id)))}
                   disabled={selected.size === 0 || zipping || deleting}
                   className="press flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
@@ -644,7 +690,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
           {visiblePending.map((p) => (
             <PendingTile key={p.key} p={p} onDismiss={() => dropPending(p.key)} onRetry={() => retry(p)} />
           ))}
-          {box.items.map((item, idx) => {
+          {items.map((item, idx) => {
             const isSel = selected.has(item.id);
             return (
               <button
@@ -680,9 +726,9 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
         </div>
       )}
 
-      {viewerIndex !== null && box.items[viewerIndex] && (
+      {viewerIndex !== null && items[viewerIndex] && (
         <FolderCarousel
-          items={box.items}
+          items={items}
           startIndex={viewerIndex}
           userId={userId}
           creatorId={box.createdBy}
