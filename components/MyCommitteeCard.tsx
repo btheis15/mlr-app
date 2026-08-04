@@ -120,6 +120,14 @@ export function MyCommitteeCard({
   // their "· Lead" standing; a plain member goes through set_my_committee_areas.
   const canManageRoster = !isPreview && entry.id != null && (isAdmin || amLead);
 
+  // The at-rest one-liner under your name. Leads are called out (that's the
+  // part worth seeing at a glance); the full chips live behind Manage.
+  const roleSummary = entry.isLead
+    ? `Lead of this committee${myAreas.length ? ` · ${myAreas.join(", ")}` : ""}`
+    : myAreas.length
+      ? myAreas.map((a) => (leadAreas.includes(a) ? `${a} (Lead)` : a)).join(" · ")
+      : "On the committee — no specific area yet";
+
   const startEdit = () => {
     setSelection([...myAreas]);
     setErr(null);
@@ -196,11 +204,17 @@ export function MyCommitteeCard({
 
   return (
     <section className="space-y-2 rounded-2xl bg-primary/5 p-3">
+      {/* ONE line at rest: who you are here plus a plain-text summary of your
+          roles. The chips (and the lead step-down) are a Manage-only detail —
+          they're what you'd change, not something you need to read on arrival,
+          and two rows of them dominated the top of the page. */}
       <div className="flex items-center gap-2.5">
         <Avatar name={displayName} url={entry.linkedAvatarUrl} size={30} />
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Your spot here</p>
           <p className="truncate text-sm font-semibold">{displayName}</p>
+          <p className="truncate text-[11px] text-muted">
+            {roleSummary}
+          </p>
         </div>
         {/* Rare self-service actions live behind this toggle instead of two
             permanently-visible full-width buttons. */}
@@ -216,8 +230,14 @@ export function MyCommitteeCard({
         )}
       </div>
 
-      {/* What you do here — role chips, leads flagged with a one-tap step-down. */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* What you do here — role chips, leads flagged with a one-tap step-down.
+          Manage-only (see above); always shown during a read-only preview,
+          which has no Manage toggle to open. */}
+      <div
+        className={`${
+          (manageOpen || isPreview) && (entry.isLead || myAreas.length > 0) ? "flex" : "hidden"
+        } flex-wrap items-center gap-1.5`}
+      >
         {/* Committee-level Lead standing (independent of any area). */}
         {entry.isLead && (
           <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-white">
@@ -255,9 +275,7 @@ export function MyCommitteeCard({
               </span>
             );
           })
-        ) : entry.isLead ? null : (
-          <span className="text-xs text-muted">On the committee — no specific area yet.</span>
-        )}
+        ) : null /* the at-rest summary line already says "no specific area yet" */}
       </div>
 
       {/* The Leads chat is a primary DESTINATION, so it's rendered as a tile in
