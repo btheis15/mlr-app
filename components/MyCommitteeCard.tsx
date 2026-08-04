@@ -195,7 +195,7 @@ export function MyCommitteeCard({
   };
 
   return (
-    <section className="space-y-2 rounded-2xl bg-primary/5 p-3 ring-1 ring-primary/20">
+    <section className="space-y-2 rounded-2xl bg-primary/5 p-3">
       <div className="flex items-center gap-2.5">
         <Avatar name={displayName} url={entry.linkedAvatarUrl} size={30} />
         <div className="min-w-0 flex-1">

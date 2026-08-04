@@ -7,10 +7,14 @@ import { Protected } from "@/components/Guard";
  */
 export function CommitteeMemberContact({ email, phone }: { email?: string; phone?: string }) {
   if (!email && !phone) return null;
-  const cls = "press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-primary/10 text-xs";
+  // Ghost icons, not filled pills. A roster of 7 people rendered 28 filled
+  // 44px circles, which read as the loudest thing on the committee page — the
+  // NAMES are the content, contact is secondary. Still a 44px tap target
+  // (min-h/w-11), just without the background.
+  const cls = "press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-xs opacity-45";
   return (
     <Protected label="Sign in to contact">
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center -space-x-1.5">
         {email && (
           <a href={`mailto:${email}`} aria-label="Email" className={cls}>
             ✉️
@@ -22,7 +26,7 @@ export function CommitteeMemberContact({ email, phone }: { email?: string; phone
           </a>
         )}
         {phone && (
-          <a href={`sms:${phone}`} aria-label="Text" className={`${cls} bg-accent/10`}>
+          <a href={`sms:${phone}`} aria-label="Text" className={cls}>
             💬
           </a>
         )}
