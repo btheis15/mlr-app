@@ -6,6 +6,7 @@ import { BackLink } from "@/components/BackLink";
 import { ChatEntryButton } from "@/components/ChatEntryButton";
 import { CommitteeRoster, type RosterMailLinks } from "@/components/CommitteeRoster";
 import { MyCommitteeCard } from "@/components/MyCommitteeCard";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { MeetingSection } from "@/components/MeetingSection";
 import { MeetingComposer } from "@/components/MeetingComposer";
 import { COMMITTEES } from "@/lib/data";
@@ -48,20 +49,14 @@ type ActionTileProps = {
     }
 );
 
-/**
- * A secondary action in the "Reach the group" card — email, scheduling. These
- * are occasional one-offs, so they render as a wrapping row of small pills
- * rather than tiles competing with the chat rooms for attention.
- */
-type QuickAction = { id: string; emoji: string; label: string; href?: string; onClick?: () => void };
-
-const QUICK_CLS =
-  "press inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary";
-
 function ActionTile(props: ActionTileProps) {
   if (props.node) return <>{props.node}</>;
   const { emoji, label, href, internal, onClick, tone } = props;
-  const cls = `press flex min-h-[58px] flex-col justify-between rounded-2xl p-3 text-left ${
+  // Deliberately generous (72px) and identical for every action: these all live
+  // inside a collapsible now, so the height costs nothing at rest and buys a
+  // target nobody has to aim for. `items-start` + h-full keeps every tile the
+  // same size even when a label wraps to two lines.
+  const cls = `press flex h-full min-h-[72px] flex-col justify-between gap-1 rounded-2xl p-3 text-left ${
     tone === "primary" ? "bg-primary text-white shadow-sm" : "bg-card ring-1 ring-border text-foreground"
   }`;
   const inner = (
@@ -218,7 +213,9 @@ export function CommitteeDetail({ slug }: { slug: string }) {
         }]
       : []),
   ];
-  const quickActions: QuickAction[] = [
+  // The secondary actions — same tile shape as the chats, just untinted, so
+  // every target in the grid is the same size and nothing is easy to mis-hit.
+  const otherActions: ActionTileProps[] = [
     ...(committeeId && live && canOrganize
       ? [{ id: "meet", emoji: "📅", label: "Schedule a meeting", onClick: () => setComposeMeeting(true) }]
       : []),
@@ -232,7 +229,17 @@ export function CommitteeDetail({ slug }: { slug: string }) {
         }]
       : []),
   ];
-  const hasReach = chatTiles.length > 0 || quickActions.length > 0;
+  const reachActions = [...chatTiles, ...otherActions];
+  const hasReach = reachActions.length > 0;
+  // Names what's inside while it's shut, so the collapse doesn't hide the fact
+  // that chat/email/scheduling live here.
+  const reachSubtitle = [
+    chatTiles.length > 0 ? "Chat" : null,
+    mail.everyone || mail.leads ? "email" : null,
+    committeeId && live && canOrganize ? "schedule a meeting" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="space-y-4 pt-2">
@@ -263,34 +270,31 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           stack was most of a screen of chrome before the roster (the thing
           people actually come here for) came into view. */}
       {hasReach && (
-        // No outer card: this was a bordered box wrapping two more boxes plus a
-        // pill row — boxes-inside-boxes, which is most of what read as clutter.
-        // The heading + the tiles' own shapes group it well enough on their own.
-        <section className="space-y-2">
-          <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-accent">Reach the group</h2>
-          {chatTiles.length > 0 && (
-            <div className={`grid gap-2 ${chatTiles.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
-              {chatTiles.map((a) => (
-                <ActionTile key={a.id} {...a} />
-              ))}
-            </div>
-          )}
-          {quickActions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {quickActions.map((a) =>
-                a.href ? (
-                  <a key={a.id} href={a.href} className={QUICK_CLS}>
-                    <span aria-hidden>{a.emoji}</span> {a.label}
-                  </a>
-                ) : (
-                  <button key={a.id} type="button" onClick={a.onClick} className={QUICK_CLS}>
-                    <span aria-hidden>{a.emoji}</span> {a.label}
-                  </button>
-                ),
-              )}
-            </div>
-          )}
-        </section>
+        // Collapsed by default: five ways to contact a committee are worth
+        // having but not worth a permanent block above the roster. Everything
+        // inside is ONE even 2-up grid of same-size tiles — the old mix of two
+        // big tiles plus a ragged wrap of three differently-sized pills across
+        // two rows was both the "clunky" look and a mis-hit risk, since a pill's
+        // width came from its label length. Now every target is identical and
+        // full-height, which a collapsible can afford.
+        <CollapsibleSection
+          title="Reach the group"
+          icon="💬"
+          subtitle={reachSubtitle}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            {reachActions.map((a, i) => (
+              // An odd count would leave a lone half-width tile on the last
+              // row; stretch it across both columns so the grid stays even.
+              <div
+                key={a.id}
+                className={i === reachActions.length - 1 && reachActions.length % 2 === 1 ? "col-span-2" : undefined}
+              >
+                <ActionTile {...a} />
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
       )}
 
       {/* A live/upcoming meeting still gets its own full-width bar — it's live
