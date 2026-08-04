@@ -258,6 +258,29 @@ function CalloutSheet({
       alive = false;
     };
   }, []);
+  // WHERE A TAPPED NOTIFICATION LANDS.
+  //
+  // This used to be hardcoded to "/" — so a callout whose whole point was "go
+  // add your photos to this album" sent a push that dumped people on Home and
+  // left them to find it. The notification now inherits the callout's own
+  // target, in the same priority order CalloutCard renders its buttons, and the
+  // paths are the exact ones that card links to so the two can't drift:
+  //   - a Drop Box album  → /drop?box=<id>          (CalloutCard's "📸 Add & see photos")
+  //   - a sign-up item    → /family-fest/schedule/<id>  ("📝 Sign up")
+  //   - the first custom link, when it's an in-app path (an external
+  //     https/tel/mailto is left alone: `notifications.url` is routed by the
+  //     app's own router via PushDeepLink, so it must stay app-relative)
+  //   - otherwise Home.
+  const firstInAppLink = links.find((l) => l.href.trim().startsWith("/"))?.href.trim() ?? null;
+  const derivedNotifyUrl = dropBoxId
+    ? `/drop?box=${dropBoxId}`
+    : signupItemId
+      ? `/family-fest/schedule/${signupItemId}`
+      : firstInAppLink ?? "/";
+  // An admin can override the destination outright (any in-app path).
+  const [notifyUrl, setNotifyUrl] = useState<string>("");
+  const effectiveNotifyUrl = notifyUrl.trim() || derivedNotifyUrl;
+
   const onPickActivity = (id: string) => {
     setSignupItemId(id || null);
     if (!id) return; // clearing the link shouldn't wipe content already on the card
@@ -381,7 +404,7 @@ function CalloutSheet({
       if (alsoNotify && notifyText.trim()) {
         const { error: notifyErr } = await sendActivityNotification({
           title: notifyText.trim(),
-          url: "/",
+          url: effectiveNotifyUrl,
           audience: "everyone",
           eventId: eventTarget.eventId,
           excludeNotAttending: eventTarget.excludeNotAttending,
@@ -605,12 +628,37 @@ function CalloutSheet({
           <span className="font-medium">🔔 Also send a notification</span>
         </label>
         {alsoNotify && (
-          <input
-            value={notifyText}
-            onChange={(e) => setNotifyText(e.target.value)}
-            placeholder='Short headline, e.g. "T-shirt orders due Friday!"'
-            className={`${FIELD} w-full`}
-          />
+          <>
+            <input
+              value={notifyText}
+              onChange={(e) => setNotifyText(e.target.value)}
+              placeholder='Short headline, e.g. "T-shirt orders due Friday!"'
+              className={`${FIELD} w-full`}
+            />
+            {/* Where a tap lands, on the phone AND in the Activity tab. Prefilled
+                from whatever this callout already links to, so the common case
+                ("go add photos to this album") needs no extra thought. */}
+            <label className="block text-[11px] font-medium text-muted">
+              Tapping it opens
+              <input
+                value={notifyUrl}
+                onChange={(e) => setNotifyUrl(e.target.value)}
+                placeholder={derivedNotifyUrl}
+                className={`${FIELD} mt-1 w-full`}
+              />
+            </label>
+            <p className="text-[11px] text-faint">
+              {notifyUrl.trim()
+                ? "Custom destination."
+                : dropBoxId
+                  ? "Opens the album this callout links to ✓"
+                  : signupItemId
+                    ? "Opens the sign-up this callout links to ✓"
+                    : firstInAppLink
+                      ? "Opens this callout’s link ✓"
+                      : "Opens the Home screen. Link an album or sign-up above, or type a path like /drop?box=… to send people straight there."}
+            </p>
+          </>
         )}
       </div>
       <div className="space-y-2 rounded-xl bg-background px-3 py-2 ring-1 ring-border">
