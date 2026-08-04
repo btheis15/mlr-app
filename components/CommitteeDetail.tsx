@@ -48,10 +48,20 @@ type ActionTileProps = {
     }
 );
 
+/**
+ * A secondary action in the "Reach the group" card — email, scheduling. These
+ * are occasional one-offs, so they render as a wrapping row of small pills
+ * rather than tiles competing with the chat rooms for attention.
+ */
+type QuickAction = { id: string; emoji: string; label: string; href?: string; onClick?: () => void };
+
+const QUICK_CLS =
+  "press inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary";
+
 function ActionTile(props: ActionTileProps) {
   if (props.node) return <>{props.node}</>;
   const { emoji, label, href, internal, onClick, tone } = props;
-  const cls = `press flex min-h-[68px] flex-col justify-between rounded-2xl p-3 text-left ${
+  const cls = `press flex min-h-[58px] flex-col justify-between rounded-2xl p-3 text-left ${
     tone === "primary" ? "bg-primary text-white shadow-sm" : "bg-card ring-1 ring-border text-foreground"
   }`;
   const inner = (
@@ -175,10 +185,12 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   const committeeId = row.id !== row.slug ? row.id : null;
   const live = !row.archivedAt;
 
-  // Every committee-level action, in priority order, as grid tiles. Chat is
-  // rendered by ChatEntryButton itself (it owns the unread badge); the rest are
-  // plain ActionTiles. Each self-hides exactly as its old full-width bar did.
-  const actions: ActionTileProps[] = [
+  // "Reach the group" splits into two visual weights inside ONE card, rather
+  // than N equal-weight tiles: the chat rooms are the destinations people come
+  // here for (big tiles), while email/scheduling are occasional one-off actions
+  // (a quiet row of small links underneath). Each still self-hides on exactly
+  // the condition its original full-width bar did.
+  const chatTiles: ActionTileProps[] = [
     ...(live && onCommittee === true
       ? [{ id: "chat", node: <ChatEntryButton slug={committee.slug} name={committee.name} variant="tile" /> }]
       : []),
@@ -194,6 +206,8 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           tone: "primary" as const,
         }]
       : []),
+  ];
+  const quickActions: QuickAction[] = [
     ...(committeeId && live && canOrganize
       ? [{ id: "meet", emoji: "📅", label: "Schedule a meeting", onClick: () => setComposeMeeting(true) }]
       : []),
@@ -202,11 +216,12 @@ export function CommitteeDetail({ slug }: { slug: string }) {
       ? [{
           id: "mail-leads",
           emoji: "✉️",
-          label: mail.leadCount > 1 ? `Email the leads (${mail.leadCount})` : "Email the leads",
+          label: mail.leadCount > 1 ? `Email the ${mail.leadCount} leads` : "Email the leads",
           href: mail.leads,
         }]
       : []),
   ];
+  const hasReach = chatTiles.length > 0 || quickActions.length > 0;
 
   return (
     <div className="space-y-5 pt-2">
@@ -232,15 +247,36 @@ export function CommitteeDetail({ slug }: { slug: string }) {
           seed-only committees. */}
       <MyCommitteeCard committee={committee} committeeId={committeeId} onLeadChange={setAmLead} />
 
-      {/* Every committee-level action as a compact 2-across tile grid instead of
-          a column of full-width bars — that stack was a full screen of chrome
-          before the roster (the thing people come here for) came into view. */}
-      {actions.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
-          {actions.map((a) => (
-            <ActionTile key={a.id} {...a} />
-          ))}
-        </div>
+      {/* One "Reach the group" card holding every way to contact this committee,
+          instead of a column (or even a grid) of equal-weight action bars — that
+          stack was most of a screen of chrome before the roster (the thing
+          people actually come here for) came into view. */}
+      {hasReach && (
+        <section className="space-y-2.5 rounded-2xl bg-card p-3 ring-1 ring-border">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Reach the group</h2>
+          {chatTiles.length > 0 && (
+            <div className={`grid gap-2 ${chatTiles.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+              {chatTiles.map((a) => (
+                <ActionTile key={a.id} {...a} />
+              ))}
+            </div>
+          )}
+          {quickActions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {quickActions.map((a) =>
+                a.href ? (
+                  <a key={a.id} href={a.href} className={QUICK_CLS}>
+                    <span aria-hidden>{a.emoji}</span> {a.label}
+                  </a>
+                ) : (
+                  <button key={a.id} type="button" onClick={a.onClick} className={QUICK_CLS}>
+                    <span aria-hidden>{a.emoji}</span> {a.label}
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       {/* A live/upcoming meeting still gets its own full-width bar — it's live
