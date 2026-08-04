@@ -309,6 +309,16 @@ export function FeedView() {
       openedFromHouseRef.current = true;
       setActive(snap.houseChannel.key);
     }
+    // Same fast path for a COMMITTEE/area deep-link (?c=slug[&area=]) — this
+    // was house-only, which is why the committee page's chat tiles still
+    // "redirected to Chats": the snapshot restores the channel list (so the
+    // `!loaded` gate below stops hiding anything) but nothing had opened the
+    // room yet, so the Chats list painted until the async channels fetch
+    // finally resolved and setActive jumped into it. Matching the house branch
+    // closes that window on every warm open.
+    if (bootChannelKey && snap?.channels?.some((c) => c.key === bootChannelKey)) {
+      setActive(bootChannelKey);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, previewAsId]);
 
@@ -760,7 +770,14 @@ export function FeedView() {
   // straight into the house chat instead of flashing the feed/list on the way in.
   // Exception: the snapshot fast path above may have already opened the house
   // chat — then there's nothing to hide, so skip the gate and render it now.
-  const fastPathOpen = houseChannel !== null && active === houseChannel.key;
+  const fastPathOpen =
+    (houseChannel !== null && active === houseChannel.key) || (!!bootChannelKey && active === bootChannelKey);
+  // Hold until the deep-linked room is actually OPEN, not merely until `loaded`.
+  // `loaded` only means the channel fetch finished — `setActive` happens in the
+  // same tick for a reachable room, but if the room ISN'T in the list (archived,
+  // access revoked, a stale link) `active` stays "list", and gating on `active`
+  // alone would spin forever. So: while a deep-link is pending, hide until
+  // either it opens (fastPathOpen) or the fetch is done and we know it won't.
   if ((bootHouseSlug || bootChannelKey) && !loaded && !fastPathOpen) {
     return (
       <div className="flex h-[50dvh] items-center justify-center text-sm text-foreground/40">Loading…</div>
