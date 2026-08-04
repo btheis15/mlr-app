@@ -24,6 +24,11 @@ function Swatch({ className }: { className: string }) {
  * else on the drive — personal, non-app files (grey), and what's free. Lets the
  * owner see at a glance that the app is a tiny sliver of a drive mostly holding
  * their own stuff.
+ *
+ * The "other" segment is a NEUTRAL grey (`bg-zinc-400`), deliberately not the
+ * `muted` token — that token is `#4b5b52`, a green-tinted slate, and reading as
+ * another shade of the brand green made personal files look like part of the
+ * app's own storage. The point of this bar is that they're unrelated.
  */
 function DriveStorage({ disk, appBytes }: { disk: MediaServerDisk; appBytes: number }) {
   const total = disk.totalBytes || 1;
@@ -40,7 +45,7 @@ function DriveStorage({ disk, appBytes }: { disk: MediaServerDisk; appBytes: num
       </div>
       <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-background">
         {app > 0 && <div className="h-full bg-primary" style={{ width: `${Math.max((app / total) * 100, 0.5)}%` }} />}
-        {other > 0 && <div className="h-full bg-muted" style={{ width: `${(other / total) * 100}%` }} />}
+        {other > 0 && <div className="h-full bg-zinc-400" style={{ width: `${(other / total) * 100}%` }} />}
       </div>
       <div className="space-y-1 text-sm">
         <p className="flex items-center gap-2">
@@ -49,7 +54,7 @@ function DriveStorage({ disk, appBytes }: { disk: MediaServerDisk; appBytes: num
           <span className="ml-auto">{formatBytes(app)}</span>
         </p>
         <p className="flex items-center gap-2 text-muted">
-          <Swatch className="bg-muted" />
+          <Swatch className="bg-zinc-400" />
           <span>Other (personal, non-app)</span>
           <span className="ml-auto">{formatBytes(other)}</span>
         </p>

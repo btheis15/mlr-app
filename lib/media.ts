@@ -202,11 +202,77 @@ function parseExifDateString(s: string): string | null {
  * EXIF, or anything unparseable → null, never throws — callers fall back to
  * upload time.
  */
+/**
+ * Walk a TIFF/EXIF header for a capture date: DateTimeOriginal (0x9003) in the
+ * Exif sub-IFD, else IFD0's DateTime (0x0132). `tiffStart` is the offset of the
+ * "II"/"MM" byte-order mark. Mirrors `parseTiffForDate` in
+ * media-server/captured-at.js tag-for-tag, so client and server can never
+ * disagree about which date a file claims.
+ */
+function parseTiffForDate(view: DataView, tiffStart: number): string | null {
+  if (tiffStart + 8 > view.byteLength) return null;
+  const bom = view.getUint16(tiffStart, false);
+  if (bom !== 0x4949 && bom !== 0x4d4d) return null;
+  const le = bom === 0x4949; // "II" little-endian, "MM" big-endian
+  const ifd0Abs = tiffStart + view.getUint32(tiffStart + 4, le);
+  const subIfdOffset = findLongTag(view, ifd0Abs, 0x8769, le); // ExifIFDPointer
+  if (subIfdOffset != null) {
+    const raw = findAsciiTag(view, tiffStart, tiffStart + subIfdOffset, 0x9003, le); // DateTimeOriginal
+    const parsed = raw && parseExifDateString(raw);
+    if (parsed) return parsed;
+  }
+  const rawDateTime = findAsciiTag(view, tiffStart, ifd0Abs, 0x0132, le); // DateTime
+  return (rawDateTime && parseExifDateString(rawDateTime)) || null;
+}
+
+/**
+ * HEIC/HEIF (an ISO-BMFF container) — what an iPhone shoots BY DEFAULT, so this
+ * is the single highest-value format to cover. There's no JPEG-style marker
+ * chain to walk; the EXIF payload sits in an `Exif` item whose bytes still
+ * contain an ordinary TIFF header. Rather than implement a full box/iinf/iloc
+ * parser (a lot of surface area for one date), scan the head of the file for the
+ * TIFF byte-order mark that follows an "Exif" tag and hand it to the shared
+ * walker above — the same pragmatic trick the mini's byte scanner uses.
+ */
+function findHeicTiffStart(view: DataView): number | null {
+  const limit = Math.min(view.byteLength - 8, 262144);
+  for (let i = 0; i < limit; i++) {
+    // "Exif" — the item name that precedes the TIFF header.
+    if (
+      view.getUint8(i) === 0x45 &&
+      view.getUint8(i + 1) === 0x78 &&
+      view.getUint8(i + 2) === 0x69 &&
+      view.getUint8(i + 3) === 0x66
+    ) {
+      // The TIFF header starts within the next few bytes (there's usually a
+      // 4-byte offset/pad between the tag and "II"/"MM"). Probe a small window.
+      for (let j = i + 4; j <= i + 16 && j + 8 <= view.byteLength; j++) {
+        const bom = view.getUint16(j, false);
+        if (bom === 0x4949 || bom === 0x4d4d) return j;
+      }
+    }
+  }
+  return null;
+}
+
 export async function extractExifCapturedAt(file: File): Promise<string | null> {
   try {
-    if (!/jpe?g$/i.test(file.type) && !/\.jpe?g$/i.test(file.name)) return null;
+    const isJpeg = /jpe?g$/i.test(file.type) || /\.jpe?g$/i.test(file.name);
+    // iPhones shoot HEIC by default, and `compressImage` re-encodes it to JPEG
+    // through a <canvas> (which destroys every byte of EXIF) BEFORE upload — so
+    // if it isn't read here, the mini has nothing left to read either and the
+    // photo's real date is lost for good. This was the main coverage hole.
+    const isHeic = /hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+    if (!isJpeg && !isHeic) return null;
+
     const buf = await file.slice(0, 262144).arrayBuffer();
     const view = new DataView(buf);
+
+    if (isHeic) {
+      const tiffStart = findHeicTiffStart(view);
+      return tiffStart == null ? null : parseTiffForDate(view, tiffStart);
+    }
+
     if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) return null;
 
     let offset = 2;
