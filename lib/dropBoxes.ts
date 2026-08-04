@@ -228,7 +228,11 @@ export function deleteDropBox(id: string): Promise<Res> {
  *  `capturedAtSource` says whether that's real file metadata (`exif`/`video`,
  *  from extractExifCapturedAt or the mini's ffprobe read) or the weaker
  *  source-post proxy (`post`), so the mini's sweep can upgrade the proxy later
- *  without ever downgrading real metadata. */
+ *  without ever downgrading real metadata. `creditUserId` credits someone OTHER
+ *  than the caller as the uploader — e.g. a Feed post's original author, when
+ *  an admin is the one referencing that post's photo into an album (only
+ *  honored server-side when the caller is an admin; otherwise ignored, see
+ *  migration 0180). */
 export async function addDropBoxMedia(
   boxId: string,
   url: string,
@@ -236,6 +240,7 @@ export async function addDropBoxMedia(
   thumbnailUrl?: string | null,
   capturedAt?: string | null,
   capturedAtSource?: CapturedAtSource | null,
+  creditUserId?: string | null,
 ): Promise<IdRes> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
@@ -249,7 +254,19 @@ export async function addDropBoxMedia(
     p_thumbnail_url: thumbnailUrl ?? null,
     p_captured_at: capturedAt ?? null,
     p_captured_at_source: capturedAtSource ?? null,
+    p_credit_user_id: creditUserId ?? null,
   });
+  // Pre-0180 fallback: no p_credit_user_id param yet.
+  if (isStale(error)) {
+    ({ data, error } = await sb.rpc("add_drop_box_media", {
+      p_box: boxId,
+      p_url: url,
+      p_type: type,
+      p_thumbnail_url: thumbnailUrl ?? null,
+      p_captured_at: capturedAt ?? null,
+      p_captured_at_source: capturedAtSource ?? null,
+    }));
+  }
   // Pre-0175 fallback: no p_captured_at_source param yet.
   if (isStale(error)) {
     ({ data, error } = await sb.rpc("add_drop_box_media", {
