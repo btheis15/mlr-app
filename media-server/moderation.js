@@ -23,6 +23,105 @@ const MOD_TIMEOUT_MS = Number(process.env.MOD_TIMEOUT_MS || 60000);
 const VIDEO_FRAMES = Number(process.env.MOD_VIDEO_FRAMES || 6); // max frames to sample
 const VIDEO_EVERY_S = Number(process.env.MOD_VIDEO_EVERY_S || 8); // seconds between frames
 
+// How long to stop asking a model after it reports its usage quota is gone.
+// PCC's quota is a personal Apple Intelligence allowance that refills on Apple's
+// own cycle; nothing we do makes it come back sooner.
+const MOD_QUOTA_COOLDOWN_MS = Number(process.env.MOD_QUOTA_COOLDOWN_MS || 60 * 60 * 1000); // 1h
+
+/** Collapse a response body to one readable log line. */
+function oneLine(s) {
+  return String(s).replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+/** Does this error body say "you're out of quota"? */
+function isQuotaMessage(body) {
+  return /allotted usage quota|quota has been reached|exceeded your quota|rate limit/i.test(String(body || ""));
+}
+
+/**
+ * Per-model circuit breakers, so a model that CAN'T answer right now stops being
+ * asked once per image instead of 18 times.
+ *
+ * Why this matters: the ladder is 3 sizes × 3 attempts × N models. With PCC out
+ * of quota, every upload was firing a third of those requests against an
+ * endpoint that could not possibly answer — slow, noisy, and (for a
+ * quota-limited endpoint) very likely part of why the allowance drained so fast.
+ *
+ *  - `quotaUntil`  — set when a model reports quota exhaustion. Time-based:
+ *                    it retries automatically once the cooldown passes, so a
+ *                    refilled quota self-heals with no restart.
+ *  - `noVision`    — set only after a model has returned 200-with-empty-content
+ *                    for MANY consecutive image requests. Deliberately a high
+ *                    bar: an empty answer is usually just a refusal/whiff on one
+ *                    picture, NOT a missing capability. (Measured on this mini:
+ *                    on-device vision answers fine at 1024/768/512px when the
+ *                    prompt demands JSON; a vaguer prompt like "describe this in
+ *                    3 words" returns "" — so a couple of blanks prove nothing.)
+ *                    Sticky for the process lifetime once tripped, reset on
+ *                    restart, so a fixed OS just needs a bounce.
+ */
+// Consecutive empty image answers before we conclude a model can't see images.
+const NO_VISION_STRIKES = Number(process.env.MOD_NO_VISION_STRIKES || 12);
+const modelState = new Map(); // model -> { quotaUntil?: number, noVision?: boolean }
+
+function stateFor(model) {
+  let s = modelState.get(model);
+  if (!s) modelState.set(model, (s = {}));
+  return s;
+}
+
+/** Is this model worth asking for an IMAGE check right now? */
+function modelUsableForImages(model) {
+  const s = stateFor(model);
+  if (s.noVision) return false;
+  if (s.quotaUntil && Date.now() < s.quotaUntil) return false;
+  return true;
+}
+
+/** Record why a model failed, so the breakers above can open. */
+function noteFailure(model, r) {
+  const s = stateFor(model);
+  if (r.quota) {
+    const first = !s.quotaUntil || Date.now() >= s.quotaUntil;
+    s.quotaUntil = Date.now() + MOD_QUOTA_COOLDOWN_MS;
+    if (first) {
+      console.warn(
+        `[moderate] ${model}: usage quota exhausted — backing off ${Math.round(MOD_QUOTA_COOLDOWN_MS / 60000)}m. ` +
+          `Uploads still go through (fail-open) and are queued for re-check; this recovers on its own when the quota refills.`,
+      );
+    }
+  }
+  if (r.noVision) {
+    s.emptyStreak = (s.emptyStreak || 0) + 1;
+    if (s.emptyStreak >= NO_VISION_STRIKES && !s.noVision) {
+      s.noVision = true;
+      console.warn(
+        `[moderate] ${model}: ${s.emptyStreak} consecutive empty answers to image requests — treating it as unable to ` +
+          `see images and skipping it for images until this process restarts.`,
+      );
+    }
+  }
+}
+
+/** A model answered — clear its empty-answer streak. */
+function noteSuccess(model) {
+  const s = stateFor(model);
+  if (s.emptyStreak) s.emptyStreak = 0;
+}
+
+/** One-line summary of what's currently usable — for the startup/status log. */
+function moderationStatus() {
+  return MOD_MODELS.map((m) => {
+    const s = stateFor(m);
+    if (s.noVision) return `${m}: no image support`;
+    if (s.emptyStreak) return `${m}: ${s.emptyStreak} empty answer(s)`;
+    if (s.quotaUntil && Date.now() < s.quotaUntil) {
+      return `${m}: quota cooldown ${Math.ceil((s.quotaUntil - Date.now()) / 60000)}m`;
+    }
+    return `${m}: ok`;
+  }).join(", ");
+}
+
 // `fm serve` caps the request body at 1 MB, and base64 inflates bytes ~4/3, so
 // the raw image we encode must stay well under ~750 KB. We downscale every image
 // (and sampled video frame) to a modest longest-edge before base64 — a safety
@@ -117,10 +216,28 @@ async function classifyOnce(b64, ext, model) {
       signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
     });
     if (resp.status === 413) return { tooLarge: true };
-    if (!resp.ok) return { retry: true, why: `HTTP ${resp.status}` };
+    if (!resp.ok) {
+      // Read the BODY, don't just log the status. `fm serve` reports quota
+      // exhaustion as a plain HTTP 500 whose message is the only thing that
+      // distinguishes "your Apple Intelligence quota ran out" from "the model
+      // actually crashed" — logging the bare status made a routine, self-healing
+      // quota stop look identical to a hard platform failure, which cost real
+      // debugging time. See `quotaExhausted` below.
+      const detail = await resp.text().catch(() => "");
+      const why = detail ? `HTTP ${resp.status}: ${oneLine(detail)}` : `HTTP ${resp.status}`;
+      return { retry: true, why, quota: isQuotaMessage(detail) };
+    }
     const data = await resp.json();
-    const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+    const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const v = parseVerdict(content);
     if (v) return { verdict: { ...v, model } };
+    // An EMPTY string (not merely unparseable) is its own failure mode worth
+    // naming: on the current beta, on-device generation returns 200 with
+    // content:"" for every request that includes an IMAGE, while the same model
+    // answers text-only prompts fine. So this is a vision gap, not a bad parse.
+    if (typeof content === "string" && content.trim() === "") {
+      return { retry: true, why: "empty response (no vision support?)", noVision: true };
+    }
     return { retry: true, why: "unparseable response" };
   } catch (e) {
     return { retry: true, why: e.message }; // fetch failed / timeout
@@ -133,6 +250,17 @@ async function classifyOnce(b64, ext, model) {
 // size × attempt × model (then the caller fails open). The stored original is
 // never modified — we only ever post the original once this copy checks clean.
 async function moderateImageFile(filePath) {
+  // Don't walk the size × attempt ladder for models that can't answer an image
+  // request right now (out of quota, or no vision support) — that was ~18
+  // guaranteed-to-fail requests per upload. If NONE are usable, fail open
+  // immediately: the caller queues the item for re-check, and the breakers
+  // reopen on their own (quota) or on restart (vision).
+  const usable = MOD_MODELS.filter(modelUsableForImages);
+  if (usable.length === 0) {
+    console.warn(`[moderate] no model can check images right now (${moderationStatus()}) — failing open`);
+    return null;
+  }
+
   for (const dim of MOD_DIM_LADDER) {
     let b64;
     try {
@@ -148,10 +276,18 @@ async function moderateImageFile(filePath) {
 
     for (let attempt = 0; attempt <= MOD_RETRIES; attempt++) {
       let sawTooLarge = false;
-      for (const model of MOD_MODELS) {
+      // Re-filter each pass: a model can trip its breaker partway through, and
+      // there's no point asking it again on the next size/attempt.
+      const live = usable.filter(modelUsableForImages);
+      if (live.length === 0) {
+        console.warn(`[moderate] every model went unusable mid-check (${moderationStatus()}) — failing open`);
+        return null;
+      }
+      for (const model of live) {
         const r = await classifyOnce(b64, "jpeg", model);
-        if (r.verdict) return r.verdict;
+        if (r.verdict) { noteSuccess(model); return r.verdict; }
         if (r.tooLarge) { sawTooLarge = true; break; }
+        noteFailure(model, r);
         console.warn(`[moderate] ${model}@${dim}px attempt ${attempt + 1} transient: ${r.why}`);
       }
       if (sawTooLarge) break; // drop to the next smaller size
@@ -230,7 +366,18 @@ async function moderateText(text) {
     messages: [{ role: "user", content: `${TEXT_PROMPT}\n\nText:\n${t.slice(0, 4000)}` }],
   };
   for (let attempt = 0; attempt <= MOD_RETRIES; attempt++) {
-    for (const model of MOD_MODELS) {
+    // Skip a model that's out of quota (same breaker as images), but do NOT
+    // apply the vision breaker here: on-device answers TEXT prompts fine even
+    // while it can't see images, so it stays a valid fallback for this path.
+    const live = MOD_MODELS.filter((m) => {
+      const s = stateFor(m);
+      return !(s.quotaUntil && Date.now() < s.quotaUntil);
+    });
+    if (live.length === 0) {
+      console.warn(`[moderate:text] every model is in quota cooldown (${moderationStatus()}) — failing open`);
+      return null;
+    }
+    for (const model of live) {
       try {
         const resp = await fetch(FM_SERVE_URL, {
           method: "POST",
@@ -238,7 +385,11 @@ async function moderateText(text) {
           body: JSON.stringify({ ...base, model }),
           signal: AbortSignal.timeout(MOD_TIMEOUT_MS),
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          const detail = await resp.text().catch(() => "");
+          if (isQuotaMessage(detail)) noteFailure(model, { quota: true });
+          throw new Error(detail ? `HTTP ${resp.status}: ${oneLine(detail)}` : `HTTP ${resp.status}`);
+        }
         const data = await resp.json();
         const v = parseVerdict(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
         if (v) return { ...v, model };
@@ -251,4 +402,4 @@ async function moderateText(text) {
   return null; // fail-open
 }
 
-module.exports = { moderateMedia, moderateText };
+module.exports = { moderateMedia, moderateText, moderationStatus };
