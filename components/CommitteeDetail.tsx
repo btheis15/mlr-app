@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BackLink } from "@/components/BackLink";
 import { ChatEntryButton } from "@/components/ChatEntryButton";
-import { CommitteeRoster } from "@/components/CommitteeRoster";
+import { CommitteeRoster, type RosterMailLinks } from "@/components/CommitteeRoster";
 import { MyCommitteeCard } from "@/components/MyCommitteeCard";
 import { MeetingSection } from "@/components/MeetingSection";
 import { MeetingComposer } from "@/components/MeetingComposer";
@@ -14,6 +14,62 @@ import { fetchCommitteeBySlug, fetchLiveAreaNames, type CommitteeRow } from "@/l
 import { fetchCommitteeRoster } from "@/lib/committeeRoster";
 import { fetchCanOrganize, type MeetingScope } from "@/lib/meetings";
 import type { Committee } from "@/lib/types";
+
+/**
+ * One tile in the committee page's action grid. Either wraps a ready-made node
+ * (the chat button, which owns its own unread badge) or renders an
+ * emoji + label tile that links (`href`) or fires a handler (`onClick`).
+ */
+type ActionTileProps = {
+  /** Stable list id — deliberately not named `key`, so spreading these props
+   *  onto <ActionTile> can't shadow React's own key. */
+  id: string;
+} & (
+  | {
+      node: React.ReactNode;
+      emoji?: never;
+      label?: never;
+      href?: never;
+      internal?: never;
+      onClick?: never;
+      tone?: never;
+    }
+  | {
+      node?: never;
+      emoji: string;
+      label: string;
+      href?: string;
+      /** Internal app route → render a next/link for a client transition;
+       *  external `mailto:` links stay a plain `<a>`. */
+      internal?: boolean;
+      onClick?: () => void;
+      /** `"primary"` is the filled green treatment (a chat destination). */
+      tone?: "primary";
+    }
+);
+
+function ActionTile(props: ActionTileProps) {
+  if (props.node) return <>{props.node}</>;
+  const { emoji, label, href, internal, onClick, tone } = props;
+  const cls = `press flex min-h-[68px] flex-col justify-between rounded-2xl p-3 text-left ${
+    tone === "primary" ? "bg-primary text-white shadow-sm" : "bg-card ring-1 ring-border text-foreground"
+  }`;
+  const inner = (
+    <>
+      <span aria-hidden className="text-lg leading-none">{emoji}</span>
+      <span className={`text-sm font-semibold leading-tight ${tone === "primary" ? "" : "text-primary"}`}>{label}</span>
+    </>
+  );
+  return href ? (
+    internal ? (
+      <Link href={href} className={cls}>{inner}</Link>
+    ) : (
+      <a href={href} className={cls}>{inner}</a>
+    )
+  ) : (
+    <button type="button" onClick={onClick} className={cls}>{inner}</button>
+  );
+}
 
 /**
  * A committee's page — roster + chat entry. DB-driven (migration 0112) so a
@@ -46,6 +102,12 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   // back out. Mirrors the server rule in can_access_committee_area (0063):
   // roster-linked to this committee, or an app admin.
   const [onCommittee, setOnCommittee] = useState<boolean | null>(null);
+  // Reported up from the two children that own the underlying data, so the
+  // action grid can render their entry points as tiles: whether the viewer
+  // leads this committee (MyCommitteeCard) and the committee-wide mailto:
+  // links (CommitteeRoster, which resolves every member's email).
+  const [amLead, setAmLead] = useState(false);
+  const [mail, setMail] = useState<RosterMailLinks>({ everyone: null, leads: null, leadCount: 0 });
 
   useEffect(() => {
     let alive = true;
@@ -111,6 +173,40 @@ export function CommitteeDetail({ slug }: { slug: string }) {
   };
   // Real DB committee id (the seed fallback uses the slug as a placeholder id).
   const committeeId = row.id !== row.slug ? row.id : null;
+  const live = !row.archivedAt;
+
+  // Every committee-level action, in priority order, as grid tiles. Chat is
+  // rendered by ChatEntryButton itself (it owns the unread badge); the rest are
+  // plain ActionTiles. Each self-hides exactly as its old full-width bar did.
+  const actions: ActionTileProps[] = [
+    ...(live && onCommittee === true
+      ? [{ id: "chat", node: <ChatEntryButton slug={committee.slug} name={committee.name} variant="tile" /> }]
+      : []),
+    // Leads get a private side-chat. Deep-links into the Feed's Leads room
+    // (which resolves ?c=&area=Leads) so it's reachable from here, not just Feed.
+    ...(live && amLead
+      ? [{
+          id: "leads",
+          emoji: "🔑",
+          label: "Leads chat",
+          href: `/posts?c=${committee.slug}&area=Leads`,
+          internal: true,
+          tone: "primary" as const,
+        }]
+      : []),
+    ...(committeeId && live && canOrganize
+      ? [{ id: "meet", emoji: "📅", label: "Schedule a meeting", onClick: () => setComposeMeeting(true) }]
+      : []),
+    ...(mail.everyone ? [{ id: "mail-all", emoji: "✉️", label: "Email everyone", href: mail.everyone }] : []),
+    ...(mail.leads
+      ? [{
+          id: "mail-leads",
+          emoji: "✉️",
+          label: mail.leadCount > 1 ? `Email the leads (${mail.leadCount})` : "Email the leads",
+          href: mail.leads,
+        }]
+      : []),
+  ];
 
   return (
     <div className="space-y-5 pt-2">
@@ -131,39 +227,36 @@ export function CommitteeDetail({ slug }: { slug: string }) {
       </header>
 
       {/* The viewer's own spot on this committee, right up top — their roles at
-          a glance, plus one-tap self-service to change their areas or leave.
-          Self-hides for guests, non-members, and seed-only committees. */}
-      <MyCommitteeCard committee={committee} committeeId={committeeId} />
+          a glance, plus self-service (behind its ⋯ Manage toggle) to change
+          their areas or leave. Self-hides for guests, non-members, and
+          seed-only committees. */}
+      <MyCommitteeCard committee={committee} committeeId={committeeId} onLeadChange={setAmLead} />
 
-      {!row.archivedAt && onCommittee === true && (
-        <ChatEntryButton slug={committee.slug} name={committee.name} />
+      {/* Every committee-level action as a compact 2-across tile grid instead of
+          a column of full-width bars — that stack was a full screen of chrome
+          before the roster (the thing people come here for) came into view. */}
+      {actions.length > 0 && (
+        <div className="grid grid-cols-2 gap-2">
+          {actions.map((a) => (
+            <ActionTile key={a.id} {...a} />
+          ))}
+        </div>
       )}
 
-      {/* Meeting scheduling, right on the committee page (not just in the chat) —
-          scoped committee-wide. The active-meeting bar shows to everyone when one
-          is live; the "Schedule a meeting" button shows only to organizers. */}
+      {/* A live/upcoming meeting still gets its own full-width bar — it's live
+          state to read, not an action to tap. Renders nothing when none is. */}
       {committeeId && !row.archivedAt && (
-        <>
-          <MeetingSection
-            surface="card"
-            scope={{ type: "committee", committeeId, slug: committee.slug, area: null }}
-            members={members}
-          />
-          {canOrganize && (
-            <button
-              onClick={() => setComposeMeeting(true)}
-              className="press flex w-full items-center justify-center gap-2 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
-            >
-              📅 Schedule a meeting
-            </button>
-          )}
-        </>
+        <MeetingSection
+          surface="card"
+          scope={{ type: "committee", committeeId, slug: committee.slug, area: null }}
+          members={members}
+        />
       )}
 
       {/* The roster is the single membership list (migration 0057): it shows
           everyone + their roles, lets app admins add/remove/assign roles, and
           emails the committee or a single role. */}
-      <CommitteeRoster committee={committee} />
+      <CommitteeRoster committee={committee} onMailLinks={setMail} />
 
       {composeMeeting && committeeId && (
         <MeetingComposer

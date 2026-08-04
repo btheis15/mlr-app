@@ -20,7 +20,17 @@ import { useIdentity } from "@/components/IdentityProvider";
  * Feed → Chats list. RLS gates the count, so a non-member simply sees 0.
  */
 
-export function ChatEntryButton({ slug, name }: { slug: string; name: string }) {
+export function ChatEntryButton({
+  slug,
+  name,
+  variant = "bar",
+}: {
+  slug: string;
+  name: string;
+  /** `"tile"` renders a square-ish grid tile (the committee page's action grid);
+   *  `"bar"` is the original full-width row, still used elsewhere. */
+  variant?: "bar" | "tile";
+}) {
   const { user, userId, previewAsId } = useIdentity();
   const me = previewAsId ?? userId;
   // Shared SWR cache (persisted per uid+slug) so the badge paints its
@@ -62,6 +72,25 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
     { persist: previewAsId ? undefined : "local" },
   );
 
+  const badge = unread > 0 ? (unread > 99 ? "99+" : String(unread)) : null;
+
+  if (variant === "tile") {
+    return (
+      <Link
+        href={`/committees/${slug}/chat`}
+        className="press relative flex min-h-[68px] flex-col justify-between rounded-2xl bg-primary p-3 text-white shadow-sm"
+      >
+        <span aria-hidden className="text-lg leading-none">💬</span>
+        <span className="text-sm font-semibold leading-tight">Committee chat</span>
+        {badge && (
+          <span className="absolute right-2 top-2 rounded-full bg-white/25 px-1.5 py-0.5 text-[11px] font-bold">
+            {badge}
+          </span>
+        )}
+      </Link>
+    );
+  }
+
   return (
     <Link
       href={`/committees/${slug}/chat`}
@@ -69,9 +98,7 @@ export function ChatEntryButton({ slug, name }: { slug: string; name: string }) 
     >
       <span className="flex items-center gap-2 text-sm font-semibold">💬 Open {name} chat</span>
       <span className="flex items-center gap-2">
-        {unread > 0 && (
-          <span className="rounded-full bg-white/25 px-2 py-0.5 text-xs font-bold">{unread > 99 ? "99+" : unread} new</span>
-        )}
+        {badge && <span className="rounded-full bg-white/25 px-2 py-0.5 text-xs font-bold">{badge} new</span>}
         <span aria-hidden>›</span>
       </span>
     </Link>

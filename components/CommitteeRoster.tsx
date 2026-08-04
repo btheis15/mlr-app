@@ -46,7 +46,23 @@ const rosterProfileCache = new Map<string, RosterProfileSnapshot>();
  * and edit their roles (a role can have multiple Leads; everyone else is a quiet
  * volunteer). Anyone signed in can email a whole committee or a single role.
  */
-export function CommitteeRoster({ committee }: { committee: Committee }) {
+/** The two committee-wide mailto: links, lifted to the page's action grid. */
+export interface RosterMailLinks {
+  everyone: string | null;
+  leads: string | null;
+  leadCount: number;
+}
+
+export function CommitteeRoster({
+  committee,
+  onMailLinks,
+}: {
+  committee: Committee;
+  /** Reports the committee-wide mailto: links up to `CommitteeDetail`, which
+   *  renders them as tiles in the compact action grid — the roster owns the
+   *  email resolution (profiles + roster rows), so it stays the one source. */
+  onMailLinks?: (links: RosterMailLinks) => void;
+}) {
   const { user, isAdmin, effectiveUserId, previewAsId } = useIdentity();
   const { guest } = useGuest();
   // Contact/link visibility is RLS-gated on the viewer, so the profile/contact
@@ -266,13 +282,16 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
     );
   };
 
+  // Sits inline next to the section heading rather than as its own full-width
+  // dashed bar — it's an occasional admin action, and a whole row of vertical
+  // space for it pushed the actual roster below the fold on a phone.
   const adminBar = canManage && (
     <button
       type="button"
       onClick={() => setEditing("new")}
-      className="press w-full rounded-2xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-sm font-semibold text-primary"
+      className="press shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"
     >
-      ＋ Add a member
+      ＋ Add
     </button>
   );
 
@@ -284,28 +303,19 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
 
   return (
     <>
-      {user && everyoneMail && (
-        <a
-          href={everyoneMail}
-          className="press block rounded-2xl bg-primary/10 py-3 text-center text-sm font-semibold text-primary"
-        >
-          ✉️ Email everyone on this committee
-        </a>
-      )}
-
-      {user && leadsMail && (
-        <a
-          href={leadsMail}
-          className="press block rounded-2xl bg-card py-3 text-center text-sm font-semibold text-primary ring-1 ring-primary/20"
-        >
-          ✉️ Email the leads{leads.length > 1 ? ` (${leads.length})` : ""}
-        </a>
-      )}
+      <MailLinkReporter
+        everyone={user ? everyoneMail : null}
+        leads={user ? leadsMail : null}
+        leadCount={leads.length}
+        onMailLinks={onMailLinks}
+      />
 
       {isRoleBased ? (
         <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Roles &amp; who&rsquo;s on them</h2>
-          {adminBar}
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Roles &amp; who&rsquo;s on them</h2>
+            {adminBar}
+          </div>
           {layoutAreas.map((area) => {
             const inArea = members
               .map((m) => ({ m, lead: isAreaLead(m.roles ?? [], area) }))
@@ -354,8 +364,10 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
         </section>
       ) : (
         <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Members</h2>
-          {adminBar}
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-accent">Members</h2>
+            {adminBar}
+          </div>
           <ul className="space-y-2 rounded-2xl bg-card p-4 ring-1 ring-border">
             {members.map((m) => <Row key={m.name} m={m} isLead={isCommitteeLead(m)} />)}
           </ul>
@@ -392,6 +404,25 @@ export function CommitteeRoster({ committee }: { committee: Committee }) {
       )}
     </>
   );
+}
+
+/**
+ * Reports the resolved committee-wide mailto: links to the parent page.
+ * A tiny effect-only child rather than an effect in `CommitteeRoster` itself so
+ * the parent setState lands in a committed effect (never during the roster's
+ * render), and re-fires only when a link actually changes.
+ */
+function MailLinkReporter({
+  everyone,
+  leads,
+  leadCount,
+  onMailLinks,
+}: RosterMailLinks & { onMailLinks?: (links: RosterMailLinks) => void }) {
+  useEffect(() => {
+    onMailLinks?.({ everyone, leads, leadCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [everyone, leads, leadCount]);
+  return null;
 }
 
 // ── Admin add/edit modal ──────────────────────────────────────────────────────
