@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
@@ -40,9 +39,13 @@ const LEAD_SUFFIX = " · Lead";
 export function MyCommitteeCard({
   committee,
   committeeId,
+  onLeadChange,
 }: {
   committee: Committee;
   committeeId: string | null;
+  /** Reports whether the viewer leads this committee, so the page can put the
+   *  Leads-chat tile in its action grid instead of a full-width bar in here. */
+  onLeadChange?: (amLead: boolean) => void;
 }) {
   const { user, isAdmin, effectiveUserId, previewAsId } = useIdentity();
   const isPreview = previewAsId != null;
@@ -52,6 +55,10 @@ export function MyCommitteeCard({
   const [entry, setEntry] = useState<RosterEntry | null>(cached?.entry ?? null);
   const [areaOptions, setAreaOptions] = useState<string[]>(cached?.areas ?? []);
   const [editing, setEditing] = useState(false);
+  // The self-service controls (edit areas / leave) are collapsed by default —
+  // they're rare actions, and two always-visible buttons here cost a chunk of
+  // the first screen that the roster should own.
+  const [manageOpen, setManageOpen] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -73,6 +80,15 @@ export function MyCommitteeCard({
       alive = false;
     };
   }, [committee.slug, effectiveUserId, key]);
+
+  // Lead standing, reported up for the page's Leads-chat tile. Computed here
+  // (not below the early returns) so the effect obeys the rules of hooks.
+  const iLeadHere =
+    !!user && !!committeeId && !!entry && (entry.isLead || (entry.roles ?? []).some((r) => r.endsWith(LEAD_SUFFIX)));
+  useEffect(() => {
+    onLeadChange?.(iLeadHere);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iLeadHere]);
 
   const myRoles = entry?.roles ?? [];
   // Areas the viewer leads (raw "· Lead" entries) vs. plain areas they're on.
@@ -179,13 +195,25 @@ export function MyCommitteeCard({
   };
 
   return (
-    <section className="space-y-3 rounded-2xl bg-primary/5 p-4 ring-1 ring-primary/20">
+    <section className="space-y-2 rounded-2xl bg-primary/5 p-3 ring-1 ring-primary/20">
       <div className="flex items-center gap-2.5">
-        <Avatar name={displayName} url={entry.linkedAvatarUrl} size={34} />
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Your spot here</p>
+        <Avatar name={displayName} url={entry.linkedAvatarUrl} size={30} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Your spot here</p>
           <p className="truncate text-sm font-semibold">{displayName}</p>
         </div>
+        {/* Rare self-service actions live behind this toggle instead of two
+            permanently-visible full-width buttons. */}
+        {!isPreview && (
+          <button
+            type="button"
+            onClick={() => setManageOpen((v) => !v)}
+            aria-expanded={manageOpen}
+            className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary"
+          >
+            {manageOpen ? "Done" : "⋯ Manage"}
+          </button>
+        )}
       </div>
 
       {/* What you do here — role chips, leads flagged with a one-tap step-down. */}
@@ -232,18 +260,9 @@ export function MyCommitteeCard({
         )}
       </div>
 
-      {/* Leads get a private side-chat for this committee. Deep-link into the
-          Feed's Leads room (which resolves ?c=&area=Leads) so it's reachable
-          right from the committee page, not only the Feed tab. */}
-      {amLead && (
-        <Link
-          href={`/posts?c=${committee.slug}&area=Leads`}
-          className="press flex items-center justify-between gap-2 rounded-xl bg-primary px-3.5 py-2.5 text-sm font-semibold text-white"
-        >
-          <span>💬 Open the Leads chat</span>
-          <span aria-hidden className="opacity-80">›</span>
-        </Link>
-      )}
+      {/* The Leads chat is a primary DESTINATION, so it's rendered as a tile in
+          the page's action grid (CommitteeDetail) rather than a full-width bar
+          inside this card — this card reports lead standing up via onLeadChange. */}
 
       {/* Self-service area editing. */}
       {editing ? (
@@ -279,7 +298,7 @@ export function MyCommitteeCard({
             </button>
           </div>
         </div>
-      ) : (
+      ) : manageOpen ? (
         <div className="flex flex-wrap items-center gap-2">
           {!isPreview && areaOptions.length > 0 && (
             <button
@@ -301,7 +320,7 @@ export function MyCommitteeCard({
             </button>
           )}
         </div>
-      )}
+      ) : null}
 
       {err && <p className="text-xs font-medium text-accent">{err}</p>}
     </section>
