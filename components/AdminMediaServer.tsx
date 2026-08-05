@@ -43,7 +43,7 @@ function SafetyScans({
   const [busy, setBusy] = useState<string | null>(null);
   // Which row's Delete is armed for a second confirming tap — deleting is
   // destructive (the file + its *_media row are gone for good), so it isn't
-  // one tap away like "Done" (which only clears the review list, nothing else).
+  // one tap away like "Approve" (which only clears the review list, nothing else).
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<{ url: string; message: string } | null>(null);
   const review = moderation.gaveUp ?? [];
@@ -122,7 +122,7 @@ function SafetyScans({
           <p className="text-xs font-semibold text-accent">For review</p>
           <p className="text-[11px] text-muted">
             The safety check couldn&rsquo;t read these, so they&rsquo;re still visible in their album. View it, then either
-            Delete it (removes the file for good) or tap Done to keep it and clear this list.
+            Delete it (removes the file for good) or tap Approve to keep it and clear this list.
           </p>
           {review.map((r) => (
             <div key={r.url} className="space-y-1.5">
@@ -163,7 +163,7 @@ function SafetyScans({
                   disabled={busy === r.url || !user}
                   className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary disabled:opacity-50"
                 >
-                  {busy === r.url ? "…" : "Done"}
+                  {busy === r.url ? "…" : "Approve"}
                 </button>
               </div>
               {error?.url === r.url && <p className="px-1 text-[11px] font-medium text-accent">{error.message}</p>}
