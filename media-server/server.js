@@ -35,7 +35,7 @@ const { execFileSync } = require("child_process");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
 const { moderateMedia, moderateText, moderationStatus } = require("./moderation");
 const { enqueueRecheck, startBackfill, moderationStats, clearGaveUp, noteScanned, noteNeedsReview } = require("./moderation-backfill");
-const { makeThumbnail } = require("./thumbnail");
+const { makeThumbnail, thumbPathFor } = require("./thumbnail");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
@@ -783,6 +783,70 @@ app.post("/admin/moderation-reviewed", requireOwner, (req, res) => {
   if (!url) return res.status(400).json({ error: "Missing url." });
   const cleared = clearGaveUp(url);
   res.json({ ok: true, cleared });
+});
+
+// Owner-only: actually DELETE a "needs review" item, right from this card. The
+// review list previously only offered "View" (opens the raw file with no path
+// back to the post/album it lives in) + "Done" (clears the list entry without
+// touching the photo) — so removing something genuinely inappropriate meant
+// hunting through the app by hand to find where it was posted. This removes its
+// *_media row (service-role, so it works regardless of who uploaded it or which
+// feature owns the table) across every table that keys media by this url, then
+// deletes the file + its thumbnail off disk, then clears the review entry.
+async function deleteMediaRowByUrl(url) {
+  if (!SUPABASE_URL || !SERVICE_KEY) return null;
+  for (const table of MEDIA_URL_TABLES) {
+    try {
+      const resp = await fetch(
+        `${SUPABASE_URL}/rest/v1/${table}?storage_path=eq.${encodeURIComponent(url)}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SERVICE_KEY,
+            authorization: `Bearer ${SERVICE_KEY}`,
+            prefer: "return=representation",
+          },
+        },
+      );
+      if (!resp.ok) {
+        console.error(`[admin] moderation-delete: ${table} HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+        continue;
+      }
+      const rows = await resp.json().catch(() => []);
+      if (Array.isArray(rows) && rows.length > 0) return table;
+    } catch (e) {
+      console.error(`[admin] moderation-delete: ${table} lookup failed: ${e.message}`);
+    }
+  }
+  return null; // no *_media row referenced this url (already removed, or never had one)
+}
+
+app.post("/admin/moderation-delete", requireOwner, async (req, res) => {
+  const url = String((req.body && req.body.url) || "").trim();
+  const relPath = String((req.body && req.body.relPath) || "").trim();
+  if (!url) return res.status(400).json({ error: "Missing url." });
+
+  let removedFrom = null;
+  try {
+    removedFrom = await deleteMediaRowByUrl(url);
+  } catch (e) {
+    return res.status(500).json({ error: (e && e.message) || "Couldn't delete the media record." });
+  }
+
+  if (relPath) {
+    const clean = path.normalize(relPath).replace(/^[/\\]+/, "");
+    const abs = path.join(MEDIA_DIR, clean);
+    const rel = path.relative(MEDIA_DIR, abs);
+    // Guard against a relPath that escapes MEDIA_DIR (e.g. "../../etc/passwd")
+    // before touching the filesystem — same check dropbox-zip uses below.
+    if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
+      try { fs.unlinkSync(abs); } catch {}
+      try { fs.unlinkSync(thumbPathFor(abs)); } catch {}
+    }
+  }
+
+  const cleared = clearGaveUp(url);
+  res.json({ ok: true, removedFrom, cleared });
 });
 
 app.get("/admin/media-server-status", requireOwner, async (_req, res) => {

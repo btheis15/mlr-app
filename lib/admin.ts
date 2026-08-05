@@ -164,3 +164,11 @@ export const restartMediaServer = (token: string) =>
  *  approved or removed the photo itself in the album. */
 export const markModerationReviewed = (token: string, url: string) =>
   postAdminJson<{ ok: boolean; cleared: number }>("/admin/moderation-reviewed", token, { url });
+
+/** Permanently delete a "needs review" item — its *_media row (wherever it
+ *  lives) plus the file + thumbnail on disk — and clear it off the review list. */
+export const deleteModerationItem = (token: string, url: string, relPath: string) =>
+  postAdminJson<{ ok: boolean; removedFrom: string | null; cleared: number }>("/admin/moderation-delete", token, {
+    url,
+    relPath,
+  });
