@@ -39,6 +39,16 @@ function isQuotaMessage(body) {
 }
 
 /**
+ * Did the model REFUSE to look at this image ("The model's safety guardrails
+ * were triggered")? That's a deterministic property of the image, not a blip —
+ * retrying it can never succeed, so it must not be treated as transient.
+ * Retrying one such photo 200 times is what burned quota for days.
+ */
+function isGuardrailRefusal(body) {
+  return /safety guardrails were triggered|guardrail/i.test(String(body || ""));
+}
+
+/**
  * Per-model circuit breakers, so a model that CAN'T answer right now stops being
  * asked once per image instead of 18 times.
  *
@@ -198,6 +208,13 @@ async function classifyOnce(b64, ext, model) {
   const body = {
     stream: false,
     model,
+    // The permissive guardrail, same as the TEXT path has always used: without
+    // it the model refuses outright ("The model's safety guardrails were
+    // triggered", HTTP 500) on exactly the sensitive images this classifier
+    // exists to catch — so the check that should flag them instead errored, the
+    // upload failed open, and it got retried forever. A safety filter has to be
+    // allowed to LOOK at unsafe content in order to label it.
+    guardrails: "permissive-content-transformations",
     messages: [
       {
         role: "user",
@@ -225,6 +242,7 @@ async function classifyOnce(b64, ext, model) {
       // debugging time. See `quotaExhausted` below.
       const detail = await resp.text().catch(() => "");
       const why = detail ? `HTTP ${resp.status}: ${oneLine(detail)}` : `HTTP ${resp.status}`;
+      if (isGuardrailRefusal(detail)) return { refused: true, why };
       return { retry: true, why, quota: isQuotaMessage(detail) };
     }
     const data = await resp.json();
@@ -286,6 +304,21 @@ async function moderateImageFile(filePath) {
       for (const model of live) {
         const r = await classifyOnce(b64, "jpeg", model);
         if (r.verdict) { noteSuccess(model); return r.verdict; }
+        // The model refused to look at it. Deterministic, so DON'T retry — and
+        // treat the refusal itself as the signal: a guardrail trip on a
+        // family-app photo means "sensitive enough that the model wouldn't
+        // describe it", which is exactly what we want held for a human. Failing
+        // open here would let precisely the wrong images through unreviewed.
+        if (r.refused) {
+          console.warn(`[moderate] ${model}@${dim}px refused to analyze — flagging for admin review: ${r.why}`);
+          return {
+            flagged: true,
+            category: "other",
+            reason: "the safety model declined to analyze this image",
+            model,
+            refused: true,
+          };
+        }
         if (r.tooLarge) { sawTooLarge = true; break; }
         noteFailure(model, r);
         console.warn(`[moderate] ${model}@${dim}px attempt ${attempt + 1} transient: ${r.why}`);

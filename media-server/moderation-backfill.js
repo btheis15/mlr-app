@@ -22,7 +22,11 @@ const path = require("path");
 const QUEUE_FILE = path.join(__dirname, ".mod-recheck.json");
 const SWEEP_MS = Number(process.env.MOD_RECHECK_MS || 15 * 60 * 1000); // 15 min
 const FIRST_SWEEP_MS = Number(process.env.MOD_RECHECK_FIRST_MS || 90 * 1000); // 90s after boot
-const MAX_ATTEMPTS = Number(process.env.MOD_RECHECK_MAX_ATTEMPTS || 200); // give up after N tries
+const MAX_ATTEMPTS = Number(process.env.MOD_RECHECK_MAX_ATTEMPTS || 10); // give up after N tries
+// 200 was far too many: a photo the model can never handle was re-scanned 200
+// times (x up to 9 requests each), burning a limited PCC quota for days on one
+// file. 10 is plenty to ride out a real outage (sweeps run every 15m, so ~2.5h)
+// while capping the damage from anything permanently unanalyzable.
 const MAX_AGE_MS = Number(process.env.MOD_RECHECK_MAX_AGE_MS || 14 * 24 * 60 * 60 * 1000); // 14 days
 const PER_SWEEP = Number(process.env.MOD_RECHECK_PER_SWEEP || 25); // items processed per tick
 
