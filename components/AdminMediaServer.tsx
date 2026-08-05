@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, markModerationReviewed, deleteModerationItem, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, markModerationReviewed, deleteModerationItem, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration, type MediaServerStorage, type MediaServerVolume } from "@/lib/admin";
 import { useIdentity } from "@/components/IdentityProvider";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
@@ -261,6 +261,57 @@ function AppUsage({ usage }: { usage: MediaServerUsage }) {
   );
 }
 
+/**
+ * Both storage volumes, each with its drive meter + app-footprint breakdown.
+ *
+ * The SSD is where every read is served from; the external drive is the backup
+ * mirror and the home for anything over the per-file SSD limit. The two cases
+ * worth surfacing loudly are a drive that's unplugged (media stored only there
+ * is 404ing right now) and no backup drive configured at all (nothing has a
+ * second copy) — both are quiet failures otherwise.
+ */
+function Volumes({ storage }: { storage: MediaServerStorage }) {
+  const { hot, cold } = storage;
+  return (
+    <div className="space-y-3">
+      <VolumeBlock volume={hot} />
+      {cold ? (
+        cold.mounted ? (
+          <VolumeBlock volume={cold} />
+        ) : (
+          <div className="space-y-1 border-t border-border pt-3">
+            <p className="text-sm font-semibold">{cold.label} · backup</p>
+            <p className="text-sm text-accent">
+              Not plugged in. New photos aren&apos;t being backed up, and anything stored only on this drive
+              won&apos;t load until it&apos;s reconnected.
+            </p>
+          </div>
+        )
+      ) : (
+        <div className="space-y-1 border-t border-border pt-3">
+          <p className="text-sm font-semibold">Backup</p>
+          <p className="text-sm text-accent">No backup drive is set up — photos and videos have only one copy.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VolumeBlock({ volume }: { volume: MediaServerVolume }) {
+  return (
+    <div className="space-y-2">
+      <p className="border-t border-border pt-3 text-sm font-semibold">
+        {volume.label}
+        <span className="ml-1.5 font-normal text-muted">
+          · {volume.role === "primary" ? "primary — everything loads from here" : "backup"}
+        </span>
+      </p>
+      {volume.disk ? <DriveStorage disk={volume.disk} appBytes={volume.usage?.totalBytes ?? 0} /> : null}
+      {volume.usage ? <AppUsage usage={volume.usage} /> : null}
+    </div>
+  );
+}
+
 async function currentToken(): Promise<string | null> {
   const sb = supabase;
   return (await sb?.auth.getSession())?.data.session?.access_token ?? null;
@@ -334,8 +385,15 @@ export function AdminMediaServer() {
               ? "Up to date with origin/main ✓"
               : `${status.behind} commit${status.behind === 1 ? "" : "s"} behind origin/main`}
           </p>
-          {status.disk ? <DriveStorage disk={status.disk} appBytes={status.usage?.totalBytes ?? 0} /> : null}
-          {status.usage ? <AppUsage usage={status.usage} /> : null}
+          {status.storage ? (
+            <Volumes storage={status.storage} />
+          ) : (
+            /* Older mini, before tiered storage — one volume only. */
+            <>
+              {status.disk ? <DriveStorage disk={status.disk} appBytes={status.usage?.totalBytes ?? 0} /> : null}
+              {status.usage ? <AppUsage usage={status.usage} /> : null}
+            </>
+          )}
           {status.moderation ? (
             <SafetyScans moderation={status.moderation} onReviewed={load} />
           ) : null}

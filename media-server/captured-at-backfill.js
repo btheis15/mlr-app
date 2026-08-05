@@ -23,6 +23,7 @@ const path = require("path");
 
 const { extractCapturedAt } = require("./captured-at");
 const { localPathFor } = require("./media-paths");
+const tiers = require("./media-tiers");
 
 const SWEEP_MS = Number(process.env.CAPTURED_AT_SWEEP_MS || 6 * 60 * 60 * 1000); // 6h
 const FIRST_SWEEP_MS = Number(process.env.CAPTURED_AT_FIRST_MS || 45 * 1000); // 45s after boot
@@ -51,7 +52,8 @@ async function sweepOnce({ admin, mediaDir }) {
   let missing = 0;
 
   for (const row of data) {
-    const abs = localPathFor(row.storage_path, mediaDir);
+    // Resolved across both volumes (see thumbnail-backfill for the reasoning).
+    const abs = localPathFor(row.storage_path, tiers.mediaRoots());
     if (!abs || !fs.existsSync(abs)) { missing++; continue; }
     const kind = row.media_type === "video" ? "video" : "image";
     let iso = null;

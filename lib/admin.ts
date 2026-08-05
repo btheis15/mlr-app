@@ -100,18 +100,42 @@ export interface MediaServerUsage {
   categories: MediaUsageCategory[];
 }
 
+/** One storage volume: the mini's SSD (primary) or the external drive (backup). */
+export interface MediaServerVolume {
+  role: "primary" | "backup";
+  /** Human label, e.g. "Mac mini SSD" / "External drive". */
+  label: string;
+  /** Null when the volume isn't currently mounted. */
+  disk?: MediaServerDisk | null;
+  usage?: MediaServerUsage | null;
+  /** Backup volume only: configured in .env at all? */
+  configured?: boolean;
+  /** Backup volume only: is the drive plugged in and mounted right now? */
+  mounted?: boolean;
+}
+
+/** Both volumes. `cold` is null when no backup drive is configured — which the
+ *  card surfaces as a warning, since it means media has no second copy. */
+export interface MediaServerStorage {
+  hot: MediaServerVolume;
+  cold: MediaServerVolume | null;
+}
+
 export interface MediaServerStatus {
   ok: boolean;
   commit: string;
   upToDate: boolean;
   behind: number;
   startedAt: string;
-  /** Space on the drive holding the media. Optional — absent on an older mini
-   *  that predates this field, so the UI must degrade gracefully. */
+  /** Space on the PRIMARY drive. Optional — absent on an older mini that
+   *  predates this field, so the UI must degrade gracefully. */
   disk?: MediaServerDisk | null;
-  /** Per-media-type breakdown of the app's own footprint. Optional — same
-   *  graceful-degrade reason as `disk`. */
+  /** Per-media-type breakdown of the primary volume's footprint. Optional —
+   *  same graceful-degrade reason as `disk`. */
   usage?: MediaServerUsage | null;
+  /** Both volumes. Optional — a mini running code from before tiered storage
+   *  only sends the single-volume `disk`/`usage` fields above. */
+  storage?: MediaServerStorage | null;
   /** AI safety-scan progress + anything awaiting a human look. Optional — same
    *  graceful-degrade reason as `disk`. */
   moderation?: MediaServerModeration | null;

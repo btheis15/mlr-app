@@ -3100,17 +3100,94 @@ changed, then `process.exit(0)`. No `launchctl` call needed: the launchd
 plist (`com.mlr.media-server.plist`) already sets `KeepAlive`, so it
 relaunches on its own within the 10s `ThrottleInterval`, on the new code.
 `GET /admin/media-server-status` (same `requireOwner` gate) backs the status
-line the card shows before you tap anything. Beyond git state it returns two
-optional diagnostics blocks that [`AdminMediaServer`](components/AdminMediaServer.tsx)
-renders: **`disk`** (`fs.statfsSync(MEDIA_DIR)` → total/free/used bytes + whether
-it's an external `/Volumes/…` volume) → a **Drive storage** bar split into MLR-app
-(green) vs other/personal non-app (grey, = `disk.used − usage.total`) vs free; and
-**`usage`** (one recursive walk of MEDIA_DIR bucketed into photos/videos/other) →
-an **MLR App storage** breakdown bar + per-type count/size. Each object's
-auto-generated `<uuid>_thumb.jpg` thumbnail is folded into its parent object's
-bytes (a photo's size includes its thumbnail) and is NOT counted as a separate
-item. Both fields are optional, so an older mini that predates them degrades to no
-meter.
+line the card shows before you tap anything. Beyond git state it returns
+**`storage`** — one block per volume (see **Two-volume media storage** below),
+each with a `disk` (total/free/used + whether it's an external `/Volumes/…`
+volume) → a **Drive storage** bar split into MLR-app (green) vs other/personal
+non-app (grey, = `disk.used − usage.total`) vs free; and a `usage`
+(photos/videos/other) → an **MLR App storage** breakdown bar + per-type
+count/size. Each object's auto-generated `<uuid>_thumb.jpg` thumbnail is folded
+into its parent object's bytes (a photo's size includes its thumbnail) and is NOT
+counted as a separate item. The legacy top-level `disk`/`usage` fields are still
+sent (the primary volume's), so an app build that predates tiering keeps
+rendering its single meter; all of them are optional, so an older *mini* degrades
+to no meter at all.
+
+### Two-volume media storage (SSD primary + external backup)
+
+Media lives on two drives sharing one URL space. **`MEDIA_DIR` is the mini's
+internal SSD** (primary — every upload lands there, every read is served from
+there first) and **`MEDIA_COLD_DIR` is the external drive** (a full backup mirror,
+plus the only home for files over the per-file SSD limit). Full writeup in
+[`media-server/README.md`](media-server/README.md).
+
+**Why this is cheap:** the app stores media as `<PUBLIC_URL>/f/<rel>` and never
+records which disk the bytes are on, so `/f` is just a chain of four
+`express.static` roots (hot, hot-legacy, cold, cold-legacy) and a file found on
+either volume serves at the same URL. **No database row changes when a file
+moves between volumes** — that property is the whole design.
+
+- **Where a new upload goes** is decided once, before any bytes are written, by
+  `pickUploadRoot()` in [`media-server/media-tiers.js`](media-server/media-tiers.js):
+  external drive if the file is **over `MEDIA_HOT_MAX_FILE_MB` (250 MB)**, or
+  would breach the **15 GB boot-disk reserve**, or would exceed the **25 GB SSD
+  allowance**; SSD otherwise. Deliberately **no rule about file type** — the size
+  limit already routes video where it belongs. With no external drive, the size
+  and allowance rules degrade to "SSD anyway" (they're policy) but the reserve is
+  a hard floor: an upload that would fill the boot disk gets a **507**.
+  `Content-Length` is the size input because multer must pick a destination
+  before the bytes arrive; `/upload` is `upload.single("file")`, so that's
+  effectively the one file's size.
+- **`MAX_MB` is 50 GB** and `UPLOAD_TIMEOUT_MS` is 4h. ⚠️ Neither means a 50 GB
+  upload succeeds — **bandwidth** and **the tunnel's own body-size cap** bind
+  first. Raising the cap without the timeout just converts a clean 413 into a
+  mid-transfer timeout.
+- **[`mirror-sweep.js`](media-server/mirror-sweep.js)** reconciles hot→cold every
+  10 min (atomic temp-then-rename, size-verified). It **never deletes from cold**
+  (a backup that prunes itself isn't a backup — and once eviction ships, the cold
+  copy is exactly what a request falls through to) and **never evicts from hot**
+  (no unlink-from-hot code exists yet, on purpose). Consequence, accepted: media
+  deleted in the app lingers on the backup drive. The one exception is the
+  moderation delete, which uses `deleteFileEverywhere` to unlink from **both**
+  volumes — cold is a live read root, so removing only the hot copy would leave
+  the file being served off the external drive.
+- ⚠️ **A missing external drive is no longer fatal.** It used to `process.exit(1)`,
+  which took photos, chat, push and email down over a missing *video* drive. Now
+  the server serves what the SSD has, writes no backups, and 404s cold-only
+  files; `coldReady()` re-checks at runtime so **replugging needs no restart**.
+  `MEDIA_DIR` on an unmounted `/Volumes` path is still fatal — that's where we
+  write, and silently recreating it on the boot disk 404s the whole library.
+- ⚠️ **Every path-resolution site must be tier-aware.**
+  [`media-paths.js`](media-server/media-paths.js)'s `localPathFor()` now accepts
+  an array of roots and returns the first that *has* the file (falling back to
+  the hot path so callers get a plain ENOENT), which covers the thumbnail,
+  captured-at and moderation backfills — they pass `tiers.mediaRoots()`,
+  evaluated per row so a drive plugged in mid-sweep is picked up. Anything that
+  builds a URL from an absolute path uses `tiers.relFromAbs()` rather than
+  `path.relative(MEDIA_DIR, …)`, because the transcode and thumbnail writers put
+  their output *beside the source file*, which may be on either volume.
+  `/dropbox-zip` resolves each entry per-volume and passes **absolute** paths to
+  `zip -j` (no `cwd`), unioning both volumes for the whole-folder mode so a
+  partially-mirrored album still downloads whole.
+- ⚠️ **The `usage` walk is async and cached
+  ([`media-usage.js`](media-server/media-usage.js)), and must stay that way.** It
+  used to be a synchronous `readdirSync(recursive) + statSync`-per-file executed
+  *inside* the status request handler — so for the whole walk the entire media
+  server stopped (no `/f`, no uploads, no push, no mailer). Invisible at ~1k
+  files, linear in file count, and triggered by opening the admin card, i.e. what
+  you'd do while investigating why the app felt slow. Two volumes made fixing it
+  mandatory: it would otherwise be two blocking walks, one on a possibly-parked
+  external disk. Thumbnails now pair to their parent by **uuid alone**, not
+  `dir + uuid`, since an object and its thumbnail can legitimately sit on
+  different volumes.
+- **Known follow-ups:** (1) hot-tier **eviction** (oldest-upload-first once the
+  allowance is approached — key it on *upload* time, not `captured_at`: the point
+  is "people haven't seen it yet", and a scanned 1987 heritage photo is new to
+  everyone); (2) a **thumbnail for a cold-stored video stays on the external
+  drive**, since `makeThumbnail` writes beside its source — fine today (nothing
+  is cold-only yet) but it means a grid of big videos would seek on the HDD;
+  (3) **no off-site copy** — both drives are in the same room, and files over the
+  per-file limit have no second copy at all.
 
 ## Loading stability & the SWR cache
 
