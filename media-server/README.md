@@ -45,6 +45,89 @@ you tidy old files away. To do that tidy on the mini (safe, no DB changes):
 MEDIA_DIR=/Users/brian/mlr-app/media-server/media bash scripts/organize-legacy.sh
 ```
 
+## Two volumes: SSD primary + external backup
+
+Media lives on **two** drives, with one shared URL space:
+
+| | env var | role |
+|---|---|---|
+| **Hot** | `MEDIA_DIR` | The mini's internal SSD. **Primary** — every upload lands here and every read is served from here first. |
+| **Cold** | `MEDIA_COLD_DIR` | The external drive. A **full backup mirror** of hot, and the only home for files over the per-file SSD limit. |
+
+The app stores media as `<PUBLIC_URL>/f/<rel>` and **never records which disk the
+bytes are on**. That's the whole trick: `/f` is a chain of four `express.static`
+roots (hot, hot-legacy, cold, cold-legacy), so a file found on either volume
+serves at the same URL. Nothing in the database changes when a file moves.
+
+**Why the SSD at all**, given the external drive holds everything? Latency on
+recent media. Photo grids are many small random reads — dozens of seeks, exactly
+where a spinning disk is slowest — and recently-uploaded photos are the ones
+people are most likely to open, because they haven't seen them yet. Video is the
+opposite: streamed once, sequentially, at speeds far above what the tunnel can
+deliver anyway.
+
+### Where a new upload goes
+
+Decided once, before any bytes are written, by `pickUploadRoot()` in
+[`media-tiers.js`](media-tiers.js). In priority order, a file goes to the
+**external drive** if it:
+
+1. is **larger than `MEDIA_HOT_MAX_FILE_MB`** (default **250 MB**) — a hard
+   per-file ceiling on the SSD regardless of free space, or
+2. would leave less than `MEDIA_HOT_RESERVE_GB` (default **15 GB**) free on the
+   boot disk, or
+3. would push the library past `MEDIA_HOT_ALLOWANCE_GB` (default **25 GB**).
+
+Otherwise it goes to the SSD. There is deliberately **no rule about file type** —
+the size limit already routes video where it belongs.
+
+With no external drive configured, rules 1 and 3 degrade to "SSD anyway" (they're
+policy), but rule 2 is a hard floor: an upload that would fill the boot disk is
+refused with **507**, because a full boot disk takes down the whole machine, not
+just this server.
+
+**Deciding up front is the point.** The alternative — write somewhere, then
+move — makes every misroute a full re-copy of the largest files in the system.
+`/upload` is `upload.single("file")`, so `Content-Length` is effectively the one
+file's size; a batch of photos is N separate requests, each routed on its own
+size.
+
+### The backup sweep
+
+[`mirror-sweep.js`](mirror-sweep.js) runs every 10 minutes and copies anything
+the external drive is missing (or has at a different size). It's **reconciling,
+not a queue** — no pending-work table, no retry list. If the drive was unplugged
+for a week, the next pass just finds more to do. Copies are atomic per file
+(temp name on the destination, size-verified, then renamed), so a drive yanked
+mid-copy leaves a discarded `.part` file rather than a truncated "backup".
+
+Two things it deliberately does **not** do:
+
+- **It never deletes from cold.** A backup that prunes itself isn't a backup.
+  Consequence, accepted: media deleted in the app lingers on the backup drive.
+  The one exception is the moderation "delete" action, which unlinks from **both**
+  volumes (`deleteFileEverywhere`) — "remove this content" has to mean
+  everywhere, and cold is a live read root.
+- **It never evicts from hot.** Nothing leaves the SSD until the library actually
+  approaches its allowance, and that policy is a separate change. There is
+  intentionally no unlink-from-hot code in the tree yet.
+
+When eviction does ship it's a plain `unlink`, not a cross-volume move, because
+the mirror already put a copy on cold — dropping the SSD copy just makes the next
+request fall one root further down the `/f` chain.
+
+### If the external drive is unplugged
+
+The server **keeps running** (this used to be a fatal startup error, which took
+photos, chat, push and email down over a missing video drive). It serves
+everything the SSD has, writes no backups, and 404s anything stored only on the
+external drive. `coldReady()` re-checks at runtime, so **replugging needs no
+restart**. The owner's Media server card shows the drive as disconnected.
+
+`MEDIA_DIR` itself is still fatal if it's a `/Volumes` path that isn't mounted —
+that's where we *write*, and silently recreating it as an empty folder on the
+boot disk is how you 404 the entire library.
+
 ## Video transcoding
 
 Uploaded **videos** are normalized to a web-friendly **H.264 MP4 capped at ~1080p**
@@ -91,8 +174,19 @@ can view the photos).
   cross-origin resource/embedder policy is relaxed so the Next app — a
   different origin — can still `<img>`/`<video>` embed the media this server
   serves.
-- **`MAX_MB` default lowered to 256** (was 1024). Bump it in `.env` if the
-  family is uploading larger raw videos.
+- **`MAX_MB` is now 50 GB** (`50 * 1024`), i.e. "effectively unlimited, it's a
+  video." Files that big route to the external drive automatically (see **Two
+  volumes** above), so the cap no longer has to double as a disk guard.
+  ⚠️ This number does **not** mean a 50 GB upload will succeed — two other things
+  bind first, both outside this server:
+  - **Bandwidth.** 50 GB over a residential uplink is hours; on the LAN it's
+    minutes. `UPLOAD_TIMEOUT_MS` (default 4h) has to cover the whole transfer,
+    which is why it moved up with the cap — raising `MAX_MB` alone would just
+    convert a clean 413 into a timeout partway through, wasting the transfer.
+  - **The tunnel** in front (Tailscale Funnel / Cloudflare Tunnel) may cap
+    request body size on its own and reject the upload before it reaches this
+    process. Worth testing with one real large file before telling the family
+    it works.
 
 **Deploying this update to the mini:** `git pull`, then `npm install` (adds
 `express-rate-limit` + `helmet` to `node_modules` and updates
@@ -115,9 +209,24 @@ values are already filled; you'll set `PUBLIC_URL` after step 5):
 cp .env.example .env
 ```
 
-**3. Pick where files live.** Default is `./media`. To use an external drive,
-set `MEDIA_DIR=/Volumes/.../mlr` in `.env`. **Back this folder up** (Time
-Machine / rsync) — it's the only copy of the photos.
+**3. Pick where files live.** Two settings (see **Two volumes** above):
+
+```ini
+MEDIA_DIR=/Users/brian/mlr-media                        # primary, internal SSD
+MEDIA_COLD_DIR=/Volumes/External Hard Drive/mlr-media   # backup mirror
+```
+
+`MEDIA_DIR` defaults to `./media`. `MEDIA_COLD_DIR` is optional — leave it unset
+and everything works, but **media then has only one copy** and the server says so
+at boot and on the admin card. Optional tuning:
+`MEDIA_HOT_MAX_FILE_MB` (250), `MEDIA_HOT_ALLOWANCE_GB` (25),
+`MEDIA_HOT_RESERVE_GB` (15).
+
+⚠️ **The external drive is a mirror, not an off-site backup.** Both copies are in
+the same room on the same power strip, and files over the per-file limit live
+*only* on the external drive, so they have no second copy at all. A third target
+(another external, or ~$0.30/month for 50 GB at Backblaze B2) is the only thing
+that survives a drive failure, theft, or a spilled drink.
 
 **4. Run it.**
 ```bash

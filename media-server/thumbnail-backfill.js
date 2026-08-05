@@ -18,6 +18,7 @@ const path = require("path");
 
 const { makeThumbnail, thumbPathFor } = require("./thumbnail");
 const { localPathFor } = require("./media-paths");
+const tiers = require("./media-tiers");
 
 const SWEEP_MS = Number(process.env.THUMB_BACKFILL_MS || 6 * 60 * 60 * 1000); // 6h
 const FIRST_SWEEP_MS = Number(process.env.THUMB_BACKFILL_FIRST_MS || 75 * 1000); // 75s after boot
@@ -47,7 +48,10 @@ async function sweepTable(admin, table, { publicUrl, mediaDir }) {
   let skipped = 0;
 
   for (const row of data) {
-    const abs = localPathFor(row.storage_path, mediaDir);
+    // Resolved across BOTH volumes (evaluated per row, so a drive plugged in
+    // mid-sweep is picked up), not just the hot one — a file that only has an
+    // external-drive copy still needs its thumbnail.
+    const abs = localPathFor(row.storage_path, tiers.mediaRoots());
     if (!abs || !fs.existsSync(abs)) { skipped++; continue; }
     const kind = row.media_type === "video" ? "video" : "image";
 
@@ -59,7 +63,11 @@ async function sweepTable(admin, table, { publicUrl, mediaDir }) {
     }
     if (!thumbPath) { skipped++; continue; }
 
-    const rel = path.relative(mediaDir, thumbPath).split(path.sep).join("/");
+    // relFromAbs, not path.relative(mediaDir, …): makeThumbnail writes beside the
+    // source file, so for a cold-only source the thumbnail lands on the external
+    // drive and a hot-rooted relative path would come out as "../…".
+    const rel = tiers.relFromAbs(thumbPath);
+    if (!rel) { skipped++; continue; }
     const { error: upErr } = await admin
       .from(table)
       .update({ thumbnail_url: `${publicUrl}/f/${rel}` })

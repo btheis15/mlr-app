@@ -30,6 +30,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const fs = require("fs");
+const fsp = require("fs/promises");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
@@ -41,6 +42,9 @@ const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
 const { start: startSearchIndexer } = require("./search-indexer");
+const tiers = require("./media-tiers");
+const { usageFor, startUsageRefresh } = require("./media-usage");
+const { startMirrorSweep, deleteFileEverywhere, listRelFiles } = require("./mirror-sweep");
 
 const SERVER_STARTED_AT = new Date().toISOString();
 const PORT = Number(process.env.PORT || 8787);
@@ -62,39 +66,63 @@ if (!ALLOWED.length) {
   );
   ALLOWED.push(...DEFAULT_ALLOWED_ORIGINS);
 }
-const MAX_MB = Number(process.env.MAX_MB || 256); // per-file cap (MB); your disk is the real limit
-const MEDIA_DIR = process.env.MEDIA_DIR || path.join(__dirname, "media");
+// Per-file cap (MB) — 50 GB, i.e. "effectively unlimited, it's a video."
+//
+// ⚠️ This number does NOT mean a 50 GB upload will succeed. Two other things bind
+// first, and both are outside this file:
+//   • BANDWIDTH. 50 GB over a residential uplink is hours; see the
+//     UPLOAD_TIMEOUT_MS note in /upload. On the LAN it's minutes.
+//   • THE TUNNEL in front of us (Tailscale Funnel / Cloudflare Tunnel) may cap
+//     request body size on its own, and would reject the upload before it ever
+//     reaches this process.
+// What the cap DOES do is stop the server from rejecting a large file outright.
+// Where that file physically lands is decided by tiers.pickUploadRoot, not here.
+const MAX_MB = Number(process.env.MAX_MB || 50 * 1024);
+// MEDIA_DIR is the HOT volume (the mini's SSD): every upload lands here and every
+// read is served from here first. MEDIA_COLD_DIR is the external backup mirror.
+// See media-tiers.js for how one URL space spans both.
+const MEDIA_DIR = tiers.HOT_DIR;
+const COLD_DIR = tiers.COLD_DIR;
 const LEGACY_DIR = path.join(MEDIA_DIR, "posts", "legacy");
 
-// If MEDIA_DIR lives on an external volume (/Volumes/<name>/…), make sure that
-// volume is actually MOUNTED before we touch it. Otherwise the mkdirSync below
-// would happily recreate the path as an empty folder on the internal disk — and
-// then every existing photo/video 404s while new uploads silently misfile onto
-// the boot drive. Detect it by comparing filesystem device ids: a real mount
-// sits on a different device than "/"; a stale/empty dir left at the mountpoint
-// (or a missing path) is on the same device as "/". Fail loud and exit — launchd
-// (KeepAlive + 10s ThrottleInterval) will retry until the drive is back, rather
-// than come up writing to the wrong place. The default ./media (internal, dev)
-// is unaffected — the guard only runs for a /Volumes path.
-if (MEDIA_DIR.startsWith("/Volumes/")) {
-  const volRoot = "/" + MEDIA_DIR.split("/").slice(1, 3).join("/"); // /Volumes/<name>
-  let mounted = false;
-  try {
-    mounted = fs.statSync(volRoot).dev !== fs.statSync("/").dev;
-  } catch {
-    mounted = false; // volRoot doesn't even exist → not mounted
-  }
-  if (!mounted) {
-    console.error(
-      `FATAL: MEDIA_DIR is ${MEDIA_DIR} but the volume ${volRoot} is not mounted. ` +
-        `Refusing to start so media isn't misfiled onto the internal disk — plug in / remount the drive.`
-    );
-    process.exit(1);
-  }
+// The hot volume is where we WRITE, so if it's a mount that isn't mounted we
+// must not start: mkdirSync below would recreate the path as an empty folder on
+// whatever disk is underneath, and then every existing photo 404s while new
+// uploads silently misfile. Fail loud — launchd (KeepAlive + 10s
+// ThrottleInterval) retries until the drive is back. Normally MEDIA_DIR is an
+// internal path and this never fires; it's kept for the case where someone
+// points the hot volume at /Volumes on purpose.
+if (MEDIA_DIR.startsWith("/Volumes/") && !tiers.volumeMounted(MEDIA_DIR)) {
+  console.error(
+    `FATAL: MEDIA_DIR is ${MEDIA_DIR} but that volume is not mounted. ` +
+      `Refusing to start so media isn't misfiled onto the internal disk — plug in / remount the drive.`
+  );
+  process.exit(1);
+}
+
+// The COLD volume is different: it holds backups and any file that has aged off
+// the SSD, so losing it is a degradation, not a reason to take the whole app
+// down over a missing drive. Warn, serve everything the SSD still has, and let
+// the mirror sweep catch up whenever it returns. tiers.coldReady() re-checks at
+// runtime, so a replug needs no restart.
+if (COLD_DIR && !tiers.coldReady()) {
+  console.warn(
+    `⚠ MEDIA_COLD_DIR is ${COLD_DIR} but that volume is not mounted. Running DEGRADED: ` +
+      `serving from the SSD only, no backups written, and anything stored only on the external drive will 404 until it's back.`
+  );
+} else if (!COLD_DIR) {
+  console.warn("⚠ MEDIA_COLD_DIR is not set — media has no backup copy.");
 }
 
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 fs.mkdirSync(LEGACY_DIR, { recursive: true });
+if (COLD_DIR && tiers.coldReady()) {
+  try {
+    fs.mkdirSync(path.join(COLD_DIR, "posts", "legacy"), { recursive: true });
+  } catch (e) {
+    console.warn(`⚠ could not prepare the backup volume: ${e && e.message}`);
+  }
+}
 
 const app = express();
 app.disable("x-powered-by");
@@ -225,8 +253,22 @@ app.use("/f", (req, res, next) => {
   }
   next();
 });
+// The tier fallback IS this chain. express.static passes to the next handler on
+// a miss, so a file that lives only on the external drive is found by root 3/4
+// with no lookup, no database column, and no change to its URL. That's what
+// makes dropping an SSD copy safe once it's mirrored — the request simply falls
+// one root further down.
+//
+// The cold roots are resolved per-request (not captured at boot) so unplugging
+// or replugging the drive needs no restart.
 app.use("/f", express.static(MEDIA_DIR, staticOpts));
 app.use("/f", express.static(LEGACY_DIR, staticOpts));
+app.use("/f", (req, res, next) => {
+  if (!tiers.coldReady()) return next();
+  return express.static(COLD_DIR, staticOpts)(req, res, () =>
+    express.static(path.join(COLD_DIR, "posts", "legacy"), staticOpts)(req, res, next)
+  );
+});
 app.use("/f", (_req, res) => res.status(404).json({ error: "Not found." }));
 
 // Small static app assets shipped with the repo (e.g. pay-method logos). Served
@@ -253,49 +295,59 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
     return res.status(503).json({ error: "Couldn't reach the auth service." });
   }
   if (!box) return res.status(400).json({ error: "Missing folder." });
-  const boxDir = path.join(MEDIA_DIR, "dropbox", box);
 
-  // Build the zip args + cwd. With an explicit file list (the normal path — the
-  // client sends every item's media-root-relative path), resolve each under the
-  // MEDIA ROOT, not the box folder, so an album can include files stored
-  // ANYWHERE in the tree — e.g. a Feed post's photo the user also added to the
-  // album lives under posts/, not dropbox/<box>/. Sanitize each against
-  // path traversal; `-j` flattens so the zip is one flat set of files.
-  // With NO list (fallback) recurse the box's own folder.
-  let args;
-  let cwd;
+  // Build the zip file list. Two volumes mean a single `cwd` no longer works —
+  // an album's files can be split across the SSD and the external drive — so
+  // every entry is resolved to an ABSOLUTE path on whichever volume has it
+  // (tiers.resolveRel prefers hot) and handed to zip with `-j`, which flattens
+  // and therefore ignores cwd entirely. Filenames are UUIDs, so flattening can't
+  // collide.
+  //
+  // With an explicit list (the normal path — the client sends every item's
+  // media-root-relative path) each entry is resolved under the MEDIA ROOT, not
+  // the box folder, so an album can include files stored ANYWHERE in the tree:
+  // a Feed post's photo added to an album lives under posts/, not dropbox/<box>/.
+  // With NO list (fallback) enumerate the box's own folder on BOTH volumes and
+  // union them, hot winning, so a partially-mirrored album still downloads whole.
+  const abs = [];
   if (relPaths && relPaths.length) {
-    const safe = [];
     for (const raw of relPaths) {
       if (typeof raw !== "string" || !raw) continue;
       const clean = path.normalize(raw).replace(/^[/\\]+/, "");
-      const abs = path.join(MEDIA_DIR, clean);
-      const rel = path.relative(MEDIA_DIR, abs);
-      if (rel.startsWith("..") || path.isAbsolute(rel)) continue; // escaped the root → skip
+      const resolved = tiers.resolveRel(clean); // null if it escapes every root
+      if (!resolved) continue;
       try {
-        if (fs.statSync(abs).isFile()) safe.push(rel);
+        if ((await fsp.stat(resolved)).isFile()) abs.push(resolved);
       } catch {
-        /* gone — skip */
+        /* gone from every volume — skip */
       }
     }
-    if (!safe.length) return res.status(400).json({ error: "No files selected." });
-    args = ["-j", "-q", "-", ...safe]; // -j flatten, - = write archive to stdout
-    cwd = MEDIA_DIR;
+    if (!abs.length) return res.status(400).json({ error: "No files selected." });
   } else {
-    try {
-      if (!fs.statSync(boxDir).isDirectory()) throw new Error("not a dir");
-    } catch {
-      return res.status(404).json({ error: "Nothing to download yet." });
+    const seen = new Set();
+    for (const root of tiers.mediaRoots()) {
+      const boxDir = path.join(root, "dropbox", box);
+      let rels = [];
+      try {
+        rels = await listRelFiles(boxDir);
+      } catch {
+        continue; // not on this volume
+      }
+      for (const rel of rels) {
+        if (seen.has(rel)) continue; // already taken from a higher-priority tier
+        seen.add(rel);
+        abs.push(path.join(boxDir, rel));
+      }
     }
-    args = ["-r", "-q", "-", "."];
-    cwd = boxDir;
+    if (!abs.length) return res.status(404).json({ error: "Nothing to download yet." });
   }
+  const args = ["-j", "-q", "-", ...abs]; // -j flatten, - = write archive to stdout
 
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", `attachment; filename="${(name || box)}.zip"`);
 
   const { spawn } = require("child_process");
-  const zip = spawn("zip", args, { cwd });
+  const zip = spawn("zip", args); // no cwd — `-j` + absolute paths span both volumes
   zip.stdout.pipe(res);
   zip.stderr.on("data", (d) => console.warn(`[dropbox-zip] ${String(d).trim()}`));
   zip.on("error", (e) => {
@@ -393,7 +445,21 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
       try {
-        const dir = path.join(MEDIA_DIR, uploadSubdir(req));
+        // Pick the volume BEFORE any bytes land — see pickUploadRoot in
+        // media-tiers.js. A big video goes straight to the external drive
+        // instead of being written to the SSD and moved (which would mean
+        // copying the largest files in the system twice).
+        const hotUsage = usageFor(tiers.HOT_DIR);
+        const choice = tiers.pickUploadRoot(
+          Number(req.headers["content-length"]) || 0,
+          hotUsage ? hotUsage.totalBytes : null
+        );
+        if (!choice.root) {
+          req.storageFull = choice.reason; // surfaced as a 507 by /upload
+          return cb(new Error(`Not enough storage: ${choice.reason}.`), "");
+        }
+        if (choice.tier === "cold") console.log(`[upload] routing to the external drive — ${choice.reason}`);
+        const dir = path.join(choice.root, uploadSubdir(req));
         fs.mkdirSync(dir, { recursive: true });
         cb(null, dir);
       } catch (e) {
@@ -684,17 +750,17 @@ function git(args) {
   return execFileSync("git", args, { cwd: REPO_DIR, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
-// Free/used space on the volume that actually holds MEDIA_DIR — so the owner can
-// see the drive filling up right from the app. Its own try/catch: a statfs hiccup
-// must not blank out the git status the page primarily relies on.
-function mediaDiskInfo() {
+// Free/used space on one volume. Its own try/catch: a statfs hiccup must not
+// blank out the git status the page primarily relies on.
+function diskInfoFor(dir) {
+  if (!dir) return null;
   try {
-    const s = fs.statfsSync(MEDIA_DIR);
+    const s = fs.statfsSync(dir);
     const total = s.blocks * s.bsize;
     const free = s.bavail * s.bsize; // bavail = blocks free to a non-root user
     return {
-      path: MEDIA_DIR,
-      external: MEDIA_DIR.startsWith("/Volumes/"),
+      path: dir,
+      external: dir.startsWith("/Volumes/"),
       totalBytes: total,
       freeBytes: free,
       usedBytes: total - free,
@@ -704,76 +770,34 @@ function mediaDiskInfo() {
   }
 }
 
-// What the APP itself is storing, broken down by media type — distinct from the
-// whole-drive `disk` numbers above (which include everything else on the volume).
-// One recursive walk of MEDIA_DIR, bucketed by extension. Each auto-generated
-// `<uuid>_thumb.jpg` preview is NOT its own item — its bytes are folded into the
-// object it previews (so a photo's size includes its thumbnail, and the photo
-// count stays the real number of photos). Own try/catch — a walk error can't
-// sink the status the page relies on.
-const PHOTO_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "tiff", "tif", "bmp"]);
-const VIDEO_EXT = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "hevc"]);
-function classifyMediaFile(name) {
-  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
-  if (PHOTO_EXT.has(ext)) return "photo";
-  if (VIDEO_EXT.has(ext)) return "video";
-  return "other";
-}
-function mediaUsageBreakdown() {
-  const buckets = {
-    photo: { bytes: 0, files: 0 },
-    video: { bytes: 0, files: 0 },
-    other: { bytes: 0, files: 0 },
-  };
-  let totalBytes = 0;
-  let totalFiles = 0;
-  try {
-    // Collect every file once, then two passes: real objects first (they set the
-    // per-uuid category + the counts), then thumbnails fold their bytes into the
-    // object they belong to.
-    const files = [];
-    for (const e of fs.readdirSync(MEDIA_DIR, { recursive: true, withFileTypes: true })) {
-      if (!e.isFile() || e.name.startsWith(".")) continue; // skip .DS_Store etc.
-      const dir = e.parentPath ?? e.path;
-      let size = 0;
-      try {
-        size = fs.statSync(path.join(dir, e.name)).size;
-      } catch {
-        continue; // vanished between readdir and stat
-      }
-      files.push({ dir, name: e.name, size, thumb: e.name.toLowerCase().endsWith("_thumb.jpg") });
-    }
-    const catByObject = new Map(); // `${dir}\0${uuid}` -> "photo" | "video" | "other"
-    for (const f of files) {
-      if (f.thumb) continue;
-      const cat = classifyMediaFile(f.name);
-      const uuid = f.name.includes(".") ? f.name.slice(0, f.name.lastIndexOf(".")) : f.name;
-      catByObject.set(`${f.dir}\0${uuid}`, cat);
-      buckets[cat].bytes += f.size;
-      buckets[cat].files += 1;
-      totalBytes += f.size;
-      totalFiles += 1;
-    }
-    for (const f of files) {
-      if (!f.thumb) continue;
-      const uuid = f.name.slice(0, f.name.length - "_thumb.jpg".length);
-      const cat = catByObject.get(`${f.dir}\0${uuid}`) ?? "photo"; // orphan thumb → count as a photo's
-      buckets[cat].bytes += f.size; // bytes only — a thumbnail isn't a separate item
-      totalBytes += f.size;
-    }
-  } catch {
-    return null;
-  }
-  const labels = { photo: "Photos", video: "Videos", other: "Other files" };
-  const order = ["photo", "video", "other"];
+// Both volumes, for the two storage meters on the admin card. `hot` is the SSD
+// that serves every read; `cold` is the external backup mirror and is null when
+// it isn't configured or isn't currently mounted (the card renders a warning
+// rather than a meter in that case). `usage` numbers come from the cached async
+// walk in media-usage.js — deliberately NOT computed on this request, see the
+// header comment there.
+function storageInfo() {
+  const coldUp = tiers.coldReady();
   return {
-    totalBytes,
-    totalFiles,
-    categories: order
-      .map((k) => ({ key: k, label: labels[k], bytes: buckets[k].bytes, files: buckets[k].files }))
-      .filter((c) => c.files > 0),
+    hot: {
+      role: "primary",
+      label: "Mac mini SSD",
+      disk: diskInfoFor(MEDIA_DIR),
+      usage: usageFor(MEDIA_DIR),
+    },
+    cold: !COLD_DIR
+      ? null
+      : {
+          role: "backup",
+          label: "External drive",
+          configured: true,
+          mounted: coldUp,
+          disk: coldUp ? diskInfoFor(COLD_DIR) : null,
+          usage: coldUp ? usageFor(COLD_DIR) : null,
+        },
   };
 }
+
 
 // Owner-only: dismiss a "needs review" item once it's been dealt with. The photo
 // itself is approved/removed through the normal album UI (it was never hidden);
@@ -834,15 +858,16 @@ app.post("/admin/moderation-delete", express.json(), requireOwner, async (req, r
   }
 
   if (relPath) {
+    // Delete from EVERY volume, not just the SSD. This is the one path where
+    // "remove this content" has to mean everywhere: the backup mirror is a real
+    // read root (see the /f chain), so unlinking only the hot copy would leave
+    // the file being served straight off the external drive. deleteFileEverywhere
+    // re-applies the traversal guard against each root before touching anything.
     const clean = path.normalize(relPath).replace(/^[/\\]+/, "");
-    const abs = path.join(MEDIA_DIR, clean);
-    const rel = path.relative(MEDIA_DIR, abs);
-    // Guard against a relPath that escapes MEDIA_DIR (e.g. "../../etc/passwd")
-    // before touching the filesystem — same check dropbox-zip uses below.
-    if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
-      try { fs.unlinkSync(abs); } catch {}
-      try { fs.unlinkSync(thumbPathFor(abs)); } catch {}
-    }
+    const removedCopies = deleteFileEverywhere(clean);
+    const thumbRel = tiers.relFromAbs(thumbPathFor(path.join(MEDIA_DIR, clean)));
+    if (thumbRel) deleteFileEverywhere(thumbRel);
+    console.log(`[moderation] deleted ${clean} from ${removedCopies} volume(s)`);
   }
 
   const cleared = clearGaveUp(url);
@@ -855,7 +880,21 @@ app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
     const local = git(["rev-parse", "HEAD"]);
     const remote = git(["rev-parse", "origin/main"]);
     const behind = Number(git(["rev-list", "--count", `${local}..${remote}`]));
-    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo(), usage: mediaUsageBreakdown(), moderation: { ...moderationStats(), models: moderationStatus() } });
+    // `disk`/`usage` stay at the top level for the HOT volume so an older app
+    // build (which knows nothing about tiers) keeps rendering its single meter;
+    // `storage` is the new two-volume shape the current card reads.
+    const storage = storageInfo();
+    res.json({
+      ok: true,
+      commit: local.slice(0, 7),
+      upToDate: local === remote,
+      behind,
+      startedAt: SERVER_STARTED_AT,
+      disk: storage.hot.disk,
+      usage: storage.hot.usage,
+      storage,
+      moderation: { ...moderationStats(), models: moderationStatus() },
+    });
   } catch (e) {
     res.status(500).json({ error: (e && e.message) || "Couldn't check git status." });
   }
@@ -1024,7 +1063,13 @@ function transcodeInBackground(originalPath, mimetype, originalUrl) {
         console.log(`[transcode] (async) ${path.basename(originalPath)} re-encoded in place`);
         return;
       }
-      const rel = path.relative(MEDIA_DIR, r.path).split(path.sep).join("/");
+      // relFromAbs, not path.relative(MEDIA_DIR, …): the transcode writes beside
+      // the original, which for an aged-off file can be on the external drive.
+      const rel = tiers.relFromAbs(r.path);
+      if (!rel) {
+        console.error(`[transcode] (async) transcoded file landed outside every media root: ${r.path}`);
+        return;
+      }
       const newUrl = `${PUBLIC_URL}/f/${rel}`;
       console.log(`[transcode] (async) ${path.basename(originalPath)} → ${path.basename(r.path)}, repointing references`);
       await swapMediaStoragePath(originalUrl, newUrl);
@@ -1040,9 +1085,32 @@ app.post("/upload", requireUser, (req, res) => {
   // The actual multipart transfer is the only thing this timeout needs to cover
   // now — transcode and moderation both moved to the background (below), so
   // this no longer has to wait out a multi-minute ffmpeg run.
-  req.setTimeout(10 * 60 * 1000);
+  //
+  // ⚠️ THIS, not MAX_MB, is the real ceiling on upload size. Raising the file cap
+  // without raising this just converts a clean 413 ("too big") into a timeout
+  // partway through a long upload — a much worse failure for whoever is sending
+  // the big fest video, since it wastes the whole transfer and reports nothing
+  // useful. Keep the two in step with MAX_MB: at 50 GB the honest limit is
+  // bandwidth, so this is hours, not minutes — a big video uploaded from the LAN
+  // needs the socket held open the whole time. A stalled connection is still
+  // eventually reaped rather than held forever.
+  req.setTimeout(Number(process.env.UPLOAD_TIMEOUT_MS || 4 * 60 * 60 * 1000));
   upload.single("file")(req, res, async (err) => {
-    if (err) { console.error(`[upload] error: ${err.message}`); return res.status(400).json({ error: err.message }); }
+    if (err) {
+      // Out of room on BOTH volumes is not the client's fault — 507 tells the
+      // app to say "the server is out of space" instead of blaming the file.
+      if (req.storageFull) {
+        console.error(`[upload] refused: ${req.storageFull}`);
+        return res.status(507).json({ error: "The media server is out of storage space. Ask an admin to free some up." });
+      }
+      // A file that blew the cap (or a yanked connection) leaves a partial file
+      // behind; at these sizes that can be many GB, so clean it up.
+      if (req.file && req.file.path) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+      }
+      console.error(`[upload] error: ${err.message}`);
+      return res.status(400).json({ error: err.message });
+    }
     if (!req.file) { console.error(`[upload] no file in request`); return res.status(400).json({ error: "No file received." }); }
 
     // Tier-0 guard: sniff the bytes. Posts/work uploads stay images/videos only.
@@ -1066,7 +1134,7 @@ app.post("/upload", requireUser, (req, res) => {
     // either the same url (same-path re-encode) or, for an extension change, a
     // repointed one — see transcodeInBackground's doc comment.
     const served = req.file.path;
-    const rel = path.relative(MEDIA_DIR, served).split(path.sep).join("/");
+    const rel = tiers.relFromAbs(served);
     const fileUrl = `${PUBLIC_URL}/f/${rel}`;
     let size = req.file.size;
     try { size = fs.statSync(served).size; } catch {}
@@ -1123,7 +1191,7 @@ app.post("/upload", requireUser, (req, res) => {
       try {
         const thumbPath = await makeThumbnail(served, kind);
         if (thumbPath) {
-          const thumbRel = path.relative(MEDIA_DIR, thumbPath).split(path.sep).join("/");
+          const thumbRel = tiers.relFromAbs(thumbPath);
           thumbnailUrl = `${PUBLIC_URL}/f/${thumbRel}`;
         }
       } catch (e) {
@@ -1254,7 +1322,10 @@ app.post("/search", searchLimiter, requireUser, express.json({ limit: "8kb" }), 
 app.listen(PORT, () => {
   console.log(`MLR media-server on :${PORT}`);
   console.log(`  public URL : ${PUBLIC_URL}`);
-  console.log(`  media dir  : ${MEDIA_DIR}`);
+  console.log(`  media dir  : ${MEDIA_DIR} (primary)`);
+  console.log(
+    `  backup dir : ${COLD_DIR ? `${COLD_DIR}${tiers.coldReady() ? "" : " ⚠ NOT MOUNTED"}` : "none — media has NO backup"}`
+  );
   console.log(`  max file   : ${MAX_MB} MB`);
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) console.warn("  ⚠ SUPABASE_URL / SUPABASE_ANON_KEY not set — uploads will be rejected.");
   if (!TRANSCODE_ENABLED) {
@@ -1264,6 +1335,19 @@ app.listen(PORT, () => {
       if (ok) console.log(`  video      : transcoding ON (H.264 MP4, ≤${MAX_LONG_EDGE}px, crf ${CRF})`);
       else console.warn("  ⚠ video    : ffmpeg/ffprobe not found — videos stored as-is. Install with: brew install ffmpeg");
     });
+  }
+
+  // Keep the storage meters warm off the request path (see media-usage.js for
+  // why this is not computed inside the status endpoint any more). The dirs are
+  // re-evaluated each tick so a drive plugged in later starts being measured.
+  startUsageRefresh(() => tiers.mediaRoots());
+
+  // Mirror the SSD to the external drive. Reconciling, so an unplugged drive
+  // just means the next pass has more to copy.
+  try {
+    startMirrorSweep();
+  } catch (e) {
+    console.error(`[mirror] could not start: ${e && e.message}`);
   }
 });
 

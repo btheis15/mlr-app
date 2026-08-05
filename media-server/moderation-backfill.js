@@ -18,6 +18,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const tiers = require("./media-tiers");
 
 const QUEUE_FILE = path.join(__dirname, ".mod-recheck.json");
 const SWEEP_MS = Number(process.env.MOD_RECHECK_MS || 15 * 60 * 1000); // 15 min
@@ -164,7 +165,10 @@ async function sweepOnce(deps) {
   let flagged = 0;
 
   for (const item of batch) {
-    const abs = path.join(mediaDir, item.relPath);
+    // Resolved across both volumes: a queued item can be mirrored to (or have
+    // aged onto) the external drive between being enqueued and re-checked, and
+    // dropping it as "gone" would silently skip its moderation re-check.
+    const abs = tiers.resolveRel(item.relPath) || path.join(mediaDir, item.relPath);
     // File gone (deleted/moved) → nothing to check, drop it.
     if (!fs.existsSync(abs)) { drop.add(item.url); continue; }
     // Aged out or too many tries → give up (member reports + admin queue remain
