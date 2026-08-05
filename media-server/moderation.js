@@ -310,13 +310,20 @@ async function moderateImageFile(filePath) {
         // describe it", which is exactly what we want held for a human. Failing
         // open here would let precisely the wrong images through unreviewed.
         if (r.refused) {
-          console.warn(`[moderate] ${model}@${dim}px refused to analyze — flagging for admin review: ${r.why}`);
+          console.warn(`[moderate] ${model}@${dim}px refused to analyze — queuing for review (left visible): ${r.why}`);
+          // A REVIEW request, not a detection. "The model wouldn't look at it"
+          // is much weaker evidence than "the model saw nudity", and it fires on
+          // ordinary photos too — so this is deliberately NOT `flagged: true`,
+          // which would hide the photo from the family until an admin got to it.
+          // It's surfaced in the owner's For-review list instead and stays
+          // visible. Real detections (nudity/violence/drugs) still hide on the
+          // spot; those are the ones you don't want sitting in a family album.
           return {
-            flagged: true,
-            category: "other",
+            flagged: false,
+            category: "unscannable",
             reason: "the safety model declined to analyze this image",
             model,
-            refused: true,
+            needsReview: true,
           };
         }
         if (r.tooLarge) { sawTooLarge = true; break; }

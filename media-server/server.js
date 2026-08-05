@@ -33,8 +33,8 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
-const { moderateMedia, moderateText } = require("./moderation");
-const { enqueueRecheck, startBackfill } = require("./moderation-backfill");
+const { moderateMedia, moderateText, moderationStatus } = require("./moderation");
+const { enqueueRecheck, startBackfill, moderationStats, clearGaveUp, noteScanned, noteNeedsReview } = require("./moderation-backfill");
 const { makeThumbnail } = require("./thumbnail");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
@@ -775,13 +775,23 @@ function mediaUsageBreakdown() {
   };
 }
 
+// Owner-only: dismiss a "needs review" item once it's been dealt with. The photo
+// itself is approved/removed through the normal album UI (it was never hidden);
+// this just clears it off the review list so the card stops showing it.
+app.post("/admin/moderation-reviewed", requireOwner, (req, res) => {
+  const url = String((req.body && req.body.url) || "").trim();
+  if (!url) return res.status(400).json({ error: "Missing url." });
+  const cleared = clearGaveUp(url);
+  res.json({ ok: true, cleared });
+});
+
 app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
   try {
     git(["fetch", "origin", "main"]);
     const local = git(["rev-parse", "HEAD"]);
     const remote = git(["rev-parse", "origin/main"]);
     const behind = Number(git(["rev-list", "--count", `${local}..${remote}`]));
-    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo(), usage: mediaUsageBreakdown() });
+    res.json({ ok: true, commit: local.slice(0, 7), upToDate: local === remote, behind, startedAt: SERVER_STARTED_AT, disk: mediaDiskInfo(), usage: mediaUsageBreakdown(), moderation: { ...moderationStats(), models: moderationStatus() } });
   } catch (e) {
     res.status(500).json({ error: (e && e.message) || "Couldn't check git status." });
   }
@@ -824,6 +834,44 @@ const MOD_ENABLED = process.env.MOD_ENABLED !== "0" && process.env.MOD_ENABLED !
 // hold triggers (0043 posts, 0128 chat/comments/work, 0171 drop boxes) read it
 // on the media row's insert (or retroactively, on UPDATE) to hold the parent
 // for admin review.
+// Tell the OWNER (and only the owner) that a photo needs a human look. Uses the
+// existing `admin_test` notification kind, which both mini senders treat as an
+// override push (it reaches anyone whose phone push is on at all, regardless of
+// their per-category picks) — so no new PushType, no migration, and the alert
+// actually lands. The photo stays VISIBLE in the album; this is what makes that
+// acceptable, since the exposure window is "until Brian taps the push", not
+// "until someone happens to notice".
+async function notifyOwnerNeedsReview(count) {
+  if (!SUPABASE_URL || !SERVICE_KEY) return;
+  try {
+    const pr = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?select=id&contact_email=eq.${encodeURIComponent(OWNER_EMAIL)}&limit=1`,
+      { headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}` } },
+    );
+    const rows = pr.ok ? await pr.json() : [];
+    const ownerId = rows && rows[0] && rows[0].id;
+    if (!ownerId) return; // owner has no account row yet — nothing to notify
+    const n = Number(count) || 1;
+    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        apikey: SERVICE_KEY,
+        authorization: `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        user_id: ownerId,
+        type: "admin_test",
+        title: n === 1 ? "1 photo needs your review" : `${n} photos need your review`,
+        body: "The safety check couldn't read them, so they're still visible. Tap to approve or remove.",
+        url: "/admin/system",
+      }),
+    });
+  } catch (e) {
+    console.warn(`[moderate] owner review notify failed: ${e.message}`);
+  }
+}
+
 async function recordMediaModeration(fileUrl, v) {
   if (!SUPABASE_URL || !SERVICE_KEY) return;
   try {
@@ -1034,6 +1082,13 @@ app.post("/upload", requireUser, (req, res) => {
       // Fire-and-forget — never blocks the upload response, for any category.
       moderateMedia(served, kind)
         .then((v) => {
+          if (v) noteScanned(Boolean(v.flagged)); // owner-visible running total
+          // Model refused to analyze it: left VISIBLE (weak signal, see
+          // moderation.js) but recorded so it shows up in the owner's
+          // For-review list with approve/delete.
+          if (v && v.needsReview && noteNeedsReview({ url: fileUrl, relPath: rel, kind, reason: v.reason })) {
+            void notifyOwnerNeedsReview(moderationStats().gaveUp.length);
+          }
           if (v && v.flagged) {
             console.log(`[moderate] (async) ${rel} → FLAGGED ${v.category} (${v.reason}) via ${v.model}`);
             return recordMediaModeration(fileUrl, v);
