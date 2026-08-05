@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, markModerationReviewed, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, markModerationReviewed, deleteModerationItem, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration } from "@/lib/admin";
 import { useIdentity } from "@/components/IdentityProvider";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
@@ -41,6 +41,11 @@ function SafetyScans({
 }) {
   const { user } = useIdentity();
   const [busy, setBusy] = useState<string | null>(null);
+  // Which row's Delete is armed for a second confirming tap — deleting is
+  // destructive (the file + its *_media row are gone for good), so it isn't
+  // one tap away like "Done" (which only clears the review list, nothing else).
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [error, setError] = useState<{ url: string; message: string } | null>(null);
   const review = moderation.gaveUp ?? [];
   // "52 of 156" — everything the model has resolved, out of that plus whatever
   // is still queued, so the denominator is the real total it has to get through.
@@ -49,13 +54,43 @@ function SafetyScans({
 
   const dismiss = async (url: string) => {
     const token = (await supabase?.auth.getSession())?.data.session?.access_token;
-    if (!token) return;
+    if (!token) {
+      setError({ url, message: "Sign in again to review this." });
+      return;
+    }
+    setError(null);
     setBusy(url);
     try {
       await markModerationReviewed(token, url);
       onReviewed();
-    } catch {
-      /* leave it listed — the owner can retry */
+    } catch (err) {
+      // Surface it — silently doing nothing is exactly what reads as "the
+      // button is broken" when the request actually just failed.
+      setError({ url, message: err instanceof Error ? err.message : "Couldn't clear this — try again." });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const remove = async (url: string, relPath: string) => {
+    if (confirmDelete !== url) {
+      setConfirmDelete(url);
+      setError(null);
+      return;
+    }
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+    if (!token) {
+      setError({ url, message: "Sign in again to delete this." });
+      return;
+    }
+    setError(null);
+    setBusy(url);
+    try {
+      await deleteModerationItem(token, url, relPath);
+      setConfirmDelete(null);
+      onReviewed();
+    } catch (err) {
+      setError({ url, message: err instanceof Error ? err.message : "Couldn't delete this — try again." });
     } finally {
       setBusy(null);
     }
@@ -86,39 +121,52 @@ function SafetyScans({
         <div className="space-y-1.5 pt-1">
           <p className="text-xs font-semibold text-accent">For review</p>
           <p className="text-[11px] text-muted">
-            The safety check couldn&rsquo;t read these, so they&rsquo;re still visible in their album. Open one to keep or
-            delete it, then mark it done here.
+            The safety check couldn&rsquo;t read these, so they&rsquo;re still visible in their album. View it, then either
+            Delete it (removes the file for good) or tap Done to keep it and clear this list.
           </p>
           {review.map((r) => (
-            <div key={r.url} className="flex items-center gap-2 rounded-xl bg-background px-2.5 py-2 ring-1 ring-border">
-              {r.kind === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element -- mini-hosted, no loader
-                <img src={r.url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
-              ) : (
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
-                  🎬
-                </span>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{r.reason || "couldn't be scanned"}</p>
-                <p className="truncate text-[11px] text-faint">{r.relPath}</p>
+            <div key={r.url} className="space-y-1.5">
+              <div className="flex items-center gap-2 rounded-xl bg-background px-2.5 py-2 ring-1 ring-border">
+                {r.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- mini-hosted, no loader
+                  <img src={r.url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
+                    🎬
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{r.reason || "couldn't be scanned"}</p>
+                  <p className="truncate text-[11px] text-faint">{r.relPath}</p>
+                </div>
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="press shrink-0 rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-border"
+                >
+                  View
+                </a>
+                <button
+                  type="button"
+                  onClick={() => remove(r.url, r.relPath)}
+                  disabled={busy === r.url || !user}
+                  className={`press shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
+                    confirmDelete === r.url ? "bg-accent text-white" : "bg-accent/10 text-accent"
+                  }`}
+                >
+                  {busy === r.url ? "…" : confirmDelete === r.url ? "Confirm delete" : "Delete"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dismiss(r.url)}
+                  disabled={busy === r.url || !user}
+                  className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary disabled:opacity-50"
+                >
+                  {busy === r.url ? "…" : "Done"}
+                </button>
               </div>
-              <a
-                href={r.url}
-                target="_blank"
-                rel="noreferrer"
-                className="press shrink-0 rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-border"
-              >
-                View
-              </a>
-              <button
-                type="button"
-                onClick={() => dismiss(r.url)}
-                disabled={busy === r.url || !user}
-                className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary disabled:opacity-50"
-              >
-                {busy === r.url ? "…" : "Done"}
-              </button>
+              {error?.url === r.url && <p className="px-1 text-[11px] font-medium text-accent">{error.message}</p>}
             </div>
           ))}
         </div>
