@@ -778,7 +778,7 @@ function mediaUsageBreakdown() {
 // Owner-only: dismiss a "needs review" item once it's been dealt with. The photo
 // itself is approved/removed through the normal album UI (it was never hidden);
 // this just clears it off the review list so the card stops showing it.
-app.post("/admin/moderation-reviewed", requireOwner, (req, res) => {
+app.post("/admin/moderation-reviewed", express.json(), requireOwner, (req, res) => {
   const url = String((req.body && req.body.url) || "").trim();
   if (!url) return res.status(400).json({ error: "Missing url." });
   const cleared = clearGaveUp(url);
@@ -821,7 +821,7 @@ async function deleteMediaRowByUrl(url) {
   return null; // no *_media row referenced this url (already removed, or never had one)
 }
 
-app.post("/admin/moderation-delete", requireOwner, async (req, res) => {
+app.post("/admin/moderation-delete", express.json(), requireOwner, async (req, res) => {
   const url = String((req.body && req.body.url) || "").trim();
   const relPath = String((req.body && req.body.relPath) || "").trim();
   if (!url) return res.status(400).json({ error: "Missing url." });
