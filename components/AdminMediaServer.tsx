@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, markModerationReviewed, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration } from "@/lib/admin";
+import { useIdentity } from "@/components/IdentityProvider";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
 
@@ -17,6 +18,113 @@ const CAT_COLOR: Record<string, string> = {
 
 function Swatch({ className }: { className: string }) {
   return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-sm ${className}`} />;
+}
+
+/**
+ * AI safety-scan progress, owner-only. Answers "how much has actually been
+ * checked, and is anything waiting on me?" — the queue alone couldn't, because a
+ * resolved item is dropped from it, so nothing tracked the running total.
+ *
+ * Two very different states are deliberately worded differently:
+ *  - `flagged` — the model SAW something (nudity/violence/drugs). Already hidden
+ *    from the family, approved in the album itself.
+ *  - `gaveUp`  — the model REFUSED to read the photo, or re-checks ran out. Left
+ *    VISIBLE on purpose (a refusal is weak evidence and fires on ordinary
+ *    photos), with a push sent so it gets looked at promptly rather than sitting.
+ */
+function SafetyScans({
+  moderation,
+  onReviewed,
+}: {
+  moderation: MediaServerModeration;
+  onReviewed: () => void;
+}) {
+  const { user } = useIdentity();
+  const [busy, setBusy] = useState<string | null>(null);
+  const review = moderation.gaveUp ?? [];
+  // "52 of 156" — everything the model has resolved, out of that plus whatever
+  // is still queued, so the denominator is the real total it has to get through.
+  const total = moderation.scanned + moderation.pending;
+  const approved = Math.max(0, moderation.scanned - moderation.flagged);
+
+  const dismiss = async (url: string) => {
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+    if (!token) return;
+    setBusy(url);
+    try {
+      await markModerationReviewed(token, url);
+      onReviewed();
+    } catch {
+      /* leave it listed — the owner can retry */
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold">Safety scans</p>
+        {moderation.models && <p className="text-[11px] text-faint">{moderation.models}</p>}
+      </div>
+      <p className="text-sm">
+        <span className="font-semibold">{moderation.scanned.toLocaleString()}</span> of{" "}
+        <span className="font-semibold">{total.toLocaleString()}</span> scanned
+        {" — "}
+        {approved.toLocaleString()} cleared
+        {moderation.flagged > 0 && <>, {moderation.flagged.toLocaleString()} flagged</>}
+        {review.length > 0 && <>, {review.length.toLocaleString()} to review</>}
+      </p>
+      {moderation.pending > 0 && (
+        <p className="text-xs text-muted">
+          {moderation.pending.toLocaleString()} waiting on the model — re-checked every 15 minutes, so this catches up on
+          its own.
+        </p>
+      )}
+
+      {review.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-xs font-semibold text-accent">For review</p>
+          <p className="text-[11px] text-muted">
+            The safety check couldn&rsquo;t read these, so they&rsquo;re still visible in their album. Open one to keep or
+            delete it, then mark it done here.
+          </p>
+          {review.map((r) => (
+            <div key={r.url} className="flex items-center gap-2 rounded-xl bg-background px-2.5 py-2 ring-1 ring-border">
+              {r.kind === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element -- mini-hosted, no loader
+                <img src={r.url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+              ) : (
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
+                  🎬
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">{r.reason || "couldn't be scanned"}</p>
+                <p className="truncate text-[11px] text-faint">{r.relPath}</p>
+              </div>
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="press shrink-0 rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-border"
+              >
+                View
+              </a>
+              <button
+                type="button"
+                onClick={() => dismiss(r.url)}
+                disabled={busy === r.url || !user}
+                className="press shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary disabled:opacity-50"
+              >
+                {busy === r.url ? "…" : "Done"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -180,6 +288,9 @@ export function AdminMediaServer() {
           </p>
           {status.disk ? <DriveStorage disk={status.disk} appBytes={status.usage?.totalBytes ?? 0} /> : null}
           {status.usage ? <AppUsage usage={status.usage} /> : null}
+          {status.moderation ? (
+            <SafetyScans moderation={status.moderation} onReviewed={load} />
+          ) : null}
         </div>
       ) : null}
 

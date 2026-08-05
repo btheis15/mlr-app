@@ -112,6 +112,35 @@ export interface MediaServerStatus {
   /** Per-media-type breakdown of the app's own footprint. Optional — same
    *  graceful-degrade reason as `disk`. */
   usage?: MediaServerUsage | null;
+  /** AI safety-scan progress + anything awaiting a human look. Optional — same
+   *  graceful-degrade reason as `disk`. */
+  moderation?: MediaServerModeration | null;
+}
+
+/** One item the safety model couldn't read, awaiting the owner's call. */
+export interface MediaServerReviewItem {
+  url: string;
+  relPath: string;
+  kind: string;
+  reason?: string;
+  /** True when the model REFUSED to analyze it (so it was left visible);
+   *  absent/false for an item that simply ran out of re-check attempts. */
+  unscannable?: boolean;
+  attempts?: number;
+  at?: string;
+}
+
+export interface MediaServerModeration {
+  /** Photos/videos the model has actually returned a verdict for, ever. */
+  scanned: number;
+  /** How many of those were flagged (hidden pending admin approval). */
+  flagged: number;
+  /** Still queued for a re-check (the model couldn't be reached yet). */
+  pending: number;
+  /** Items needing a human decision — newest first. */
+  gaveUp: MediaServerReviewItem[];
+  /** Per-model availability, e.g. "pcc: quota cooldown 43m, system: ok". */
+  models?: string;
 }
 
 /** Current git commit on the mini + how many commits behind origin/main it is. */
@@ -130,3 +159,8 @@ export interface RestartMediaServerResult {
  *  the process — launchd relaunches it within ~10s on the new code. */
 export const restartMediaServer = (token: string) =>
   postAdminJson<RestartMediaServerResult>("/admin/restart-media-server", token, {});
+
+/** Clear one item off the mini's "needs a human look" list, once the owner has
+ *  approved or removed the photo itself in the album. */
+export const markModerationReviewed = (token: string, url: string) =>
+  postAdminJson<{ ok: boolean; cleared: number }>("/admin/moderation-reviewed", token, { url });

@@ -56,6 +56,90 @@ function persist() {
   }
 }
 
+// ── Running totals, for the owner-only Media server card ─────────────────────
+// The queue only knows what's still PENDING — once an item resolves it's dropped,
+// so nothing recorded how many had ever been scanned. These counters are the
+// durable tally (own file, so a queue rewrite can't clobber them), plus the list
+// of items that gave up so the owner can approve/remove them by hand instead of
+// the sweep retrying forever.
+const STATS_FILE = path.join(__dirname, ".mod-stats.json");
+const MAX_GAVE_UP = 200; // keep the most recent N; this is a review list, not an audit log
+let stats = { scanned: 0, flagged: 0, gaveUp: [] };
+let statsLoaded = false;
+
+function loadStats() {
+  if (statsLoaded) return;
+  statsLoaded = true;
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
+      stats = {
+        scanned: Number(raw.scanned) || 0,
+        flagged: Number(raw.flagged) || 0,
+        gaveUp: Array.isArray(raw.gaveUp) ? raw.gaveUp : [],
+      };
+    }
+  } catch {
+    /* corrupt file → start fresh rather than crash the sweep */
+  }
+}
+
+function persistStats() {
+  try {
+    fs.writeFileSync(STATS_FILE, JSON.stringify(stats));
+  } catch (e) {
+    console.warn(`[recheck] couldn't persist stats: ${e.message}`);
+  }
+}
+
+/** What the owner-only Media server card shows. */
+function moderationStats() {
+  load();
+  loadStats();
+  return {
+    scanned: stats.scanned,
+    flagged: stats.flagged,
+    pending: queue.length,
+    gaveUp: stats.gaveUp.slice(-MAX_GAVE_UP).reverse(), // newest first
+  };
+}
+
+/** Drop an item from the give-up list once the owner has dealt with it. */
+function clearGaveUp(url) {
+  loadStats();
+  const before = stats.gaveUp.length;
+  stats.gaveUp = stats.gaveUp.filter((g) => g.url !== url);
+  if (stats.gaveUp.length !== before) persistStats();
+  return before - stats.gaveUp.length;
+}
+
+/**
+ * A photo the model DECLINED to analyze. Left visible (see moderation.js — a
+ * refusal is weak evidence and fires on ordinary photos), but recorded here so
+ * it lands in the owner's For-review list, and reported back so the caller can
+ * fire the owner a push. Deduped by url.
+ *
+ * Returns true the first time a given url is added, so the caller only notifies
+ * once per photo.
+ */
+function noteNeedsReview({ url, relPath, kind, reason }) {
+  if (!url) return false;
+  loadStats();
+  if (stats.gaveUp.some((g) => g.url === url)) return false;
+  stats.gaveUp.push({
+    url,
+    relPath: relPath || "",
+    kind: kind || "image",
+    reason: reason || "couldn't be scanned",
+    unscannable: true,
+    at: new Date().toISOString(),
+  });
+  if (stats.gaveUp.length > MAX_GAVE_UP) stats.gaveUp = stats.gaveUp.slice(-MAX_GAVE_UP);
+  persistStats();
+  console.log(`[moderate] ${relPath || url} → needs a human look (left visible, ${stats.gaveUp.length} in the review list)`);
+  return true;
+}
+
 // Enqueue a fail-open upload for later re-checking. Deduped by URL. `relPath` is
 // the path relative to MEDIA_DIR (so it survives an absolute-path/dir change).
 function enqueueRecheck({ url, relPath, kind, category }) {
@@ -87,6 +171,20 @@ async function sweepOnce(deps) {
     // the backstop). Logged so a persistent outage is visible.
     if (item.attempts >= MAX_ATTEMPTS || (item.firstAt && now - Date.parse(item.firstAt) > MAX_AGE_MS)) {
       console.warn(`[recheck] giving up on ${item.relPath} after ${item.attempts} tries`);
+      // Remember it so the owner can approve/remove it by hand — otherwise a
+      // file that could never be scanned just vanished silently, unreviewed.
+      loadStats();
+      stats.gaveUp.push({
+        url: item.url,
+        relPath: item.relPath,
+        kind: item.kind,
+        attempts: item.attempts,
+        firstAt: item.firstAt,
+        lastAt: item.lastAt,
+        at: new Date().toISOString(),
+      });
+      if (stats.gaveUp.length > MAX_GAVE_UP) stats.gaveUp = stats.gaveUp.slice(-MAX_GAVE_UP);
+      persistStats();
       drop.add(item.url);
       continue;
     }
@@ -98,6 +196,10 @@ async function sweepOnce(deps) {
     }
     if (v) {
       checked++;
+      loadStats();
+      stats.scanned++;
+      if (v.flagged) stats.flagged++;
+      persistStats();
       if (v.flagged) {
         flagged++;
         console.log(`[recheck] ${item.relPath} → FLAGGED ${v.category} — recording (retroactive hold)`);
@@ -131,4 +233,13 @@ function startBackfill(deps) {
   setInterval(run, SWEEP_MS);
 }
 
-module.exports = { enqueueRecheck, startBackfill, sweepOnce };
+module.exports = { enqueueRecheck, startBackfill, sweepOnce, moderationStats, clearGaveUp, noteScanned, noteNeedsReview };
+
+/** Count a scan that happened OUTSIDE the sweep (the inline/async upload path),
+ *  so the owner's totals cover all scanning, not just re-checks. */
+function noteScanned(flagged) {
+  loadStats();
+  stats.scanned++;
+  if (flagged) stats.flagged++;
+  persistStats();
+}
