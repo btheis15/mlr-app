@@ -121,6 +121,20 @@ export interface MediaServerStorage {
   cold: MediaServerVolume | null;
 }
 
+/** Media that no longer has a database row, held before permanent deletion.
+ *  Deleting a photo in the app moves its file here rather than unlinking it, so
+ *  an accidental deletion is recoverable for `retentionDays`. */
+export interface MediaServerQuarantine {
+  path: string;
+  /** Number of held batches (one per sweep that found something). */
+  batches: number;
+  files: number;
+  bytes: number;
+  retentionDays?: number;
+  /** Days until the oldest batch is purged; null when nothing is held. */
+  nextPurgeInDays: number | null;
+}
+
 export interface MediaServerStatus {
   ok: boolean;
   commit: string;
@@ -136,6 +150,8 @@ export interface MediaServerStatus {
   /** Both volumes. Optional — a mini running code from before tiered storage
    *  only sends the single-volume `disk`/`usage` fields above. */
   storage?: MediaServerStorage | null;
+  /** Deleted media awaiting permanent removal. Optional, same degrade reason. */
+  quarantine?: MediaServerQuarantine | null;
   /** AI safety-scan progress + anything awaiting a human look. Optional — same
    *  graceful-degrade reason as `disk`. */
   moderation?: MediaServerModeration | null;

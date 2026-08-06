@@ -45,6 +45,8 @@ const { start: startSearchIndexer } = require("./search-indexer");
 const tiers = require("./media-tiers");
 const { usageFor, startUsageRefresh } = require("./media-usage");
 const { startMirrorSweep, deleteFileEverywhere, listRelFiles } = require("./mirror-sweep");
+const { isTrashPath, trashSummary } = require("./media-trash");
+const { startOrphanSweep } = require("./orphan-sweep");
 
 const SERVER_STARTED_AT = new Date().toISOString();
 const PORT = Number(process.env.PORT || 8787);
@@ -246,6 +248,14 @@ const staticOpts = { maxAge: "365d", immutable: true };
 // which browsers ignore for a cross-origin href (the app and the mini are
 // different origins). Drop boxes (0171) use this so members can pull originals
 // for photo books etc.; nothing else links with `?dl`, so inline stays default.
+// Quarantine (_trash/) lives INSIDE the media folder, which is also a static
+// root — so it has to be blocked explicitly or deleted media would stay
+// downloadable for its whole 7-day hold. Must come BEFORE the static mounts.
+app.use("/f", (req, res, next) => {
+  const rel = decodeURIComponent(req.path.replace(/^\/+/, ""));
+  if (isTrashPath(rel)) return res.status(404).json({ error: "Not found." });
+  next();
+});
 app.use("/f", (req, res, next) => {
   if (req.query.dl != null) {
     const base = path.basename(req.path) || "download";
@@ -884,6 +894,12 @@ app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
     // build (which knows nothing about tiers) keeps rendering its single meter;
     // `storage` is the new two-volume shape the current card reads.
     const storage = storageInfo();
+    let quarantine = null;
+    try {
+      quarantine = await trashSummary();
+    } catch {
+      /* informational only — never sink the status the page relies on */
+    }
     res.json({
       ok: true,
       commit: local.slice(0, 7),
@@ -893,6 +909,7 @@ app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
       disk: storage.hot.disk,
       usage: storage.hot.usage,
       storage,
+      quarantine,
       moderation: { ...moderationStats(), models: moderationStatus() },
     });
   } catch (e) {
@@ -1348,6 +1365,15 @@ app.listen(PORT, () => {
     startMirrorSweep();
   } catch (e) {
     console.error(`[mirror] could not start: ${e && e.message}`);
+  }
+
+  // Reconcile disk against the database and quarantine media nothing references
+  // any more (deleting a photo in the app only ever removed its row). Holds for
+  // 7 days before purging, and aborts rather than guess if anything looks off.
+  try {
+    startOrphanSweep({ admin: adminClient() });
+  } catch (e) {
+    console.error(`[orphan] could not start: ${e && e.message}`);
   }
 });
 
