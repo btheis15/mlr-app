@@ -18,6 +18,7 @@
 
 const fsp = require("fs/promises");
 const path = require("path");
+const { TRASH_SUBDIR } = require("./media-trash");
 
 const PHOTO_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "tiff", "tif", "bmp"]);
 const VIDEO_EXT = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "hevc"]);
@@ -68,6 +69,9 @@ async function walkVolume(dir) {
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue; // .DS_Store, .Spotlight-V100, …
+      // Quarantined media (_trash/) is not app content — counting it would make
+      // the storage meter grow every time someone deletes a photo.
+      if (e.name === TRASH_SUBDIR) continue;
       const full = path.join(current, e.name);
       if (e.isDirectory()) {
         stack.push(full);

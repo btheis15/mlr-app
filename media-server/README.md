@@ -103,14 +103,74 @@ mid-copy leaves a discarded `.part` file rather than a truncated "backup".
 
 Two things it deliberately does **not** do:
 
-- **It never deletes from cold.** A backup that prunes itself isn't a backup.
-  Consequence, accepted: media deleted in the app lingers on the backup drive.
-  The one exception is the moderation "delete" action, which unlinks from **both**
-  volumes (`deleteFileEverywhere`) — "remove this content" has to mean
-  everywhere, and cold is a live read root.
+- **It never prunes cold on its own.** A backup that decides for itself what to
+  drop isn't a backup. Removing deleted media is a *separate* job with its own
+  safeguards — see **Deleted media** below — not something the mirror infers from
+  a file's absence.
 - **It never evicts from hot.** Nothing leaves the SSD until the library actually
   approaches its allowance, and that policy is a separate change. There is
   intentionally no unlink-from-hot code in the tree yet.
+
+## Deleted media: quarantine, then purge after 7 days
+
+Deleting a photo in the app removes its `*_media` **row**; it never touched the
+**file**. So every photo ever deleted was still on disk — a hard-deleted drop box
+left **438 photos** behind, ~558 MB.
+
+[`orphan-sweep.js`](orphan-sweep.js) reconciles the two sides every 6h: any file
+no database row references is moved to quarantine, and
+[`media-trash.js`](media-trash.js) purges it permanently after
+`MEDIA_TRASH_RETENTION_DAYS` (**7**). Reconciling rather than hooking each delete
+path means a deletion from **any** surface — member remove, admin remove, an RPC,
+a cascade from deleting a whole box, iOS — is picked up, and a missed event just
+means the next pass catches it.
+
+```
+<COLD_DIR>/_trash/<batch-timestamp>/<original media-relative path>
+```
+
+Quarantine sits **inside** the media folder (not at the drive root) so everything
+this app touches lives under one directory. `_trash` is therefore excluded from
+four things, and every one matters: **`/f` serving** (else deleted media stays
+downloadable for a week), the **usage walk** (else the storage meter grows on
+every delete), the **mirror sweep** (else trash gets mirrored as live media), and
+the **orphan sweep** (else it quarantines the quarantine, forever).
+
+### ⚠️ This is the most dangerous job in the server
+
+It decides that irreplaceable family photos are unreferenced and removes them. A
+bug, a half-finished query, or one forgotten table means real photos disappear.
+Every safeguard below is load-bearing:
+
+| safeguard | what it prevents |
+|---|---|
+| **Quarantine, not delete** (7-day hold) | an accidental album deletion being instantly unrecoverable |
+| **Fail closed** — any table read error aborts the whole sweep | a partial reference set looking identical to "these are orphans" |
+| **Sanity floor** — abort if <25% of files look referenced | a silently-empty query condemning the whole library |
+| **Basename matching** as well as path | the flat legacy `/f/<uuid>.<ext>` URLs (files live at `posts/legacy/…`) being quarantined — this would hit the app's *oldest* photos |
+| **Thumbnail parent check** | a `_thumb.jpg` being dropped when its object is still referenced |
+| **48h grace period** | an in-flight upload being deleted (the client inserts its row *after* `/upload` returns) |
+| **`assertInsideMediaRoot()` on every mutation** | ever touching anything outside the app's own media folders — the external drive holds ~180 GB of unrelated personal files |
+| **Bytes reach trash before any unlink** | a crash mid-move destroying the only copy |
+
+**If you add a table that stores a `/f/` URL, add it to `REF_TABLES`.** A missing
+table orphans that entire feature's media. The list is verified against every
+`uploadToMini()` caller in the app and mirrors `MEDIA_URL_TABLES` in `server.js`.
+
+### Restoring something
+
+```bash
+node -e 'require("./media-trash").restore("<batch>", "<rel/path.jpg>").then(console.log)'
+```
+
+It goes back to whichever volume the routing rules pick, and the mirror re-creates
+the backup copy on its next pass. A hand-named folder inside `_trash` is **never**
+auto-purged, so renaming a batch pins it indefinitely.
+
+### Dry run first
+
+`sweepOnce({ admin, dryRun: true })` reports exactly what it would quarantine and
+touches nothing. Worth running after any change to the reference logic.
 
 When eviction does ship it's a plain `unlink`, not a cross-volume move, because
 the mirror already put a copy on cold — dropping the SSD copy just makes the next

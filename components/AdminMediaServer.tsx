@@ -394,6 +394,20 @@ export function AdminMediaServer() {
               {status.usage ? <AppUsage usage={status.usage} /> : null}
             </>
           )}
+          {status.quarantine && status.quarantine.files > 0 ? (
+            <div className="space-y-1 border-t border-border pt-3">
+              <p className="text-sm font-semibold">Deleted media</p>
+              <p className="text-sm text-muted">
+                {status.quarantine.files.toLocaleString()} file
+                {status.quarantine.files === 1 ? "" : "s"} ({formatBytes(status.quarantine.bytes)}) removed from the
+                app and held on the external drive
+                {status.quarantine.nextPurgeInDays != null
+                  ? `, deleted for good in ${status.quarantine.nextPurgeInDays} day${status.quarantine.nextPurgeInDays === 1 ? "" : "s"}`
+                  : ""}
+                .
+              </p>
+            </div>
+          ) : null}
           {status.moderation ? (
             <SafetyScans moderation={status.moderation} onReviewed={load} />
           ) : null}

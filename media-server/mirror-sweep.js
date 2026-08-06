@@ -28,6 +28,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const tiers = require("./media-tiers");
+const { TRASH_SUBDIR } = require("./media-trash");
 
 const SWEEP_MS = 10 * 60_000;
 const MAX_FILES_PER_SWEEP = 500;
@@ -48,6 +49,8 @@ async function listRelFiles(dir) {
     }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
+      // Never mirror the quarantine area — it holds media on its way OUT.
+      if (e.name === TRASH_SUBDIR) continue;
       const rel = relDir ? `${relDir}/${e.name}` : e.name;
       if (e.isDirectory()) stack.push(rel);
       else if (e.isFile()) out.push(rel);

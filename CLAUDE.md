@@ -3143,14 +3143,55 @@ moves between volumes** — that property is the whole design.
   first. Raising the cap without the timeout just converts a clean 413 into a
   mid-transfer timeout.
 - **[`mirror-sweep.js`](media-server/mirror-sweep.js)** reconciles hot→cold every
-  10 min (atomic temp-then-rename, size-verified). It **never deletes from cold**
-  (a backup that prunes itself isn't a backup — and once eviction ships, the cold
-  copy is exactly what a request falls through to) and **never evicts from hot**
-  (no unlink-from-hot code exists yet, on purpose). Consequence, accepted: media
-  deleted in the app lingers on the backup drive. The one exception is the
-  moderation delete, which uses `deleteFileEverywhere` to unlink from **both**
-  volumes — cold is a live read root, so removing only the hot copy would leave
-  the file being served off the external drive.
+  10 min (atomic temp-then-rename, size-verified). It **never prunes cold on its
+  own** (a backup that decides what to drop isn't a backup — and once eviction
+  ships, the cold copy is exactly what a request falls through to) and **never
+  evicts from hot** (no unlink-from-hot code exists yet, on purpose). Removing
+  *deleted* media is a separate job with its own safeguards — see **Deleted
+  media** below. The moderation delete additionally uses `deleteFileEverywhere`
+  to unlink from **both** volumes immediately — cold is a live read root, so
+  removing only the hot copy would leave the file served off the external drive.
+
+### Deleted media: quarantine, then purge after 7 days
+
+⚠️ **Deleting a photo in the app removed its `*_media` ROW but never the FILE**, so
+every photo ever deleted was still on disk. A hard-deleted drop box had left **438
+photos (~558 MB)** behind; the first cleanup quarantined **899 paths / 919 MB**
+(1,798 files across both volumes).
+
+[`orphan-sweep.js`](media-server/orphan-sweep.js) reconciles disk against the DB
+every 6h and moves anything unreferenced into
+[`media-trash.js`](media-server/media-trash.js)'s quarantine
+(`<COLD_DIR>/_trash/<batch>/<rel>`), purged permanently after 7 days.
+**Reconciling rather than hooking each delete path** is deliberate: a deletion
+from any surface (member remove, admin remove, RPC, a cascade from deleting a
+whole box, iOS) is picked up, and a missed event just means the next pass gets it
+— the same idiom as `search-indexer.js` and the backfills.
+
+Quarantine sits **inside** the media folder, so `_trash` must be excluded from
+**four** things and each one matters: `/f` serving (else deleted media stays
+downloadable for its whole hold), the usage walk (else the meter grows on every
+delete), the mirror sweep (else trash is mirrored as live media), and the orphan
+sweep itself (else it quarantines the quarantine, forever).
+
+⚠️⚠️ **This is the most dangerous job in the server** — it decides irreplaceable
+family photos are unreferenced and removes them. Every safeguard is load-bearing:
+quarantine-not-delete; **fail closed** (any table read error aborts the entire
+sweep, since a partial reference set is indistinguishable from "these are
+orphans"); a **25% sanity floor** on how many files matched a row; **basename
+matching** as well as path, because the flat legacy `/f/<uuid>.<ext>` URLs resolve
+to `posts/legacy/…` and a path-only match would quarantine the app's *oldest*
+photos; a **thumbnail parent check**; a **48h grace period** (the client inserts
+its `*_media` row *after* `/upload` returns, so a fresh file legitimately has no
+row); `assertInsideMediaRoot()` on **every** mutation, because the external drive
+holds ~180 GB of the owner's unrelated personal files; and **bytes reach trash
+before any unlink**, so a crash mid-move can't destroy the only copy.
+
+**If you add a table that stores a `/f/` URL, add it to `REF_TABLES`** — a missing
+table orphans that whole feature's media. It mirrors `MEDIA_URL_TABLES` in
+`server.js` and was verified against every `uploadToMini()` caller.
+`sweepOnce({ admin, dryRun: true })` reports without touching anything; a
+hand-renamed batch folder inside `_trash` is never auto-purged.
 - ⚠️ **A missing external drive is no longer fatal.** It used to `process.exit(1)`,
   which took photos, chat, push and email down over a missing *video* drive. Now
   the server serves what the SSD has, writes no backups, and 404s cold-only
