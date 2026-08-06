@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, capturedAtForFile, moderatePostText, photoUrls, type CapturedAtSource } from "@/lib/media";
+import { uploadToMini, compressImage, capturedAtForFile, moderatePostText, photoUrls, uploadErrorMessage, describeFailedUploads, type CapturedAtSource } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -232,6 +232,24 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   const [status, setStatus] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  // Which picked files failed to upload, so the composer can name them and offer
+  // a retry of just those instead of making the author re-pick everything.
+  const [failedUploads, setFailedUploads] = useState<{ name: string; reason: string }[]>([]);
+  // Files that DID reach the mini, keyed by the File itself, so a retry re-sends
+  // only what failed. A ref (not state) because it must survive re-renders
+  // without triggering them, and it's cleared whenever the picked set changes.
+  const doneUploads = useRef(
+    new Map<File, { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null; capturedAtSource: CapturedAtSource | null }>()
+  );
+  // The picked set changed (added, removed, or reset), so the last attempt's
+  // failure list no longer describes it — and anything remembered for a file
+  // that's since been removed should be forgotten. `files` is state inside
+  // useMediaPicker, so this fires only on a real change, not every render.
+  useEffect(() => {
+    setFailedUploads([]);
+    const keep = new Set(files);
+    for (const f of doneUploads.current.keys()) if (!keep.has(f)) doneUploads.current.delete(f);
+  }, [files]);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   // Which reaction chip is expanded to show who reacted ({postId, emoji}).
   const [reactorsFor, setReactorsFor] = useState<{ postId: string; emoji: string } | null>(null);
@@ -577,6 +595,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     if (configured && supabase) {
       if (!uid) { setStatus("One sec — finishing sign-in. Try again."); return; }
       setPosting(true);
+      setFailedUploads([]); // this attempt gets a fresh verdict
       try {
         // Upload everything FIRST, so a failure can never leave a half-finished
         // post. Photos are compressed to web JPEGs (smaller + faster, fixes
@@ -587,27 +606,53 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
         let doneBytes = 0;
         setProgress(0);
-        const uploaded: { path: string; type: MediaType; thumbnailUrl: string | null; capturedAt: string | null; capturedAtSource: CapturedAtSource | null }[] = [];
+        // Upload each file INDEPENDENTLY and keep going after a failure, rather
+        // than letting the first bad file abort the batch. Before this, one
+        // oversized video in a 10-photo post threw out of the loop: the photos
+        // already on the mini were orphaned, the rest were never attempted, and
+        // the author got one generic "Couldn't post" with no clue which file was
+        // the problem — so their only move was to re-pick all ten and hope.
+        //
+        // Successful uploads are remembered on `doneUploads` (keyed by the File)
+        // so a retry only re-sends what actually failed.
+        const failures: { name: string; reason: string }[] = [];
         for (let i = 0; i < files.length; i++) {
           const raw = files[i];
+          if (doneUploads.current.has(raw)) { doneBytes += raw.size; continue; } // already up from a previous attempt
           const isVideo = raw.type.startsWith("video");
-          // "Date taken" has to be read off the ORIGINAL file — compressImage
-          // strips it. Captured for every post photo (not just album-bound
-          // ones) so it's stored on post_media and still available if these
-          // photos are added to an album later.
-          const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
-          const f = isVideo ? raw : await compressImage(raw);
-          const res = await uploadToMini(f, token, {
-            capturedAt: taken.iso,
-            capturedAtSource: taken.source,
-            onProgress: (loaded, total) => {
-              const frac = total ? loaded / total : 0;
-              setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
-            },
-          });
+          try {
+            // "Date taken" has to be read off the ORIGINAL file — compressImage
+            // strips it. Captured for every post photo (not just album-bound
+            // ones) so it's stored on post_media and still available if these
+            // photos are added to an album later.
+            const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
+            const f = isVideo ? raw : await compressImage(raw);
+            const res = await uploadToMini(f, token, {
+              capturedAt: taken.iso,
+              capturedAtSource: taken.source,
+              onProgress: (loaded, total) => {
+                const frac = total ? loaded / total : 0;
+                setProgress(Math.min(99, Math.round(((doneBytes + frac * raw.size) / totalBytes) * 100)));
+              },
+            });
+            doneUploads.current.set(raw, { path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt, capturedAtSource: res.capturedAtSource });
+          } catch (e) {
+            failures.push({ name: raw.name || (isVideo ? "a video" : "a photo"), reason: uploadErrorMessage(e) });
+          }
           doneBytes += raw.size;
-          uploaded.push({ path: res.url, type: isVideo ? "video" : "image", thumbnailUrl: res.thumbnailUrl, capturedAt: res.capturedAt, capturedAtSource: res.capturedAtSource });
         }
+        // Stop before creating the post so nothing is published half-complete —
+        // name what failed and let them retry just those, or remove them.
+        if (failures.length) {
+          setFailedUploads(failures);
+          setStatus(
+            `${files.length - failures.length} of ${files.length} uploaded · ${describeFailedUploads(failures)}`
+          );
+          setPosting(false);
+          setProgress(null);
+          return;
+        }
+        const uploaded = files.map((raw) => doneUploads.current.get(raw)!);
         setProgress(100);
         // Backdate when the author chose a different moment (and the DB supports
         // it). Otherwise the column default now() lands the post today.
@@ -665,6 +710,11 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           }
         }
         await refetch();
+        // Clear the remembered uploads too — a later post must never reuse a
+        // url from this one (resetMedia empties `files`, which the effect above
+        // then prunes against, but be explicit rather than rely on ordering).
+        doneUploads.current.clear();
+        setFailedUploads([]);
         setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
         setCustomWhen(false); setWhenValue(""); setComposerOpen(false); setAlsoAlbum(false);
         // `heldForText`/`p_held` only reflects OUR OWN client-side AI text
@@ -1061,6 +1111,27 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           </div>
         )}
         </>
+        )}
+
+        {/* Named the files that failed and offer a retry of ONLY those — the
+            successful ones are already on the mini and aren't re-sent. Tapping
+            Post again runs the same loop, which skips anything in doneUploads. */}
+        {failedUploads.length > 0 && (
+          <div className="space-y-2 rounded-xl bg-accent/10 px-3 py-2.5">
+            <p className="text-xs font-semibold text-foreground">
+              {failedUploads.length === 1 ? "This file didn't upload:" : `${failedUploads.length} files didn't upload:`}
+            </p>
+            <ul className="space-y-0.5">
+              {failedUploads.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="text-xs text-foreground/70">
+                  <span className="font-medium">{f.name}</span> — {f.reason}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted">
+              Everything else uploaded fine. Tap Post to try just these again, or remove them and post without them.
+            </p>
+          </div>
         )}
 
         {status && <p className="rounded-xl bg-primary/10 px-3 py-2 text-center text-xs font-medium text-primary">{status}</p>}

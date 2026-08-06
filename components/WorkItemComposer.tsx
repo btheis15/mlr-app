@@ -12,7 +12,7 @@ import {
   URGENCY_META,
 } from "@/lib/workItems";
 import { fetchEvents, upcomingEvents } from "@/lib/events";
-import { uploadToMini, compressImage } from "@/lib/media";
+import { uploadToMini, compressImage, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
 import { supabase } from "@/lib/supabase";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useMediaPicker } from "@/lib/hooks";
@@ -73,24 +73,37 @@ export function WorkItemComposer({
   const canSubmit = title.trim().length > 0 && !pending;
 
   // Upload the freshly-picked files to the mini + attach them to a work item.
-  const uploadPickedMedia = async (workItemId: string) => {
-    if (!media.files.length || !supabase) return;
+  //
+  // Each file is independent: a failure on one no longer throws out of the loop
+  // (which abandoned the remaining files and told the author nothing about which
+  // one broke). The work item itself is already saved by this point, so the right
+  // outcome is "the task exists, these N photos didn't attach" — reported by name
+  // so they can add them again from the item's own sheet.
+  const uploadPickedMedia = async (workItemId: string): Promise<{ name: string; reason: string }[]> => {
+    if (!media.files.length || !supabase) return [];
     const token = (await supabase.auth.getSession()).data.session?.access_token;
     if (!token) throw new Error("Not signed in.");
-    for (let i = 0; i < media.files.length; i++) {
-      const raw = media.files[i];
+    const failed: { name: string; reason: string }[] = [];
+    let position = existingMedia.length;
+    for (const raw of media.files) {
       const isVideo = raw.type.startsWith("video");
-      const f = isVideo ? raw : await compressImage(raw);
-      const uploaded = await uploadToMini(f, token, { category: "work" });
-      const { error: mErr } = await addWorkItemMedia(
-        workItemId,
-        uploaded.url,
-        isVideo ? "video" : "image",
-        existingMedia.length + i,
-        uploaded.thumbnailUrl,
-      );
-      if (mErr) throw new Error(mErr);
+      try {
+        const f = isVideo ? raw : await compressImage(raw);
+        const uploaded = await uploadToMini(f, token, { category: "work" });
+        const { error: mErr } = await addWorkItemMedia(
+          workItemId,
+          uploaded.url,
+          isVideo ? "video" : "image",
+          position,
+          uploaded.thumbnailUrl,
+        );
+        if (mErr) throw new Error(mErr);
+        position += 1; // only advance for what actually attached, so no gaps
+      } catch (e) {
+        failed.push({ name: raw.name || (isVideo ? "a video" : "a photo"), reason: uploadErrorMessage(e) });
+      }
     }
+    return failed;
   };
 
   const submit = async () => {
@@ -98,6 +111,9 @@ export function WorkItemComposer({
     setPending(true);
     setError(null);
     const parsed = peopleNeeded > 0 ? peopleNeeded : null;
+    // Photos that didn't attach. The task itself still saved, so this is a
+    // warning to surface, not a reason to fail the whole submit.
+    let attachFailures: { name: string; reason: string }[] = [];
 
     try {
       if (editing && item) {
@@ -114,7 +130,7 @@ export function WorkItemComposer({
         for (const m of item.media) {
           if (!existingMedia.some((e) => e.id === m.id)) await removeWorkItemMedia(m.id);
         }
-        await uploadPickedMedia(item.id);
+        attachFailures = await uploadPickedMedia(item.id);
       } else {
         const { error: err, id: newId } = await createWorkItem({
           title: title.trim(),
@@ -126,7 +142,7 @@ export function WorkItemComposer({
         if (err) throw new Error(err);
         if (newId) {
           if (selectedEventId) await addWorkItemToEvent(selectedEventId, newId);
-          await uploadPickedMedia(newId);
+          attachFailures = await uploadPickedMedia(newId);
         }
       }
     } catch (e) {
@@ -136,7 +152,13 @@ export function WorkItemComposer({
     }
 
     setPending(false);
-    onSaved();
+    onSaved(); // the task itself saved either way — refresh the list
+    // Some photos didn't attach: hold the sheet open so the author actually sees
+    // which ones, instead of it closing on a silently incomplete item.
+    if (attachFailures.length) {
+      setError(`Saved, but ${describeFailedUploads(attachFailures)}. You can add them again from the item.`);
+      return;
+    }
     close();
   };
 

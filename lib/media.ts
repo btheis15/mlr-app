@@ -119,7 +119,7 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const json = JSON.parse(xhr.responseText) as Partial<UploadResult>;
-          if (!json.url) return reject(new Error("media server returned no URL"));
+          if (!json.url) return reject(new UploadError("media server returned no URL", xhr.status));
           resolve({
             url: json.url,
             thumbnailUrl: json.thumbnailUrl ?? null,
@@ -129,15 +129,71 @@ export function uploadToMini(file: File, token: string, opts: UploadOptions = {}
             path: json.path ?? "",
           });
         } catch {
-          reject(new Error("media server returned a bad response"));
+          reject(new UploadError("media server returned a bad response", xhr.status));
         }
       } else {
-        reject(new Error((xhr.responseText || "").slice(0, 160) || `media upload failed (${xhr.status})`));
+        // The server answers errors as {"error":"…"} — parse it out rather than
+        // showing the raw JSON to a family member.
+        let msg = "";
+        try {
+          msg = String((JSON.parse(xhr.responseText) as { error?: string }).error || "");
+        } catch {
+          msg = (xhr.responseText || "").slice(0, 160);
+        }
+        reject(new UploadError(msg || `media upload failed (${xhr.status})`, xhr.status));
       }
     };
-    xhr.onerror = () => reject(new Error("Couldn't reach the media server."));
+    xhr.onerror = () => reject(new UploadError("Couldn't reach the media server.", 0));
+    // A dropped connection mid-transfer is the single most common real-world
+    // failure for a big video, and it fires here, NOT on onerror — without this
+    // the promise would never settle and the tile would spin forever.
+    xhr.onabort = () => reject(new UploadError("The upload was interrupted.", 0));
+    xhr.ontimeout = () => reject(new UploadError("The upload timed out.", 0));
     xhr.send(fd);
   });
+}
+
+/** An upload failure that remembers the HTTP status, so callers can tell an
+ *  out-of-space server from a too-big file from a dropped connection. */
+export class UploadError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "UploadError";
+    this.status = status;
+  }
+}
+
+/**
+ * One place that turns any upload failure into something a family member can act
+ * on. Every composer shows this, so the wording can't drift between surfaces.
+ *
+ * Deliberately phrased as a fragment ("that file was too big") so a caller can
+ * prefix it with the file's own name — knowing WHICH file failed is the whole
+ * point when 20 photos went up and one didn't.
+ */
+export function uploadErrorMessage(err: unknown): string {
+  const status = err instanceof UploadError ? err.status : 0;
+  const m = err instanceof Error ? err.message : "";
+  if (status === 507 || /out of storage/i.test(m)) return "the media server is out of space — tell an admin";
+  if (status === 413 || /max|size|large|exceed|payload/i.test(m)) return "that file was too big";
+  if (status === 429 || /too many/i.test(m)) return "hit the upload limit — try again shortly";
+  if (status === 401 || status === 403 || /sign in|session/i.test(m)) return "your sign-in expired — try again";
+  if (/interrupted|abort/i.test(m)) return "the upload was interrupted — check your connection";
+  if (/timed out|timeout/i.test(m)) return "the upload timed out";
+  if (/reach the media server/i.test(m)) return "couldn't reach the media server";
+  return "upload failed";
+}
+
+/** "Beach.jpg — that file was too big" / "3 files couldn't upload". */
+export function describeFailedUploads(failures: { name: string; reason: string }[]): string {
+  if (!failures.length) return "";
+  if (failures.length === 1) return `${failures[0].name} — ${failures[0].reason}`;
+  const reasons = new Set(failures.map((f) => f.reason));
+  const names = failures.slice(0, 2).map((f) => f.name).join(", ");
+  const more = failures.length > 2 ? ` and ${failures.length - 2} more` : "";
+  // One shared cause is worth naming once; a mix isn't worth listing per file.
+  return reasons.size === 1 ? `${names}${more} — ${[...reasons][0]}` : `${names}${more} couldn't upload`;
 }
 
 // Read a tag's raw value-field bytes out of one IFD (a flat list of 12-byte
