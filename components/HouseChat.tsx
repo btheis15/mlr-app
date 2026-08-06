@@ -12,7 +12,7 @@ import { ChatPollCard } from "@/components/ChatPollCard";
 import { ChatPollComposer } from "@/components/ChatPollComposer";
 import { closeChatPoll, deleteChatPoll, setChatPollVotes, useChatPolls, type ChatPoll, type ChatPollScope } from "@/lib/chatPolls";
 import { StickerArt } from "@/components/Stickers";
-import { uploadToMini, compressImage, photoUrls } from "@/lib/media";
+import { uploadToMini, compressImage, photoUrls, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
 import { motion } from "framer-motion";
 import { useDebouncedCallback, useTypingChannel, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { TypingIndicator } from "@/components/TypingIndicator";
@@ -560,12 +560,35 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     try {
       const uploaded: ChatMedia[] = [];
       const token = (await sb.auth.getSession()).data.session?.access_token;
+      // Upload each attachment independently. One bad file used to throw out of
+      // the loop, which restored the whole draft — so resending re-uploaded the
+      // files that had ALREADY landed (orphaning the first copies) and the sender
+      // was never told which attachment was the problem.
+      const failed: { name: string; reason: string }[] = [];
+      const stillPending: typeof draftPending = [];
       for (const p of draftPending) {
         if (!token) throw new Error("Not signed in.");
-        // Only photos are re-encoded; videos + files upload as-is.
-        const f = p.type === "image" ? await compressImage(p.file) : p.file;
-        const res = await uploadToMini(f, token, { category: "chat", room: slug });
-        uploaded.push({ url: res.url, type: p.type, name: p.type === "file" ? p.name : undefined });
+        try {
+          // Only photos are re-encoded; videos + files upload as-is.
+          const f = p.type === "image" ? await compressImage(p.file) : p.file;
+          const res = await uploadToMini(f, token, { category: "chat", room: slug });
+          uploaded.push({ url: res.url, type: p.type, name: p.type === "file" ? p.name : undefined });
+        } catch (e) {
+          failed.push({ name: p.name || (p.type === "video" ? "a video" : p.type === "image" ? "a photo" : "a file"), reason: uploadErrorMessage(e) });
+          stillPending.push(p);
+        }
+      }
+      // Something failed → don't send a message that silently drops attachments.
+      // Put ONLY the failed ones back in the composer (the rest are already on
+      // the mini and ride along on the next attempt) and name them.
+      if (failed.length) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setText(draftText); setMentionIds(draftMentions); setReplyTo(draftReply);
+        setPending(stillPending);
+        setStatus(`Didn't send · ${describeFailedUploads(failed)}`);
+        window.setTimeout(() => setStatus(null), 8000);
+        setSending(false);
+        return;
       }
 
       const { data: ins, error: insErr } = await sb
@@ -591,8 +614,7 @@ export function HouseChat({ slug, name, emoji, houseId: houseIdProp = null, embe
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setText(draftText); setPending(draftPending); setMentionIds(draftMentions); setReplyTo(draftReply);
-      const m = err instanceof Error ? err.message : "please try again";
-      setStatus(/max|size|large|exceed|413|payload/i.test(m) ? "That file was too big to send." : `Couldn't send: ${m}`);
+      setStatus(`Couldn't send — ${uploadErrorMessage(err)}.`);
       window.setTimeout(() => setStatus(null), 6000);
     } finally {
       setSending(false);

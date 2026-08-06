@@ -1112,6 +1112,20 @@ app.post("/upload", requireUser, (req, res) => {
   // needs the socket held open the whole time. A stalled connection is still
   // eventually reaped rather than held forever.
   req.setTimeout(Number(process.env.UPLOAD_TIMEOUT_MS || 4 * 60 * 60 * 1000));
+
+  // A CLIENT-ABORTED upload (dropped Wi-Fi, app backgrounded, tunnel cut) does
+  // not reach multer's error callback, so its half-written file used to sit on
+  // disk until the orphan sweep noticed 48h later. At these sizes that's GBs of
+  // dead weight — a real 256MB video upload died at 54% and left a 139MB
+  // fragment. Reclaim it as soon as the socket closes without a response.
+  req.on("aborted", () => {
+    const p = req.file && req.file.path;
+    if (!p) return; // nothing written yet, or already handled below
+    fs.unlink(p, (e) => {
+      if (!e) console.log(`[upload] client aborted — removed the partial file ${path.basename(p)}`);
+    });
+  });
+
   upload.single("file")(req, res, async (err) => {
     if (err) {
       // Out of room on BOTH volumes is not the client's fault — 507 tells the
