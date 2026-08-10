@@ -1,27 +1,113 @@
-# iOS parity — what the native app is missing
+# iOS parity catch-up — 2026-08
 
-Handoff spec for bringing **`mlr-app-ios`** up to date with the web app
-(`mlr-app`). Written 2026-08-10.
+Prose companion to **[`ios-parity-2026-08.json`](ios-parity-2026-08.json)**, which is
+the machine-readable work-list. Same pair convention as the July round
+(`ios-parity-2026-07.{md,json}`), which this **supersedes**.
 
-**Read this first, then `CLAUDE.md`.** The web repo is the source of truth for
-product behavior; this file only records the *delta* and the traps.
+| | |
+|---|---|
+| **Web source** | `btheis15/mlr-app` @ `origin/main`, through **PR #539** |
+| **iOS target** | `btheis15/mlr-app-ios` |
+| **Last iOS sync** | 2026-07-22 — the July doc covered web PRs #316–#362, migrations 0114–0128 |
+| **This delta** | **175 merged PRs (#363–#539)** and **57 migrations (0129–0184)** |
+| **Architecture** | see [`ios-swiftui-strategy.md`](ios-swiftui-strategy.md) — not repeated here |
 
-**The good news:** almost nothing here needs backend work. Every feature below is
-already backed by shipped Supabase tables, RLS policies and RPCs that the iOS app
-can call with the same anon key it already uses. The exceptions are called out
-explicitly. Where the web app found a bug the hard way, that's recorded too — those
-notes are the difference between a two-hour port and a two-day one.
+**Product direction has changed since July, and it changes the goal.** Per Brian:
+
+> "I need EVERY feature from the web app on iOS. I want iOS to be the premier and best
+> experience for people who have iPhones, and the web app is for 'everyone else', but
+> still has the same features too."
+
+So this is no longer a catch-up on a companion app. **iOS is the flagship; parity is the
+floor, not the target.** Two consequences run through both files:
+
+1. A feature iOS already has is **not** done — it's due a depth audit, because the web
+   version has usually grown since. Those are marked `has-it-audit-depth`.
+2. Where a native app can genuinely beat a browser, that's called out as an
+   opportunity rather than left implicit.
+
+**Division of labour between the two files.** The JSON is the checklist: every feature,
+its status, tables, RPCs, migrations, effort, and a testable acceptance line — so
+nothing gets silently skipped and progress is trackable. This markdown holds what JSON
+holds badly: the Swift, the reasoning, and every ⚠️ the web app earned by shipping the
+bug first. Those warnings are the highest-value content here; a table inventory is
+nearly worthless because you have the schema.
+
+**Almost nothing needs backend work.** Every feature is already backed by shipped
+tables, RLS policies and RPCs the iOS app can call with the anon key it already has.
+The exceptions are called out explicitly.
+
+⚠️ **`ios_targets` paths are partly PROPOSED, not verified.** The iOS repo isn't
+checked out on the machine this was written on, so real paths are only those the July
+doc already named (`Services/*Service.swift`, `Committees/`, `Houses/`,
+`Tabs/FamilyFestTab/`, …). For net-new surfaces the paths follow that convention but
+are suggestions — confirm against the actual project.
+
+⚠️ **The web app is light-mode only by hard rule; iOS supports dark.** The July doc's
+build check says "verify light AND dark on every new surface" — so every surface
+specified here needs a dark treatment that has **no web reference to copy**. Budget for
+it rather than discovering it at review time.
 
 ---
 
-## 0. 🚨 BLOCKING — the native app's photos are broken RIGHT NOW
+## Start here — server state as of 2026-08-10
 
-**Symptom:** every photo and video in the iOS app returns **HTTP 403** with
-`{"error":"This photo is only viewable in the MLR app."}`.
+**`MEDIA_AUTH=report` on the mini right now.** Nothing is broken for anyone: media
+serves normally on web *and* iOS, while the server logs every read that *would* have
+been rejected. It was briefly `on` (verified working on web — 220/220 signed requests,
+video included) and then deliberately backed off, because the native app can't sign yet
+and enforcement 403s every photo in it.
 
-**Cause:** as of 2026-08-10 the media server enforces a signed token on every
-`/f/…` read (`MEDIA_AUTH=on`). The web client was updated to attach it; iOS was
-not.
+**Who has the native app:** 2 members, 3 devices — Brian (2) and Annette (1, registered
+2026-07-27). From `apns_subscriptions`. Worth confirming whether Annette actually opens
+the native app or the home-screen web app; if it's the web app, nobody is affected and
+enforcement can go back on immediately.
+
+**Reverting to `report` cost only link expiry.** These are unconditional and stayed live:
+the `/f` traversal guard (400), the `/dropbox-zip` and `/upload` approval gates (401/403),
+and migration 0184's email-directory fix.
+
+### The verification loop for tomorrow
+
+```bash
+# 1. Where things stand (run on the mini)
+grep -E '^MEDIA_AUTH' ~/mlr-app/media-server/.env
+node ~/mlr-app/media-server/scripts/test-media-auth.js      # 58 assertions, exits non-zero on failure
+
+# 2. After implementing §0, exercise iOS hard — scroll an album, open a photo,
+#    PLAY AND SCRUB A VIDEO — then check what would have been blocked:
+grep WOULD-BLOCK ~/mlr-app/media-server/logs/server.log | tail -20
+
+# 3. Zero lines with an iOS user agent => safe to enforce:
+#    edit ~/mlr-app/media-server/.env  ->  MEDIA_AUTH=on
+launchctl kickstart -k gui/$(id -u)/com.mlr.media-server
+
+# 4. Confirm from the server side that real traffic is signing:
+grep -E 'GET /f/' ~/mlr-app/media-server/logs/server.log | tail -20   # want tok=yes … -> 200/206
+
+# Revert instantly at any point: MEDIA_AUTH=report (or off) + the same kickstart.
+```
+
+⚠️ **Test video separately from photos.** Videos issue Range requests, and a player that
+drops the query string on a range retry would break video while photos looked perfect.
+`range=yes tok=missing` in the log is that signature. This is not hypothetical — one
+ambiguous unsigned `.mp4` is why enforcement wasn't switched on sooner.
+
+⚠️ **A `WOULD-BLOCK` line proves the client failed to sign; its absence proves nothing
+unless you actually exercised the app.** Check that real `/f` requests appear in the log
+for the session you just ran, or you're reading silence and calling it success.
+
+---
+
+## 0. 🚨 BLOCKING — the native app's photos are broken under enforcement
+
+**Symptom (whenever `MEDIA_AUTH=on`):** every photo and video in the iOS app returns
+**HTTP 403** with `{"error":"This photo is only viewable in the MLR app."}`.
+
+**Cause:** the media server can require a signed token on every `/f/…` read. The web
+client was updated to attach one; iOS was not. Enforcement is currently held at
+`report` (see **Start here**) precisely because of this, so the app works today — but
+link expiry, the entire point of the feature, stays off until iOS can sign.
 
 **This is not platform gating.** The token is issued to the *account* — the check
 is "signed in AND admin-verified", identical for every client. The problem is only
@@ -98,6 +184,148 @@ Brian chose to **keep the token and just teach iOS to send it** — the work is 
 30 lines and costs nothing. Revisit only if a third client appears or the app moves
 to a custom domain for unrelated reasons; at that point the cookie design becomes
 strictly simpler and this whole section goes away.
+
+### Swift implementation
+
+Two files. Nothing else in the app changes except swapping raw URLs for
+`MediaToken.signed(_:)` at every image/video site.
+
+```swift
+// MediaToken.swift — the whole client half of media auth.
+import Foundation
+
+actor MediaToken {
+    static let shared = MediaToken()
+
+    /// Must be the DuckDNS host. See the warning in §2 — a stale Tailscale host here
+    /// is what silently un-signed every photo on the web app for hours.
+    static let mediaBase = URL(string: "https://mlr-media.duckdns.org")!
+    /// Hosts whose URLs we sign. Match by HOST, never by string prefix.
+    static let mediaHosts: Set<String> = [
+        "mlr-media.duckdns.org",
+        "brians-mac-mini.tail49943c.ts.net", // retired; still accepted so old rows sign
+    ]
+
+    private struct Response: Decodable {
+        let token: String
+        let expiresAt: Date       // ISO8601 — use .iso8601 date decoding
+        let ttlHours: Double?
+    }
+
+    private var token: String?
+    private var expiresAt: Date = .distantPast
+    private var inFlight: Task<String?, Never>?
+
+    /// True when we hold something usable for at least another minute, so a URL can't
+    /// expire mid-flight.
+    private var isFresh: Bool { token != nil && expiresAt.timeIntervalSinceNow > 60 }
+
+    /// Call with force:true on every app open (see the warning below). Returns nil when
+    /// the member isn't signed in, isn't approved yet, or the mini is unreachable.
+    func ensure(force: Bool = false, accessToken: @Sendable () async -> String?) async -> String? {
+        if !force, isFresh { return token }
+        if let inFlight { return await inFlight.value }
+
+        let task = Task<String?, Never> { [weak self] in
+            guard let self else { return nil }
+            guard let jwt = await accessToken() else { return nil }
+
+            var req = URLRequest(url: Self.mediaBase.appending(path: "media-token"))
+            req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+            // Never serve this from the URL cache: the body is identical all day, so a
+            // cached/revalidated response is how the web client ended up with no token.
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard let http = resp as? HTTPURLResponse else { return nil }
+
+                if http.statusCode == 403 {
+                    // Signed in, but an admin hasn't verified them. Surface the
+                    // waiting-for-approval state (§1) — this is NOT an error.
+                    await self.clear()
+                    return nil
+                }
+                guard (200...299).contains(http.statusCode) else { return nil }
+
+                let dec = JSONDecoder()
+                dec.dateDecodingStrategy = .iso8601
+                let out = try dec.decode(Response.self, from: data)
+                await self.store(out.token, expires: out.expiresAt)
+                return out.token
+            } catch {
+                return nil
+            }
+        }
+        inFlight = task
+        let result = await task.value
+        inFlight = nil
+        return result
+    }
+
+    private func store(_ t: String, expires: Date) { token = t; expiresAt = expires }
+    private func clear() { token = nil; expiresAt = .distantPast }
+
+    /// Synchronous read for use while building a URL. Never triggers a fetch.
+    func peek() -> String? { isFresh ? token : nil }
+
+    /// THE function every image/video URL must pass through.
+    nonisolated static func signed(_ url: URL?, token: String?) -> URL? {
+        guard let url else { return nil }
+        guard let host = url.host, mediaHosts.contains(host) else { return url } // not ours
+        if url.path.hasPrefix("/assets/") { return url }                          // stays public
+        guard let token else { return url }                                       // no token yet
+        guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var items = c.queryItems ?? []
+        guard !items.contains(where: { $0.name == "t" }) else { return url }       // idempotent
+        items.append(URLQueryItem(name: "t", value: token))
+        c.queryItems = items
+        return c.url ?? url
+    }
+}
+```
+
+Then an observable holder so SwiftUI re-renders when the token lands:
+
+```swift
+// MediaTokenStore.swift
+import SwiftUI
+
+@MainActor @Observable final class MediaTokenStore {
+    private(set) var token: String?
+
+    /// Call from .task on the root view AND on scenePhase -> .active.
+    func refresh(accessToken: @Sendable () async -> String?) async {
+        // force:true ALWAYS. See the warning below — this is the whole self-healing story.
+        token = await MediaToken.shared.ensure(force: true, accessToken: accessToken)
+    }
+
+    func url(_ raw: String?) -> URL? {
+        guard let raw, let u = URL(string: raw) else { return nil }
+        return MediaToken.signed(u, token: token)
+    }
+}
+```
+
+Usage — note that `store.token` being read inside the view body is what makes SwiftUI
+re-render every image the moment the token arrives:
+
+```swift
+@Environment(MediaTokenStore.self) private var store
+
+AsyncImage(url: store.url(item.thumbnailUrl ?? item.storagePath)) { ... }
+```
+
+⚠️ **`force: true` on every app open is not redundant — do not "optimise" it away.**
+A cached token is only a *guess* about what the server will accept. It carries its own
+24h expiry, so if the signing key ever changes, the client keeps confidently signing
+with a dead key and every photo 403s until that expiry lapses — up to a full day, with
+no path to recovery. That exact bug took the web app's photos down. One small request
+per launch makes any future key change heal on the next launch.
+
+⚠️ **Match by host, not by string prefix.** The web app used
+`url.hasPrefix(MEDIA_URL)`, which broke the instant the configured base URL and the
+stored URLs disagreed — and they did, silently, for hours.
 
 ### Token properties worth knowing
 
