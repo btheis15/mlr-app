@@ -87,6 +87,11 @@ interface IdentityValue {
    *  (`profiles.intro_seen` false). Drives the one-time onboarding sheet; forced
    *  false while previewing. */
   needsIntro: boolean;
+  /** Admin-VERIFIED member (`profiles.approved`, migration 0181). False means the
+   *  account exists and the email is confirmed, but an admin hasn't let them in —
+   *  they see what a signed-out visitor sees. True pre-migration and on any read
+   *  error, so an optional flag can't lock out a real member. */
+  verified: boolean;
   /** True when the current session was created by an admin's /admin/invite-link
    *  email (`profiles.invited_via = 'invite_link'`) and the intro hasn't run yet.
    *  Since that link signs whoever clicks it straight in — no code, no password —
@@ -117,6 +122,7 @@ const IdentityContext = createContext<IdentityValue>({
   confirmEmailChange: async () => ({ error: "Sign-in isn't available." }),
   promptSignIn: () => {},
   needsIntro: false,
+  verified: true,
   invitedViaLink: false,
   completeIntro: () => {},
   signOut: () => {},
@@ -175,6 +181,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [prompting, setPrompting] = useState(false);
   // True for a brand-new member who should see the first-run Welcome intro.
   const [needsIntro, setNeedsIntro] = useState(false);
+  // Admin-verified member. Starts TRUE so a returning member never flashes the
+  // "waiting to be verified" screen while the profile query is still in flight —
+  // the same reasoning as the identity snapshot restoring `user` on the first tick.
+  const [verified, setVerified] = useState(true);
   // True when this session came from an admin's invite-link email — see
   // IdentityValue.invitedViaLink for why this needs its own confirmation step.
   const [invitedViaLink, setInvitedViaLink] = useState(false);
@@ -266,13 +276,17 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: extra, error } = await sb
           .from("profiles")
-          .select("intro_seen, phone, birthday, pay_preferred, invited_via")
+          .select("intro_seen, phone, birthday, pay_preferred, invited_via, approved")
           .eq("id", session.user.id)
           .maybeSingle();
         if (!active) return;
         if (error || !extra) {
           setNeedsIntro(false);
           setInvitedViaLink(false);
+          // A read error — including a column that doesn't exist yet — must read as
+          // VERIFIED. An optional flag can never be allowed to strand a real member
+          // outside the app.
+          setVerified(true);
         } else {
           const e = extra as {
             intro_seen: boolean | null;
@@ -280,16 +294,22 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
             birthday: string | null;
             pay_preferred: string | null;
             invited_via: string | null;
+            approved?: boolean | null;
           };
           const sparse = !e.phone?.trim() && !e.birthday && !e.pay_preferred;
           const needsIt = !e.intro_seen && sparse;
           setNeedsIntro(needsIt);
           setInvitedViaLink(needsIt && e.invited_via === "invite_link");
+          // Admin-verified member (migration 0181; "approved" in the schema because
+          // Supabase already uses "verified" for email confirmation). `undefined`
+          // means pre-migration, which reads as verified.
+          setVerified(e.approved === undefined ? true : e.approved !== false);
         }
       } catch {
         if (active) {
           setNeedsIntro(false);
           setInvitedViaLink(false);
+          setVerified(true);
         }
       }
     };
@@ -493,6 +513,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         confirmEmailChange,
         promptSignIn,
         needsIntro: previewMode === "off" ? needsIntro : false,
+        // Forced true while previewing: "view as" is UI-only, and an admin
+        // checking the guest view must not appear unverified to themselves.
+        verified: previewMode === "off" ? verified : true,
         invitedViaLink: previewMode === "off" ? invitedViaLink : false,
         completeIntro,
         signOut,
