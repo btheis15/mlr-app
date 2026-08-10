@@ -11,7 +11,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { BackLink } from "@/components/BackLink";
 import { useDropBoxes, useDropBox, useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { supabase } from "@/lib/supabase";
-import { uploadToMini, compressImage, capturedAtForFile, MEDIA_URL, type MediaKind } from "@/lib/media";
+import { uploadToMini, prepareImageForUpload, capturedAtForFile, MEDIA_URL, type MediaKind } from "@/lib/media";
 import {
   createDropBox,
   updateDropBox,
@@ -301,7 +301,7 @@ function DropBoxDetail({ boxId }: { boxId: string }) {
     try {
       const isVideo = p.type === "video";
       const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(p.file);
-      const f = isVideo ? p.file : await compressImage(p.file);
+      const f = isVideo ? p.file : await prepareImageForUpload(p.file);
       const uploaded = await uploadToMini(f, token, {
         category: "dropbox",
         room: boxId,

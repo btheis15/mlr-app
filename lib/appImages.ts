@@ -4,7 +4,7 @@
 // /public asset is the fallback when a key is unset/unreachable.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { compressImage } from "@/lib/media";
+import { prepareImageForUpload } from "@/lib/media";
 
 /** Known image keys → the bundled fallback served from /public. */
 export const SITE_IMAGE_FALLBACK: Record<string, string> = {
@@ -42,7 +42,7 @@ export function siteImageSrc(map: Record<string, string>, key: string): string {
 export async function uploadSiteImage(file: File, key: string): Promise<string> {
   const sb = supabase;
   if (!sb) throw new Error("Sign-in isn't available.");
-  const compressed = await compressImage(file);
+  const compressed = await prepareImageForUpload(file);
   const path = `${key}/${crypto.randomUUID()}.jpg`;
   const { error } = await sb.storage
     .from(SITE_BUCKET)

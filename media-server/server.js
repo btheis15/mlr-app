@@ -37,6 +37,7 @@ const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_ED
 const { moderateMedia, moderateText, moderationStatus } = require("./moderation");
 const { enqueueRecheck, startBackfill, moderationStats, clearGaveUp, noteScanned, noteNeedsReview } = require("./moderation-backfill");
 const { makeThumbnail, thumbPathFor } = require("./thumbnail");
+const { makeDisplayCopy } = require("./display");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
@@ -1207,26 +1208,48 @@ app.post("/upload", requireUser, (req, res) => {
     // What the client stores as media_type: 'image' | 'video' | 'file'.
     const mediaType = isMedia ? kind : "file";
 
-    // The file we RESPOND with is always the just-saved original — videos are
-    // no longer transcoded inline (see transcodeInBackground below), so photos
-    // and videos alike return effectively instantly. The eventual, smaller
-    // ≤1080p H.264 file (when transcoding applies) lands a little later at
-    // either the same url (same-path re-encode) or, for an extension change, a
-    // repointed one — see transcodeInBackground's doc comment.
-    const served = req.file.path;
+    // PHOTOS: build the browser-facing display copy now, keeping the untouched
+    // upload beside it as `<uuid>_orig.<ext>`. This runs INLINE rather than in the
+    // background (unlike video) for two reasons: it's fast — a sharp resize is
+    // well under a second, versus a multi-minute ffmpeg run — and the url must be
+    // final before we respond, since a HEIC upload's url has to become .jpg or no
+    // browser can render it at all. Never fatal: on any failure the original is
+    // served as-is, which is worse for bandwidth but perfectly correct.
+    let served = req.file.path;
+    if (kind === "image") {
+      try {
+        const d = await makeDisplayCopy(served);
+        if (d.changed) {
+          console.log(
+            `[display] ${path.basename(served)} (${d.from}) -> ${path.basename(d.path)}; ` +
+              `original kept as ${path.basename(d.originalPath)}`
+          );
+          served = d.path;
+        } else if (d.reason) {
+          console.log(`[display] ${path.basename(served)}: ${d.reason}`);
+        }
+      } catch (e) {
+        console.error(`[display] failed, serving the original as-is: ${e && e.message}`);
+      }
+    }
+
+    // Videos are NOT transcoded inline (see transcodeInBackground below), so they
+    // return effectively instantly and the smaller rendition lands a little later
+    // at either the same url or a repointed one — see its doc comment.
     const rel = tiers.relFromAbs(served);
     const fileUrl = `${PUBLIC_URL}/f/${rel}`;
     let size = req.file.size;
     try { size = fs.statSync(served).size; } catch {}
     console.log(`[upload] saved ${rel} (${size} bytes)`);
 
-    if (isMedia) transcodeInBackground(served, req.file.mimetype, fileUrl);
+    if (kind === "video") transcodeInBackground(served, req.file.mimetype, fileUrl);
 
-    // "When was this actually taken" for Drop Box album sorting (0174). For a
-    // photo, the client already extracted EXIF DateTimeOriginal from the
-    // ORIGINAL file (before compressing it away, which strips EXIF) and sends
-    // it as a plain form field — this server has no way to recover it once
-    // the compressed bytes arrive. For a video (never recompressed
+    // "When was this actually taken" for Drop Box album sorting (0174).
+    // ⚠️ This got much more reliable: the browser no longer re-encodes photos
+    // through a <canvas> (which destroyed all EXIF), so the ORIGINAL now reaches
+    // this server intact and extractCapturedAt can read real DateTimeOriginal off
+    // it — including HEIC, via sharp. The client still sends its own reading as a
+    // form field, which is now a fallback rather than the only chance. For a video (never recompressed
     // client-side), ffprobe reads the container's own creation_time here,
     // before the background transcode replaces the file. Never fatal — null
     // just means "no captured date," and the album falls back to upload time.
@@ -1246,11 +1269,19 @@ app.post("/upload", requireUser, (req, res) => {
       }
       // Read the stored bytes when the client had nothing — or had only the
       // weak file-mtime guess, since real metadata always wins. This is what
-      // catches a HEIC (sharp can open it; the client's JPEG parser can't) and
-      // any photo compressImage decided not to re-encode, plus every video.
+      // catches a HEIC (sharp can open it; the client's JPEG parser can't), plus
+      // every video.
+      //
+      // ⚠️ Read the ORIGINAL, not the display copy. The display JPEG carries
+      // copied metadata, but the original is the authoritative source and is the
+      // only one guaranteed to have untouched EXIF — reading the derivative would
+      // quietly reintroduce the class of bug that migrations 0174-0176 exist to
+      // undo. findOriginal returns null when there is no separate original (a
+      // normal web-sized JPEG served as-is), in which case `served` IS the original.
       if (!capturedAt || capturedAtSource === "file") {
         try {
-          const fromFile = await extractCapturedAt(served, kind);
+          const metaSource = findOriginal(served) || served;
+          const fromFile = await extractCapturedAt(metaSource, kind);
           if (fromFile) {
             capturedAt = fromFile;
             capturedAtSource = kind === "video" ? "video" : "exif";

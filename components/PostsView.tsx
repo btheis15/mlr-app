@@ -7,7 +7,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
 import { dayKey, formatDayHeading, formatClock, timeAgo, toDatetimeLocal, groupByDay } from "@/lib/format";
-import { uploadToMini, compressImage, capturedAtForFile, moderatePostText, photoUrls, uploadErrorMessage, describeFailedUploads, type CapturedAtSource } from "@/lib/media";
+import { uploadToMini, prepareImageForUpload, capturedAtForFile, moderatePostText, photoUrls, uploadErrorMessage, describeFailedUploads, type CapturedAtSource } from "@/lib/media";
 import { fetchDropBoxes, addDropBoxMedia, type DropBox } from "@/lib/dropBoxes";
 import { useMediaPicker, useDebouncedCallback, useSheetDismiss, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
@@ -621,12 +621,12 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
           if (doneUploads.current.has(raw)) { doneBytes += raw.size; continue; } // already up from a previous attempt
           const isVideo = raw.type.startsWith("video");
           try {
-            // "Date taken" has to be read off the ORIGINAL file — compressImage
+            // "Date taken" has to be read off the ORIGINAL file — prepareImageForUpload
             // strips it. Captured for every post photo (not just album-bound
             // ones) so it's stored on post_media and still available if these
             // photos are added to an album later.
             const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
-            const f = isVideo ? raw : await compressImage(raw);
+            const f = isVideo ? raw : await prepareImageForUpload(raw);
             const res = await uploadToMini(f, token, {
               capturedAt: taken.iso,
               capturedAtSource: taken.source,
@@ -841,7 +841,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         let pos = 0;
         for (const raw of commentFiles) {
           const isVideo = raw.type.startsWith("video");
-          const f = isVideo ? raw : await compressImage(raw);
+          const f = isVideo ? raw : await prepareImageForUpload(raw);
           const res = await uploadToMini(f, token);
           await insertMediaRow("post_comment_media", {
             comment_id: commentId, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
@@ -1409,10 +1409,10 @@ function EditPostPanel({
         let pos = post.media.length;
         for (const raw of files) {
           const isVideo = raw.type.startsWith("video");
-          // "Date taken" has to come off the ORIGINAL file — compressImage
+          // "Date taken" has to come off the ORIGINAL file — prepareImageForUpload
           // strips it.
           const taken = isVideo ? { iso: null, source: null } : await capturedAtForFile(raw);
-          const f = isVideo ? raw : await compressImage(raw);
+          const f = isVideo ? raw : await prepareImageForUpload(raw);
           const res = await uploadToMini(f, token, { capturedAt: taken.iso, capturedAtSource: taken.source });
           await insertMediaRow("post_media", {
             post_id: post.id, storage_path: res.url, media_type: isVideo ? "video" : "image", position: pos++, thumbnail_url: res.thumbnailUrl,
@@ -1443,7 +1443,7 @@ function EditPostPanel({
       //      happened, and far better for album ordering than the upload
       //      second, which is identical for every photo in one bulk add.
       // Tagged so the mini's sweep can still upgrade a proxy to real metadata
-      // if the stored bytes turn out to carry any (compressImage leaves a
+      // if the stored bytes turn out to carry any (prepareImageForUpload leaves a
       // photo untouched whenever re-encoding wouldn't shrink it).
       //
       // Credited to the POST's author — this is the whole point of doing it

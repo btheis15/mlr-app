@@ -12,7 +12,7 @@ import {
   URGENCY_META,
 } from "@/lib/workItems";
 import { fetchEvents, upcomingEvents } from "@/lib/events";
-import { uploadToMini, compressImage, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
+import { uploadToMini, prepareImageForUpload, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
 import { supabase } from "@/lib/supabase";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useMediaPicker } from "@/lib/hooks";
@@ -88,7 +88,7 @@ export function WorkItemComposer({
     for (const raw of media.files) {
       const isVideo = raw.type.startsWith("video");
       try {
-        const f = isVideo ? raw : await compressImage(raw);
+        const f = isVideo ? raw : await prepareImageForUpload(raw);
         const uploaded = await uploadToMini(f, token, { category: "work" });
         const { error: mErr } = await addWorkItemMedia(
           workItemId,

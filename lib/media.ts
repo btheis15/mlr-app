@@ -250,7 +250,7 @@ function parseExifDateString(s: string): string | null {
 
 /**
  * Read the shot's real date/time straight out of a JPEG's EXIF, BEFORE
- * `compressImage` re-encodes it via <canvas> and strips every byte of
+ * the browser used to re-encode photos via <canvas>, stripping every byte of
  * metadata — this has to run on the ORIGINAL file. Prefers
  * DateTimeOriginal (Exif SubIFD, 0x9003) and falls back to the plain
  * DateTime tag (IFD0, 0x0132). Only reads the first ~256KB (EXIF always sits
@@ -314,7 +314,7 @@ function findHeicTiffStart(view: DataView): number | null {
 export async function extractExifCapturedAt(file: File): Promise<string | null> {
   try {
     const isJpeg = /jpe?g$/i.test(file.type) || /\.jpe?g$/i.test(file.name);
-    // iPhones shoot HEIC by default, and `compressImage` re-encodes it to JPEG
+    // iPhones shoot HEIC by default; the MINI now converts it to JPEG server-side
     // through a <canvas> (which destroys every byte of EXIF) BEFORE upload — so
     // if it isn't read here, the mini has nothing left to read either and the
     // photo's real date is lost for good. This was the main coverage hole.
@@ -377,7 +377,7 @@ export async function extractExifCapturedAt(file: File): Promise<string | null> 
 
 /**
  * Best-effort capture date for a file the user just picked, with its
- * provenance — call this on the ORIGINAL File, before `compressImage` (which
+ * provenance. Historically this had to run before the browser's own re-encode (which
  * re-encodes photos through a `<canvas>` and destroys EXIF).
  *
  * Two tiers, because EXIF isn't always reachable here:
@@ -412,26 +412,31 @@ export async function capturedAtForFile(
   return { iso: new Date(lm).toISOString(), source: "file" };
 }
 
-// Downscale + re-encode photos to web JPEGs before upload (smaller + faster,
-// and fixes HDR/HEIC display). Videos and anything non-image pass through.
-export async function compressImage(file: File): Promise<File> {
-  if (!file.type.startsWith("image")) return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.82));
-    bitmap.close();
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
-  } catch {
-    return file; // never block sending on a compression hiccup
-  }
+/**
+ * What to actually upload for a picked photo: the file exactly as the camera
+ * produced it.
+ *
+ * ⚠️ THIS USED TO COMPRESS, AND THAT WAS THE BUG. It downscaled to 1920px and
+ * re-encoded at JPEG quality 0.82 through a <canvas>, which:
+ *   • destroyed the full-resolution original before it ever left the phone — a
+ *     48MP photo became a 1920px q82 JPEG, permanently, with no way back;
+ *   • stripped EVERY byte of EXIF, which is the root cause of the whole
+ *     captured_at / "date taken" saga (migrations 0174-0176 exist almost entirely
+ *     to recover a date this destroyed on the way up).
+ *
+ * The mini now builds the browser-facing display copy itself (media-server/
+ * display.js) and keeps the upload as `<uuid>_orig.<ext>`, so there is nothing
+ * left for the client to do but hand over the bytes. HEIC is fine — the server
+ * converts it, which it can do properly with a real image library.
+ *
+ * Kept as a named function rather than deleting the call sites so there's one
+ * obvious place to reintroduce client-side work if it's ever needed again (e.g. a
+ * cap for pathologically large RAW files).
+ *
+ * ⚠️ Trade-off: uploads are now bigger — a few MB per photo instead of ~1MB — so
+ * posting a large batch over cellular takes longer. Downloads are unaffected
+ * (viewers get the display copy). Per-file failures are reported with a retry.
+ */
+export async function prepareImageForUpload(file: File): Promise<File> {
+  return file;
 }

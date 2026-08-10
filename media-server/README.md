@@ -471,3 +471,54 @@ exists to keep:
 - `/dropbox-zip` — excludes `_thumb`, and prefers `_orig` over the rendition
 
 **Adding another derived-file suffix means updating all three.**
+
+## Photos: a display copy beside the untouched original
+
+⚠️ **Photos used to be destroyed in the browser before upload.** `compressImage`
+downscaled to 1920px and re-encoded at JPEG q0.82 through a `<canvas>`, which
+(a) meant the full-resolution original never reached the server — a 48MP photo
+became a 1920px q82 JPEG, permanently — and (b) **stripped every byte of EXIF**,
+which is the root cause of the whole `captured_at` / "date taken" saga that
+migrations 0174–0176 exist almost entirely to work around.
+
+The proof it was happening: there were **zero `.heic` files** on the mini. Every
+iPhone photo had been re-encoded to JPEG client-side before it ever arrived.
+
+Now the browser uploads the file untouched ([`prepareImageForUpload`](../lib/media.ts)
+is a deliberate pass-through) and [`display.js`](display.js) builds the web copy
+here, where there's a real image library:
+
+```
+<uuid>.jpg        display copy — what storage_path points at, what the lightbox loads
+<uuid>_orig.<ext> the untouched upload (HEIC, 48MP JPEG, …) — what ?dl=1 returns
+<uuid>_thumb.jpg  grid preview (unchanged)
+```
+
+| knob | default | |
+|---|---|---|
+| `PHOTO_DISPLAY_MAX_EDGE` | 3200 | generous — media serves directly now, bandwidth isn't scarce |
+| `PHOTO_DISPLAY_QUALITY` | 90 | mozjpeg |
+
+A photo that's **already browser-safe and within the max edge gets no second
+copy** — it's served exactly as uploaded, same as before. Only oversized photos
+and non-browser formats (HEIC) produce a display copy.
+
+Three details that matter:
+
+- **`.rotate()` with no argument** applies EXIF orientation and clears it. Without
+  it, portrait phone photos render sideways.
+- **`.withMetadata()`** keeps EXIF on the display copy, so "date taken" survives
+  even for code that only ever sees the derivative. Verified round-trip.
+- **`captured_at` is read from the ORIGINAL**, not the display copy
+  (`findOriginal(served) || served` in `/upload`). The derivative carries copied
+  metadata, but reading it would quietly reintroduce the 0174–0176 class of bug.
+
+It runs **inline**, unlike video transcoding: a sharp resize is well under a
+second, and the url must be final before responding, because a HEIC upload's url
+*has* to become `.jpg` or no browser can render it. Any failure falls back to
+serving the original untouched.
+
+⚠️ **Trade-off: uploads are bigger now** — a few MB per photo instead of ~1 MB, so
+a large batch over cellular takes longer. Downloads are unaffected (viewers get
+the display copy or the thumbnail). Per-file upload failures are named with a
+retry, so a slow connection degrades visibly rather than silently.
