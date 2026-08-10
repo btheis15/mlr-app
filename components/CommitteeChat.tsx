@@ -12,7 +12,7 @@ import { ChatPollCard } from "@/components/ChatPollCard";
 import { ChatPollComposer } from "@/components/ChatPollComposer";
 import { closeChatPoll, deleteChatPoll, setChatPollVotes, useChatPolls, type ChatPoll, type ChatPollScope } from "@/lib/chatPolls";
 import { StickerArt } from "@/components/Stickers";
-import { uploadToMini, compressImage, photoUrls, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
+import { uploadToMini, prepareImageForUpload, photoUrls, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
 import { motion } from "framer-motion";
 import { fetchJoinState } from "@/lib/roles";
 import { useDebouncedCallback, useTypingChannel, useUrlParam, useDeepLinkFlash } from "@/lib/hooks";
@@ -655,7 +655,7 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
         if (!token) throw new Error("Not signed in.");
         try {
           // Only photos are re-encoded; videos + files upload as-is.
-          const f = p.type === "image" ? await compressImage(p.file) : p.file;
+          const f = p.type === "image" ? await prepareImageForUpload(p.file) : p.file;
           const res = await uploadToMini(f, token, { category: "chat", room: slug });
           uploaded.push({ url: res.url, type: p.type, name: p.type === "file" ? p.name : undefined });
         } catch (e) {
