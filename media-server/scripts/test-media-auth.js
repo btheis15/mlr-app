@@ -158,6 +158,60 @@ const KEY_EVIL = "attacker-key-dddddddddddddddddddddddddddddd";
   on.restore();
 }
 
+// ── 4b. Path traversal (a REAL bypass, found by an adversarial audit probe) ──────
+//
+// `GET /f/assets/%2e%2e/posts/2026-06/<uuid>.jpg` returned 200 with NO token and the
+// full private photo: requireMediaToken is mounted at /f, so req.path was
+// `/assets/%2e%2e/…`, which satisfied the old startsWith("/assets/") exemption and
+// skipped the token check — then express.static normalized `..` and served the file.
+{
+  const { mod, restore } = loadWith({ MEDIA_TOKEN_SECRET: KEY_A, MEDIA_AUTH: "on" });
+  const unsafe = [
+    ["the actual exploit", "/assets/%2e%2e/posts/2026-06/x.jpg"],
+    ["plain dot-dot", "/assets/../posts/2026-06/x.jpg"],
+    ["double-encoded", "/assets/%252e%252e/posts/x.jpg"],
+    ["triple-encoded", "/assets/%25252e%25252e/posts/x.jpg"],
+    ["uppercase encoding", "/assets/%2E%2E/posts/x.jpg"],
+    ["encoded slash after dot-dot", "/assets/..%2fposts/x.jpg"],
+    ["encoded dot-dot + encoded slash", "/assets/%2e%2e%2fposts/x.jpg"],
+    ["dot-dot at end", "/posts/2026-06/.."],
+    ["dot-dot at start", "/../media-server/.env"],
+    ["bare dot-dot", "/.."],
+    ["backslash separator", "/assets/..\\posts/x.jpg"],
+    ["NUL byte", "/posts/x.jpg\u0000.txt"],
+    ["malformed percent-encoding", "/posts/%zz/x.jpg"],
+    ["deep traversal", "/a/b/c/../../../../../etc/passwd"],
+  ];
+  for (const [name, p] of unsafe) check(`traversal rejected: ${name}`, mod.pathIsSafe(p), false);
+
+  // Must not break real paths — a false positive here is a media outage.
+  const safe = [
+    ["normal photo", "/posts/2026-06/abc-123.jpg"],
+    ["thumbnail", "/posts/2026-06/abc-123_thumb.jpg"],
+    ["preserved original", "/posts/2026-07/abc_orig.mov"],
+    ["dropbox item", "/dropbox/0000fe57-2026-4000-8000-000000000001/2026-08/a.jpg"],
+    ["hls segment", "/posts/2026-07/vid_hls/720p/seg00001.ts"],
+    ["hls master", "/posts/2026-07/vid_hls/master.m3u8"],
+    ["chat media", "/chat/beautification/2026-08/x.jpg"],
+    ["legacy flat url", "/abc-123.jpg"],
+    ["multiple dots in filename", "/posts/2026-06/a.b.c.jpg"],
+    ["dot-dot INSIDE a filename (not a segment)", "/posts/2026-06/a..b.jpg"],
+    ["encoded space in filename", "/posts/2026-06/my%20photo.jpg"],
+    ["single-dot-prefixed name", "/posts/2026-06/.hidden.jpg"],
+  ];
+  for (const [name, p] of safe) check(`legit path allowed: ${name}`, mod.pathIsSafe(p), true);
+
+  // The exemption function still exists for out-of-/f callers, but note what it says:
+  // it is NOT consulted by requireMediaToken any more. Guard against regression by
+  // asserting the crafted path WOULD have matched it (i.e. the bypass was real).
+  check(
+    "the exploit path does satisfy the old prefix exemption (bypass was real)",
+    mod.isAlwaysPublic("/assets/%2e%2e/posts/2026-06/x.jpg"),
+    true
+  );
+  restore();
+}
+
 // ── 5. No signing key at all ────────────────────────────────────────────────────
 {
   const { mod, restore } = loadWith({
