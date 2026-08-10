@@ -135,15 +135,30 @@ async function listVolume(root) {
   return out;
 }
 
+// Derived files that belong to a parent object rather than to a database row.
+// Each is named `<uuid><suffix>.<ext>` beside the object it belongs to, and NONE
+// of them is referenced by any *_media row — so without this they'd all look like
+// orphans and be quarantined:
+//   _thumb  the grid preview
+//   _orig   ⭐ the untouched full-quality upload, kept beside its streamable
+//           rendition. Quarantining these would silently delete exactly the
+//           irreplaceable files the whole preserve-originals change exists to keep.
+const DERIVED_SUFFIXES = ["_thumb", "_orig"];
+
 function isReferenced(file, refs) {
   if (refs.rels.has(file.rel)) return true;
   if (refs.bases.has(file.name)) return true; // legacy flat URL
-  // A thumbnail is referenced if its parent object is: a row may predate
-  // thumbnail_url, or point at the object only.
-  const lower = file.name.toLowerCase();
-  if (lower.endsWith("_thumb.jpg")) {
-    const stem = file.name.slice(0, -"_thumb.jpg".length);
-    for (const b of refs.bases) if (b.startsWith(`${stem}.`)) return true;
+
+  // A derived file lives or dies with its parent object. Match on the stem so a
+  // `.mov` original behind an `.mp4` rendition still resolves.
+  const stemNoExt = file.name.slice(0, file.name.length - path.extname(file.name).length);
+  for (const suffix of DERIVED_SUFFIXES) {
+    if (!stemNoExt.endsWith(suffix)) continue;
+    const parentStem = stemNoExt.slice(0, -suffix.length);
+    if (!parentStem) continue;
+    for (const b of refs.bases) {
+      if (b.slice(0, b.length - path.extname(b).length) === parentStem) return true;
+    }
   }
   return false;
 }

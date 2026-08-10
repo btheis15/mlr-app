@@ -89,6 +89,15 @@ async function walkVolume(dir) {
         thumbs.push({ uuid: e.name.slice(0, e.name.length - "_thumb.jpg".length), size });
         continue;
       }
+      // An `<uuid>_orig.<ext>` is the untouched upload sitting beside its
+      // streamable rendition — the SAME object, stored twice. Fold its bytes in
+      // like a thumbnail rather than counting a second photo/video, or the meter
+      // would claim the library doubled the day originals started being kept.
+      const stemNoExt = e.name.slice(0, e.name.length - path.extname(e.name).length);
+      if (stemNoExt.endsWith("_orig")) {
+        thumbs.push({ uuid: stemNoExt.slice(0, -"_orig".length), size });
+        continue;
+      }
       const cat = classifyMediaFile(e.name);
       const uuid = e.name.includes(".") ? e.name.slice(0, e.name.lastIndexOf(".")) : e.name;
       objects.set(uuid, cat);
