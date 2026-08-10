@@ -79,7 +79,19 @@ export async function ensureMediaToken(force = false): Promise<string | null> {
       if (!jwt) return null; // a guest gets no token — and sees no media
       const res = await fetch(`${MEDIA_URL}/media-token`, {
         headers: { Authorization: `Bearer ${jwt}` },
+        // ⚠️⚠️ `no-store` is load-bearing, not hygiene. The endpoint used to answer
+        // `Cache-Control: private, max-age=600` with an Express-generated ETag, and the
+        // body is byte-identical for the whole 24h window — so once freshness lapsed the
+        // browser revalidated and got a **304**. `res.ok` is FALSE for a 304, so the
+        // `!res.ok` branch below concluded there was no token, every media URL rendered
+        // unsigned, and the whole app's photos 403'd. Observed live: 104 consecutive
+        // unsigned requests on one album. The server now sends no-store too; this is the
+        // half that protects clients already running an older build.
+        cache: "no-store",
       });
+      // A 304 must never be read as failure. It means "what you already have is
+      // current" — so fall back to the stored copy instead of reporting no token.
+      if (res.status === 304) return fromStorage() ?? current;
       if (!res.ok) return null;
       const j = (await res.json()) as Cached;
       if (!j?.token) return null;

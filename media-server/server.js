@@ -535,9 +535,30 @@ app.get("/media-token", requireUser, async (req, res) => {
     });
   }
   const { token, expiresAt } = mediaAuth.issueToken();
-  // Let the client cache it, but not past its own expiry.
-  res.setHeader("Cache-Control", "private, max-age=600");
-  res.json({ token, expiresAt, ttlHours: mediaAuth.TTL_MS / 3600000 });
+  // ⚠️⚠️ NO-STORE, AND NO ETAG. This previously sent `private, max-age=600`, which
+  // broke every photo in the app in a way that took hours to find.
+  //
+  // The body is byte-identical for the whole 24h window, so Express's automatic ETag
+  // was stable. After the 600s freshness lapsed the browser revalidated with
+  // If-None-Match and got a **304 Not Modified** — and `fetch()` reports `res.ok ===
+  // false` for a 304, so ensureMediaToken() hit its `if (!res.ok) return null` branch
+  // and concluded it had NO TOKEN. Every media URL then rendered unsigned and 403'd,
+  // while /media-token itself looked perfectly healthy in the logs (alternating 200s
+  // and 304s). Observed live: 104 consecutive `tok=no` 403s on a photo album.
+  //
+  // Caching bought nothing anyway — the client already persists the token in
+  // localStorage for its full 24h life, so the HTTP cache was a redundant second
+  // layer whose only effect was this failure. A short-lived bearer credential should
+  // not sit in the browser's HTTP cache regardless.
+  //
+  // Written with res.end() rather than res.json() BECAUSE res.json() -> res.send()
+  // unconditionally computes an ETag, and removeHeader() before it is too late (send
+  // adds it afterward). res.end() skips that path entirely, so this response carries
+  // no validator at all and cannot be revalidated into a 304.
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify({ token, expiresAt, ttlHours: mediaAuth.TTL_MS / 3600000 }));
 });
 
 /**

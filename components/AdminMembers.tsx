@@ -374,7 +374,7 @@ export function AdminMembers() {
                           Not verified
                         </span>
                       ) : (
-                        <VerifiedBadge verified={m.approved} />
+                        <VerifiedBadge verified={m.approved} name={name} />
                       )}
                       {m.house_name && (
                         <span className="shrink-0 rounded-full bg-lake/15 px-1.5 py-0.5 text-[10px] font-semibold text-lake">🏠 {m.house_name}</span>
