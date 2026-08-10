@@ -203,9 +203,21 @@ app.use(globalLimiter);
 
 // Lightweight request log (method, path, origin, body size, auth present) so
 // upload problems are diagnosable from logs/server.log.
-app.use((req, _res, next) => {
+app.use((req, res, next) => {
   if (req.url !== "/health") {
-    console.log(`[req] ${new Date().toISOString()} ${req.method} ${req.url} origin=${req.headers.origin || "-"} len=${req.headers["content-length"] || "-"} auth=${req.headers.authorization ? "yes" : "no"}`);
+    // ⚠️ Log the RESPONSE STATUS, not just the request. This line used to record only
+    // what came in, which made a media-auth rollout undebuggable: the log showed the
+    // client asking for a token and later requesting photos unsigned, with no way to
+    // tell whether /media-token had answered 200, 401 or 403 — so every diagnosis was
+    // a guess. `tok` distinguishes "client never had a token" from "client sent one we
+    // rejected", which are completely different bugs with the same broken-image symptom.
+    const started = Date.now();
+    const tok = /[?&]t=/.test(req.url) ? "tok=yes" : "tok=no";
+    res.on("finish", () => {
+      console.log(
+        `[req] ${new Date().toISOString()} ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms origin=${req.headers.origin || "-"} len=${req.headers["content-length"] || "-"} auth=${req.headers.authorization ? "yes" : "no"} ${tok}`
+      );
+    });
   }
   next();
 });
