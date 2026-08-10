@@ -19,6 +19,28 @@ interface MemberRow {
   email?: string | null; // only present via the admin RPC (private)
   is_admin: boolean;
   house_name?: string | null; // present via admin_members() once migration 0064 is run
+  /** Admin-approved member (migration 0181). Absent pre-migration, which is
+   *  treated as approved so the directory behaves exactly as before. */
+  approved?: boolean | null;
+}
+
+/**
+ * Merge profiles.approved onto the directory rows.
+ *
+ * Kept separate from admin_members() deliberately — see the 0160 lesson: that
+ * function has been recreated by several migrations, so widening it means copying a
+ * body that may already have drifted. A plain select is safe and additive.
+ */
+async function mergeApproval(
+  sb: NonNullable<typeof supabase>,
+  rows: MemberRow[],
+): Promise<MemberRow[]> {
+  const { data, error } = await sb.from("profiles").select("id, approved");
+  // Pre-migration (column missing) or any error → leave rows untouched, which the
+  // UI reads as approved. Never blank the directory over an optional flag.
+  if (error || !data) return rows;
+  const byId = new Map(data.map((r: { id: string; approved?: boolean | null }) => [r.id, r.approved]));
+  return rows.map((m) => (byId.has(m.id) ? { ...m, approved: byId.get(m.id) ?? false } : m));
 }
 
 /**
@@ -199,6 +221,8 @@ export function AdminMembers() {
       )
     : members;
   const adminCount = members.filter((m) => m.is_admin).length;
+  // `approved === false` only — undefined means pre-migration, which is not pending.
+  const pending = members.filter((m) => m.approved === false);
 
   return (
     <>
