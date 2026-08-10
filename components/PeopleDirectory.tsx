@@ -13,6 +13,7 @@ import { plural } from "@/lib/format";
 import { payActions, type Action, type MemberContact } from "@/lib/contact";
 import { isApple } from "@/lib/push";
 import { isReviewerAccount } from "@/lib/reviewer";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 // One member as the directory needs them: identity for the row + the contact/pay
 // fields we turn into the quick-action bar. These are the same private columns
@@ -21,6 +22,9 @@ interface Person extends MemberContact {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  /** `profiles.approved` — drives the discrete verified checkmark. Optional so a
+   *  pre-migration project (or a read that omits it) simply shows no badge. */
+  approved?: boolean | null;
 }
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
@@ -56,7 +60,7 @@ export function PeopleDirectory() {
       const { data, error: e } = await sb
         .from("profiles")
         .select(
-          "id, display_name, avatar_url, phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, apple_cash",
+          "id, display_name, avatar_url, phone, contact_email, venmo, zelle, cashapp, paypal, pay_preferred, contact_preferred, apple_cash, approved",
         );
       if (e) {
         setError("Couldn't load people.");
@@ -156,6 +160,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
         <Avatar name={name} url={person.avatar_url} size={40} />
         <span className="flex min-w-0 flex-1 items-center truncate text-sm font-semibold">
           <span className="truncate">{name}</span>
+          <VerifiedBadge verified={person.approved} className="ml-1" />
         </span>
         <span aria-hidden className="shrink-0 text-base leading-none text-faint">›</span>
       </button>
