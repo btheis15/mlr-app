@@ -10,6 +10,7 @@ import { useBusyAction, useSaveStatus } from "@/lib/hooks";
 import { inviteMember } from "@/lib/admin";
 import { AdminEditMember } from "@/components/AdminEditMember";
 import { MemberSheet } from "@/components/MemberSheet";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 interface MemberRow {
   id: string;
@@ -194,6 +195,36 @@ export function AdminMembers() {
     setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_admin: value } : x)));
   };
 
+  /**
+   * Verify or un-verify a member (migration 0181's set_member_approved).
+   *
+   * Anyone can sign up with any email address, so a confirmed login proves nothing.
+   * Until an admin verifies them a new signup sees only what a signed-out visitor
+   * sees — enforced in the database by migration 0183, not just hidden in the UI.
+   *
+   * Existing members and everyone already on a roster were auto-verified by
+   * 0181/0182, so this is only ever for someone genuinely unknown.
+   */
+  const setApproved = async (m: MemberRow, value: boolean) => {
+    const sb = supabase;
+    if (!sb) return;
+    const name = m.display_name || m.email || "this member";
+    if (
+      !window.confirm(
+        value
+          ? `Verify ${name}? They'll get the same access every other member has, including the photo albums.`
+          : `Remove ${name}'s verification? They'll still have a login, but will only see what a signed-out visitor sees.`,
+      )
+    )
+      return;
+    const { error: e } = await run(m.id, () => sb.rpc("set_member_approved", { p_user: m.id, p_value: value }));
+    if (e) {
+      window.alert(e.message || "Couldn't update verification.");
+      return;
+    }
+    setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, approved: value } : x)));
+  };
+
   // Permanently delete a member: their account + everything they posted. Gated
   // server-side too (delete_member, migration 0009) — admins can't be deleted
   // without demoting first, and you can't delete yourself. Double-confirm here
@@ -290,6 +321,21 @@ export function AdminMembers() {
         />
       )}
 
+      {/* Impossible to miss when someone is waiting. Existing members and everyone
+          already on a roster were auto-verified, so this only appears for a genuine
+          stranger — which is exactly when it needs to be prominent. */}
+      {unverified.length > 0 && (
+        <div className="space-y-1 rounded-xl bg-accent/10 px-3 py-2.5">
+          <p className="text-sm font-semibold text-foreground">
+            {unverified.length === 1 ? "1 person needs verifying" : `${unverified.length} people need verifying`}
+          </p>
+          <p className="text-xs text-muted">
+            They can sign in but currently see only what a signed-out visitor sees — no posts, contact details or
+            photo albums. Verify anyone you recognise below.
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <SkeletonList count={2} />
       ) : error ? (
@@ -319,6 +365,17 @@ export function AdminMembers() {
                       {m.is_admin && (
                         <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Admin</span>
                       )}
+                      {/* Verified state. The discrete tick for a verified member
+                          (same treatment members see in the People directory); an
+                          explicit chip for an unverified one, because that's the
+                          state an admin has to notice and act on. */}
+                      {m.approved === false ? (
+                        <span className="shrink-0 rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                          Not verified
+                        </span>
+                      ) : (
+                        <VerifiedBadge verified={m.approved} />
+                      )}
                       {m.house_name && (
                         <span className="shrink-0 rounded-full bg-lake/15 px-1.5 py-0.5 text-[10px] font-semibold text-lake">🏠 {m.house_name}</span>
                       )}
@@ -334,6 +391,23 @@ export function AdminMembers() {
                     is fully readable. */}
                 {rpcReady && (
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Verify FIRST: for someone waiting, it's the only action that
+                        matters and shouldn't sit behind Edit / Make admin. Hidden
+                        for admins, since is_approved_member() treats an admin as
+                        implicitly verified — offering it would imply a state that
+                        doesn't exist. Also hidden pre-migration (`approved`
+                        undefined), where there's nothing to toggle. */}
+                    {!isMe && !m.is_admin && m.approved !== undefined && m.approved !== null && (
+                      <button
+                        onClick={() => setApproved(m, !m.approved)}
+                        disabled={busyId === m.id}
+                        className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-50 ${
+                          m.approved ? "bg-background text-muted ring-border" : "bg-primary text-white ring-primary"
+                        }`}
+                      >
+                        {busyId === m.id ? "…" : m.approved ? "Un-verify" : "✓ Verify"}
+                      </button>
+                    )}
                     {!isMe && editUnlocked && (
                       <button
                         onClick={() => setEditId(editId === m.id ? null : m.id)}
