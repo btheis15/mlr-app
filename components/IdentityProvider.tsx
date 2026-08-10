@@ -7,7 +7,7 @@ import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearAllCaches, readPersisted, writePersisted } from "@/lib/swrCache";
-import { ensureMediaToken, clearMediaToken } from "@/lib/mediaToken";
+import { ensureMediaToken, clearMediaToken, peekMediaToken } from "@/lib/mediaToken";
 import { WelcomeIntro } from "@/components/WelcomeIntro";
 import { isIos, isStandalone } from "@/lib/push";
 import { InstallFirstNudge } from "@/components/InstallFirstNudge";
@@ -186,6 +186,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   // "waiting to be verified" screen while the profile query is still in flight —
   // the same reasoning as the identity snapshot restoring `user` on the first tick.
   const [verified, setVerified] = useState(true);
+  // Bumped once when the media token arrives on an open that started without
+  // one, purely to re-render the tree so mediaSrc() can sign every URL.
+  const [, setMediaTokenTick] = useState(0);
   // True when this session came from an admin's invite-link email — see
   // IdentityValue.invitedViaLink for why this needs its own confirmation step.
   const [invitedViaLink, setInvitedViaLink] = useState(false);
@@ -305,10 +308,25 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           // Supabase already uses "verified" for email confirmation). `undefined`
           // means pre-migration, which reads as verified.
           setVerified(e.approved === undefined ? true : e.approved !== false);
-          // Warm the media token now. mediaSrc() reads it SYNCHRONOUSLY during
-          // render, so it must be in hand before the first photo paints; it's
-          // cached in localStorage for 24h, so this is a no-op on a warm open.
-          void ensureMediaToken();
+          // Warm the media token. mediaSrc() reads it SYNCHRONOUSLY during render,
+          // so it must be in hand before the first photo paints; it's cached in
+          // localStorage for 24h, so this is usually a no-op on a warm open.
+          //
+          // ⚠️ When it ISN'T in hand, warming alone is not enough — this used to be
+          // a bare `void ensureMediaToken()`, so on any open that started without a
+          // cached token every photo rendered UNSIGNED and stayed that way, because
+          // nothing re-rendered when the token landed. With MEDIA_AUTH on that's a
+          // screen of broken images, and it isn't rare: the cache is dropped a
+          // minute before its 24h expiry, so it happens to everyone about daily, plus
+          // on every first open after signing in on a new device. Bumping state here
+          // re-renders the provider's subtree — the whole app — so every `mediaSrc()`
+          // recomputes with the token. Guarded on "we genuinely had none", so a warm
+          // open costs no extra render.
+          if (!peekMediaToken()) {
+            void ensureMediaToken().then((t) => {
+              if (active && t) setMediaTokenTick((n) => n + 1);
+            });
+          }
         }
       } catch {
         if (active) {

@@ -21,7 +21,17 @@ const CACHE_KEY = "mlr.mediaToken.v1";
 type Cached = { token: string; expiresAt: string };
 
 let current: string | null = null;
+/** When `current` stops being usable. Tracked so a long-lived session (an installed
+ *  PWA left open for days) drops its in-memory token instead of signing URLs with
+ *  an expired one — `fromStorage()` already refuses a near-expiry token, but
+ *  `current` would otherwise never be reconsidered. */
+let currentExpiresAt = 0;
 let inFlight: Promise<string | null> | null = null;
+
+/** Usable for at least another minute, so a URL can't expire mid-flight. */
+function stillFresh(): boolean {
+  return !!current && currentExpiresAt - Date.now() >= 60_000;
+}
 
 /** Read the cached token, ignoring one that's expired or nearly so. */
 function fromStorage(): string | null {
@@ -32,7 +42,9 @@ function fromStorage(): string | null {
     const c = JSON.parse(raw) as Cached;
     if (!c?.token || !c?.expiresAt) return null;
     // Drop it a minute early so we never render a URL that expires mid-flight.
-    if (Date.parse(c.expiresAt) - Date.now() < 60_000) return null;
+    const exp = Date.parse(c.expiresAt);
+    if (exp - Date.now() < 60_000) return null;
+    currentExpiresAt = exp;
     return c.token;
   } catch {
     return null;
@@ -45,12 +57,15 @@ function fromStorage(): string | null {
  * has it before the first photo renders.
  */
 export async function ensureMediaToken(): Promise<string | null> {
-  if (current) return current;
+  if (stillFresh()) return current;
   const cached = fromStorage();
   if (cached) {
     current = cached;
     return current;
   }
+  // Expired: forget it, so a failed refresh renders an unsigned URL (one broken
+  // image) rather than a confidently-signed URL the server will 403.
+  current = null;
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
@@ -65,6 +80,7 @@ export async function ensureMediaToken(): Promise<string | null> {
       const j = (await res.json()) as Cached;
       if (!j?.token) return null;
       current = j.token;
+      currentExpiresAt = Date.parse(j.expiresAt) || Date.now() + 60_000;
       try {
         window.localStorage.setItem(CACHE_KEY, JSON.stringify(j));
       } catch {
@@ -83,6 +99,7 @@ export async function ensureMediaToken(): Promise<string | null> {
 /** Called by signOut so a shared device doesn't leave a usable media token behind. */
 export function clearMediaToken() {
   current = null;
+  currentExpiresAt = 0;
   try {
     window.localStorage.removeItem(CACHE_KEY);
   } catch {
@@ -92,7 +109,7 @@ export function clearMediaToken() {
 
 /** The token if we already have one, without triggering a fetch (render is sync). */
 export function peekMediaToken(): string | null {
-  if (current) return current;
+  if (stillFresh()) return current;
   current = fromStorage();
   return current;
 }
