@@ -3173,6 +3173,19 @@ not a forwarded link. Server half:
   policy is an App Store requirement and `/assets` holds pay-method logos that render
   on the sign-in screen itself.
 - **Reverting is one line**: `MEDIA_AUTH=off` in the mini's `.env` + restart.
+- ⚠️⚠️ **CURRENTLY `MEDIA_AUTH=report`, NOT `on` — because the NATIVE iOS APP CANNOT SIGN
+  YET.** Enforcement was verified working on web (220/220 signed requests) and then
+  deliberately backed off to `report`, because `apns_subscriptions` shows 3 registered
+  iOS devices across 2 members (Brian, Annette) and the native app has no
+  `/media-token` support — enforcement 403s every photo in it. Promote to `on` only
+  after iOS ships the token, verified via `report` mode's WOULD-BLOCK log. Full iOS
+  handoff spec: [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+- **A cookie would be simpler and was DECLINED (2026-08-10).** Same-origin it isn't —
+  app on `vercel.app`, media on `duckdns.org` are different *sites*, so the cookie
+  would be third-party and Safari/iOS blocks it. Making it work needs a real domain
+  (`app.<d>` + `media.<d>` = same site, first-party cookie, and this whole layer could
+  be deleted). Brian chose to keep the token and teach iOS to send it instead — ~30
+  lines, no cost. Don't re-pitch without a domain.
 
 **Remote restart, from the app — owner-only.** Shipping a media-server
 change still needs a `git pull` + process restart on the mini, but that no
