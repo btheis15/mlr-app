@@ -227,7 +227,18 @@ function requireMediaToken(req, res, next) {
     if (SECRET) {
       const t = (typeof req.query.t === "string" && req.query.t) || (/^Bearer (.+)$/.exec(req.headers.authorization || "") || [])[1] || "";
       if (!verifyToken(t)) {
-        console.warn(`[media-auth] WOULD-BLOCK ${req.path} tok=${t ? "invalid" : "missing"} ua=${(req.headers["user-agent"] || "-").slice(0, 60)}`);
+        // console.LOG, not warn: warn goes to stderr, which launchd routes to
+        // server.err.log — a different file from the [req] lines this needs to be
+        // correlated with. That split sent one debugging session looking in the wrong
+        // file and concluding report mode wasn't recording anything. Timestamped for
+        // the same reason: without it there is no way to tell a stale line from a new
+        // one, which is exactly the question a rollout check has to answer.
+        // `range` is included because iOS's native player is known to drop the query
+        // string on some range retries — if video breaks under enforcement while photos
+        // are fine, that is the signature to look for.
+        console.log(
+          `[media-auth] WOULD-BLOCK ${new Date().toISOString()} ${req.path} tok=${t ? "invalid" : "missing"} range=${req.headers.range ? "yes" : "no"} ua=${(req.headers["user-agent"] || "-").slice(0, 50)}`
+        );
       }
     }
     return next();
