@@ -3078,6 +3078,32 @@ see the README), and the `MAX_MB` upload cap default dropped to **256** (was
 1024). See [`media-server/README.md`](media-server/README.md) for the full
 list and the `npm install` + restart needed on the mini.
 
+⚠️ **The server binds LOOPBACK (`127.0.0.1`), not `0.0.0.0`** — Caddy is the only
+thing that should reach it and proxies from `127.0.0.1:8790`. It used to bind every
+interface, which meant any device on the house WiFi could reach the whole API
+(`/f`, `/upload`, `/admin/*`) over **plain HTTP**, bypassing Caddy's TLS — and
+would have been publicly exposed with no cert if a second port were ever forwarded
+on the router. `BIND_HOST` overrides it for a deliberate LAN test; unset is the
+secure default. **The public surface is exactly one port**: `443 → 9443 → Caddy →
+loopback`. Verify after any change to this with `lsof -nP -iTCP -sTCP:LISTEN` —
+nothing but `caddy` should appear on a non-loopback address.
+
+**Every route is auth-gated except five, all deliberate:** `/health`, `/assets`,
+`/privacy`, `/media-load` (an aggregate throughput + viewer count, so the client
+can cap `hls.js` mid-playback — nothing about who is watching what), and **`/f`
+itself** while `MEDIA_AUTH` is off (see **Signed media reads** below). `requireUser`
+(any verified member) / `requireAdmin` / `requireOwner` (one verified email —
+restart + moderation delete) are the three tiers.
+
+**Dependency patches are scanned on a schedule** — `scripts/patch-scan.sh` via the
+`com.mlr.patchscan` launchd agent, writing `logs/patch-status.json` plus a
+one-line-per-run summary to `logs/patch-scan.log` (`N outdated, audit high/crit
+H/C`). ⚠️ Build that summary with a heredoc, never an inline `python3 -c "…"`
+nested inside `$(…)` inside `"…"` — that mangled the f-string's quotes and
+word-split the output on the commas in `.get('high',0)`, so for a while every run
+logged four fragments of literal Python source instead of a summary. A scanner
+whose output nobody can read is not a working scanner.
+
 **Remote restart, from the app — owner-only.** Shipping a media-server
 change still needs a `git pull` + process restart on the mini, but that no
 longer requires someone at the machine: Admin → **Media server**
