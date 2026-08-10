@@ -91,7 +91,26 @@ const TTL_MS = Number(process.env.MEDIA_TOKEN_TTL_HOURS || 24) * 3600 * 1000;
 //   1. ship the client changes with MEDIA_AUTH unset (tokens present, ignored)
 //   2. confirm media still renders everywhere, then set MEDIA_AUTH=on in .env
 // Flipping this is a one-line change and instantly reversible.
-const ENABLED = String(process.env.MEDIA_AUTH || "off").toLowerCase() === "on";
+const MODE = String(process.env.MEDIA_AUTH || "off").toLowerCase();
+const ENABLED = MODE === "on";
+/**
+ * ⭐ REPORT-ONLY MODE (`MEDIA_AUTH=report`) — the safe way to turn this on.
+ *
+ * Serves every media read exactly as if auth were off, but LOGS what it *would* have
+ * blocked. This exists because flipping straight to `on` broke the whole family's
+ * photos twice in one afternoon, and both times the evidence needed to predict it
+ * ("are real clients actually sending a token?") was only obtainable by breaking it.
+ *
+ * Rollout that cannot fail:
+ *   1. MEDIA_AUTH=report, restart. Nothing changes for anyone.
+ *   2. Have a member open the app and scroll an album.
+ *   3. grep the log for "[media-auth] WOULD-BLOCK". Zero lines from real clients
+ *      (only `tok=no` probes) means every client is signing correctly.
+ *   4. Only then MEDIA_AUTH=on.
+ *
+ * Step 3 is the check that was missing all along. Do not skip it.
+ */
+const REPORT_ONLY = MODE === "report";
 
 /**
  * ⚠️⚠️ DO NOT reintroduce a path-prefix exemption here. This function is retained only
@@ -202,6 +221,17 @@ function requireMediaToken(req, res, next) {
   if (!pathIsSafe(req.path)) {
     return res.status(400).json({ error: "Bad request." });
   }
+  // Report-only: serve everything, but record what enforcement WOULD have blocked, so
+  // the rollout can be verified from real client traffic instead of by breaking it.
+  if (REPORT_ONLY) {
+    if (SECRET) {
+      const t = (typeof req.query.t === "string" && req.query.t) || (/^Bearer (.+)$/.exec(req.headers.authorization || "") || [])[1] || "";
+      if (!verifyToken(t)) {
+        console.warn(`[media-auth] WOULD-BLOCK ${req.path} tok=${t ? "invalid" : "missing"} ua=${(req.headers["user-agent"] || "-").slice(0, 60)}`);
+      }
+    }
+    return next();
+  }
   if (!ENABLED) return next();
   if (!SECRET) {
     // Fail OPEN rather than blackholing every photo in the app if the secret is
@@ -222,4 +252,4 @@ function requireMediaToken(req, res, next) {
   res.status(403).json({ error: "This photo is only viewable in the MLR app." });
 }
 
-module.exports = { ENABLED, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic, pathIsSafe, ACCEPTED_KEYS };
+module.exports = { ENABLED, REPORT_ONLY, MODE, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic, pathIsSafe, ACCEPTED_KEYS };
