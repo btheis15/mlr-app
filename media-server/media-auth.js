@@ -93,12 +93,55 @@ const TTL_MS = Number(process.env.MEDIA_TOKEN_TTL_HOURS || 24) * 3600 * 1000;
 // Flipping this is a one-line change and instantly reversible.
 const ENABLED = String(process.env.MEDIA_AUTH || "off").toLowerCase() === "on";
 
-/** Paths that must stay public even with auth on. */
+/**
+ * ⚠️⚠️ DO NOT reintroduce a path-prefix exemption here. This function is retained only
+ * so callers outside the `/f` chain can ask the question; `requireMediaToken` no longer
+ * consults it, because doing so was an AUTHENTICATION BYPASS FOR THE ENTIRE MEDIA
+ * LIBRARY:
+ *
+ *   GET /f/assets/%2e%2e/posts/2026-06/<uuid>.jpg   ->   200, no token, full private photo
+ *
+ * `requireMediaToken` is mounted at `/f`, so `req.path` inside it is /f-RELATIVE —
+ * `/assets/…` and `/privacy` are top-level Express routes that can never legitimately
+ * appear there. But a crafted path DOES satisfy `startsWith("/assets/")`, so the token
+ * check was skipped, and `express.static` then normalized `%2e%2e` to `..` and served
+ * the private file from inside MEDIA_DIR. Found by an adversarial audit probe.
+ *
+ * The real `/privacy` and `/assets` routes are mounted at the top level and are not
+ * behind this middleware at all, so nothing needed an exemption in the first place.
+ */
 function isAlwaysPublic(reqPath) {
-  // The privacy policy has to be reachable with no login (App Store requirement),
-  // and /assets holds repo-shipped UI images (pay-method logos) that render on
-  // screens a guest can see, including the sign-in page itself.
   return reqPath === "/privacy" || reqPath.startsWith("/assets/");
+}
+
+/**
+ * Is this request path free of traversal tricks?
+ *
+ * Decodes repeatedly (to catch `%252e%252e` double-encoding) and rejects any `..`
+ * segment, backslash, or NUL. `express.static` refuses to serve OUTSIDE its root, which
+ * is why this was not a secrets-disclosure bug — but "inside the root" still means the
+ * whole media library, and traversal also lets a path dodge prefix-based checks earlier
+ * in the chain (the `_trash` quarantine block being the one that matters: deleted photos
+ * are meant to be unreachable for their 7-day hold).
+ *
+ * Applied to EVERY `/f` request, token or not — a valid token is permission to read
+ * media, not permission to address it in a way that sidesteps the chain.
+ */
+function pathIsSafe(rawPath) {
+  let p = String(rawPath == null ? "" : rawPath);
+  for (let i = 0; i < 4; i++) {
+    if (p.includes("\0") || p.includes("\\")) return false;
+    if (/(^|\/)\.\.(\/|$)/.test(p)) return false;
+    let decoded;
+    try {
+      decoded = decodeURIComponent(p);
+    } catch {
+      return false; // malformed percent-encoding — refuse rather than guess
+    }
+    if (decoded === p) return true; // fully decoded, and clean at every step
+    p = decoded;
+  }
+  return false; // absurdly nested encoding; nothing legitimate looks like this
 }
 
 /** The window a timestamp falls in. Rounding is what makes the token stable. */
@@ -150,6 +193,15 @@ function verifyToken(token, now = Date.now()) {
  * header (for programmatic callers and the existing zip endpoints).
  */
 function requireMediaToken(req, res, next) {
+  // ⭐ TRAVERSAL IS REJECTED UNCONDITIONALLY — before the ENABLED and SECRET checks,
+  // not after. A traversal path is malformed regardless of whether media auth is
+  // enforcing: the handlers downstream (the `_trash` quarantine block, the `?dl=1`
+  // original-file resolver) make PREFIX-BASED decisions on req.path, so a `..` slips
+  // past them whether or not a token was required. Putting this behind `if (!ENABLED)`
+  // would leave deleted-photo quarantine bypassable any time enforcement is off.
+  if (!pathIsSafe(req.path)) {
+    return res.status(400).json({ error: "Bad request." });
+  }
   if (!ENABLED) return next();
   if (!SECRET) {
     // Fail OPEN rather than blackholing every photo in the app if the secret is
@@ -157,7 +209,9 @@ function requireMediaToken(req, res, next) {
     console.warn("[media-auth] no signing secret set — serving /f publicly");
     return next();
   }
-  if (isAlwaysPublic(req.path)) return next();
+  // ⚠️ NO isAlwaysPublic() CHECK HERE — see the note on that function. This middleware
+  // only ever runs for /f, where nothing is legitimately public; consulting it let
+  // `/f/assets/%2e%2e/…` skip the token entirely and serve any photo in the library.
 
   const fromQuery = typeof req.query.t === "string" ? req.query.t : "";
   const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
@@ -168,4 +222,4 @@ function requireMediaToken(req, res, next) {
   res.status(403).json({ error: "This photo is only viewable in the MLR app." });
 }
 
-module.exports = { ENABLED, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic, ACCEPTED_KEYS };
+module.exports = { ENABLED, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic, pathIsSafe, ACCEPTED_KEYS };
