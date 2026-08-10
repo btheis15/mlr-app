@@ -19,6 +19,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const tiers = require("./media-tiers");
 const trash = require("./media-trash");
+const { isHlsPath, HLS_SUFFIX } = require("./hls");
 
 // Every table holding a mini /f/ URL. Mirrors MEDIA_URL_TABLES in server.js —
 // keep them in step. Verified complete by grepping every uploadToMini() caller.
@@ -148,6 +149,22 @@ const DERIVED_SUFFIXES = ["_thumb", "_orig"];
 function isReferenced(file, refs) {
   if (refs.rels.has(file.rel)) return true;
   if (refs.bases.has(file.name)) return true; // legacy flat URL
+
+  // ⚠️ HLS segments and playlists live in `<uuid>_hls/<n>/seg_0001.ts` and NONE of
+  // them is referenced by any *_media row — only the parent .mp4 is. Without this,
+  // the sweep would quarantine every segment of every video, i.e. delete the whole
+  // adaptive-streaming feature 48 hours after it was built. The directory name
+  // carries the parent's uuid, so match on that.
+  if (isHlsPath(file.rel)) {
+    const seg = file.rel.split("/").find((x) => x.endsWith(HLS_SUFFIX));
+    const parentStem = seg ? seg.slice(0, -HLS_SUFFIX.length) : "";
+    if (parentStem) {
+      for (const b of refs.bases) {
+        if (b.slice(0, b.length - path.extname(b).length) === parentStem) return true;
+      }
+    }
+    return false; // parent genuinely gone → the ladder is collectable too
+  }
 
   // A derived file lives or dies with its parent object. Match on the stem so a
   // `.mov` original behind an `.mp4` rendition still resolves.

@@ -29,6 +29,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const tiers = require("./media-tiers");
 const { TRASH_SUBDIR } = require("./media-trash");
+const { ORIGINAL_SUFFIX } = require("./transcode");
 
 const SWEEP_MS = 10 * 60_000;
 const MAX_FILES_PER_SWEEP = 500;
@@ -57,6 +58,24 @@ async function listRelFiles(dir) {
     }
   }
   return out;
+}
+
+/**
+ * Is this a preserved ORIGINAL — the untouched upload kept beside its playback
+ * rendition?
+ *
+ * These are deliberately stored on the EXTERNAL DRIVE ONLY, never the SSD. They
+ * are simultaneously the largest files in the library and the coldest: nothing
+ * reads them except an explicit ?dl=1 download or an album zip. On the live
+ * library they were 412 MB — 32% of all SSD usage — serving no browsing traffic
+ * at all. Keeping them off the SSD is the single biggest storage win available,
+ * and it costs nothing: the /f read chain finds them on the external drive
+ * transparently, and findOriginal() searches both volumes.
+ */
+function isPreservedOriginal(rel) {
+  const name = rel.split("/").pop() || "";
+  const stem = name.slice(0, name.length - path.extname(name).length);
+  return stem.endsWith(ORIGINAL_SUFFIX);
 }
 
 /** Copy one file hot→cold: temp file on the destination, verify size, rename. */
@@ -95,6 +114,7 @@ async function sweepOnce() {
 
   const hotFiles = await listRelFiles(tiers.HOT_DIR);
   const todo = [];
+  const alreadyMirroredOriginals = [];
   let scanned = 0;
 
   for (const rel of hotFiles) {
@@ -109,13 +129,21 @@ async function sweepOnce() {
     } catch {
       need = true; // missing on cold (or unreadable) → copy
     }
-    if (need) todo.push(rel);
+    if (need) {
+      todo.push(rel);
+    } else if (isPreservedOriginal(rel)) {
+      // Already backed up, but it's an original still taking SSD space — drop the
+      // hot copy. Catches everything that predates this policy.
+      alreadyMirroredOriginals.push(rel);
+    }
     if (todo.length >= MAX_FILES_PER_SWEEP) break;
   }
 
   let copied = 0;
   let bytes = 0;
   let failed = 0;
+  let evicted = 0;
+  let evictedBytes = 0;
   let queue = todo.slice();
 
   const worker = async () => {
@@ -132,6 +160,19 @@ async function sweepOnce() {
         if (r.ok) {
           copied += 1;
           bytes += r.bytes;
+          // The cold copy is now byte-verified, so an ORIGINAL no longer needs to
+          // occupy the SSD. This is the one case where the mirror removes
+          // something from hot, and it's safe precisely because mirrorOne
+          // size-checked the destination before returning.
+          if (isPreservedOriginal(rel)) {
+            try {
+              fs.unlinkSync(tiers.hotPathFor(rel));
+              evicted += 1;
+              evictedBytes += r.bytes;
+            } catch {
+              /* already gone */
+            }
+          }
         }
       } catch (e) {
         failed += 1;
@@ -141,7 +182,24 @@ async function sweepOnce() {
   };
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  return { scanned, pending: todo.length, copied, bytes, failed, more: todo.length >= MAX_FILES_PER_SWEEP };
+
+  // Reclaim SSD space from originals that were already safely on cold.
+  for (const rel of alreadyMirroredOriginals) {
+    const hot = tiers.hotPathFor(rel);
+    const cold = tiers.coldPathFor(rel);
+    try {
+      // Re-verify rather than trust the earlier scan — never unlink without
+      // confirming the backup is present and the same size, right now.
+      const [h, c] = await Promise.all([fsp.stat(hot), fsp.stat(cold)]);
+      if (h.size !== c.size) continue;
+      await fsp.unlink(hot);
+      evicted += 1;
+      evictedBytes += h.size;
+    } catch {
+      /* missing on one side, or already gone — leave it alone */
+    }
+  }
+  return { scanned, pending: todo.length, copied, bytes, failed, evicted, evictedBytes, more: todo.length >= MAX_FILES_PER_SWEEP };
 }
 
 function startMirrorSweep() {
@@ -156,10 +214,11 @@ function startMirrorSweep() {
         console.log(`[mirror] skipped: ${r.skipped}`);
         return;
       }
-      if (r.copied || r.failed) {
+      if (r.copied || r.failed || r.evicted) {
         const mb = (r.bytes / 1024 / 1024).toFixed(1);
         console.log(
           `[mirror] backed up ${r.copied} file(s), ${mb} MB${r.failed ? `, ${r.failed} failed` : ""}` +
+            `${r.evicted ? `; freed ${(r.evictedBytes / 1048576).toFixed(1)} MB of SSD by moving ${r.evicted} original(s) to the backup drive` : ""}` +
             `${r.more ? " (more next pass)" : ""}`
         );
       }

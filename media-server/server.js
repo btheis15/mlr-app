@@ -38,6 +38,8 @@ const { moderateMedia, moderateText, moderationStatus } = require("./moderation"
 const { enqueueRecheck, startBackfill, moderationStats, clearGaveUp, noteScanned, noteNeedsReview } = require("./moderation-backfill");
 const { makeThumbnail, thumbPathFor } = require("./thumbnail");
 const { makeDisplayCopy } = require("./display");
+const { buildLadder, isHlsPath, masterPathFor, hasLadder, ENABLED: HLS_ENABLED, MASTER_NAME } = require("./hls");
+const streamLoad = require("./stream-load");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
@@ -292,6 +294,61 @@ app.use("/f", (req, res, next) => {
 //
 // The cold roots are resolved per-request (not captured at boot) so unplugging
 // or replugging the drive needs no restart.
+// Meter what actually leaves /f, and let congestion shape quality.
+//
+// Two jobs, both before the static handlers:
+//  1. Record real bytes delivered per response, so `currentLoad()` reflects
+//     photos, downloads and zips competing with video rather than a video-only
+//     guess.
+//  2. Serve a REDUCED master playlist while the pipe is under pressure with
+//     several viewers active. Capping at the manifest is what makes this
+//     effective without a cooperating client — a player can only choose a variant
+//     the manifest offers, so native iOS players and older app builds get shaped
+//     too.
+app.use("/f", (req, res, next) => {
+  res.on("finish", () => {
+    const sent = Number(res.getHeader("content-length")) || res.socket?.bytesWritten || 0;
+    if (sent > 0) streamLoad.record(req, Math.min(sent, 2 ** 31));
+  });
+  next();
+});
+
+app.get(new RegExp(`^/f/.*${MASTER_NAME.replace(".", "\\.")}$`), (req, res, next) => {
+  const rel = decodeURIComponent(req.path.replace(/^\/f\//, ""));
+  const abs = tiers.resolveRel(rel);
+  if (!abs || !fs.existsSync(abs)) return next();
+  streamLoad.touch(req);
+  const load = streamLoad.currentLoad();
+  let body;
+  try {
+    body = fs.readFileSync(abs, "utf8");
+  } catch {
+    return next();
+  }
+  if (load.capping) {
+    const capped = streamLoad.capMasterPlaylist(body, load.maxRungs);
+    if (capped !== body) {
+      console.log(
+        `[load] capping to ${load.maxRungs} rung(s): ${load.viewers} viewers, ` +
+          `${load.mbps} Mbps of ${load.capacityMbps} (pressure ${load.pressure})`
+      );
+      body = capped;
+    }
+  }
+  res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+  // Never cache a manifest whose contents depend on live load.
+  res.setHeader("Cache-Control", "no-store");
+  return res.send(body);
+});
+
+// Segment/playlist content types — express.static's mime table doesn't know .m3u8
+// or .ts, and a wrong type makes some players refuse to load the stream at all.
+app.use("/f", (req, res, next) => {
+  if (req.path.endsWith(".m3u8")) res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+  else if (req.path.endsWith(".ts")) res.setHeader("Content-Type", "video/mp2t");
+  next();
+});
+
 app.use("/f", express.static(MEDIA_DIR, staticOpts));
 app.use("/f", express.static(LEGACY_DIR, staticOpts));
 app.use("/f", (req, res, next) => {
@@ -376,6 +433,9 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
       const byStem = new Map(); // parent stem -> chosen rel
       for (const rel of rels) {
         const name = path.basename(rel);
+        // Never zip adaptive-streaming internals — a viewer wants the video, not
+        // 300 four-second fragments of it.
+        if (isHlsPath(rel)) continue;
         const noExt = name.slice(0, name.length - path.extname(name).length);
         if (noExt.endsWith("_thumb")) continue; // never zip previews
         const isOriginal = noExt.endsWith("_orig");
@@ -428,6 +488,14 @@ app.post("/dropbox-zip", express.urlencoded({ extended: true, limit: "512kb" }),
 
 // Public privacy policy (App Store requires a reachable, no-login URL). Served
 // from the repo file so it deploys with a normal git pull. → <PUBLIC_URL>/privacy
+// Live load, for the client to cap hls.js mid-playback (autoLevelCapping). Public
+// and deliberately trivial: it exposes an aggregate throughput number and a viewer
+// count, nothing about who is watching what.
+app.get("/media-load", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(streamLoad.currentLoad());
+});
+
 app.get("/privacy", (_req, res) => res.sendFile(path.join(__dirname, "privacy-policy.html")));
 
 // Where a given upload is filed. Driven by query params (available immediately,
@@ -1109,17 +1177,43 @@ async function swapMediaStoragePath(oldUrl, newUrl) {
 //     the swap lands.
 // In both cases the original file SURVIVES (as uuid_orig.<ext>) and is what
 // `?dl=1` hands back — see the download route.
+// Build the adaptive ladder after the progressive rendition is final, so the
+// ladder is derived from the bitrate-capped file rather than the raw upload (the
+// top rung is meant to match the progressive quality, not exceed it).
+//
+// Off unless HLS_ENABLED=on: a ladder roughly doubles a video's storage and is
+// useless until the client can play it, so generation waits for the player.
+function buildLadderInBackground(servedPath) {
+  if (!HLS_ENABLED) return;
+  buildLadder(servedPath)
+    .then((r) => {
+      if (r.built) {
+        console.log(
+          `[hls] ${path.basename(servedPath)} -> ${r.rungs.join("/")}, ` +
+            `${r.segments} segments, ${(r.bytes / 1048576).toFixed(1)} MB`
+        );
+      } else if (r.reason && r.reason !== "ladder already exists") {
+        console.log(`[hls] ${path.basename(servedPath)}: ${r.reason}`);
+      }
+    })
+    .catch((e) => console.error(`[hls] failed for ${path.basename(servedPath)}: ${e && e.message}`));
+}
+
 function transcodeInBackground(originalPath, mimetype, originalUrl) {
   maybeTranscode(originalPath, mimetype, { keepOriginalUrl: true })
     .then(async (r) => {
       if (!r.transcoded) {
         if (r.reason) console.log(`[transcode] (async) no rendition needed (${r.reason})`);
+        // Already streamable as a single file, but it can still benefit from an
+        // adaptive ladder for viewers on weak connections.
+        buildLadderInBackground(r.path);
         return;
       }
       if (!r.pathChanged) {
         console.log(
           `[transcode] (async) ${path.basename(r.path)} rendition built; original kept as ${path.basename(r.originalPath)}`
         );
+        buildLadderInBackground(r.path);
         return;
       }
       // relFromAbs, not path.relative(MEDIA_DIR, …): the transcode writes beside
@@ -1141,6 +1235,7 @@ function transcodeInBackground(originalPath, mimetype, originalUrl) {
           ? `[transcode] (async) original preserved as ${path.basename(kept)}`
           : `[transcode] (async) ⚠ could not preserve the original for ${path.basename(originalPath)}`
       );
+      buildLadderInBackground(r.path);
     })
     .catch((e) => console.error(`[transcode] async error, original file kept as-is: ${e && e.message}`));
 }
@@ -1350,7 +1445,13 @@ app.post("/upload", requireUser, (req, res) => {
         })
         .catch((e) => console.error(`[moderate] async error (fail-open): ${e.message}`));
     }
-    res.json({ url: fileUrl, thumbnailUrl, capturedAt, capturedAtSource, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
+    // `hlsUrl` is where the ladder WILL live. It's advertised even before the
+    // background build finishes so the client can store one url and simply fall
+    // back to the progressive mp4 until the playlist exists — no second round trip
+    // and no database column needed (the path is derived by convention).
+    const hlsUrl =
+      HLS_ENABLED && kind === "video" ? `${PUBLIC_URL}/f/${tiers.relFromAbs(masterPathFor(served))}` : null;
+    res.json({ url: fileUrl, thumbnailUrl, hlsUrl, capturedAt, capturedAtSource, name: path.basename(served), originalName: req.file.originalname, type: mediaType, path: rel });
   });
 });
 

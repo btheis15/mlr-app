@@ -19,6 +19,7 @@
 const fsp = require("fs/promises");
 const path = require("path");
 const { TRASH_SUBDIR } = require("./media-trash");
+const { HLS_SUFFIX } = require("./hls");
 
 const PHOTO_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "tiff", "tif", "bmp"]);
 const VIDEO_EXT = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "hevc"]);
@@ -45,6 +46,34 @@ function classifyMediaFile(name) {
  * different disks (a video on the external drive keeps its tiny preview on the
  * SSD), and a dir-scoped key would count those thumbnails as orphans.
  */
+/** Total bytes under a directory tree — used to attribute a whole HLS ladder to
+ *  the single video it was derived from. */
+async function dirBytes(root) {
+  let total = 0;
+  const stack = [root];
+  while (stack.length) {
+    const d = stack.pop();
+    let entries;
+    try {
+      entries = await fsp.readdir(d, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) stack.push(full);
+      else if (e.isFile()) {
+        try {
+          total += (await fsp.stat(full)).size;
+        } catch {
+          /* skip */
+        }
+      }
+    }
+  }
+  return total;
+}
+
 async function walkVolume(dir) {
   const objects = new Map(); // uuid -> "photo" | "video" | "other"
   const thumbs = []; // { uuid, size }
@@ -74,6 +103,15 @@ async function walkVolume(dir) {
       if (e.name === TRASH_SUBDIR) continue;
       const full = path.join(current, e.name);
       if (e.isDirectory()) {
+        // An `<uuid>_hls/` ladder is derived from one video. Sum its bytes against
+        // that parent instead of walking in and counting hundreds of segments as
+        // individual "other files", which would make the storage breakdown
+        // meaningless the moment adaptive streaming is switched on.
+        if (e.name.endsWith(HLS_SUFFIX)) {
+          const parentUuid = e.name.slice(0, -HLS_SUFFIX.length);
+          thumbs.push({ uuid: parentUuid, size: await dirBytes(full) });
+          continue;
+        }
         stack.push(full);
         continue;
       }
