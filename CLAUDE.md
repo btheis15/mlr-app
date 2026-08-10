@@ -3091,7 +3091,7 @@ nothing but `caddy` should appear on a non-loopback address.
 **Every route is auth-gated except five, all deliberate:** `/health`, `/assets`,
 `/privacy`, `/media-load` (an aggregate throughput + viewer count, so the client
 can cap `hls.js` mid-playback — nothing about who is watching what), and **`/f`
-itself** while `MEDIA_AUTH` is off (see **Signed media reads** below). `requireUser`
+itself** — which is now token-gated (see **Signed media reads** below). `requireUser`
 (any verified member) / `requireAdmin` / `requireOwner` (one verified email —
 restart + moderation delete) are the three tiers.
 
@@ -3103,6 +3103,52 @@ nested inside `$(…)` inside `"…"` — that mangled the f-string's quotes and
 word-split the output on the commas in `.get('high',0)`, so for a while every run
 logged four fragments of literal Python source instead of a summary. A scanner
 whose output nobody can read is not a working scanner.
+
+### Signed media reads (`MEDIA_AUTH`, ON since 2026-08-10)
+
+Every `/f` read requires a signed token, so a photo URL that leaves the app stops
+working. Turned on once the mini answered on a **public IP + DuckDNS hostname** —
+before that, `/f` was protected only by unguessable UUIDs, which stops crawlers but
+not a forwarded link. Server half:
+[`media-server/media-auth.js`](media-server/media-auth.js), client half:
+[`lib/mediaToken.ts`](lib/mediaToken.ts).
+
+- **The token is an HMAC over a rounded 24h window** (`MEDIA_TOKEN_SECRET`), and is
+  **identical for every member** within that window. That sameness is deliberate and
+  load-bearing: a per-request token would change every URL on every render, so
+  nothing would ever hit the browser cache — the app would get slower for no security
+  gain. `verifyToken` accepts the current **and previous** window, so a link works
+  24–48h and a member crossing the boundary mid-session isn't cut off.
+- **It rides the QUERY STRING (`?t=`), not a header** — `<img src>`/`<video src>`
+  cannot send `Authorization`, and a cookie would have to be third-party, which
+  Safari/iOS blocks outright. `mediaSrc()` is the ONE place URLs get signed; it is a
+  no-op for non-mini URLs (Supabase avatars, `data:`, `blob:`, `/assets`) and
+  idempotent, which is what made a scripted sweep across ~18 components safe.
+- ⚠️ **`GET /media-token` refuses an unapproved caller**, so the verified-member gate
+  (0181/0183) governs media too — an unverified signup gets no token and therefore no
+  photos, matching what the DB already shows them.
+- ⚠️ **Missing `MEDIA_TOKEN_SECRET` fails OPEN** (logs a warning, serves publicly)
+  rather than blackholing every photo over a misconfiguration. So `MEDIA_AUTH=on`
+  with no secret silently does *nothing* — check the log line, not just the env var.
+- ⚠️ **Rotating the secret invalidates every cached client token at once** — everyone
+  sees broken photos until their app refetches. Rotate deliberately, not casually.
+- ⚠️⚠️ **`mediaSrc()` reads the token SYNCHRONOUSLY during render and returns the URL
+  UNSIGNED when there isn't one** — so anything that obtains a token must also force a
+  re-render, or already-painted `<img>`s stay unsigned and 403 forever.
+  `IdentityProvider` was a bare `void ensureMediaToken()` for exactly this reason and
+  it was a latent screen-of-broken-photos: the cache is dropped a minute before its
+  24h expiry, so it would have hit **everyone about daily**, plus every first open on
+  a new device. It now bumps state when a token lands on an open that began without
+  one (guarded, so a warm open costs no extra render). The in-memory copy also
+  carries its expiry — it used to be returned forever once set, so a PWA left open
+  past 24h signed every URL with a dead token.
+- **Guest-visible imagery is unaffected** because none of it is on the mini: `/f`
+  holds only `posts/`, `chat/` and `dropbox/` (all members-only by RLS), while the
+  fest cover and callout fliers live in Supabase Storage's `site-assets` bucket.
+  `/privacy` and `/assets/` are explicitly exempt (`isAlwaysPublic`) — the privacy
+  policy is an App Store requirement and `/assets` holds pay-method logos that render
+  on the sign-in screen itself.
+- **Reverting is one line**: `MEDIA_AUTH=off` in the mini's `.env` + restart.
 
 **Remote restart, from the app — owner-only.** Shipping a media-server
 change still needs a `git pull` + process restart on the mini, but that no
