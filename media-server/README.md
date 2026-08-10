@@ -385,3 +385,66 @@ Requires migrations through `0034`. Dep: `web-push`.
 - Endpoints: `POST /upload?category=posts|chat|work|dropbox[&room=<slug|box-id>]` (auth, field `file`), `POST /moderate/text` (auth), `GET /geocode?q=&country=` (auth), `GET /f/<path>` (public; append `?dl=1` to force a download instead of inline), `GET /dropbox-zip?box=&token=` / `POST /dropbox-zip` (auth via token — zips a whole drop-box folder or a selection of `path`s via the system `zip`), `GET /assets/<path>` (public), `GET /health` (public).
 - Admin endpoints (caller must be an app admin, else 401/403): `POST /admin/invite` `{ name, email }` — create a named account + email a sign-in code (needs `SUPABASE_SERVICE_ROLE_KEY`); `POST /admin/set-email` `{ userId, newEmail }` — set a member's email, allowed only while the two-admin override window is open (re-checked via `is_override_unlocked()`, migration 0025).
 - Owner-only endpoints (caller's verified email must match `OWNER_EMAIL` in server.js, else 401/403 — narrower than the admin gate above, since restarting this process isn't an ordinary app-admin action): `GET /admin/media-server-status` — current commit + how many commits behind `origin/main`; `POST /admin/restart-media-server` — fast-forwards the mini's checkout to `origin/main` (409 if it can't, e.g. local commits), `npm install`s only if `media-server/package.json`/`package-lock.json` changed, then exits so launchd's `KeepAlive` relaunches it on the new code within `ThrottleInterval` (10s) — the app's Admin → Media server card (`/admin/system`, itself hidden from every admin except `lib/owner.ts`'s `OWNER_EMAIL`) is the one-tap trigger for the "`git pull` + restart" cycle this doc otherwise describes as a manual mini step.
+
+## Video: a streamable rendition beside the untouched original
+
+⚠️ **The transcoder used to DESTROY the original.** It re-encoded in place, so the
+full-quality file the family actually shot was gone seconds after arriving —
+irreversibly, for every video ever posted, including any 4K downscaled to 1080p on
+the way through. And it judged a file "web-ready" on codec + container +
+resolution while **never looking at bitrate**, so phone recordings sailed through
+untouched at 18–36 Mbps. Worst of both worlds: quality lost *and* unwatchable.
+
+Now every video keeps **two** files:
+
+```
+<uuid>.mp4        the playback rendition — bitrate-capped, faststart, streams
+<uuid>_orig.<ext> the untouched upload — what ?dl=1 and album zips hand back
+<uuid>_thumb.jpg  the grid preview
+```
+
+`storage_path` still points at `<uuid>.mp4`, so **no database change was needed**.
+
+### Why bitrate, not storage, is the constraint
+
+Playing 36 Mbps needs 4.6 MB/s sustained *to the viewer*. Measured on this mini:
+
+| | |
+|---|---|
+| off the server directly | ~6.9 Gbps (page cache) |
+| raw uplink | 119 Mbps |
+| **through the public Tailscale Funnel** | **12–21 Mbps, varying 1.7×** |
+
+So the HDD supplies ~27× more than a video needs and is never the bottleneck —
+the tunnel is. That variance is also why loads feel inconsistent for no local
+reason. `VIDEO_TARGET_MAX_MBPS` (default **10**) is the ceiling enforced with
+`-maxrate`/`-bufsize`; CRF alone is quality-targeted and will happily emit 36 Mbps
+on noisy handheld footage.
+
+Frame rate is deliberately **preserved** (60fps stays 60fps) — the original is
+kept, so the rendition only has to be watchable, and halving frame rate is the
+most visible way to make motion worse.
+
+### Backfill
+
+`node scripts/recap-video-bitrate.js [--dry-run]` builds renditions for videos
+that predate this change. Idempotent (skips anything with an `_orig` sibling).
+Measured on the live library: **581 MB → 214 MB of playback bytes**, and the
+newest clip went 36.5 → 10.3 Mbps, so a 39s video now downloads in 23s through the
+tunnel instead of ~115s.
+
+⚠️ For those files the true camera originals were **already destroyed** by the old
+code. The backfill preserves the best available source (what was on disk), which
+is not the same as the camera original.
+
+### ⚠️ `_orig` and `_thumb` have no database row
+
+Both are derived files owned by their parent object, referenced by nothing. Three
+places must know that, or they'd delete or miscount exactly the files this feature
+exists to keep:
+
+- `orphan-sweep.js` `DERIVED_SUFFIXES` — spares them while the parent is referenced
+- `media-usage.js` — folds their bytes into the parent so the meter doesn't double
+- `/dropbox-zip` — excludes `_thumb`, and prefers `_orig` over the rendition
+
+**Adding another derived-file suffix means updating all three.**

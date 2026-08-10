@@ -33,7 +33,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF } = require("./transcode");
+const { maybeTranscode, ffmpegAvailable, ENABLED: TRANSCODE_ENABLED, MAX_LONG_EDGE, CRF, TARGET_MAX_BPS, ORIGINAL_SUFFIX, findOriginal } = require("./transcode");
 const { moderateMedia, moderateText, moderationStatus } = require("./moderation");
 const { enqueueRecheck, startBackfill, moderationStats, clearGaveUp, noteScanned, noteNeedsReview } = require("./moderation-backfill");
 const { makeThumbnail, thumbPathFor } = require("./thumbnail");
@@ -256,11 +256,31 @@ app.use("/f", (req, res, next) => {
   if (isTrashPath(rel)) return res.status(404).json({ error: "Not found." });
   next();
 });
+// Opt-in download. Two things happen here:
+//
+// 1. Content-Disposition: attachment, so the browser SAVES rather than opens.
+// 2. ⭐ THE ORIGINAL IS SERVED, NOT THE PLAYBACK RENDITION. A video's url points
+//    at a bitrate-capped rendition built for streaming; the untouched file the
+//    family actually shot sits beside it as `<uuid>_orig.<ext>`. Saving for a
+//    photo book or a re-edit should hand back the real thing. Falls through to
+//    the rendition when there's no original (anything uploaded before originals
+//    were kept, or a file that never needed re-encoding).
 app.use("/f", (req, res, next) => {
-  if (req.query.dl != null) {
-    const base = path.basename(req.path) || "download";
-    res.setHeader("Content-Disposition", `attachment; filename="${base.replace(/[^\w.\-]/g, "_")}"`);
+  if (req.query.dl == null) return next();
+  const rel = decodeURIComponent(req.path.replace(/^\/+/, ""));
+  const served = tiers.resolveRel(rel);
+  const original = served ? findOriginal(served) : null;
+  if (original) {
+    // Name the download after the ORIGINAL's extension (a .mov original behind
+    // an .mp4 rendition), minus the internal _orig marker.
+    const name = path.basename(original).replace(`${ORIGINAL_SUFFIX}${path.extname(original)}`, path.extname(original));
+    res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/[^\w.\-]/g, "_")}"`);
+    return res.sendFile(original, (err) => {
+      if (err && !res.headersSent) next();
+    });
   }
+  const base = path.basename(req.path) || "download";
+  res.setHeader("Content-Disposition", `attachment; filename="${base.replace(/[^\w.\-]/g, "_")}"`);
   next();
 });
 // The tier fallback IS this chain. express.static passes to the next handler on
@@ -327,7 +347,12 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
       const resolved = tiers.resolveRel(clean); // null if it escapes every root
       if (!resolved) continue;
       try {
-        if ((await fsp.stat(resolved)).isFile()) abs.push(resolved);
+        // Prefer the untouched original over the streamable rendition — a whole-
+        // album zip is exactly the photo-book case where full quality matters,
+        // same rule as ?dl=1 on a single file.
+        const original = findOriginal(resolved);
+        const pick = original || resolved;
+        if ((await fsp.stat(pick)).isFile()) abs.push(pick);
       } catch {
         /* gone from every volume — skip */
       }
@@ -343,9 +368,22 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
       } catch {
         continue; // not on this volume
       }
+      // One entry per real item. The folder also holds derived files —
+      // `_thumb.jpg` previews and `_orig.<ext>` full-quality uploads — and a zip
+      // wants NEITHER the tiny preview NOR both copies of the same video. Group
+      // by stem, then prefer the original over its rendition.
+      const byStem = new Map(); // parent stem -> chosen rel
       for (const rel of rels) {
-        if (seen.has(rel)) continue; // already taken from a higher-priority tier
-        seen.add(rel);
+        const name = path.basename(rel);
+        const noExt = name.slice(0, name.length - path.extname(name).length);
+        if (noExt.endsWith("_thumb")) continue; // never zip previews
+        const isOriginal = noExt.endsWith("_orig");
+        const stem = path.join(path.dirname(rel), isOriginal ? noExt.slice(0, -"_orig".length) : noExt);
+        if (isOriginal || !byStem.has(stem)) byStem.set(stem, rel); // original wins
+      }
+      for (const [stem, rel] of byStem) {
+        if (seen.has(stem)) continue; // already taken from a higher-priority tier
+        seen.add(stem);
         abs.push(path.join(boxDir, rel));
       }
     }
@@ -1061,23 +1099,26 @@ async function swapMediaStoragePath(oldUrl, newUrl) {
 // has already gone out carrying the ORIGINAL file's url. Mirrors the same
 // optimistic shape as chat's media moderation (0128): don't make the uploader
 // wait on work that can happen just as well a few seconds/minutes later.
-//   • Same-path swap (already uuid.mp4): maybeTranscode renames it into place
-//     atomically — the url never changes, so nothing else is needed.
-//   • Different-path swap (extension changes, e.g. .mov → .mp4): the original
-//     stays in place and fully playable until BOTH the transcode finishes AND
-//     every *_media row referencing the old url has been repointed at the new
-//     one — only then is the original deleted. So a viewer never sees a broken
-//     link; they just see the original (larger/possibly-HEVC) file for the
-//     short window until the swap lands.
+//   • Same extension (already uuid.mp4): the original is renamed to uuid_orig.mp4
+//     and the rendition takes its place atomically — the url never changes.
+//   • Different extension (.mov → .mp4): the original stays at its own url, fully
+//     playable, until BOTH the transcode finishes AND every *_media row has been
+//     repointed at the new url — only THEN is it renamed aside. So a viewer never
+//     sees a broken link; they just get the original for the short window until
+//     the swap lands.
+// In both cases the original file SURVIVES (as uuid_orig.<ext>) and is what
+// `?dl=1` hands back — see the download route.
 function transcodeInBackground(originalPath, mimetype, originalUrl) {
-  maybeTranscode(originalPath, mimetype, { deleteOriginal: false })
+  maybeTranscode(originalPath, mimetype, { keepOriginalUrl: true })
     .then(async (r) => {
       if (!r.transcoded) {
-        if (r.reason) console.log(`[transcode] (async) kept original (${r.reason})`);
+        if (r.reason) console.log(`[transcode] (async) no rendition needed (${r.reason})`);
         return;
       }
       if (!r.pathChanged) {
-        console.log(`[transcode] (async) ${path.basename(originalPath)} re-encoded in place`);
+        console.log(
+          `[transcode] (async) ${path.basename(r.path)} rendition built; original kept as ${path.basename(r.originalPath)}`
+        );
         return;
       }
       // relFromAbs, not path.relative(MEDIA_DIR, …): the transcode writes beside
@@ -1090,7 +1131,15 @@ function transcodeInBackground(originalPath, mimetype, originalUrl) {
       const newUrl = `${PUBLIC_URL}/f/${rel}`;
       console.log(`[transcode] (async) ${path.basename(originalPath)} → ${path.basename(r.path)}, repointing references`);
       await swapMediaStoragePath(originalUrl, newUrl);
-      try { fs.unlinkSync(originalPath); } catch {}
+      // References now point at the rendition, so the original can finally be
+      // moved aside — RENAMED to _orig, never deleted. Losing the full-quality
+      // file here is exactly the behaviour this replaced.
+      const kept = r.finishSwap ? r.finishSwap() : null;
+      console.log(
+        kept
+          ? `[transcode] (async) original preserved as ${path.basename(kept)}`
+          : `[transcode] (async) ⚠ could not preserve the original for ${path.basename(originalPath)}`
+      );
     })
     .catch((e) => console.error(`[transcode] async error, original file kept as-is: ${e && e.message}`));
 }
