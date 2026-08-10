@@ -9,8 +9,59 @@
 // URL, which the app stores verbatim. NEXT_PUBLIC_MEDIA_URL overrides it (local
 // dev / if the tunnel URL ever changes).
 export const MEDIA_URL = (
-  process.env.NEXT_PUBLIC_MEDIA_URL || "https://brians-mac-mini.tail49943c.ts.net"
+  process.env.NEXT_PUBLIC_MEDIA_URL || "https://mlr-media.duckdns.org"
 ).replace(/\/+$/, "");
+
+/**
+ * Every host that has ever served this app's media.
+ *
+ * ⚠️⚠️ THIS EXISTS BECAUSE A STALE DEFAULT SILENTLY UN-SIGNED EVERY PHOTO IN THE APP.
+ *
+ * The fallback above used to be the old Tailscale Funnel hostname
+ * (brians-mac-mini.tail49943c.ts.net). Media moved to mlr-media.duckdns.org and all
+ * ~1,700 stored URLs were migrated, but NEXT_PUBLIC_MEDIA_URL was never set on Vercel —
+ * so the deployed bundle kept comparing against the Tailscale host. `mediaSrc()` did
+ * `if (!url.startsWith(MEDIA_URL)) return url`, a duckdns URL doesn't start with a
+ * ts.net prefix, and so EVERY media URL was returned unsigned. Silently: no error, no
+ * warning, and it looked identical to "we don't have a token yet".
+ *
+ * Confirmed by grepping the live bundle — 2 chunks contained the ts.net host, ZERO
+ * contained duckdns — while the server logged 57 `tok=missing` requests from a real
+ * iPhone that had successfully fetched a valid token seconds earlier.
+ *
+ * So matching is now by HOST against a known set, not by exact-prefix against one
+ * configured string. A URL stored under any host this app has used still gets signed,
+ * and a future host change degrades to "add an entry here" rather than to a silent
+ * app-wide media outage.
+ */
+const LEGACY_MEDIA_HOSTS = [
+  "brians-mac-mini.tail49943c.ts.net", // Tailscale Funnel, retired 2026-08-10 but kept as a fallback
+];
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
+
+/** Hosts whose URLs are ours to sign. */
+export const MEDIA_HOSTS: string[] = Array.from(
+  new Set([hostOf(MEDIA_URL), ...LEGACY_MEDIA_HOSTS].filter(Boolean))
+);
+
+/**
+ * Is this one of OUR media URLs (and therefore something to attach a token to)?
+ *
+ * Host-based on purpose — see MEDIA_HOSTS. Returns false for Supabase avatars,
+ * `data:`/`blob:` previews and anything else, which must be left untouched.
+ */
+export function isMediaUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const h = hostOf(url);
+  return !!h && MEDIA_HOSTS.includes(h);
+}
 
 export interface UploadOptions {
   /** Folder bucket on the mini: "posts" (default), "chat", "work", or "dropbox". */

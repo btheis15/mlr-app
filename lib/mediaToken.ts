@@ -13,7 +13,7 @@
 // change every URL on every render, so nothing would ever hit the browser cache and
 // the app would get slower while gaining no security.
 
-import { MEDIA_URL } from "@/lib/media";
+import { MEDIA_URL, isMediaUrl } from "@/lib/media";
 import { supabase } from "@/lib/supabase";
 
 const CACHE_KEY = "mlr.mediaToken.v1";
@@ -144,7 +144,12 @@ export function peekMediaToken(): string | null {
  */
 export function mediaSrc(url: string | null | undefined): string {
   if (!url) return "";
-  if (!url.startsWith(MEDIA_URL)) return url; // not ours
+  // ⚠️ HOST match, not startsWith(MEDIA_URL). The prefix form silently un-signed every
+  // photo in the app for hours: NEXT_PUBLIC_MEDIA_URL was unset on Vercel, so MEDIA_URL
+  // fell back to the retired Tailscale host while every stored URL was on duckdns —
+  // `startsWith` failed and this returned the URL untouched, indistinguishable from
+  // "no token yet". See MEDIA_HOSTS in lib/media.ts.
+  if (!isMediaUrl(url)) return url; // not ours (Supabase avatar, data:, blob:, …)
   if (url.includes("/assets/")) return url; // repo assets stay public
   const token = peekMediaToken();
   if (!token) return url;
