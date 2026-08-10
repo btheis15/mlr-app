@@ -322,11 +322,24 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           // re-renders the provider's subtree — the whole app — so every `mediaSrc()`
           // recomputes with the token. Guarded on "we genuinely had none", so a warm
           // open costs no extra render.
-          if (!peekMediaToken()) {
-            void ensureMediaToken().then((t) => {
-              if (active && t) setMediaTokenTick((n) => n + 1);
-            });
-          }
+          //
+          // ⚠️⚠️ And it ALWAYS refetches (`force`), even with a cached token in hand.
+          // A cached token is only a guess about what the server will accept: it
+          // carries its own 24h expiry, so if the server's signing key changes the
+          // client keeps confidently signing URLs with a key that's no longer valid
+          // and every photo 403s until that expiry lapses — up to a full day, with
+          // no self-healing. That is not hypothetical; it happened the day
+          // enforcement was turned on (a new MEDIA_TOKEN_SECRET was generated,
+          // which rotated away from the SUPABASE_SERVICE_ROLE_KEY fallback the
+          // already-issued tokens were signed with). Reconciling with the server
+          // once per app open makes any future rotation heal on the next open —
+          // which is exactly how people already use the app. One small
+          // authenticated request; the cache still covers the synchronous first
+          // render, and the tick below repaints when the fresh token differs.
+          const before = peekMediaToken();
+          void ensureMediaToken(true).then((t) => {
+            if (active && t && t !== before) setMediaTokenTick((n) => n + 1);
+          });
         }
       } catch {
         if (active) {

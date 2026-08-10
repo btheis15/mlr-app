@@ -56,16 +56,20 @@ function fromStorage(): string | null {
  * share one request, and the result is cached in localStorage so a cold app open
  * has it before the first photo renders.
  */
-export async function ensureMediaToken(): Promise<string | null> {
-  if (stillFresh()) return current;
-  const cached = fromStorage();
-  if (cached) {
-    current = cached;
-    return current;
+export async function ensureMediaToken(force = false): Promise<string | null> {
+  if (!force) {
+    if (stillFresh()) return current;
+    const cached = fromStorage();
+    if (cached) {
+      current = cached;
+      return current;
+    }
   }
-  // Expired: forget it, so a failed refresh renders an unsigned URL (one broken
-  // image) rather than a confidently-signed URL the server will 403.
+  // Expired (or a deliberate refresh): forget it, so a failed fetch renders an
+  // unsigned URL (one broken image) rather than a confidently-signed URL the server
+  // will 403.
   current = null;
+  currentExpiresAt = 0;
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
