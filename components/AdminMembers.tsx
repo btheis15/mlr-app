@@ -74,6 +74,9 @@ export function AdminMembers() {
   const [loading, setLoading] = useState(!adminMembersCache);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // Admins need to answer "who hasn't been verified yet?" at a glance. With 56
+  // members, scanning for the absence of a chip doesn't work — a filter does.
+  const [showOnly, setShowOnly] = useState<"all" | "unverified">("all");
   const { busy: busyId, run } = useBusyAction();
   // True once the admin_members RPC answers — i.e. migration 0008 is applied,
   // so emails are visible and promote/remove works.
@@ -215,14 +218,17 @@ export function AdminMembers() {
   };
 
   const q = query.trim().toLowerCase();
-  const shown = q
+  // `approved === false` only. `undefined` means the column isn't there yet
+  // (pre-migration), which must read as verified rather than flagging all 56.
+  const unverified = members.filter((m) => m.approved === false);
+  const verifiedCount = members.length - unverified.length;
+  const byQuery = q
     ? members.filter((m) =>
         [m.display_name, m.email, m.household].some((f) => f?.toLowerCase().includes(q)),
       )
     : members;
+  const shown = showOnly === "unverified" ? byQuery.filter((m) => m.approved === false) : byQuery;
   const adminCount = members.filter((m) => m.is_admin).length;
-  // `approved === false` only — undefined means pre-migration, which is not pending.
-  const pending = members.filter((m) => m.approved === false);
 
   return (
     <>
