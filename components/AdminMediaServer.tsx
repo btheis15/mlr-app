@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSaveStatus } from "@/lib/hooks";
-import { getMediaServerStatus, restartMediaServer, markModerationReviewed, deleteModerationItem, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration, type MediaServerStorage, type MediaServerVolume } from "@/lib/admin";
+import { getMediaServerStatus, restartMediaServer, markModerationReviewed, deleteModerationItem, type MediaServerStatus, type MediaServerDisk, type MediaServerUsage, type MediaServerModeration, type MediaServerStorage, type MediaServerVolume, type MediaServerPatches } from "@/lib/admin";
 import { useIdentity } from "@/components/IdentityProvider";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
@@ -312,6 +312,51 @@ function VolumeBlock({ volume }: { volume: MediaServerVolume }) {
   );
 }
 
+/**
+ * Security patches available for the software this mini exposes to the internet.
+ *
+ * Port 443 now reaches Caddy -> the media server directly, so Caddy, Node and the
+ * production npm tree are internet-facing. The scan runs weekly and only REPORTS —
+ * nothing is upgraded unattended, because a broken sharp or Caddy takes the
+ * family's photos offline with nobody watching.
+ */
+function Patches({ patches }: { patches: MediaServerPatches }) {
+  const { outdated, audit } = patches;
+  const sev = (audit.critical || 0) + (audit.high || 0);
+  if (!patches.needsAttention) {
+    return (
+      <div className="space-y-1 border-t border-border pt-3">
+        <p className="text-sm font-semibold">Security patches</p>
+        <p className="text-sm text-muted">Everything up to date ✓</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5 border-t border-border pt-3">
+      <p className="text-sm font-semibold">Security patches available</p>
+      {outdated.length > 0 && (
+        <ul className="space-y-0.5">
+          {outdated.map((o) => (
+            <li key={o.name} className="text-sm text-muted">
+              <span className="font-medium text-foreground">{o.name}</span> {o.current} → {o.latest}
+            </li>
+          ))}
+        </ul>
+      )}
+      {sev > 0 && (
+        <p className="text-sm text-accent">
+          {sev} high/critical advisor{sev === 1 ? "y" : "ies"} in server dependencies
+        </p>
+      )}
+      <p className="text-xs text-muted">
+        Nothing is installed automatically. On the mini:{" "}
+        <code className="rounded bg-background px-1">brew upgrade caddy</code> ·{" "}
+        <code className="rounded bg-background px-1">npm audit fix</code>, then restart.
+      </p>
+    </div>
+  );
+}
+
 async function currentToken(): Promise<string | null> {
   const sb = supabase;
   return (await sb?.auth.getSession())?.data.session?.access_token ?? null;
@@ -408,6 +453,7 @@ export function AdminMediaServer() {
               </p>
             </div>
           ) : null}
+          {status.patches ? <Patches patches={status.patches} /> : null}
           {status.moderation ? (
             <SafetyScans moderation={status.moderation} onReviewed={load} />
           ) : null}

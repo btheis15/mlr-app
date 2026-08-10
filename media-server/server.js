@@ -40,6 +40,7 @@ const { makeThumbnail, thumbPathFor } = require("./thumbnail");
 const { makeDisplayCopy } = require("./display");
 const { buildLadder, isHlsPath, masterPathFor, hasLadder, ENABLED: HLS_ENABLED, MASTER_NAME } = require("./hls");
 const streamLoad = require("./stream-load");
+const mediaAuth = require("./media-auth");
 const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
@@ -251,6 +252,11 @@ const staticOpts = { maxAge: "365d", immutable: true };
 // which browsers ignore for a cross-origin href (the app and the mini are
 // different origins). Drop boxes (0171) use this so members can pull originals
 // for photo books etc.; nothing else links with `?dl`, so inline stays default.
+// ⭐ MEMBERS ONLY. A signed token is required for every media read. Must be the
+// FIRST thing on /f so nothing below it can leak a byte. See media-auth.js for why
+// the token rides in the query string rather than a header or a cookie.
+app.use("/f", mediaAuth.requireMediaToken);
+
 // Quarantine (_trash/) lives INSIDE the media folder, which is also a static
 // root — so it has to be blocked explicitly or deleted media would stay
 // downloadable for its whole 7-day hold. Must come BEFORE the static mounts.
@@ -488,6 +494,63 @@ app.post("/dropbox-zip", express.urlencoded({ extended: true, limit: "512kb" }),
 
 // Public privacy policy (App Store requires a reachable, no-login URL). Served
 // from the repo file so it deploys with a normal git pull. → <PUBLIC_URL>/privacy
+// Hand a logged-in member the media token. requireUser validates their Supabase
+// session, so this is the one place membership is actually checked — everything
+// under /f then just verifies the signature.
+app.get("/media-token", requireUser, async (req, res) => {
+  // ⭐ APPROVAL GATE. A verified Supabase login is NOT enough — anyone can sign up
+  // with any email address. Only a member an admin has approved gets a media
+  // token, which is what makes the albums genuinely members-only rather than
+  // "anyone who registered".
+  //
+  // Degrades gracefully while the migration hasn't run: an absent `approved`
+  // column means every existing member keeps working rather than the whole app
+  // losing its photos. Same pre-migration idiom as the rest of this codebase.
+  const approved = await isApprovedMember(req);
+  if (approved === false) {
+    return res.status(403).json({
+      error: "An admin needs to approve your account before you can see photos.",
+      pendingApproval: true,
+    });
+  }
+  const { token, expiresAt } = mediaAuth.issueToken();
+  // Let the client cache it, but not past its own expiry.
+  res.setHeader("Cache-Control", "private, max-age=600");
+  res.json({ token, expiresAt, ttlHours: mediaAuth.TTL_MS / 3600000 });
+});
+
+/**
+ * Is the caller an admin-approved member?
+ * @returns true / false, or null when it can't be determined (pre-migration or a
+ *          transient error) — callers treat null as "allow", so a misconfiguration
+ *          degrades to the previous behaviour instead of blanking every photo.
+ */
+async function isApprovedMember(req) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
+  if (!m || !SUPABASE_URL || !SERVICE_KEY) return null;
+  try {
+    // Resolve the caller from their own token, then read the flag with the
+    // service role (profiles is not readable by an unapproved user by design).
+    const who = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${m[1]}` },
+    });
+    if (!who.ok) return false;
+    const uid = (await who.json())?.id;
+    if (!uid) return false;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(uid)}&select=approved,is_admin`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    });
+    if (!r.ok) return null; // column missing (pre-migration) or transient — allow
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return false;
+    if (rows[0].is_admin) return true; // an admin is implicitly approved
+    if (rows[0].approved === undefined) return null; // pre-migration
+    return rows[0].approved === true;
+  } catch {
+    return null;
+  }
+}
+
 // Live load, for the client to cap hls.js mid-playback (autoLevelCapping). Public
 // and deliberately trivial: it exposes an aggregate throughput number and a viewer
 // count, nothing about who is watching what.
@@ -1001,6 +1064,12 @@ app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
     // build (which knows nothing about tiers) keeps rendering its single meter;
     // `storage` is the new two-volume shape the current card reads.
     const storage = storageInfo();
+    let patches = null;
+    try {
+      patches = JSON.parse(fs.readFileSync(path.join(__dirname, "logs", "patch-status.json"), "utf8"));
+    } catch {
+      /* not scanned yet — the card just omits the section */
+    }
     let quarantine = null;
     try {
       quarantine = await trashSummary();
@@ -1017,6 +1086,7 @@ app.get("/admin/media-server-status", requireOwner, async (_req, res) => {
       usage: storage.hot.usage,
       storage,
       quarantine,
+      patches,
       moderation: { ...moderationStats(), models: moderationStatus() },
     });
   } catch (e) {
