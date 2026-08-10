@@ -7,6 +7,7 @@ import type { User, NotifPrefType, PushType } from "@/lib/types";
 import { DEFAULT_NOTIF_TYPES } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearAllCaches, readPersisted, writePersisted } from "@/lib/swrCache";
+import { ensureMediaToken, clearMediaToken } from "@/lib/mediaToken";
 import { WelcomeIntro } from "@/components/WelcomeIntro";
 import { isIos, isStandalone } from "@/lib/push";
 import { InstallFirstNudge } from "@/components/InstallFirstNudge";
@@ -304,6 +305,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
           // Supabase already uses "verified" for email confirmation). `undefined`
           // means pre-migration, which reads as verified.
           setVerified(e.approved === undefined ? true : e.approved !== false);
+          // Warm the media token now. mediaSrc() reads it SYNCHRONOUSLY during
+          // render, so it must be in hand before the first photo paints; it's
+          // cached in localStorage for 24h, so this is a no-op on a warm open.
+          void ensureMediaToken();
         }
       } catch {
         if (active) {
@@ -471,6 +476,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     // Wipe every cached snapshot (identity + all mlr.cache.* data) so nothing
     // from this account can paint for the next person on a shared device.
     clearAllCaches();
+    clearMediaToken();
     snapshotSeededRef.current = false;
     setUser(null);
     setUserId(null);

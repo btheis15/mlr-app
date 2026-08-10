@@ -29,6 +29,7 @@ import {
 } from "@/lib/festContent";
 import type { ScheduleEvent } from "@/lib/types";
 import { fetchDropBoxes, type DropBox } from "@/lib/dropBoxes";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /** "Jul 1 – Jul 15" / "through Jul 15" / "from Jul 1" / "always" — the show
  *  window, for the list row summary. */
@@ -501,7 +502,7 @@ function CalloutSheet({
       <Field label="Image (optional)">
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="Callout" className="max-h-40 w-full rounded-xl object-contain ring-1 ring-border" />
+          <img src={mediaSrc(imageUrl)} alt="Callout" className="max-h-40 w-full rounded-xl object-contain ring-1 ring-border" />
         )}
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
         <div className={`flex items-center gap-2 ${imageUrl ? "mt-2" : ""}`}>

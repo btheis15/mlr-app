@@ -7,6 +7,7 @@ import { getMediaServerStatus, restartMediaServer, markModerationReviewed, delet
 import { useIdentity } from "@/components/IdentityProvider";
 import { SkeletonCard } from "@/components/Skeleton";
 import { formatBytes } from "@/lib/format";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Segment/swatch color per media type (app breakdown). Kept on-brand rather than
 // a generic chart palette so it matches the rest of the card.
@@ -129,7 +130,7 @@ function SafetyScans({
               <div className="flex items-center gap-2 rounded-xl bg-background px-2.5 py-2 ring-1 ring-border">
                 {r.kind === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- mini-hosted, no loader
-                  <img src={r.url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                  <img src={mediaSrc(r.url)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                 ) : (
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-base">
                     🎬
@@ -140,7 +141,7 @@ function SafetyScans({
                   <p className="truncate text-[11px] text-faint">{r.relPath}</p>
                 </div>
                 <a
-                  href={r.url}
+                  href={mediaSrc(r.url)}
                   target="_blank"
                   rel="noreferrer"
                   className="press shrink-0 rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-border"

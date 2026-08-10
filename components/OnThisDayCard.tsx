@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useCachedResource } from "@/lib/swrCache";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Same bucket PostsView resolves post photos from (components/PostsView.tsx).
 const BUCKET = "post-photos";
@@ -149,7 +150,7 @@ export function OnThisDayCard() {
   return (
     <Link href={`/posts?post=${memory.id}`} className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={memory.thumbUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+      <img src={mediaSrc(memory.thumbUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">On this day in {memory.year}</p>
         <p className="mt-0.5 truncate text-xs text-foreground/60">{memory.caption}</p>

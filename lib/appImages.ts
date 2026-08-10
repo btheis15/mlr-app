@@ -5,6 +5,7 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { prepareImageForUpload } from "@/lib/media";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /** Known image keys → the bundled fallback served from /public. */
 export const SITE_IMAGE_FALLBACK: Record<string, string> = {
@@ -31,9 +32,13 @@ export async function fetchAppImages(): Promise<Record<string, string>> {
 }
 
 /** The src to use for a key: the admin URL if set, else the bundled fallback. */
+/** Signed via mediaSrc(): app images are uploaded to the mini, so once any
+ *  exist they need the media token like any other /f read. Doing it here
+ *  covers the header logo, fest cover and planner assets in one place. */
 export function siteImageSrc(map: Record<string, string>, key: string): string {
-  return map[key] ?? SITE_IMAGE_FALLBACK[key] ?? "";
+  return mediaSrc(map[key] ?? SITE_IMAGE_FALLBACK[key] ?? "");
 }
+
 
 // ── Writes (RLS-gated to can_edit_fest()) ─────────────────────────────────────
 

@@ -17,6 +17,7 @@ import { Lightbox } from "@/components/Lightbox";
 import { ReportButton } from "@/components/ReportButton";
 import { Sheet, FIELD } from "@/components/Sheet";
 import { POST_TEXT_MAX, fileRejectionReason } from "@/lib/moderation";
+import { mediaSrc } from "@/lib/mediaToken";
 
 type MediaType = "image" | "video";
 interface Media {
@@ -964,10 +965,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
             {previews.map((m, i) => (
               <div key={i} className="relative aspect-square overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
                 {m.type === "video" ? (
-                  <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                  <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                  <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
                 )}
                 {m.type === "video" && (
                   <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">▶ Video</span>
@@ -1500,10 +1501,10 @@ function EditPostPanel({
           {keptMedia.map((m, i) => (
             <div key={`k${i}`} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
               {m.type === "video" ? (
-                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt="" className="h-full w-full object-cover" />
+                <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
               )}
               {m.path && (
                 <button type="button" onClick={() => setRemoved((r) => [...r, m.path!])} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white before:absolute before:-inset-2.5 before:content-['']" aria-label="Remove">×</button>
@@ -1513,10 +1514,10 @@ function EditPostPanel({
           {previews.map((m, i) => (
             <div key={`n${i}`} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
               {m.type === "video" ? (
-                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt="" className="h-full w-full object-cover" />
+                <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
               )}
               <span className="absolute bottom-1 left-1 rounded bg-primary/80 px-1 py-0.5 text-[9px] font-medium text-white">new</span>
               <button type="button" onClick={() => removePreview(i)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-lg leading-none text-white before:absolute before:-inset-2.5 before:content-['']" aria-label="Remove">×</button>
@@ -1624,7 +1625,7 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
   if (m.type === "video") {
     return (
       <div className="aspect-square w-full bg-black">
-        <video src={m.url} controls playsInline className="h-full w-full object-contain" />
+        <video src={mediaSrc(m.url)} controls playsInline className="h-full w-full object-contain" />
       </div>
     );
   }
@@ -1640,7 +1641,7 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
           Lightbox (still m.url there). Falls back to the full image for
           rows with no thumbnail yet. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.thumbnailUrl || m.url} alt="" className="h-full w-full object-cover" />
+      <img src={mediaSrc(m.thumbnailUrl || m.url)} alt="" className="h-full w-full object-cover" />
     </button>
   );
 }
@@ -1784,10 +1785,10 @@ function CommentComposerSheet({
           {previews.map((m, i) => (
             <div key={i} className="relative aspect-square overflow-hidden rounded-lg bg-black/5 ring-1 ring-border">
               {m.type === "video" ? (
-                <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt="" className="h-full w-full object-cover" />
+                <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
               )}
               {m.type === "video" && (
                 <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">▶ Video</span>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSheetDismiss } from "@/lib/hooks";
 import { ModalPortal } from "@/components/ModalPortal";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /**
  * Full-screen photo viewer — tap a photo to see the whole, uncropped image.
@@ -56,7 +57,7 @@ export function Lightbox({
         </button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={url}
+          src={mediaSrc(url)}
           alt=""
           className={`max-h-full max-w-full object-contain ${closing ? "pop-close" : "pop-panel"}`}
           onClick={(e) => e.stopPropagation()}
@@ -171,7 +172,7 @@ function PhotoCarousel({
         {photos.map((p, i) => (
           <div key={`${p}-${i}`} className="flex w-full shrink-0 snap-center items-center justify-center p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p} alt="" className="max-h-full max-w-full object-contain" />
+            <img src={mediaSrc(p)} alt="" className="max-h-full max-w-full object-contain" />
           </div>
         ))}
       </div>
