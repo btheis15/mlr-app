@@ -135,6 +135,15 @@ export interface MediaServerQuarantine {
   nextPurgeInDays: number | null;
 }
 
+/** Weekly security-patch scan of the internet-facing software on the mini.
+ *  Reports only — nothing is upgraded unattended. */
+export interface MediaServerPatches {
+  scannedAt: string;
+  outdated: { name: string; current: string; latest: string }[];
+  audit: { critical: number; high: number; moderate: number; low: number; error?: string | null };
+  needsAttention: boolean;
+}
+
 export interface MediaServerStatus {
   ok: boolean;
   commit: string;
@@ -152,6 +161,8 @@ export interface MediaServerStatus {
   storage?: MediaServerStorage | null;
   /** Deleted media awaiting permanent removal. Optional, same degrade reason. */
   quarantine?: MediaServerQuarantine | null;
+  /** Security patches available. Optional — absent until the first weekly scan. */
+  patches?: MediaServerPatches | null;
   /** AI safety-scan progress + anything awaiting a human look. Optional — same
    *  graceful-degrade reason as `disk`. */
   moderation?: MediaServerModeration | null;
