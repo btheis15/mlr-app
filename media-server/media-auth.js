@@ -38,8 +38,50 @@ const crypto = require("crypto");
 // Reuse the service-role key as the signing secret when a dedicated one isn't set:
 // it's already present, already secret, and never leaves the mini. MEDIA_TOKEN_SECRET
 // overrides it if you'd rather rotate them independently.
+// ⚠️⚠️ THE FALLBACK IS A TRAP — read this before touching either variable.
+//
+// An unset MEDIA_TOKEN_SECRET does NOT mean "tokens are unsigned". It means they are
+// being signed with the SERVICE-ROLE KEY. So setting MEDIA_TOKEN_SECRET for the first
+// time is a KEY ROTATION, not a fix — and on 2026-08-10 that rotation 403'd every
+// photo in the app, because a check that looked only at MEDIA_TOKEN_SECRET concluded
+// the server had no signing key at all.
 const SECRET =
   process.env.MEDIA_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+/**
+ * Keys a token may be signed with. The FIRST is the one we issue with; the rest are
+ * accepted for verification only.
+ *
+ * Rotating a single-key HMAC scheme instantly invalidates every token already cached
+ * on every member's device — a fleet-wide outage lasting until each client happens to
+ * refetch (up to TTL_MS). That is not an acceptable cost for a routine key change, and
+ * it is exactly what happened the day enforcement went on. Accepting an overlapping set
+ * makes rotation a non-event:
+ *
+ *   1. move the outgoing key into MEDIA_TOKEN_SECRETS_LEGACY (comma-separated)
+ *   2. set the new key as MEDIA_TOKEN_SECRET, restart
+ *   3. after 2 * MEDIA_TOKEN_TTL_HOURS every client has re-fetched — drop the legacy entry
+ *
+ * Legacy keys widen only WHICH SIGNATURES VERIFY, never who may obtain a token (that is
+ * still the approval gate on /media-token), and each is bounded by the same window check.
+ */
+const ACCEPTED_KEYS = [
+  ...new Set(
+    [
+      SECRET,
+      // The fallback key stays ACCEPTED (never issued) even once a dedicated
+      // MEDIA_TOKEN_SECRET is set, so adopting one is not a rotation at all — every
+      // token already minted under the fallback keeps verifying. It costs nothing: an
+      // attacker cannot sign with the service-role key without already having it, and
+      // holding it would mean full database compromise, next to which minting a media
+      // token is irrelevant.
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      ...String(process.env.MEDIA_TOKEN_SECRETS_LEGACY || "")
+        .split(",")
+        .map((s) => s.trim()),
+    ].filter(Boolean)
+  ),
+];
 // How long a token stays valid. Also the cache-stability window — a longer life
 // means better browser caching and a longer window for a leaked link.
 const TTL_MS = Number(process.env.MEDIA_TOKEN_TTL_HOURS || 24) * 3600 * 1000;
@@ -64,8 +106,8 @@ function windowFor(ms) {
   return Math.floor(ms / TTL_MS);
 }
 
-function sign(windowIndex) {
-  return crypto.createHmac("sha256", SECRET).update(`media:${windowIndex}`).digest("base64url").slice(0, 43);
+function sign(windowIndex, key = SECRET) {
+  return crypto.createHmac("sha256", key).update(`media:${windowIndex}`).digest("base64url").slice(0, 43);
 }
 
 /**
@@ -89,11 +131,16 @@ function verifyToken(token, now = Date.now()) {
   if (!Number.isFinite(w) || !sig) return false;
   const current = windowFor(now);
   if (w !== current && w !== current - 1) return false;
-  const expected = sign(w);
-  // Constant-time compare — lengths match by construction, but guard anyway.
+  // Try every accepted key (primary first, then any legacy key mid-rotation). The
+  // window check above already bounds validity, so a legacy key widens WHICH
+  // signatures verify, never for how long.
   const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  for (const key of ACCEPTED_KEYS) {
+    const b = Buffer.from(sign(w, key));
+    // Constant-time compare — lengths match by construction, but guard anyway.
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  }
+  return false;
 }
 
 /**
@@ -121,4 +168,4 @@ function requireMediaToken(req, res, next) {
   res.status(403).json({ error: "This photo is only viewable in the MLR app." });
 }
 
-module.exports = { ENABLED, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic };
+module.exports = { ENABLED, TTL_MS, issueToken, verifyToken, requireMediaToken, isAlwaysPublic, ACCEPTED_KEYS };
