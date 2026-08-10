@@ -213,9 +213,18 @@ app.use((req, res, next) => {
     // rejected", which are completely different bugs with the same broken-image symptom.
     const started = Date.now();
     const tok = /[?&]t=/.test(req.url) ? "tok=yes" : "tok=no";
+    // ⚠️ Snapshot the path NOW, don't read req.path inside the finish handler.
+    // Express temporarily rewrites req.url to strip the mount prefix while a mounted
+    // handler runs, and `finish` fires from INSIDE express.static — so reading it late
+    // logged `/posts/x.jpg` for a request to `/f/posts/x.jpg`. Every grep for "/f/"
+    // then came back empty and looked like "no media traffic at all", which is a
+    // genuinely misleading thing for a debugging log to say.
+    //
+    // req.path (not originalUrl) so the ?t= token stays out of the logfile.
+    const at = req.path;
     res.on("finish", () => {
       console.log(
-        `[req] ${new Date().toISOString()} ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms origin=${req.headers.origin || "-"} len=${req.headers["content-length"] || "-"} auth=${req.headers.authorization ? "yes" : "no"} ${tok}`
+        `[req] ${new Date().toISOString()} ${req.method} ${at} -> ${res.statusCode} ${Date.now() - started}ms origin=${req.headers.origin || "-"} len=${req.headers["content-length"] || "-"} auth=${req.headers.authorization ? "yes" : "no"} ${tok}`
       );
     });
   }
