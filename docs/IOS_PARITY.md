@@ -1,0 +1,381 @@
+# iOS parity — what the native app is missing
+
+Handoff spec for bringing **`mlr-app-ios`** up to date with the web app
+(`mlr-app`). Written 2026-08-10.
+
+**Read this first, then `CLAUDE.md`.** The web repo is the source of truth for
+product behavior; this file only records the *delta* and the traps.
+
+**The good news:** almost nothing here needs backend work. Every feature below is
+already backed by shipped Supabase tables, RLS policies and RPCs that the iOS app
+can call with the same anon key it already uses. The exceptions are called out
+explicitly. Where the web app found a bug the hard way, that's recorded too — those
+notes are the difference between a two-hour port and a two-day one.
+
+---
+
+## 0. 🚨 BLOCKING — the native app's photos are broken RIGHT NOW
+
+**Symptom:** every photo and video in the iOS app returns **HTTP 403** with
+`{"error":"This photo is only viewable in the MLR app."}`.
+
+**Cause:** as of 2026-08-10 the media server enforces a signed token on every
+`/f/…` read (`MEDIA_AUTH=on`). The web client was updated to attach it; iOS was
+not.
+
+**This is not platform gating.** The token is issued to the *account* — the check
+is "signed in AND admin-verified", identical for every client. The problem is only
+that the server cannot recognise an account that doesn't present proof, and for
+media that proof has to travel in the URL because an `<img>` / `AsyncImage` load
+cannot set request headers.
+
+### What iOS must do
+
+1. **Fetch the token** once per app open:
+
+   ```
+   GET https://mlr-media.duckdns.org/media-token
+   Authorization: Bearer <the member's Supabase access_token>
+   ```
+
+   Response:
+
+   ```json
+   { "token": "20675.XvvLsMVl3p…", "expiresAt": "2026-08-11T00:00:00.000Z", "ttlHours": 24 }
+   ```
+
+   - `401` → the Supabase session is invalid/expired; refresh it.
+   - `403` with `pendingApproval: true` → the member exists but an admin hasn't
+     verified them. Show the "waiting to be approved" state (see §1), not an error.
+
+2. **Append it to every media URL** as `?t=<token>`:
+
+   ```
+   https://mlr-media.duckdns.org/f/dropbox/<box>/2026-08/<uuid>.jpg?t=<token>
+   ```
+
+   Mirror the web helper `mediaSrc()` (`lib/mediaToken.ts`) — one function that
+   every image/video URL passes through, which:
+   - returns the URL **untouched** when the host isn't ours (Supabase avatars,
+     `data:`, local file previews);
+   - is **idempotent** (never double-appends if `?t=` is already present);
+   - appends with `&` when the URL already has a query string (`?dl=1`).
+
+3. **Re-fetch on every app open**, even when a cached token looks valid.
+
+   ⚠️ **Do not skip this as an optimisation.** A cached token is only a *guess*
+   about what the server will accept. It carries its own 24h expiry, so if the
+   signing key ever changes, the client keeps confidently signing with a dead key
+   and every photo 403s until that expiry lapses — up to a full day, with no
+   self-healing. That exact bug caused a fleet-wide outage on the web app. One
+   small authenticated request per app open makes any future key change heal on
+   the next launch.
+
+4. **Alternative for native code:** `requireMediaToken` also accepts
+   `Authorization: Bearer <media token>`. If iOS loads media through `URLSession`
+   with a custom request (rather than plain `AsyncImage(url:)`), the header form is
+   cleaner than the query string. Both are equally valid — the query string exists
+   only because browsers can't do headers on `<img>`.
+
+### ⚠️ Why not a cookie? (decided 2026-08-10 — don't re-open)
+
+The obvious simplification is a cookie: set it once at sign-in and every client —
+browsers *and* iOS `URLSession` — attaches it automatically to every media request,
+with no per-URL work and nothing for a client to forget. It was considered and
+**declined**, twice, for two different reasons:
+
+1. **It cannot work today.** The app is served from `mlr-app-omega.vercel.app` and
+   media from `mlr-media.duckdns.org`. Those are different *sites*, so the cookie
+   would be third-party — and Safari/iOS blocks third-party cookies outright, i.e.
+   it would fail on exactly the devices most of this family uses. (It also can't be
+   scoped to `.duckdns.org`, which is a public suffix.)
+2. **Making it work needs a domain name.** With `app.<domain>` and `media.<domain>`
+   the two become same-site, the cookie is first-party, Safari allows it, and the
+   token-per-URL layer could be deleted entirely. That costs ~$12/yr plus
+   re-pointing ~1,700 stored media URLs.
+
+Brian chose to **keep the token and just teach iOS to send it** — the work is about
+30 lines and costs nothing. Revisit only if a third client appears or the app moves
+to a custom domain for unrelated reasons; at that point the cookie design becomes
+strictly simpler and this whole section goes away.
+
+### Token properties worth knowing
+
+- **Identical for every member** within a 24h window, and derived from a rounded
+  clock, so it's stable and cacheable. Deliberate: a per-request token would change
+  every URL on every render and destroy HTTP caching.
+- Both the **current and previous** window verify, so a member holding a token
+  across a rollover isn't cut off mid-scroll.
+- It is a bearer capability for "an approved member is asking", not a per-file
+  grant. It confers nothing beyond reading `/f` bytes.
+- `/privacy` and `/assets/*` stay public and unsigned (App Store requirement and
+  sign-in-screen logos respectively).
+
+### Verifying the port
+
+The server has a **report-only mode** built for exactly this. Ask Brian to set
+`MEDIA_AUTH=report` on the mini and restart. Media then serves normally regardless,
+but every unsigned read logs a line to `media-server/logs/server.log`:
+
+```
+[media-auth] WOULD-BLOCK 2026-08-10T21:02:16.172Z /dropbox/<box>/2026-08/x.jpg tok=missing range=no ua=MLR-iOS/…
+```
+
+Exercise the iOS app hard — scroll an album, open a photo, **play and scrub a
+video** — then confirm zero `WOULD-BLOCK` lines with an iOS user agent. Only then
+go back to `MEDIA_AUTH=on`. Videos matter separately from photos: they issue Range
+requests, and a player that drops the query string on a range retry would break
+video while photos looked fine. `range=yes tok=missing` is that signature.
+
+**Until this ships,** enforcement has to stay at `report` or `off`, or the two
+members with the native app installed (Brian, Annette) lose all in-app photos.
+
+---
+
+## 1. Verified members — the app-wide access gate (migrations 0181–0184)
+
+Anyone could previously sign up with any email address and immediately read posts,
+chat, albums and every member's phone number. Now a new signup sees only what a
+signed-out visitor sees **until an admin verifies them**.
+
+- **The DB column is `profiles.approved`; the UI says "Verified."** Deliberate and
+  documented — Supabase's email OTP already owns the word "verified". Don't unify
+  them.
+- Functions: `is_approved_member()`, `set_member_approved(p_user, p_value)` (admin
+  only), `is_preregistered_email()`.
+- **0183 swapped 29 SELECT policies** to `is_approved_member()`. iOS needs no query
+  changes — RLS simply returns fewer rows — but it **does** need the UI states
+  below, or an unverified member sees a member layout full of empty lists.
+
+### What iOS must add
+
+| State | Behaviour |
+|---|---|
+| Signed out | unchanged guest view |
+| Signed in, `approved = false` | treat as **guest**, plus an explicit "You're signed in — almost there" screen explaining an admin must approve them, and that there's nothing more to do on their end |
+| Signed in, `approved = true` | full member view |
+| `approved` missing/unreadable | **treat as verified** |
+
+⚠️ **That last row is not laziness — it's the required failure mode.** Defaulting
+to "unverified" on a read error locks real members out of their own app. The web
+client defaults `verified` to `true` in three places: initial state, read error,
+and column-absent. Do the same.
+
+⚠️ **`profiles` keeps an own-row escape hatch** (`is_approved_member() or id =
+auth.uid()`). Without it an unverified member can't read their own row, which
+breaks identity loading and leaves no way to *show* them the waiting state.
+
+**Admin surface** (optional for v1): Admin → Members shows "N verified · N not
+verified", a filter for the unverified, ✓ Verify / Un-verify buttons, and a
+"N people need verifying" banner. Members see a **discrete tappable ✓** next to
+verified names in the directory — and deliberately **nothing** next to an
+unverified name, since that would be a quiet accusation and isn't actionable for a
+member.
+
+**0184** closed two `SECURITY DEFINER` functions 0183 missed
+(`directory_recipients()`, `admin_recipients()`). No client change; noted so nobody
+"re-fixes" it.
+
+⚠️ **General lesson for any future gate change: policies and DEFINER functions are
+separate surfaces.** A DEFINER function bypasses RLS by design, so a policy sweep
+leaves it untouched. Sweep both.
+
+---
+
+## 2. Media-server behaviour iOS should match
+
+These are server-side already; the notes are about what iOS should *send* and
+*render*.
+
+- **Thumbnails (0173).** Every `*_media` table has `thumbnail_url`. Grids and
+  albums must render **that**, not the full-res file, and load the original only on
+  tap-through. This is the single biggest scroll-performance win in the app. A
+  video's poster frame is seeked ~10% in (not frame 0 — real phone video often
+  opens on a black frame), and a video tile still needs a ▶ badge or it's
+  indistinguishable from a photo.
+  `uploadToMini()` returns `{ url, thumbnailUrl, capturedAt, capturedAtSource, type, path }`
+  — thread `thumbnailUrl` into every `*_media` insert.
+- **Capture dates (0174–0176).** Albums sort by when a photo was **taken**, not
+  uploaded. `captured_at` + `captured_at_source` (`exif` > `video` > `file` >
+  `post`, best first; a sweep may only ever move a row *up* that list).
+  - iOS should read the real capture date from `PHAsset.creationDate` — far more
+    reliable than the web's EXIF scraping, which loses HEIC metadata the moment
+    the browser re-encodes through a canvas. Send it as `capturedAt` with source
+    `exif`.
+  - ⚠️ Read it from the **original** asset, before any compression.
+- **Uploads** go to `POST /upload?category=posts|chat|work|dropbox&room=<slug|box>`
+  with `Authorization: Bearer <supabase token>`.
+  ⚠️ As of today `/upload` also requires the caller to be an **approved** member —
+  a `403 pendingApproval` is a real response iOS must handle.
+- **Moderation is asynchronous.** `/upload` returns immediately and grades in the
+  background, so a flagged verdict *retroactively* holds already-posted content a
+  few seconds later via a DB trigger. iOS needs no moderation code, but should
+  expect a row's `status` to change to `pending` after the fact, and honour
+  `status` when rendering.
+- **Videos are transcoded in the background** and a cross-extension transcode
+  (`.mov` → `.mp4`) repoints `storage_path` afterwards. So a URL can change shortly
+  after upload — re-read the row rather than caching the URL forever.
+- ⚠️ **`MEDIA_URL` must be `https://mlr-media.duckdns.org`.** Do not hardcode the
+  old Tailscale Funnel host (`brians-mac-mini.tail49943c.ts.net`). It still
+  resolves, but it relays through Tailscale DERP at 12–21 Mbps against a 119 Mbps
+  uplink — and a stale reference to it is precisely what silently un-signed every
+  photo on the web app for hours. Match by **host** against a known set, never by
+  exact-prefix against one configured string.
+
+---
+
+## 3. Features that are web-only
+
+Ordered by likely value to the family. All schema/RPCs already exist.
+
+### 3a. Drop Boxes — shared downloadable albums (0171–0180)
+
+The app's account-free alternative to a shared Google Drive folder, and where the
+Family Fest photos now live. **Highest-value gap** — it's the most-used surface on
+the web app.
+
+- Tables `drop_boxes` + `drop_box_media`; all writes through RPCs
+  (`create_drop_box`, `update_drop_box`, `set_drop_box_archived`,
+  `delete_drop_box`, `add_drop_box_media`, `remove_drop_box_media`,
+  `set_drop_box_media_status`).
+- Uploads use `category: "dropbox"` with the box id as `room`.
+- **Moderation is deliberately more lenient here:** if the model can't run, a
+  drop-box upload is allowed and final (not re-queued), so a family album never
+  strands photos behind an unreachable checker.
+- **Downloads are the point** — this is the one surface that offers originals.
+  Single file: `/f/…?dl=1` (serves the preserved `_orig` where one exists). Whole
+  folder or a selection: `GET/POST /dropbox-zip`. ⚠️ `/dropbox-zip` now also
+  requires an **approved** member.
+- The official album has a fixed id: `0000fe57-2026-4000-8000-000000000001`.
+- Sorted by `captured_at` (see §2), credited via `uploaded_by` / `created_by`.
+  ⚠️ When a Feed post's photo is referenced into an album, credit goes to the
+  **post's author**, not whoever clicked the checkbox (`p_credit_user_id`, honoured
+  only for admin callers).
+
+### 3b. Event sign-up slots (0135–0143, 0158–0168)
+
+Limited sign-ups for schedule events: three modes (`interval` / `slots` /
+`headcount`), optional fixed-size **teams**, custom required fields, per-slot
+reminder pushes, an option to **hide who's signed up**, and a manual "notify this
+slot" send.
+
+⚠️ **Never hand a bare `YYYY-MM-DD` to a date parser.** On the web, `new Date("2026-07-31")`
+parses as **UTC midnight** and renders as the *previous day* in Central — which
+mislabelled every slot in the app by one day, and because the label also fed the
+organiser's own picker, it **corrupted the stored data** too (10 rows needed a
+manual correction). Swift's `DateFormatter` with an explicit `timeZone` avoids the
+web's specific trap, but the lesson generalises: a display bug in a *picker*
+silently corrupts whatever it writes.
+
+### 3c. Tournaments (0144–0154)
+
+Brackets on top of an activity's sign-ups: single-elim, round-robin, and
+pools→bracket. Scoring is one tap (winner; scores optional) and propagates, with a
+recursive cascade that clears stale downstream results when a decided match is
+changed. Entrants import from sign-ups or the roster; account-less typed names are
+first-class (they just can't receive notifications).
+
+### 3d. Private activities (0150–0154)
+
+Member-created, invite-only get-togethers in the Events tab. Visible **only** to
+invitees — `is_private_activity_member()` is the RLS predicate. Roster supports
+typed-in names for people without accounts. Notifications fire only if the
+organiser opts in, and only to the people involved.
+
+### 3e. Meetings / when2meet (0116–0122)
+
+Propose candidate times in a committee/house room (or family-wide), everyone marks
+Yes / If-need-be / No, organiser finalises into either a **Google Meet** link or a
+real **Event** on the calendar. Two optional emails (proposal opt-in, confirmation
+automatic) are sent by the mini, not the client.
+
+### 3f. Quick polls in chat (0149)
+
+iMessage-style polls inline in the message timeline. Anonymity is enforced in SQL:
+`chat_poll_votes` has **no select grant at all**, and counts come from
+denormalised columns kept current by a trigger. `chat_poll_voters()` is the only
+way identity is ever revealed, and it returns nothing when the poll is anonymous.
+
+⚠️⚠️ **iOS-relevant trap, learned painfully on web:** never trigger a file picker
+from inside a popup/menu/overlay. In the installed iOS PWA the native picker opened,
+you could choose a photo, and **nothing arrived, with no error** — attaching photos
+in chat appeared simply broken. Three fixes that kept the popup all failed on
+device. The resolution was to make the picker a plain, always-mounted button and
+move the *other* actions into the menu. A native app has different plumbing, but if
+photo attachment misbehaves, look at what the picker is nested inside first.
+
+### 3g. House lists (0169)
+
+Shared lists per house — groceries, close-up checklists, packing. One flexible
+shape (title + checkable items). Writes gate on **membership, not authorship** —
+the person who buys the milk is rarely the one who wrote it down. "Checked" is a
+stamp (`checked_at`/`checked_by`), not a boolean, so the list also answers *who*.
+No notifications, by design.
+
+### 3h. Leads chat + lead-run rosters (0172)
+
+A private `area = 'Leads'` channel per committee, gated on holding any `· Lead`
+role — with **no admin override** (an admin who isn't a lead of that committee is
+deliberately not in its Leads room). Leads also get roster write access scoped to
+committees they lead.
+
+⚠️ **The `" · Lead"` suffix has one home:** `baseArea` / `isOnArea` / `isAreaLead`
+/ `withArea` / `withoutArea` in `lib/committeeAdmin.ts`. Comparing raw role strings
+already caused silent data loss on web — an admin editing someone's areas saved a
+list with their lead standing stripped. Port the helpers, not the string compares.
+
+### 3i. Conversation search (0129–0131)
+
+Search across everything the member can see, via `POST /search` on the mini →
+`search_conversations()`, which re-applies the same visibility rules the feed uses.
+Ranking is **keyword-first** (`websearch_to_tsquery`), with embeddings only breaking
+ties. ⚠️ Filter with `@@`, never `ts_rank(...) > 0` — ts_rank returns a tiny
+non-zero for non-matching multi-word queries, which leaked the whole corpus.
+
+### 3j. Smaller items
+
+- **Post comment media (0162)** — comments carry photos/videos.
+- **Comment deep links (0164)** — notifications land on the *specific comment*.
+- **Notification test tools (0156–0157)** — send a test to one member; a
+  "notifications confirmed" checklist.
+- **Chat mute durations (0155)**.
+- **Committee taxonomy admin (0112, 0170, 0177–0179)** — admins create/rename/
+  archive committees and roles.
+- **Family roster (0123–0125)** — account-less family members with emails.
+- **Anytime events (0139, 0141)** — `fest_activities` is **retired on web**;
+  converted into anytime `fest_schedule_items`. ⚠️ **iOS still reads
+  `fest_activities`**, which is why the table still exists. Migrating iOS to
+  anytime schedule items is what finally lets it be dropped — until then the two
+  can drift.
+
+---
+
+## 4. Recommended order
+
+1. **§0 media token** — blocking; the app's photos are broken without it.
+2. **§1 verified-member states** — small, and prevents an unverified newcomer
+   seeing a broken-looking member UI.
+3. **§2 thumbnails** — biggest perceived performance win.
+4. **§3a Drop Boxes** — biggest missing feature.
+5. Then §3b/§3c (fest-season-sensitive), then the rest as appetite allows.
+
+---
+
+## 5. Conventions to carry over
+
+- **`profiles.is_admin` is the only source of admin truth.** No client allow-list.
+- **"Is this mine?" resolves through the effective user id**, never a raw session
+  lookup — web has an admin "view as" preview where the two differ, and every
+  write must no-op while previewing.
+- **Degrade gracefully pre-migration.** Every web client seam returns empty on a
+  missing table (Postgres `42P01`) rather than throwing. It's why a half-migrated
+  database doesn't crash the app.
+  ⚠️ The flip side, learned the hard way: that idiom **disguises a broken read as
+  "empty but working."** A table with RLS enabled and zero policies returns zero
+  rows *with no error*, which silently deleted an entire feature from every client
+  for weeks. When a list reads empty but writes seem to succeed, check
+  `pg_policies` before anything else.
+- **Light mode only.** Never a dark translucent surface tint as a card background.
+- **Never report a feature done off a script's success message.** Verify by reading
+  the file back and compiling. On this project an entire admin UI was reported as
+  shipped when the edit had silently no-op'd.
