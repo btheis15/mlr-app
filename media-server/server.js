@@ -409,6 +409,20 @@ async function serveDropboxZip(req, res, token, box, name, relPaths) {
   } catch {
     return res.status(503).json({ error: "Couldn't reach the auth service." });
   }
+  // ⭐ APPROVAL GATE. A valid login is NOT enough — anyone can sign up with any email
+  // address. Without this, a stranger with a throwaway account could stream back a zip
+  // of an ENTIRE album in one request: the box id is a compile-time constant in the
+  // public client bundle (FEST_ALBUM_BOX_ID), so it isn't even a secret. This route
+  // takes its token from the query string / form body, which is why it needs the
+  // by-token variant rather than the req-header one. Same gate and same response shape
+  // as /media-token.
+  const zipApproved = await isApprovedMemberByToken(token);
+  if (zipApproved === false) {
+    return res.status(403).json({
+      error: "An admin needs to approve your account before you can download photos.",
+      pendingApproval: true,
+    });
+  }
   if (!box) return res.status(400).json({ error: "Missing folder." });
 
   // Build the zip file list. Two volumes mean a single `cwd` no longer works —
@@ -569,12 +583,25 @@ app.get("/media-token", requireUser, async (req, res) => {
  */
 async function isApprovedMember(req) {
   const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
-  if (!m || !SUPABASE_URL || !SERVICE_KEY) return null;
+  return isApprovedMemberByToken(m ? m[1] : "");
+}
+
+/**
+ * The approval check, by raw JWT. Split out from isApprovedMember(req) because the
+ * /dropbox-zip routes receive the token in the QUERY STRING or FORM BODY — an
+ * <a download> / form submit cannot set an Authorization header — so they could not
+ * use the header-reading version and were therefore never approval-gated at all.
+ *
+ * Returns true / false / null (null = "couldn't determine", treated as allow, for
+ * pre-migration and transient failures).
+ */
+async function isApprovedMemberByToken(jwt) {
+  if (!jwt || !SUPABASE_URL || !SERVICE_KEY) return null;
   try {
     // Resolve the caller from their own token, then read the flag with the
     // service role (profiles is not readable by an unapproved user by design).
     const who = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${m[1]}` },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${jwt}` },
     });
     if (!who.ok) return false;
     const uid = (await who.json())?.id;
@@ -699,6 +726,23 @@ const upload = multer({
 // Only signed-in family members can upload — validate the Supabase token by
 // asking the cloud project who it belongs to. (No secrets needed here; the
 // publishable key + the user's own token are enough.)
+/**
+ * Approval gate as middleware. requireUser only proves the session is live; this
+ * proves an admin let them in. /upload had only the former, so an unapproved signup
+ * could write files to the media volumes (and burn the moderation model's quota)
+ * until the SSD hit its reserve and uploads started 507ing for the whole family.
+ */
+async function requireApprovedMember(req, res, next) {
+  const approved = await isApprovedMember(req);
+  if (approved === false) {
+    return res.status(403).json({
+      error: "An admin needs to approve your account first.",
+      pendingApproval: true,
+    });
+  }
+  next();
+}
+
 async function requireUser(req, res, next) {
   const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
   if (!m || !SUPABASE_URL || !SUPABASE_ANON_KEY) return res.status(401).json({ error: "Sign in required." });
@@ -1355,7 +1399,7 @@ function transcodeInBackground(originalPath, mimetype, originalUrl) {
 // Upload one file. Folder comes from ?category=posts|chat (&room=<slug> for
 // chat); the returned URL points at wherever it was filed. The app stores that
 // URL as-is, so the layout is an implementation detail callers don't track.
-app.post("/upload", requireUser, (req, res) => {
+app.post("/upload", requireUser, requireApprovedMember, (req, res) => {
   // The actual multipart transfer is the only thing this timeout needs to cover
   // now — transcode and moderation both moved to the background (below), so
   // this no longer has to wait out a multi-minute ffmpeg run.
