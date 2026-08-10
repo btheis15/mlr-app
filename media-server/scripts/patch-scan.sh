@@ -79,5 +79,15 @@ print(json.dumps({
 }, indent=2))
 PY
 
-echo "$(date '+%Y-%m-%dT%H:%M:%S%z') scanned: $(python3 -c "
-import json;d=json.load(open('$OUT'));print(f\"{len(d['outdated'])} outdated, audit high/crit {d['audit'].get('high',0)}/{d['audit'].get('critical',0)}\")" 2>/dev/null)" >> logs/patch-scan.log
+# One summary line per run. Built by a heredoc'd script rather than an inline
+# `python3 -c "…"` inside `$(…)` inside "…" — that nesting mangled the f-string's
+# own quotes AND word-split the result on the commas in `.get('high',0)`, so every
+# run logged four fragments of literal Python source instead of a summary.
+SUMMARY=$(OUT="$OUT" python3 <<'PY' 2>/dev/null
+import json, os
+d = json.load(open(os.environ["OUT"]))
+a = d.get("audit") or {}
+print(f"{len(d.get('outdated') or [])} outdated, audit high/crit {a.get('high', 0)}/{a.get('critical', 0)}")
+PY
+)
+printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${SUMMARY:-scan failed to summarize}" >> logs/patch-scan.log
