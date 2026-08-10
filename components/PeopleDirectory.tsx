@@ -160,7 +160,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: () => void }) {
         <Avatar name={name} url={person.avatar_url} size={40} />
         <span className="flex min-w-0 flex-1 items-center truncate text-sm font-semibold">
           <span className="truncate">{name}</span>
-          <VerifiedBadge verified={person.approved} className="ml-1" />
+          <VerifiedBadge verified={person.approved} name={name} className="ml-1" />
         </span>
         <span aria-hidden className="shrink-0 text-base leading-none text-faint">›</span>
       </button>
