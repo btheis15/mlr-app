@@ -8,8 +8,36 @@
 // All uploads go to the resort's mini (no size cap); the server returns a full
 // URL, which the app stores verbatim. NEXT_PUBLIC_MEDIA_URL overrides it (local
 // dev / if the tunnel URL ever changes).
+/** The canonical media host. Media is served DIRECTLY from the mini via Caddy. */
+const PRODUCTION_MEDIA_URL = "https://mlr-media.duckdns.org";
+
+/**
+ * The retired Tailscale Funnel host.
+ *
+ * ⚠️⚠️ `NEXT_PUBLIC_MEDIA_URL` IS STILL SET TO THIS IN VERCEL, and it is deliberately
+ * IGNORED here rather than honored. Two reasons, both load-bearing:
+ *
+ * 1. It silently un-signed every photo in the app. Next.js inlines NEXT_PUBLIC_* at
+ *    BUILD time, so the stale value was baked into the bundle and won over the code
+ *    default — verified by grepping the live chunks (ts.net present, duckdns absent).
+ *    mediaSrc() then compared duckdns URLs against a ts.net prefix, failed, and
+ *    returned them unsigned with no error at all.
+ * 2. It routes uploads and token fetches through the Funnel, which relays via
+ *    Tailscale's DERP infrastructure and measured 12–21 Mbps against a 119 Mbps uplink
+ *    — the exact throttle the move to Caddy + DuckDNS was made to escape. Media reads
+ *    already go direct (the mini stamps PUBLIC_URL into stored rows); writes were
+ *    quietly still taking the slow path.
+ *
+ * A genuine local-dev override still works — anything that isn't the retired host is
+ * honored. Once the Vercel variable is removed or repointed, this guard becomes inert.
+ */
+const RETIRED_MEDIA_HOST = "brians-mac-mini.tail49943c.ts.net";
+
+const configuredMediaUrl = (process.env.NEXT_PUBLIC_MEDIA_URL || "").trim();
 export const MEDIA_URL = (
-  process.env.NEXT_PUBLIC_MEDIA_URL || "https://mlr-media.duckdns.org"
+  configuredMediaUrl && !configuredMediaUrl.includes(RETIRED_MEDIA_HOST)
+    ? configuredMediaUrl
+    : PRODUCTION_MEDIA_URL
 ).replace(/\/+$/, "");
 
 /**
@@ -34,9 +62,7 @@ export const MEDIA_URL = (
  * and a future host change degrades to "add an entry here" rather than to a silent
  * app-wide media outage.
  */
-const LEGACY_MEDIA_HOSTS = [
-  "brians-mac-mini.tail49943c.ts.net", // Tailscale Funnel, retired 2026-08-10 but kept as a fallback
-];
+const LEGACY_MEDIA_HOSTS = [RETIRED_MEDIA_HOST];
 
 function hostOf(url: string): string {
   try {
@@ -48,7 +74,16 @@ function hostOf(url: string): string {
 
 /** Hosts whose URLs are ours to sign. */
 export const MEDIA_HOSTS: string[] = Array.from(
-  new Set([hostOf(MEDIA_URL), ...LEGACY_MEDIA_HOSTS].filter(Boolean))
+  new Set(
+    [
+      hostOf(MEDIA_URL),
+      // ALWAYS accepted, whatever MEDIA_URL resolves to. Every stored row uses this
+      // host; if a bad override could drop it from the list we would be right back to
+      // silently unsigned photos.
+      hostOf(PRODUCTION_MEDIA_URL),
+      ...LEGACY_MEDIA_HOSTS,
+    ].filter(Boolean)
+  )
 );
 
 /**
