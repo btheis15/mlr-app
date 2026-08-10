@@ -1601,8 +1601,18 @@ app.post("/search", searchLimiter, requireUser, express.json({ limit: "8kb" }), 
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`MLR media-server on :${PORT}`);
+// ⚠️ Bind to LOOPBACK, not 0.0.0.0. Caddy is the only thing that should ever talk
+// to this process directly, and it proxies from 127.0.0.1:8790 — so listening on
+// every interface bought nothing and cost two things: (1) any device on the house
+// WiFi could reach the whole API — /f, /upload, /admin/* — over PLAIN HTTP,
+// skipping Caddy's TLS entirely, and (2) if a second port were ever forwarded on
+// the eero, the server would be publicly exposed with no TLS and no cert. Now the
+// public surface is exactly one port (443 → 9443 → Caddy → here) and nothing else.
+// Override with BIND_HOST only for a deliberate reason (e.g. testing from a phone
+// on the LAN); leaving it unset is the secure default.
+const BIND_HOST = process.env.BIND_HOST || "127.0.0.1";
+app.listen(PORT, BIND_HOST, () => {
+  console.log(`MLR media-server on ${BIND_HOST}:${PORT}`);
   console.log(`  public URL : ${PUBLIC_URL}`);
   console.log(`  media dir  : ${MEDIA_DIR} (primary)`);
   console.log(
