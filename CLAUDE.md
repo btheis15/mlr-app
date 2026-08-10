@@ -3127,11 +3127,27 @@ not a forwarded link. Server half:
 - ⚠️ **`GET /media-token` refuses an unapproved caller**, so the verified-member gate
   (0181/0183) governs media too — an unverified signup gets no token and therefore no
   photos, matching what the DB already shows them.
-- ⚠️ **Missing `MEDIA_TOKEN_SECRET` fails OPEN** (logs a warning, serves publicly)
-  rather than blackholing every photo over a misconfiguration. So `MEDIA_AUTH=on`
-  with no secret silently does *nothing* — check the log line, not just the env var.
-- ⚠️ **Rotating the secret invalidates every cached client token at once** — everyone
-  sees broken photos until their app refetches. Rotate deliberately, not casually.
+- ⚠️⚠️ **The signing key is `MEDIA_TOKEN_SECRET` OR — falling back — `SUPABASE_SERVICE_ROLE_KEY`.**
+  Read that line in `media-auth.js` before touching either. Because of the fallback,
+  an unset `MEDIA_TOKEN_SECRET` does **not** mean "no signing key": tokens are being
+  signed with the service-role key, and **setting `MEDIA_TOKEN_SECRET` for the first
+  time is a KEY ROTATION, not a fix.** This is exactly how the day-one outage
+  happened — a check that looked only at `MEDIA_TOKEN_SECRET` reported it "missing,
+  would fail open", so a fresh secret was generated, which rotated away from the key
+  every already-issued token was signed with, and every photo in the app 403'd. The
+  dedicated secret is now **parked as a comment** in the mini's `.env`, adoptable once
+  every client is known to be on the self-healing build. The genuine fail-open (warn +
+  serve publicly) needs BOTH vars unset, which won't happen while Supabase is
+  configured.
+- ⚠️ **Rotating the key invalidates every cached client token at once.** Survivable
+  now — `IdentityProvider` refetches on every app open (see below) — so a rotation
+  heals on the next open rather than stranding people for up to 24h. Still, do it
+  deliberately and verify with a token issued by the module itself.
+- ⚠️ **Test tokens with `require("./media-auth").issueToken()`, never a hand-rolled
+  HMAC.** The message is `` `media:${window}` `` and the digest is base64url sliced to
+  **43** chars; a reimplementation that signs the bare index (or slices to 32) 403s
+  and looks exactly like a real enforcement failure. That sent one diagnosis down the
+  wrong path.
 - ⚠️⚠️ **`mediaSrc()` reads the token SYNCHRONOUSLY during render and returns the URL
   UNSIGNED when there isn't one** — so anything that obtains a token must also force a
   re-render, or already-painted `<img>`s stay unsigned and 403 forever.
@@ -3142,6 +3158,14 @@ not a forwarded link. Server half:
   one (guarded, so a warm open costs no extra render). The in-memory copy also
   carries its expiry — it used to be returned forever once set, so a PWA left open
   past 24h signed every URL with a dead token.
+- ⚠️⚠️ **`IdentityProvider` refetches the token on EVERY app open (`ensureMediaToken(true)`),
+  cached or not — don't "optimize" that away.** A cached token is only a *guess* about
+  what the server will accept. It carries its own 24h expiry, so if the signing key
+  changes the client keeps confidently signing URLs with a dead key and every photo
+  403s until that expiry lapses — up to a full day, with **no self-healing**, which is
+  what turned the key rotation above from a blip into an outage. Reconciling once per
+  open costs one small authenticated request and makes any future rotation heal on the
+  next open, which is how people already use the app.
 - **Guest-visible imagery is unaffected** because none of it is on the mini: `/f`
   holds only `posts/`, `chat/` and `dropbox/` (all members-only by RLS), while the
   fest cover and callout fliers live in Supabase Storage's `site-assets` bucket.
