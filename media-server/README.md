@@ -5,23 +5,46 @@ from your Mac mini, so we're not capped by cloud storage. **Login and all data
 stay on cloud Supabase** — this only holds the media *files*, and the app saves
 a link to each file here.
 
-> ### ⚠️ This mini's ports & Funnel (read before touching networking)
-> Port **8787 on this mini is permanently owned by an unrelated Innjoy dashboard**
-> process (it's that Python tool's hardcoded default, referenced across
-> `pricelabs_api`'s docs/launchers — not safe to move). So this media server
-> runs on **`PORT=8790`**, and the public Tailscale Funnel is mapped as:
+> ### ⚠️ This mini's ports & public endpoint (read before touching networking)
+> Port **8787 is permanently owned by an unrelated Innjoy dashboard** (its
+> hardcoded default, referenced across `pricelabs_api`'s docs/launchers — not safe
+> to move), and **8799 by `fm`**. So this media server runs on **`PORT=8790`**.
+> Port collisions have caused a real outage here before — check `lsof -i :<port>`
+> before claiming one.
 >
-> | Public URL | → local | serves |
+> **Media is served directly, NOT through Tailscale Funnel (changed 2026-08-10).**
+>
+> | Public URL | → | serves |
 > |---|---|---|
-> | `https://brians-mac-mini.tail49943c.ts.net` (443) | `127.0.0.1:8790` | **this media server** |
-> | `https://brians-mac-mini.tail49943c.ts.net:8443` | `127.0.0.1:8787` | Innjoy dashboard |
+> | `https://mlr-media.duckdns.org` (443) | eero forwards 443 → **9443** (Caddy) → `127.0.0.1:8790` | **this media server** |
+> | `https://brians-mac-mini.tail49943c.ts.net` | Funnel → `127.0.0.1:8790` | legacy fallback, still live |
+> | `https://brians-mac-mini.tail49943c.ts.net:8443` | Funnel → `127.0.0.1:8787` | Innjoy dashboard |
 >
-> **Do NOT set `PORT=8787` on this host**, and don't point 443's Funnel at 8787
-> — that serves the dashboard, so every `…/f/<file>` 404s and the iOS/web apps
-> show endless spinners (this exact outage happened once already). If a setup
-> step or `.env.example` suggests `8787`, check for the collision first:
-> `lsof -i :8787`. The `PUBLIC_URL` (the `…ts.net` name at 443) must stay
-> constant — the app stores it verbatim in the database.
+> **Why the move:** Funnel relays through Tailscale's DERP infrastructure and
+> measured **12–21 Mbps (varying 1.7×) against a 119 Mbps uplink** — ~15% of real
+> capacity. A 36 Mbps video could not be watched in real time. Direct serving is
+> limited only by the uplink; Caddy itself does ~445 Mbps locally.
+>
+> **Caddy runs unprivileged on 9443** (not 443, which would need root; not 8443,
+> which the Funnel already publishes). The *external* port is still 443, so stored
+> URLs carry no `:port`. Config: `/opt/homebrew/etc/Caddyfile`, `brew services`.
+> Let's Encrypt validates over **TLS-ALPN on 443** — Comcast blocks inbound 80.
+>
+> ⚠️ **`PUBLIC_URL` is stored VERBATIM in ~1,700 database rows.** Changing it means
+> another data migration across seven columns (see
+> `supabase/one-off/2026-08-10_media_url_host_swap.sql` for the pattern, and keep
+> the old endpoint alive during the swap so a missed row still resolves).
+>
+> **Dynamic DNS:** Comcast rotates this house's IP, so
+> `scripts/duckdns-update.sh` runs every 5 min via `com.mlr.duckdns` launchd.
+> A stale record 404s all media for everyone — this job is load-bearing.
+> Credentials in the gitignored `.env` (`DUCKDNS_DOMAIN` / `DUCKDNS_TOKEN`).
+>
+> **Trade-off accepted:** the home IP is now published in DNS and the mini is
+> directly reachable on 443. It has `helmet`, per-endpoint rate limits, and auth
+> on uploads, but no WAF and no DDoS absorption. Cloudflare Tunnel remains the
+> alternative (hides the IP, adds edge caching) at the cost of another URL
+> migration.
 
 ## Storage layout
 
