@@ -162,17 +162,37 @@ function originalPathFor(servedPath, ext) {
  * video uploaded before this change, plus anything that needed no re-encode.
  */
 function findOriginal(servedPath) {
-  const dir = path.dirname(servedPath);
+  // ⚠️ Must search BOTH volumes. Originals are deliberately stored on the external
+  // drive (they're the largest files and are read only on an explicit download,
+  // so keeping them off the SSD is the single biggest storage win) while the
+  // playback rendition stays on the SSD. Looking only in the served file's own
+  // directory would silently return null and make ?dl=1 hand back the rendition
+  // instead of the full-quality file.
+  const tiers = require("./media-tiers");
+  const rel = tiers.relFromAbs(servedPath);
   const base = path.basename(servedPath, path.extname(servedPath));
   const want = `${base}${ORIGINAL_SUFFIX}`;
-  let entries;
-  try {
-    entries = fs.readdirSync(dir);
-  } catch {
-    return null;
+
+  const dirs = [];
+  if (rel) {
+    const relDir = path.dirname(rel);
+    for (const root of tiers.mediaRoots()) dirs.push(path.join(root, relDir === "." ? "" : relDir));
   }
-  for (const name of entries) {
-    if (path.basename(name, path.extname(name)) === want) return path.join(dir, name);
+  // Always include the served file's own directory, for dev/legacy layouts that
+  // aren't under a configured media root at all.
+  const own = path.dirname(servedPath);
+  if (!dirs.includes(own)) dirs.push(own);
+
+  for (const dir of dirs) {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (path.basename(name, path.extname(name)) === want) return path.join(dir, name);
+    }
   }
   return null;
 }

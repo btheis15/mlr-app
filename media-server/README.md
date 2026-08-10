@@ -522,3 +522,97 @@ serving the original untouched.
 a large batch over cellular takes longer. Downloads are unaffected (viewers get
 the display copy or the thumbnail). Per-file upload failures are named with a
 retry, so a slow connection degrades visibly rather than silently.
+
+## Adaptive streaming (HLS) — generation is OFF until the player ships
+
+[`hls.js`](hls.js) builds a three-rung ladder per video, sized to the source so
+nothing is ever upscaled:
+
+| rung | resolution (short edge) | bitrate |
+|---|---|---|
+| full | source, capped at 2160 | ~11 Mbps |
+| 720p | 720 | ~4 Mbps |
+| 540p | 540 | ~1.6 Mbps |
+
+```
+<uuid>_hls/master.m3u8    what a player loads
+<uuid>_hls/0|1|2/*.ts     segments, lowest rung first
+```
+
+Derived by convention beside `<uuid>.mp4`, so **no database column was needed**.
+
+⚠️ **`HLS_ENABLED` defaults to `off`.** A ladder roughly doubles a video's storage
+and is useless until the client can play it. Turn it on in the mini's `.env` when
+the `hls.js` player ships, then run a backfill for existing videos.
+
+Three things learned the hard way, all load-bearing:
+
+- **Rungs target the SHORT edge, not height.** Most phone video here is portrait
+  (1080×1920); treating the rung number as height scaled "720p" to a 405×720
+  sliver while landscape came out fine.
+- **Orientation is decided in JS, not with an ffmpeg `if(gt(iw,ih),…)` expression.**
+  `filter_complex` goes through `spawn` with no shell, so quotes arrive literally
+  and break the parser (`Error sending frames to consumers: Invalid argument`).
+- **No `name=` in `-var_stream_map`.** This ffmpeg build rejects it outright
+  (`Invalid keyval name=540p` → `Could not write header` → total failure), so
+  variants are addressed by index and `%v` expands to `0/1/2`.
+
+H.264 on every rung deliberately: this ffmpeg has `libsvtav1` and `libx265`, and
+AV1 would be more efficient per bit — but AV1/HEVC in HLS needs fMP4/CMAF and
+depends on the viewer's device decoding it. Universal playback beats efficiency
+for a family with mixed devices, especially now bandwidth is 6–10× better. AV1 is
+a clean future upgrade.
+
+### Congestion-aware quality capping
+
+[`stream-load.js`](stream-load.js) meters bytes actually leaving `/f` and, when the
+uplink is genuinely full **with more than one viewer**, serves a master playlist
+with the top rung removed. Capping at the *manifest* is what makes this work
+without a cooperating client — a player can only choose a variant the manifest
+offers, so native iOS players and older app builds get shaped too.
+
+⚠️ **This must stay rare.** It is not "the pipe is 65% busy so everyone gets worse
+video". The trigger is measured **saturation** (≥`LOAD_SATURATION`, default 0.90 —
+72 Mbps of sustained media traffic at the default 80 Mbps allowance) plus ≥2
+concurrent viewers. At that point the link is pegged and somebody is already being
+starved; a lower rung for everyone beats one person buffering.
+
+- **A lone viewer is never capped**, even using the entire pipe.
+- Normally only the **top** rung is dropped; it falls to the lowest only when there
+  are so many viewers that the middle rung couldn't fit them either.
+- ⚠️ An earlier version also required `viewers × topRung > capacity`. That was
+  wrong and defeated the feature — it needed ~8 simultaneous viewers, so "three
+  people streaming and a fourth who can't fit" would never have capped despite a
+  visibly pegged link. Saturation already encodes "there is no room".
+
+`GET /media-load` exposes the aggregate (viewer count, Mbps, pressure) for the
+client to set `hls.autoLevelCapping` mid-playback. That's a refinement, not the
+enforcement mechanism.
+
+### ⚠️ `_hls/` directories have no database row
+
+Same hazard as `_orig`, but worse — hundreds of files per video. Four subsystems
+must know, or they delete or miscount the whole feature:
+
+| place | without it |
+|---|---|
+| `orphan-sweep.js` | **quarantines every segment of every video** |
+| `media-usage.js` | storage breakdown becomes meaningless |
+| `/dropbox-zip` | zips 300 four-second fragments |
+| `/f` content types | wrong MIME on `.m3u8`/`.ts` makes players refuse the stream |
+
+## Storage placement: originals live on the external drive
+
+Measured on the live library, **originals were 412 MB — 32% of all SSD usage** —
+for files nothing reads except an explicit `?dl=1` download or an album zip. They
+are simultaneously the largest and coldest things in the library.
+
+So the mirror sweep now **evicts `_orig` files from the SSD** once it has verified
+a byte-identical copy on the external drive. This is the only case where the mirror
+removes anything from hot, and it's safe precisely because `mirrorOne()`
+size-checks the destination before returning. `findOriginal()` searches **both**
+volumes, so `?dl=1` still returns full quality.
+
+Net effect: the SSD holds only what browsing actually touches — thumbnails, photo
+display copies, and playback renditions — while originals and their bulk sit on the
+747 GB drive.
