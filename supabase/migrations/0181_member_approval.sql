@@ -20,10 +20,13 @@
 -- those policies also cover a member reading THEIR OWN row and would lock an
 -- unapproved user out of their own profile and sign-in flow.
 
--- 1. The flag. Nullable-with-default so existing members are unaffected.
+-- 1. The flag. NOT NULL with a false default, so every existing row is set false
+--    here and then flipped true by the backfill in step 2 — order matters.
 alter table profiles add column if not exists approved boolean not null default false;
 alter table profiles add column if not exists approved_at timestamptz;
-alter table profiles add column if not exists approved_by uuid references profiles(id);
+-- on delete set null: delete_member() hard-deletes via auth.users cascade, and a
+-- plain FK here would make deleting an admin FAIL once they'd approved anyone.
+alter table profiles add column if not exists approved_by uuid references profiles(id) on delete set null;
 
 -- 2. Backfill: everyone who already has access keeps it. Doing this BEFORE the
 --    default takes effect for new rows is what stops this migration locking the
@@ -77,10 +80,18 @@ $$;
 revoke all on function set_member_approved(uuid, boolean) from public;
 grant execute on function set_member_approved(uuid, boolean) to authenticated;
 
--- 6. Surface pending members to admins. admin_members() already returns the
---    directory; widen it so the admin UI can show who is waiting. (Recreated from
---    its current production form per the 0160 rule — never from an older copy.)
---    NOTE: if admin_members() has changed since 0008, re-derive this from the live
---    definition rather than trusting this file.
+-- 6. The admin UI reads profiles.approved DIRECTLY rather than widening
+--    admin_members(). That function has been recreated by several migrations, and
+--    per the 0160 lesson recreating it from an older copy silently drops whatever
+--    the newest version added. profiles is already members-readable, so an admin
+--    can simply select id/approved and join it to the directory client-side.
+
 comment on column profiles.approved is
   'Admin-approved member. False = signup exists but sees only what a signed-out visitor sees. Set only via set_member_approved().';
+
+-- Sanity check — run this after and confirm pending = 0 (everyone existing keeps
+-- access; only NEW signups will start unapproved).
+select count(*) filter (where approved) as approved,
+       count(*) filter (where not approved) as pending,
+       count(*) as total
+  from profiles;
