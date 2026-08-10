@@ -24,6 +24,7 @@ import {
   type ScheduleDraft,
 } from "@/lib/festContent";
 import type { ScheduleEvent, Dinner } from "@/lib/types";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /**
  * The week at a glance: anytime "things to do", then every day as a card that
@@ -285,7 +286,7 @@ function EventRow({
           )}
           {event.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={event.imageUrl} alt="" className="max-h-56 w-full rounded-xl object-cover" />
+            <img src={mediaSrc(event.imageUrl)} alt="" className="max-h-56 w-full rounded-xl object-cover" />
           )}
           <p className="text-xs text-foreground/60">
             📍 <Protected label="Sign in for location">{event.location}</Protected>

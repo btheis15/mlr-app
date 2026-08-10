@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss, useMediaPicker } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Add/edit sheet for a work checklist item. Any signed-in member can add items,
 // and can edit an item they created; admins can edit any item. Admins also get
@@ -268,10 +269,10 @@ export function WorkItemComposer({
             {existingMedia.map((m) => (
               <div key={m.id} className="relative aspect-square overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
                 {m.type === "video" ? (
-                  <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                  <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                  <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
                 )}
                 <button
                   type="button"
@@ -286,10 +287,10 @@ export function WorkItemComposer({
             {media.previews.map((m, i) => (
               <div key={i} className="relative aspect-square overflow-hidden rounded-xl bg-black/5 ring-1 ring-border">
                 {m.type === "video" ? (
-                  <video src={m.url} className="h-full w-full object-cover" muted playsInline />
+                  <video src={mediaSrc(m.url)} className="h-full w-full object-cover" muted playsInline />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                  <img src={mediaSrc(m.url)} alt="" className="h-full w-full object-cover" />
                 )}
                 {m.type === "video" && (
                   <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">▶ Video</span>

@@ -65,6 +65,7 @@ import {
   type SignupKind,
 } from "@/lib/scheduleSignups";
 import type { SignupField } from "@/lib/types";
+import { mediaSrc } from "@/lib/mediaToken";
 
 type Section = "schedule" | "dinners" | "dues" | "payees" | "details" | "images";
 
@@ -668,7 +669,7 @@ export function ScheduleSheet({
         <Field label="Photo (optional)">
           {imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt="" className="mb-2 max-h-40 w-full rounded-xl object-cover" />
+            <img src={mediaSrc(imageUrl)} alt="" className="mb-2 max-h-40 w-full rounded-xl object-cover" />
           )}
           <input ref={imageInputRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
           <div className="flex items-center gap-2">
@@ -2236,7 +2237,7 @@ function ImageRow({
       <p className="text-sm font-semibold">{title}</p>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={mediaSrc(src)}
         alt={title}
         className={`w-full rounded-xl object-contain ${wide ? "max-h-48" : "max-h-28"}`}
       />

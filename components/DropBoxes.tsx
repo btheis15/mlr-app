@@ -27,6 +27,7 @@ import {
   type DropBoxItem,
   type DropBoxSort,
 } from "@/lib/dropBoxes";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Drop boxes (migration 0171): a shared "dump the photos/videos here, everyone
 // sees them" folder — the app's account-free alternative to a Google Drive
@@ -48,7 +49,11 @@ import {
 // cross-origin, unlike the bare HTML `download` attribute (the app and the mini
 // are different origins). See the media-server /f handler.
 function downloadHref(url: string): string {
-  return url + (url.includes("?") ? "&" : "?") + "dl=1";
+  // mediaSrc first so the token is present, then append dl=1. Order doesn't matter
+  // for correctness (both are query params) but doing it this way means mediaSrc
+  // sees a clean url and its "already signed?" check behaves predictably.
+  const signed = mediaSrc(url);
+  return signed + (signed.includes("?") ? "&" : "?") + "dl=1";
 }
 function triggerDownload(href: string, filename?: string) {
   if (typeof document === "undefined") return;
@@ -752,16 +757,16 @@ function Thumb({ item }: { item: DropBoxItem }) {
   // otherwise indistinguishable from a photo, and without one it's a black box.
   const inner = item.thumbnailUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={item.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+    <img src={mediaSrc(item.thumbnailUrl)} alt="" loading="lazy" className="h-full w-full object-cover" />
   ) : isVideo ? (
     // No poster frame yet (pre-thumbnail upload, or generation failed) —
     // `preload="metadata"` paints the first frame on most browsers, though iOS
     // often leaves it black. The badge below is what keeps that readable as a
     // video rather than a broken tile; the mini's backfill fills these in.
-    <video src={item.url} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+    <video src={mediaSrc(item.url)} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
   ) : (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+    <img src={mediaSrc(item.url)} alt="" loading="lazy" className="h-full w-full object-cover" />
   );
 
   if (!isVideo) return inner;
@@ -791,10 +796,10 @@ function PendingTile({ p, onDismiss, onRetry }: { p: Pending; onDismiss: () => v
   return (
     <div className={`relative aspect-square overflow-hidden rounded-lg bg-primary/5 ${isError ? "ring-2 ring-red-500/60" : ""}`}>
       {p.type === "video" ? (
-        <video src={p.previewUrl} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
+        <video src={mediaSrc(p.previewUrl)} muted playsInline preload="metadata" className="h-full w-full bg-black object-cover" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={p.previewUrl} alt="" className="h-full w-full object-cover" />
+        <img src={mediaSrc(p.previewUrl)} alt="" className="h-full w-full object-cover" />
       )}
       {isError ? (
         // Tap the tile to RETRY (its file is still in memory), or the ✕ to remove.
@@ -950,10 +955,10 @@ function FolderCarousel({
           return (
             <div key={it.id} className="flex w-full shrink-0 snap-center items-center justify-center">
               {!near ? null : it.type === "video" ? (
-                <video src={it.url} controls playsInline preload="metadata" className="max-h-full max-w-full" />
+                <video src={mediaSrc(it.url)} controls playsInline preload="metadata" className="max-h-full max-w-full" />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={it.url} alt="" className="max-h-full max-w-full object-contain" />
+                <img src={mediaSrc(it.url)} alt="" className="max-h-full max-w-full object-contain" />
               )}
             </div>
           );

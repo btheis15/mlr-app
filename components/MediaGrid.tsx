@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { photoUrls, type Media } from "@/lib/media";
 import { Lightbox } from "@/components/Lightbox";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Shared photo/video renderer: a single item or a swipeable carousel, with photos
 // opening full-screen in the Lightbox and videos playing inline. Extracted from
@@ -57,7 +58,7 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
   if (m.type === "video") {
     return (
       <div className="aspect-square w-full overflow-hidden rounded-xl bg-black">
-        <video src={m.url} controls playsInline className="h-full w-full object-contain" />
+        <video src={mediaSrc(m.url)} controls playsInline className="h-full w-full object-contain" />
       </div>
     );
   }
@@ -73,7 +74,7 @@ function MediaItem({ m, onOpen }: { m: Media; onOpen?: (url: string) => void }) 
           Lightbox (still m.url there). Falls back to the full image for rows
           with no thumbnail yet (pre-migration, or generation failed). */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={m.thumbnailUrl || m.url} alt="" className="h-full w-full object-cover" />
+      <img src={mediaSrc(m.thumbnailUrl || m.url)} alt="" className="h-full w-full object-cover" />
     </button>
   );
 }

@@ -20,6 +20,7 @@ import { TypingIndicator } from "@/components/TypingIndicator";
 import { toggleReaction, reactionCounts } from "@/lib/reactions";
 import { Lightbox } from "@/components/Lightbox";
 import { formatDayHeading, formatClock, groupByDay, plural } from "@/lib/format";
+import { mediaSrc } from "@/lib/mediaToken";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
@@ -977,9 +978,9 @@ export function CommitteeChat({ slug, name, emoji, area = null, embedded = false
           <div className="flex gap-2 overflow-x-auto px-3 pt-2">
             {pending.map((p, i) => (
               <div key={i} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-background ring-1 ring-border">
-                {p.type === "video" && <video src={p.url} className="h-full w-full object-cover" muted playsInline />}
+                {p.type === "video" && <video src={mediaSrc(p.url)} className="h-full w-full object-cover" muted playsInline />}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {p.type === "image" && <img src={p.url} alt="" className="h-full w-full object-cover" />}
+                {p.type === "image" && <img src={mediaSrc(p.url)} alt="" className="h-full w-full object-cover" />}
                 {p.type === "file" && (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1">
                     <span className="text-xl leading-none">📄</span>
@@ -1265,11 +1266,11 @@ function MessageRow({
                 <StickerArt id={md.url} size={128} />
               ) : md.type === "gif" ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={md.url} alt="GIF" className="max-h-56 rounded-xl" />
+                <img src={mediaSrc(md.url)} alt="GIF" className="max-h-56 rounded-xl" />
               ) : md.type === "video" ? (
-                <video src={md.url} controls playsInline className="max-h-60 rounded-xl" />
+                <video src={mediaSrc(md.url)} controls playsInline className="max-h-60 rounded-xl" />
               ) : md.type === "file" ? (
-                <a href={md.url} target="_blank" rel="noopener noreferrer" download={md.name ?? undefined} className={`press flex max-w-[15rem] items-center gap-2 rounded-xl px-3 py-2 ${mine ? "bg-white/15" : "bg-background ring-1 ring-border"}`}>
+                <a href={mediaSrc(md.url)} target="_blank" rel="noopener noreferrer" download={md.name ?? undefined} className={`press flex max-w-[15rem] items-center gap-2 rounded-xl px-3 py-2 ${mine ? "bg-white/15" : "bg-background ring-1 ring-border"}`}>
                   <span className="shrink-0 text-xl leading-none">📄</span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{md.name || "File"}</span>
                   <span className={`shrink-0 text-xs ${mine ? "text-white/70" : "text-foreground/50"}`}>↓</span>
@@ -1277,7 +1278,7 @@ function MessageRow({
               ) : (
                 <button type="button" onClick={() => onOpenPhoto(md.url, photoUrls(m.media))} className="press block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={md.url} alt="" className="max-h-60 rounded-xl object-cover" />
+                  <img src={mediaSrc(md.url)} alt="" className="max-h-60 rounded-xl object-cover" />
                 </button>
               )}
             </div>

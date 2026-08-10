@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MEDIA_URL } from "@/lib/media";
 import { useAppImages } from "@/lib/useAppImages";
+import { mediaSrc } from "@/lib/mediaToken";
 
 // Family Fest cover photo. Priority: the admin-set image (app_images.fest_cover,
 // editable in the Planner / App Images) → the Mac-mini site-assets copy → the
@@ -25,7 +26,7 @@ export function FestCover({ alt }: { alt: string }) {
     <div className="overflow-hidden rounded-2xl ring-1 ring-border shadow-sm">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={mediaSrc(src)}
         alt={alt}
         className="block max-h-40 w-full object-cover"
         onError={() => {

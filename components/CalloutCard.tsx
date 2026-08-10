@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { HomeCallout } from "@/lib/festContent";
 import { formatDate, formatPhoneNational } from "@/lib/format";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /**
  * One admin-managed Home call-out card (a `home_callouts` row / the in-code
@@ -49,7 +50,7 @@ export function CalloutCard({
         // (arbitrary Supabase URLs, unknown dimensions) — same as MediaGrid /
         // PostsView / the callout editor's ImageRow render mini-hosted images.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt={title?.trim() || "Announcement"} className="w-full" />
+        <img src={mediaSrc(imageUrl)} alt={title?.trim() || "Announcement"} className="w-full" />
       )}
       {hasText && (
         <div className={`px-3.5 pb-3.5 ${imageUrl ? "pt-3" : "pt-3.5"}`}>

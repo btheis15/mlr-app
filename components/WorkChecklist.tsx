@@ -11,6 +11,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { useGuest } from "@/components/Guard";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { WorkItemSheet, type WorkItemMember } from "@/components/WorkItemSheet";
+import { mediaSrc } from "@/lib/mediaToken";
 
 interface MemberRow extends WorkItemMember {
   houseId: string | null;
@@ -430,7 +431,7 @@ function WorkItemRow({
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={thumb.url}
+            src={mediaSrc(thumb.url)}
             alt=""
             onClick={onOpen}
             className="h-10 w-10 shrink-0 cursor-pointer self-center rounded-lg object-cover ring-1 ring-border"
