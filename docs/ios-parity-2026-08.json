@@ -22,7 +22,35 @@
     ]
   },
   "how_to_use": {
-    "start_with": "media-token (see docs/ios-parity-2026-08.md §0) — the only BLOCKING item",
+    "start_with": "media-token (see docs/ios-parity-2026-08.md §0) — the first true blocker",
+    "true_blockers": [
+      {
+        "id": "post-media-token-signing",
+        "why": "Every photo in the Feed 403s under MEDIA_AUTH=on. This is why enforcement is currently held at `report`.",
+        "found": true
+      },
+      {
+        "id": "chat-media-token-signing",
+        "why": "Same root cause for chat bubbles — an unsigned read is rejected regardless of surface.",
+        "found": true
+      },
+      {
+        "id": "privacy-wall-viewer-states",
+        "why": "An unverified member currently gets a member layout full of empty lists with no explanation. They are locked out and cannot tell why.",
+        "found": true
+      },
+      {
+        "id": "apns-device-registration",
+        "why": "Without a registered token the device receives nothing — every other notification feature is inert.",
+        "found": true
+      },
+      {
+        "id": "signout-shared-device-wipe",
+        "why": "A shared iPad leaks the previous member's cached content to the next. Security, not polish.",
+        "found": true
+      }
+    ],
+    "priority_field_warning": "features[].priority is the drafting agent's estimate and reads 'blocking' as 'foundational' — it marked 24 items blocking, including screens iOS already has. Use how_to_use.true_blockers for what actually blocks.",
     "then": "work workstreams in listed order; each per-area doc holds the build detail",
     "definition_of_done": "the acceptance line in the per-area doc, verified on a device",
     "build_check": "open 'MLR App.xcodeproj', resolve SPM, Build (Cmd-B). Watch for new Swift files missing target membership. Verify light AND dark on every new surface."
@@ -118,7 +146,8 @@
     "areas": 17,
     "fact_checked_areas": 16,
     "features_enumerated": 166,
-    "features_blocking": 24,
+    "features_agents_called_blocking": 24,
+    "true_blockers": 5,
     "gotchas_captured": 963,
     "features_with_native_opportunity": 122,
     "prose_only_areas": [
