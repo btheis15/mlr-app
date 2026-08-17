@@ -530,12 +530,22 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   (`fetchWorkItemComments`/`addWorkItemComment`/`removeWorkItemComment`; `fetchWorkItems`
   also returns `commentCount`).
 - **Work-item urgency + standalone card** — each item carries an urgency rating
-  (`work_items.urgency` ∈ `asap` | `this_year` | `nice_to_have`, migration
-  [`0069`](supabase/migrations/0069_work_item_urgency.sql); `create_work_item`/
-  `update_work_item` re-threaded with `p_urgency`). Shown as a colored chip
-  (`URGENCY_META` in [`lib/workItems.ts`](lib/workItems.ts)) and the list is **always
-  sorted by importance** (ASAP → This year → Nice to have → unrated, newest-first
-  within each). The composer defaults new items to `this_year`. The **Work Checklist
+  (`work_items.urgency` ∈ `asap` | `this_year` | `next_year` | `nice_to_have` |
+  `custom`, migration [`0069`](supabase/migrations/0069_work_item_urgency.sql),
+  widened by [`0185`](supabase/migrations/0185_work_item_urgency_custom.sql);
+  `create_work_item`/`update_work_item` re-threaded with `p_urgency` +
+  `p_custom_label`/`p_custom_color`). Shown as a colored chip — the four fixed
+  tiers read from `URGENCY_META` in [`lib/workItems.ts`](lib/workItems.ts);
+  `custom` carries its own free-text wording (`work_items.custom_label`) and a
+  picked color (`custom_color`, one of `CUSTOM_URGENCY_COLORS` — red/orange/
+  yellow/green/blue/purple/gray) for a timing more specific than the fixed set
+  (e.g. "By Labor Day"). `urgencyMeta(item)` is the one place that resolves
+  either shape to `{label, emoji, chip}` — always call it instead of indexing
+  `URGENCY_META` directly, since a `custom` item has no entry there. The list is
+  **always sorted by importance** (ASAP → This year → Next year/Custom → Nice to
+  have → unrated, newest-first within each — `urgencyRank()` takes the whole item
+  so it can rank `custom` between This year and Next year). The composer defaults
+  new items to `this_year`. The **Work Checklist
   is now its own collapsed-by-default expandable card on Home**
   ([`app/page.tsx`](app/page.tsx), no longer nested in "Around the resort"): the
   header shows a live summary (incl. a `🔴 N ASAP` count) and toggles the list open.
