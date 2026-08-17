@@ -201,16 +201,9 @@ export function FamilyFestSpotlight({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
-              🎉 {name}
+              🎉 Family Fest
             </p>
-            <p className="mt-1 text-sm font-semibold">{tagline}</p>
-            {season != null && (
-              <p className="mt-0.5 text-xs text-foreground/60">
-                {season.daysUntilStart > 0
-                  ? `Starts in ${season.daysUntilStart} days →`
-                  : "Returns next summer →"}
-              </p>
-            )}
+            <p className="mt-1 text-sm font-semibold">Family Fest returns next summer</p>
           </div>
           <span className="text-3xl">🎆</span>
         </div>
