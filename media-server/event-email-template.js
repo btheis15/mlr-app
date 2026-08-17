@@ -55,10 +55,16 @@ ${meta ? `<div style="margin-top:7px;font-size:12px;color:#6b7b73">${meta}</div>
 </td></tr>`;
 }
 
-function itemGroup(label, items) {
+function itemGroup(label, items, note) {
   if (!items || !items.length) return "";
+  // `note` is the private-to-this-house explainer (see buildEventEmail) — a soft
+  // parchment strip in italics, sitting between the heading and the cards so
+  // it's impossible to miss but never louder than the tasks themselves.
+  const noteHtml = note
+    ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 10px"><tr><td style="padding:9px 12px;background:#fbf9f1;border:1px solid #efe8d5;border-radius:8px;font-size:12.5px;line-height:1.5;color:#6f6650;font-style:italic">${note}</td></tr></table>`
+    : "";
   return `<p style="margin:0 0 9px;font-size:12.5px;font-weight:700;color:#14241c">${escapeHtml(label)}</p>
-<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px">${items.map(itemCard).join("")}</table>`;
+${noteHtml}<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px">${items.map(itemCard).join("")}</table>`;
 }
 
 /**
@@ -89,12 +95,27 @@ function buildEventEmail(d, appUrl, bucket = null) {
   // Scope headings only when there are two groups to tell apart; a general send
   // with just the resort list doesn't need to be labelled twice.
   const showLabels = mlr.length > 0 && houseItems.length > 0;
+  const houseName = bucket ? bucket.name || "your house" : "";
+  // Spell the split out in the count line ("6 around the resort · 2 for MJT
+  // House") rather than a bare total, so the reader can see at a glance which
+  // tasks are theirs specifically — and so the different total from someone
+  // else's copy is self-explaining.
+  const countLine = showLabels
+    ? `${mlr.length} around the resort · ${houseItems.length} for ${escapeHtml(houseName)}`
+    : `${total} task${total === 1 ? "" : "s"} for this weekend`;
+  // Why this reader's copy differs from everyone else's. A house's tasks are
+  // private to that house (0066/0189), so its people are the only ones who see
+  // this section — say so plainly here instead of letting someone discover it by
+  // comparing emails with a cousin.
+  const houseNote = houseItems.length
+    ? `🔒 This part is only in ${escapeHtml(houseName)}&rsquo;s copy of this email — everyone else got the same note without these tasks.`
+    : "";
   const workSection = total
     ? `<div style="margin:26px 0 0">
 <p style="margin:0 0 3px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#15503a">What&rsquo;s assigned</p>
-<p style="margin:0 0 14px;font-size:13px;color:#8b918d">${total} task${total === 1 ? "" : "s"} for this weekend</p>
+<p style="margin:0 0 14px;font-size:13px;color:#8b918d">${countLine}</p>
 ${showLabels ? itemGroup("🌲 Around the resort", mlr) : `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 4px">${mlr.map(itemCard).join("")}</table>`}
-${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${bucket.name || "Your house"}`, houseItems) : ""}
+${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseItems, houseNote) : ""}
 </div>`
     : "";
 
@@ -137,10 +158,19 @@ ${workSection}
     d.event_location ? `\nWhere: ${d.event_location}` : ""
   }${d.event_description ? `\n\n${d.event_description}` : ""}${
     d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""
-  }${total ? `\n\nWHAT'S ASSIGNED — ${total} task${total === 1 ? "" : "s"}` : ""}${textGroup(
-    showLabels ? "Around the resort:" : "",
-    mlr,
-  )}${houseItems.length ? textGroup(`${bucket.name || "Your house"}:`, houseItems) : ""}\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort`;
+  }${
+    total
+      ? `\n\nWHAT'S ASSIGNED — ${
+          showLabels
+            ? `${mlr.length} around the resort, ${houseItems.length} for ${houseName}`
+            : `${total} task${total === 1 ? "" : "s"}`
+        }`
+      : ""
+  }${textGroup(showLabels ? "Around the resort:" : "", mlr)}${
+    houseItems.length
+      ? `\n${houseName}:\n  (Only in ${houseName}'s copy of this email — everyone else got the same note without these tasks.)${textGroup("", houseItems)}`
+      : ""
+  }\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort`;
 
   return { subject, html, text, taskCount: total };
 }

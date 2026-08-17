@@ -2097,6 +2097,16 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
     so nobody is emailed twice. **Admins are bucketed by their own house** like
     everyone else rather than receiving every house's list (which would mean
     several emails to one person); the app already shows an admin everything.
+  - **The house copy SAYS it's the house copy.** Two people comparing emails
+    would otherwise just find a discrepancy and wonder which one is wrong, so
+    the house section carries an italic parchment note between its heading and
+    its cards — "🔒 This part is only in {House}'s copy of this email —
+    everyone else got the same note without these tasks" — and the count line
+    spells the split out ("6 around the resort · 2 for MJT House") instead of a
+    bare total, so a *different* total in a cousin's copy is self-explaining.
+    Both are mirrored in the plain-text part. The general copy stays completely
+    silent about it (no note, no labels, just "6 tasks for this weekend"), which
+    is the point: it must not hint that a list it can't show exists.
   - **Retry safety across multiple sends.** The older mailer handlers claim one
     `email_sent_at` and are done; here a failure partway through must not
     re-send the buckets that already went. `event_messages.sent_buckets text[]`
