@@ -773,6 +773,10 @@ export interface ResortEvent {
   source: "admin" | "gcal" | "meeting";
   /** True when this is a real, editable DB row (vs a synthesized seed event). */
   persisted: boolean;
+  /** Who created it (null for a seed/synthesized event). Any signed-in member
+   *  can create an event (migration 0187); the creator — or an admin — can
+   *  edit/delete it and assign work items to it. */
+  createdBy: string | null;
 }
 
 export type AttendanceStatus = "going" | "maybe" | "not_going";

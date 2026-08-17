@@ -1990,13 +1990,34 @@ seam); none needs its own migration beyond the tables they already read
 ## Resort events & attendance
 
 The resort calendar + a Facebook-style RSVP, backed by Supabase (migrations
-[`0034`](supabase/migrations/0034_events.sql) `events` + admin RPCs,
+[`0034`](supabase/migrations/0034_events.sql) `events`,
 [`0035`](supabase/migrations/0035_event_attendance.sql) `event_attendance` +
-upsert RPC). Both tables are **public-read**; all writes go through
-`security definer` RPCs (admins manage the calendar; a member writes only their
-own RSVP) — the same shape as the cabin feature.
+upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.sql)
+— see below). Both tables are **public-read**; all writes go through
+`security definer` RPCs — the same shape as the cabin feature.
 
-- **Events** are admin-managed DB rows merged with an in-code **seed**
+- **Any signed-in member can create an event** (migration 0187 — the
+  polls/work-items member-createable doctrine, not the original admin-only
+  model) — e.g. spinning up a Work Weekend and lining up its tasks without
+  needing admin access. **Editing/deleting an event, and assigning work items
+  to it, is admin OR that event's own creator** (`events.created_by`, the same
+  author-or-admin shape as work items' `update_work_item`, 0079).
+  [`app/events/page.tsx`](app/events/page.tsx)'s `canManageEvent(event)` is the
+  one place that check lives client-side; `create_event`/`update_event`/
+  `delete_event`/`sync_event_work_items` re-enforce it server-side regardless
+  of what the client shows. `add_work_item_to_event` (0050, the single-item
+  link from `WorkItemComposer`'s "link to event" picker) was **already** open
+  to any signed-in member — only the full multi-select sync
+  (`sync_event_work_items`, used by `EventComposer`'s "Work items" section)
+  needed widening. [`EventSheet`](components/EventSheet.tsx)'s `canManage` prop
+  (renamed from a raw `isAdmin`) drives its Edit/Delete footer and the "+ Add"
+  work-item button; [`EventComposer`](components/EventComposer.tsx) hides its
+  **Reminders** section from a non-admin creator — scheduled reminders ride the
+  admin-only broadcast queue (0097), so a member sees no control that would
+  just fail server-side. A seed/synthesized event (Family Fest, a future
+  Google Calendar row) has no real `created_by` to match, so it stays
+  effectively admin-only to manage.
+- **Events** are member/admin-managed DB rows merged with an in-code **seed**
   ([`RESORT_EVENTS`](lib/data.ts)) so the calendar has content out of the box.
   **Family Fest is deliberately NOT a DB row** — it's synthesized from
   `FAMILY_FEST` so its dates have one source of truth and stay tied to the season
