@@ -18,6 +18,7 @@ import { AttendanceControl } from "@/components/AttendanceControl";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { EventWorkItemPicker } from "@/components/EventWorkItemPicker";
+import { EventMessageSheet } from "@/components/EventMessageSheet";
 import { useSheetDismiss } from "@/lib/hooks";
 
 // The event detail sheet: dates, location, description, the RSVP control, and
@@ -76,6 +77,7 @@ export function EventSheet({
   const [houseCounts, setHouseCounts] = useState<EventWorkItemHouseCount[]>([]);
   const [addingWorkItem, setAddingWorkItem] = useState(false);
   const [pickingWorkItems, setPickingWorkItems] = useState(false);
+  const [emailingEveryone, setEmailingEveryone] = useState(false);
 
   const reloadWorkItems = () => {
     fetchEventWorkItems(event.id).then(setWorkItems);
@@ -202,6 +204,14 @@ export function EventSheet({
         preLinkedEventId={event.id}
         onClose={() => setAddingWorkItem(false)}
         onSaved={() => { setAddingWorkItem(false); reloadWorkItems(); }}
+      />
+    )}
+    {emailingEveryone && (
+      <EventMessageSheet
+        event={event}
+        workItems={workItems}
+        hiddenHouseItemCount={hiddenHouseCounts.reduce((n, hc) => n + hc.count, 0)}
+        onClose={() => setEmailingEveryone(false)}
       />
     )}
     <Sheet
@@ -374,6 +384,25 @@ export function EventSheet({
                 <p className="text-xs text-faint">No work items yet.</p>
               )}
             </div>
+          )}
+
+          {/* Email everyone about this event — the event's details plus the work
+              items planned for it, laid out by the mini's mailer (0190). Same
+              admin-or-creator gate as everything else in this sheet. */}
+          {canManage && event.persisted && (
+            <button
+              type="button"
+              onClick={() => setEmailingEveryone(true)}
+              className="press flex w-full items-center justify-between gap-2 rounded-xl bg-card px-4 py-3 text-left ring-1 ring-border"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-primary">📣 Email everyone about this</span>
+                <span className="block text-xs text-muted">
+                  A laid-out email with the details and everything planned.
+                </span>
+              </span>
+              <span aria-hidden className="shrink-0 text-foreground/40">›</span>
+            </button>
           )}
 
           {/* Who's coming */}

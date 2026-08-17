@@ -535,6 +535,172 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     }
   }
 
+  // Email everyone about an event — the event's details PLUS everything planned
+  // as part of it, so a work weekend's actual task list lands in inboxes instead
+  // of only living in the app (migration 0190). Sent by the event's creator or an
+  // admin; recipients + the work-item payload come from the service-role
+  // event_message_email RPC.
+  //
+  // ⚠️ Only the RESORT-WIDE work items are listed in full. A house-scoped item is
+  // visible only to that house's members (0066/0189) and one BCC'd email can't be
+  // scoped per recipient, so each house is reduced to a count line. Don't inline
+  // house items here without first splitting the send per house-group.
+  const URGENCY_LABEL = {
+    asap: "🔴 ASAP",
+    this_year: "🟠 This year",
+    next_year: "🟡 Next year",
+    nice_to_have: "🟢 Nice to have",
+  };
+  const CUSTOM_URGENCY_DOT = {
+    red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣", gray: "⚪",
+  };
+  function urgencyLabel(it) {
+    if (!it || !it.urgency) return "";
+    if (it.urgency !== "custom") return URGENCY_LABEL[it.urgency] || "";
+    const dot = CUSTOM_URGENCY_DOT[it.customColor] || "⚪";
+    return it.customLabel ? `${dot} ${it.customLabel}` : dot;
+  }
+
+  async function handleEventMessage(row) {
+    if (!row || !row.notify_email || row.email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("event_messages")
+      .update({ email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const { data: info, error } = await sb.rpc("event_message_email", { p_message: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] event_message_email error:", error ? error.message : "no data");
+      await sb.from("event_messages").update({ email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (d.emails || []).filter(Boolean);
+    if (emails.length === 0) {
+      console.log(`[mailer] event_message ${row.id}: no opted-in recipients`);
+      return; // leave it claimed — nobody to email
+    }
+
+    const items = Array.isArray(d.work_items) ? d.work_items : [];
+    const houses = Array.isArray(d.house_counts) ? d.house_counts : [];
+    const open = items.filter((i) => i.status !== "done");
+    const done = items.filter((i) => i.status === "done");
+    const emoji = d.event_emoji || "📅";
+    const link = `${APP_URL}/events?open=${encodeURIComponent(d.event_id)}`;
+
+    // ── Details table (When / Where / About) ─────────────────────────────────
+    const detailRows = [
+      ...(d.event_when ? [["When", escapeHtml(d.event_when)]] : []),
+      ...(d.event_location ? [["Where", escapeHtml(d.event_location)]] : []),
+      ...(d.event_description ? [["About", escapeHtml(d.event_description)]] : []),
+    ]
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:5px 16px 5px 0;color:#888;white-space:nowrap;vertical-align:top">${k}</td><td style="padding:5px 0;line-height:1.45">${v}</td></tr>`,
+      )
+      .join("");
+
+    // ── Work items — each a titled card with its details underneath ──────────
+    function itemCard(it, muted) {
+      const u = urgencyLabel(it);
+      const meta = [
+        u ? `<span style="white-space:nowrap">${escapeHtml(u)}</span>` : "",
+        it.peopleNeeded ? `<span style="white-space:nowrap">👥 ${Number(it.peopleNeeded)} needed</span>` : "",
+      ]
+        .filter(Boolean)
+        .join('<span style="color:#ccc"> · </span>');
+      return `<tr><td style="padding:0 0 10px">
+<table style="width:100%;border-collapse:separate;border-spacing:0">
+<tr><td style="padding:11px 14px;background:${muted ? "#f7f7f4" : "#f6f9f6"};border-left:3px solid ${muted ? "#c9c9c2" : "#15503a"};border-radius:8px">
+<div style="font-size:15px;font-weight:600;color:${muted ? "#888" : "#14241c"}${muted ? ";text-decoration:line-through" : ""}">${escapeHtml(it.title || "")}</div>
+${it.notes ? `<div style="margin-top:4px;font-size:13.5px;color:#4a5a52;line-height:1.5;white-space:pre-wrap">${escapeHtml(it.notes)}</div>` : ""}
+${meta ? `<div style="margin-top:6px;font-size:12px;color:#6b7b73">${meta}</div>` : ""}
+</td></tr></table>
+</td></tr>`;
+    }
+
+    const openCards = open.length
+      ? `<table style="width:100%;border-collapse:collapse;margin:0 0 2px">${open.map((i) => itemCard(i, false)).join("")}</table>`
+      : "";
+    const doneCards = done.length
+      ? `<p style="margin:14px 0 8px;font-size:13px;color:#888"><strong>Already done</strong></p>
+<table style="width:100%;border-collapse:collapse">${done.map((i) => itemCard(i, true)).join("")}</table>`
+      : "";
+    const houseLines = houses.length
+      ? `<table style="width:100%;border-collapse:collapse;margin:12px 0 0">${houses
+          .map(
+            (h) =>
+              `<tr><td style="padding:8px 12px;background:#f7f7f4;border-radius:8px;font-size:13px;color:#6b7b73">${escapeHtml(h.emoji || "🏠")} <strong style="color:#14241c">${escapeHtml(h.name || "House")}</strong> · ${Number(h.count)} item${Number(h.count) === 1 ? "" : "s"} planned <span style="color:#999">— details in the app</span></td></tr>
+<tr><td style="height:6px;line-height:6px">&nbsp;</td></tr>`,
+          )
+          .join("")}</table>`
+      : "";
+    const plannedCount = open.length + done.length;
+    const workSection = plannedCount || houses.length
+      ? `<div style="margin:24px 0 0">
+<p style="margin:0 0 3px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#15503a">What&rsquo;s planned</p>
+<p style="margin:0 0 12px;font-size:13px;color:#888">${
+          plannedCount
+            ? `${open.length} item${open.length === 1 ? "" : "s"} to tackle${done.length ? ` · ${done.length} already done` : ""}`
+            : "Around the resort"
+        }</p>
+${openCards}${doneCards}${houseLines}
+</div>`
+      : "";
+
+    const noteBlock = d.body
+      ? `<table style="width:100%;border-collapse:collapse;margin:18px 0 0"><tr><td style="padding:13px 15px;background:#f6f6f1;border-radius:10px">
+<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#888;margin-bottom:5px">Note from ${escapeHtml(d.sender_name || "the organizer")}</div>
+<div style="font-size:14.5px;line-height:1.55;white-space:pre-wrap">${escapeHtml(d.body)}</div>
+</td></tr></table>`
+      : "";
+
+    const subject = d.subject
+      ? `${emoji} ${d.subject}`
+      : `${emoji} ${d.event_title}${d.event_when ? ` — ${d.event_when}` : ""}`;
+
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:560px">
+<p style="font-size:21px;margin:0 0 2px;line-height:1.25"><strong>${escapeHtml(emoji)} ${escapeHtml(d.event_title)}</strong></p>
+<p style="margin:0 0 18px;color:#15503a;font-weight:600;font-size:13px;letter-spacing:.02em">MUSKELLUNGE LAKE RESORT</p>
+${detailRows ? `<table style="border-collapse:collapse;font-size:14px;margin:0">${detailRows}</table>` : ""}
+${noteBlock}
+${workSection}
+<p style="margin:26px 0 0"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:11px 20px;border-radius:10px;font-size:15px;font-weight:600">RSVP &amp; see the full plan →</a></p>
+<p style="margin:10px 0 0;font-size:12.5px;color:#888">Tap above to say if you&rsquo;re coming, see who else is, and check off work as it gets done.</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0 12px">
+<p style="color:#888;font-size:12px;margin:0">Muskellunge Lake Resort · Muskellunge Lake, 5 mi from Tomahawk on Hwy 8, Tomahawk, WI<br>You&rsquo;re getting this because email alerts are on in your MLR profile.</p>
+</div>`;
+
+    const textItems = (list, heading) =>
+      list.length
+        ? `\n${heading}\n${list
+            .map((i) => {
+              const u = urgencyLabel(i);
+              const meta = [u, i.peopleNeeded ? `${i.peopleNeeded} needed` : ""].filter(Boolean).join(" · ");
+              return `  • ${i.title}${meta ? `  [${meta}]` : ""}${i.notes ? `\n      ${String(i.notes).replace(/\n/g, "\n      ")}` : ""}`;
+            })
+            .join("\n")}\n`
+        : "";
+    const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}${d.event_location ? `\nWhere: ${d.event_location}` : ""}${d.event_description ? `\n\n${d.event_description}` : ""}${
+      d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""
+    }${plannedCount || houses.length ? `\n\nWHAT'S PLANNED` : ""}${textItems(open, "To tackle:")}${textItems(done, "Already done:")}${
+      houses.length
+        ? `\n${houses.map((h) => `  • ${h.name}: ${h.count} item${Number(h.count) === 1 ? "" : "s"} planned (details in the app)`).join("\n")}\n`
+        : ""
+    }\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort\n(You're getting this because email alerts are on in your MLR profile.)`;
+
+    try {
+      await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: emails, subject, text, html });
+      console.log(`[mailer] event_message ${row.id} emailed to ${emails.length} member(s) (${plannedCount} work item(s))`);
+    } catch (e) {
+      console.error("[mailer] event_message send failed:", e && e.message);
+      await sb.from("event_messages").update({ email_sent_at: null }).eq("id", row.id); // retry
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -611,6 +777,15 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .order("created_at", { ascending: false })
       .limit(10);
     for (const row of signupReminderPending || []) await handleSignupReminderEmail(row);
+
+    const { data: eventMsgPending } = await sb
+      .from("event_messages")
+      .select("id, notify_email, email_sent_at, created_at")
+      .eq("notify_email", true)
+      .is("email_sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of eventMsgPending || []) await handleEventMessage(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -644,6 +819,9 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "fest_reminder_emails" }, (payload) => {
         handleSignupReminderEmail(payload.new).catch((e) => console.error("[mailer] signup reminder handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_messages" }, (payload) => {
+        handleEventMessage(payload.new).catch((e) => console.error("[mailer] event message handle error:", e && e.message));
       })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);

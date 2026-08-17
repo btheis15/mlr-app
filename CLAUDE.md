@@ -2072,9 +2072,53 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   [`EventSheet`](components/EventSheet.tsx) /
   [`EventComposer`](components/EventComposer.tsx) reuse the existing sheet motion,
   Guard privacy wall (`PrivateName` masks guest names), and theme tokens.
+- **📣 Email everyone about an event** (migration
+  [`0190`](supabase/migrations/0190_event_message_email.sql)) — a laid-out email
+  carrying the event's details **plus everything planned as part of it**, so a
+  Work Weekend's actual task list (each item's **title + its details/notes**,
+  urgency chip, people-needed) lands in inboxes instead of only living in the
+  app. Entry point: a **"📣 Email everyone about this"** row in
+  [`EventSheet`](components/EventSheet.tsx) →
+  [`EventMessageSheet`](components/EventMessageSheet.tsx) (optional subject +
+  note, two checkboxes), open to the same **admin-or-creator** viewers as
+  everything else in that sheet (0187) — not a new capability, since any member
+  can already email Everyone from the People page's `mailto:` composer; this is
+  just a far better delivery mechanism. Client seam
+  [`lib/eventMessages.ts`](lib/eventMessages.ts).
+  - **Same claim-a-row shape as the cabin "message guests" send (0120):**
+    `send_event_message()` (admin-or-creator via the new reusable
+    `can_manage_event(text)` helper) inserts an `event_messages` log row and
+    returns the recipient count so the sheet can confirm "sending to N members";
+    the mini's [`alert-mailer.js`](media-server/alert-mailer.js)
+    `handleEventMessage` claims `email_sent_at`, pulls the whole payload from the
+    service-role `event_message_email()` RPC, and BCCs it. `event_id` is the
+    **stable text id** (0035 doctrine), so a seed/synthesized event works too —
+    its title + date line are **snapshotted onto the row** by the client since
+    there's no `events` row to read them from.
+  - ⚠️ **Only RESORT-WIDE work items are listed in full.** A house-scoped item is
+    visible only to that house (0066 RLS / 0189's count-only treatment) and one
+    BCC'd email can't be scoped per recipient — so each house collapses to a
+    "🏠 MJT House · 2 items — details in the app" line, exactly matching what
+    `EventSheet` shows a non-member. **Don't inline house items here** without
+    first splitting the send into per-house-group emails (a clean follow-up).
+  - **Recipients are computed in the RPC, NOT via `alert_recipients()`** — that
+    one predates the approval gate and doesn't check `profiles.approved`, and
+    emailing the family's work-weekend plan to a self-signed-up unapproved
+    address is exactly what 0181/0183 exist to prevent. Otherwise it follows the
+    broadcast-email doctrine: honors `email_alerts` (this is a broadcast, not a
+    transactional receipt) and honors the 0096/0127 event-targeting rule (skip
+    anyone who explicitly RSVP'd "Can't make it" — a default-on checkbox). The
+    **sender is included**, like the meeting-confirmed email, so they see exactly
+    what went out.
+  - ⚠️ **Needs a mini `git pull` + restart** (Admin → Media server) like all
+    mailer changes — until then rows queue in `event_messages` and go out on the
+    next restart (the mailer's 3-minute sweep picks them up).
 - **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
-  Google-Calendar ICS feed (see Backend seams).
+  Google-Calendar ICS feed (see Backend seams); an in-app Activity notification
+  alongside the event email above (email-only today — `send_broadcast_notification`
+  is admin-only, so a member-created event's ping would need a new kind + push
+  wiring).
 
 ## Ask for Help
 
