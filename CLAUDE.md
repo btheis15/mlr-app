@@ -2012,11 +2012,15 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   needed widening. [`EventSheet`](components/EventSheet.tsx)'s `canManage` prop
   (renamed from a raw `isAdmin`) drives its Edit/Delete footer and the "+ Add"
   work-item button — which opens [`EventWorkItemPicker`](components/EventWorkItemPicker.tsx),
-  a checklist of every EXISTING open work item not yet linked to this event
-  (multi-select, `add_work_item_to_event` per pick), with a "＋ Create a new
-  item instead" escape hatch into the original `WorkItemComposer` flow — so
-  attaching an already-listed task (e.g. "Take out Pier") no longer means
-  re-typing it as a brand-new item; [`EventComposer`](components/EventComposer.tsx) hides its
+  a checklist of every EXISTING open work item not yet linked to this event —
+  each row showing its urgency chip and scope (Around the Resort vs. a named
+  house) — (multi-select, `add_work_item_to_event` per pick), with a "＋ Create
+  a new item instead" escape hatch into the original `WorkItemComposer` flow —
+  so attaching an already-listed task (e.g. "Take out Pier") no longer means
+  re-typing it as a brand-new item. A ✕ on each linked item unlinks it from the
+  event (`remove_work_item_from_event`, migration 0188 — same admin-or-creator
+  gate, never deletes the item itself from the checklist);
+  [`EventComposer`](components/EventComposer.tsx) hides its
   **Reminders** section from a non-admin creator — scheduled reminders ride the
   admin-only broadcast queue (0097), so a member sees no control that would
   just fail server-side. A seed/synthesized event (Family Fest, a future

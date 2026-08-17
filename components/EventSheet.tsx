@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent, WorkItem } from "@/lib/types";
 import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
-import { fetchEventWorkItems } from "@/lib/workItems";
+import { fetchEventWorkItems, removeWorkItemFromEvent } from "@/lib/workItems";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected, useGuest } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
@@ -18,8 +18,9 @@ import { useSheetDismiss } from "@/lib/hooks";
 // 0187) can edit/delete a real (DB) event and assign work items to it — its
 // "+ Add" button opens EventWorkItemPicker to pick from EXISTING open
 // checklist items (with a "create a new item instead" escape hatch), not just
-// create-a-new-one. Scaffolding + dismiss motion come from
-// Sheet / useSheetDismiss.
+// create-a-new-one — and each linked item gets a ✕ to unlink it from the event
+// (migration 0188's remove_work_item_from_event; never deletes the item
+// itself). Scaffolding + dismiss motion come from Sheet / useSheetDismiss.
 
 export function EventSheet({
   event,
@@ -103,6 +104,17 @@ export function EventSheet({
     setDeleting(false);
     onChanged?.();
     close();
+  };
+
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+  const removeWorkItem = async (item: WorkItem) => {
+    if (!window.confirm(`Remove "${item.title}" from this event? The item itself stays on the checklist.`)) return;
+    setRemovingItemId(item.id);
+    const prev = workItems;
+    setWorkItems((cur) => cur.filter((i) => i.id !== item.id));
+    const { error } = await removeWorkItemFromEvent(event.id, item.id);
+    setRemovingItemId(null);
+    if (error) setWorkItems(prev);
   };
 
   const when = isOngoing(event, today) ? "Happening now" : relativeDays(today, event.startDate);
@@ -294,6 +306,17 @@ export function EventSheet({
                           </span>
                         )}
                       </span>
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => removeWorkItem(item)}
+                          disabled={removingItemId === item.id}
+                          aria-label={`Remove ${item.title} from this event`}
+                          className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-40"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
