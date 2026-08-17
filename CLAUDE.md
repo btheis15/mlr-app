@@ -549,6 +549,27 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   is now its own collapsed-by-default expandable card on Home**
   ([`app/page.tsx`](app/page.tsx), no longer nested in "Around the resort"): the
   header shows a live summary (incl. a `🔴 N ASAP` count) and toggles the list open.
+- **Recurring items** (migration [`0186`](supabase/migrations/0186_work_item_recurring.sql)) —
+  a task like "stain the deck" that's due every N years (1-15,
+  `work_items.recur_every_years`, a +/- stepper in
+  [`WorkItemComposer`](components/WorkItemComposer.tsx)'s "Does this repeat?"
+  section) shouldn't just disappear once checked off. `mark_work_item_done()`
+  now auto-creates the next cycle: a fresh open copy of the same item, carrying
+  the same `recur_every_years` so it keeps repeating. It's stamped with
+  `surface_on` = **January 1st of the year it's next due** (checked-off year +
+  N), not the exact anniversary — staining the deck in August on a 3-year cycle
+  resurfaces Jan 1 three years later, well before that summer, so there's a full
+  season to plan instead of it popping up mid-summer with no notice.
+  `fetchWorkItems()` filters out any item whose `surface_on` is still in the
+  future — it exists in the DB immediately (the recurrence is never lost) but
+  stays out of the list until its year arrives. **Deliberately no
+  notification** on the auto-created copy — recurring items would otherwise
+  spam a `work_item_created` ping every time something comes due — suppressed
+  via a `mlr.skip_work_item_notify` session GUC set right before that one
+  insert (the same bypass-a-trigger-for-one-write idiom as `mlr.mod_bypass`
+  elsewhere in this app). A manually-added item is unaffected; the flag is
+  read-and-reset per transaction. Shown as a `🔁 Every Nyr(s)` chip alongside
+  the urgency chip in both the checklist row and `WorkItemSheet`.
 - **New-work-item notifications** — adding a task fans out a `work_item_created`
   Activity notification (migration [`0070`](supabase/migrations/0070_work_item_created_notif.sql)):
   an MLR item notifies every member (resort-wide, like `new_post`); a house item
