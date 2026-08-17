@@ -327,6 +327,20 @@ export async function addWorkItemToEvent(
   return error ? { error: error.message } : {};
 }
 
+/** Unlink a work item from an event (admin OR that event's own creator,
+ *  migration 0188) — only removes the link, never the item itself. */
+export async function removeWorkItemFromEvent(
+  eventId: string,
+  workItemId: string,
+): Promise<{ error?: string }> {
+  if (!supabase) return { error: "Not connected" };
+  const { error } = await supabase.rpc("remove_work_item_from_event", {
+    p_event_id: eventId,
+    p_work_item_id: workItemId,
+  });
+  return error ? { error: error.message } : {};
+}
+
 /** Replace the full set of work items attached to an event (admin only).
  *  Pass an empty array to clear all links for the event. */
 export async function syncEventWorkItems(
