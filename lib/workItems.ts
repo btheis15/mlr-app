@@ -123,6 +123,32 @@ export async function fetchEventWorkItems(eventId: string): Promise<WorkItem[]> 
   }
 }
 
+/** Per-house COUNTS of work items linked to an event, for every house — even
+ *  one the viewer isn't a member of (unlike fetchEventWorkItems, which is
+ *  RLS-scoped to MLR + the viewer's own house). Lets the event sheet show
+ *  "🔒 MJT House · 2 items" for a house the viewer can't see the details of,
+ *  instead of those items just silently vanishing (migration 0189). */
+export interface EventWorkItemHouseCount {
+  houseId: string;
+  name: string;
+  emoji: string;
+  count: number;
+}
+export async function fetchEventWorkItemHouseCounts(eventId: string): Promise<EventWorkItemHouseCount[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  try {
+    const { data } = await supabase.rpc("event_work_item_house_counts", { p_event_id: eventId });
+    return ((data ?? []) as { house_id: string; house_name: string; house_emoji: string; item_count: number }[]).map((r) => ({
+      houseId: r.house_id,
+      name: r.house_name,
+      emoji: r.house_emoji,
+      count: r.item_count,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Add a new item to the checklist. MLR item (houseId null) → any signed-in
  *  member; house item → members of that house. */
 export async function createWorkItem(input: {

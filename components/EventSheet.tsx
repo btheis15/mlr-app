@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AttendanceStatus, AttendanceSummary, EventAttendance, ResortEvent, WorkItem } from "@/lib/types";
+import type { AttendanceStatus, AttendanceSummary, EventAttendance, House, ResortEvent, WorkItem } from "@/lib/types";
 import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
-import { fetchEventWorkItems, removeWorkItemFromEvent } from "@/lib/workItems";
+import {
+  fetchEventWorkItems,
+  fetchEventWorkItemHouseCounts,
+  removeWorkItemFromEvent,
+  type EventWorkItemHouseCount,
+} from "@/lib/workItems";
+import { fetchHouses } from "@/lib/houses";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName, Protected, useGuest } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
@@ -60,14 +66,38 @@ export function EventSheet({
   const { guest, promptSignIn } = useGuest();
   const [deleting, setDeleting] = useState(false);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+  const [houses, setHouses] = useState<House[]>([]);
+  // Counts (not details) for a house's work items even when the viewer can't
+  // see the items themselves — a house-scoped item is RLS-gated to that
+  // house's members + admins, so a non-member's `workItems` fetch already
+  // silently drops those rows. This is the only way to still show "MJT House
+  // has 2 items planned" instead of the section just vanishing (0189).
+  const [houseCounts, setHouseCounts] = useState<EventWorkItemHouseCount[]>([]);
   const [addingWorkItem, setAddingWorkItem] = useState(false);
   const [pickingWorkItems, setPickingWorkItems] = useState(false);
 
-  const reloadWorkItems = () => fetchEventWorkItems(event.id).then(setWorkItems);
+  const reloadWorkItems = () => {
+    fetchEventWorkItems(event.id).then(setWorkItems);
+    fetchEventWorkItemHouseCounts(event.id).then(setHouseCounts);
+  };
 
   useEffect(() => {
     reloadWorkItems();
+    fetchHouses().then(setHouses);
   }, [event.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const houseById = new Map(houses.map((h) => [h.id, h]));
+  const mlrWorkItems = workItems.filter((i) => i.houseId === null);
+  const houseWorkItems = new Map<string, WorkItem[]>();
+  for (const item of workItems) {
+    if (item.houseId === null) continue;
+    const list = houseWorkItems.get(item.houseId) ?? [];
+    list.push(item);
+    houseWorkItems.set(item.houseId, list);
+  }
+  // A house the viewer has a count for but no visible items in isn't one
+  // they're a member of — show its count, not its (invisible) details.
+  const hiddenHouseCounts = houseCounts.filter((hc) => !houseWorkItems.has(hc.houseId));
   const days = eventDays(event.startDate, event.endDate);
   const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
@@ -118,6 +148,38 @@ export function EventSheet({
   };
 
   const when = isOngoing(event, today) ? "Happening now" : relativeDays(today, event.startDate);
+
+  const renderWorkItemRow = (item: WorkItem) => (
+    <div key={item.id} className="flex items-start gap-3 px-3 py-2.5">
+      <span
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+          item.status === "done" ? "bg-primary/15 text-primary" : "border-2 border-border"
+        }`}
+        aria-hidden
+      >
+        {item.status === "done" ? "✓" : ""}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm font-medium leading-snug ${item.status === "done" ? "text-faint line-through" : ""}`}>
+          {item.title}
+        </span>
+        {item.peopleNeeded != null && (
+          <span className="mt-0.5 block text-xs text-faint">👥 {item.peopleNeeded} needed</span>
+        )}
+      </span>
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => removeWorkItem(item)}
+          disabled={removingItemId === item.id}
+          aria-label={`Remove ${item.title} from this event`}
+          className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-40"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -263,9 +325,12 @@ export function EventSheet({
             </div>
           )}
 
-          {/* Work items planned for this event — always visible to admins */}
-          {(workItems.length > 0 || canManage) && (
-            <div className="space-y-2">
+          {/* Work items planned for this event — grouped by scope. A house's
+              items are only visible to that house's members + admins (RLS,
+              0066); for everyone else a house with items shows only a count
+              (hiddenHouseCounts), never the titles. */}
+          {(workItems.length > 0 || hiddenHouseCounts.length > 0 || canManage) && (
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <SectionLabel>Work items planned</SectionLabel>
                 {canManage && (
@@ -278,49 +343,41 @@ export function EventSheet({
                   </button>
                 )}
               </div>
-              {workItems.length > 0 ? (
-                <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
-                  {workItems.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 px-3 py-2.5">
-                      <span
-                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                          item.status === "done"
-                            ? "bg-primary/15 text-primary"
-                            : "border-2 border-border"
-                        }`}
-                        aria-hidden
-                      >
-                        {item.status === "done" ? "✓" : ""}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className={`block text-sm font-medium leading-snug ${
-                            item.status === "done" ? "text-faint line-through" : ""
-                          }`}
-                        >
-                          {item.title}
-                        </span>
-                        {item.peopleNeeded != null && (
-                          <span className="mt-0.5 block text-xs text-faint">
-                            👥 {item.peopleNeeded} needed
-                          </span>
-                        )}
-                      </span>
-                      {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => removeWorkItem(item)}
-                          disabled={removingItemId === item.id}
-                          aria-label={`Remove ${item.title} from this event`}
-                          className="press shrink-0 text-foreground/30 hover:text-accent disabled:opacity-40"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
+
+              {mlrWorkItems.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="px-0.5 text-xs font-semibold text-foreground/60">🌲 Around the Resort</p>
+                  <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
+                    {mlrWorkItems.map(renderWorkItemRow)}
+                  </div>
                 </div>
-              ) : (
+              )}
+
+              {[...houseWorkItems.entries()].map(([houseId, items]) => {
+                const h = houseById.get(houseId);
+                return (
+                  <div key={houseId} className="space-y-1.5">
+                    <p className="px-0.5 text-xs font-semibold text-foreground/60">
+                      {h?.emoji ?? "🏠"} {h?.name ?? "House"}
+                    </p>
+                    <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
+                      {items.map(renderWorkItemRow)}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {hiddenHouseCounts.map((hc) => (
+                <p
+                  key={hc.houseId}
+                  className="rounded-xl bg-card px-3 py-2.5 text-xs text-muted ring-1 ring-border"
+                >
+                  🔒 {hc.emoji} {hc.name} · {hc.count} item{hc.count === 1 ? "" : "s"} planned — details only
+                  visible to that house
+                </p>
+              ))}
+
+              {mlrWorkItems.length === 0 && houseWorkItems.size === 0 && hiddenHouseCounts.length === 0 && (
                 <p className="text-xs text-faint">No work items yet.</p>
               )}
             </div>

@@ -2019,8 +2019,17 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   so attaching an already-listed task (e.g. "Take out Pier") no longer means
   re-typing it as a brand-new item. A ✕ on each linked item unlinks it from the
   event (`remove_work_item_from_event`, migration 0188 — same admin-or-creator
-  gate, never deletes the item itself from the checklist);
-  [`EventComposer`](components/EventComposer.tsx) hides its
+  gate, never deletes the item itself from the checklist). **`EventSheet`'s
+  "Work items planned" list is grouped by scope** — "🌲 Around the Resort" then
+  one group per house — mirroring the Work Checklist's own sectioning. A
+  house-scoped item is RLS-gated (0066) to that house's members + admins, so a
+  non-member's `fetchEventWorkItems()` already silently drops those rows; a new
+  `event_work_item_house_counts()` RPC (migration
+  [`0189`](supabase/migrations/0189_event_work_item_house_counts.sql),
+  SECURITY DEFINER, mirrors `fest_schedule_signup_counts`' "aggregate is fine to
+  reveal, specifics aren't" shape) fills in a **"🔒 MJT House · 2 items planned
+  — details only visible to that house"** line instead of that house's items
+  just vanishing with no trace; [`EventComposer`](components/EventComposer.tsx) hides its
   **Reminders** section from a non-admin creator — scheduled reminders ride the
   admin-only broadcast queue (0097), so a member sees no control that would
   just fail server-side. A seed/synthesized event (Family Fest, a future
