@@ -12,8 +12,8 @@ import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItem
  *  custom_color. */
 export const URGENCY_META: Record<Exclude<WorkItemUrgency, "custom">, { label: string; emoji: string; rank: number; chip: string }> = {
   asap:         { label: "ASAP",         emoji: "🔴", rank: 0, chip: "bg-red-500/15 text-red-700 ring-red-500/30" },
-  this_year:    { label: "This year",    emoji: "🟡", rank: 1, chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
-  next_year:    { label: "Next year",    emoji: "🔵", rank: 2, chip: "bg-blue-500/15 text-blue-700 ring-blue-500/30" },
+  this_year:    { label: "This year",    emoji: "🟠", rank: 1, chip: "bg-orange-500/15 text-orange-700 ring-orange-500/30" },
+  next_year:    { label: "Next year",    emoji: "🟡", rank: 2, chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
   nice_to_have: { label: "Nice to have", emoji: "🟢", rank: 3, chip: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" },
 };
 
