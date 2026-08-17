@@ -10,12 +10,15 @@ import { PrivateName, Protected, useGuest } from "@/components/Guard";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
+import { EventWorkItemPicker } from "@/components/EventWorkItemPicker";
 import { useSheetDismiss } from "@/lib/hooks";
 
-// The event detail sheet: dates, location, description, the RSVP control, an
-// optional per-day drill-down (Family Fest), and who's coming. An admin OR the
-// event's own creator (`canManage`, migration 0187) can edit/delete a real (DB)
-// event and assign work items to it. Scaffolding + dismiss motion come from
+// The event detail sheet: dates, location, description, the RSVP control, and
+// who's coming. An admin OR the event's own creator (`canManage`, migration
+// 0187) can edit/delete a real (DB) event and assign work items to it — its
+// "+ Add" button opens EventWorkItemPicker to pick from EXISTING open
+// checklist items (with a "create a new item instead" escape hatch), not just
+// create-a-new-one. Scaffolding + dismiss motion come from
 // Sheet / useSheetDismiss.
 
 export function EventSheet({
@@ -57,6 +60,7 @@ export function EventSheet({
   const [deleting, setDeleting] = useState(false);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [addingWorkItem, setAddingWorkItem] = useState(false);
+  const [pickingWorkItems, setPickingWorkItems] = useState(false);
 
   const reloadWorkItems = () => fetchEventWorkItems(event.id).then(setWorkItems);
 
@@ -105,6 +109,15 @@ export function EventSheet({
 
   return (
     <>
+    {pickingWorkItems && (
+      <EventWorkItemPicker
+        eventId={event.id}
+        alreadyLinkedIds={new Set(workItems.map((i) => i.id))}
+        onClose={() => setPickingWorkItems(false)}
+        onLinked={reloadWorkItems}
+        onCreateNew={() => { setPickingWorkItems(false); setAddingWorkItem(true); }}
+      />
+    )}
     {addingWorkItem && (
       <WorkItemComposer
         preLinkedEventId={event.id}
@@ -246,7 +259,7 @@ export function EventSheet({
                 {canManage && (
                   <button
                     type="button"
-                    onClick={() => setAddingWorkItem(true)}
+                    onClick={() => setPickingWorkItems(true)}
                     className="press text-xs font-semibold text-primary"
                   >
                     + Add
