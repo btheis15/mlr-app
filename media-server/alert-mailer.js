@@ -18,6 +18,8 @@
 // (atomic: only the row where it's still null), so an alert is never emailed
 // twice — even across reconnects/restarts.
 
+const { buildEventEmail } = require("./event-email-template");
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
@@ -535,6 +537,83 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     }
   }
 
+  // Email everyone about an event — the event's details PLUS exactly what's
+  // assigned to it, so a work weekend's task list lands in inboxes instead of
+  // only living in the app (migration 0190).
+  //
+  // ⚠️⚠️ ONE SEND PER BUCKET, NOT ONE EMAIL. A house-scoped work item is visible
+  // only to that house's members (0066/0189) and a single BCC'd email has one
+  // body — so the RPC hands back recipients pre-sorted into buckets and we send
+  // one BCC'd email each: one per house that has items (its people get the
+  // resort-wide list AND their own house's), plus a "general" one for everybody
+  // else (resort-wide only, with no hint a house has its own list). A person is
+  // in exactly one bucket, so nobody is emailed twice.
+  //
+  // Retry safety: each bucket is recorded in event_messages.sent_buckets as it
+  // succeeds. If bucket 2 fails after bucket 1 went out, we clear email_sent_at
+  // so the sweep retries — and the retry skips bucket 1 rather than double-
+  // emailing those people.
+  async function handleEventMessage(row) {
+    if (!row || !row.notify_email || row.email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("event_messages")
+      .update({ email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("email_sent_at", null)
+      .select("id, sent_buckets");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const alreadySent = new Set(claimed[0].sent_buckets || []);
+    const { data: info, error } = await sb.rpc("event_message_email", { p_message: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] event_message_email error:", error ? error.message : "no data");
+      await sb.from("event_messages").update({ email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+
+    // One entry per email we need to send. `bucket` is null for the general one.
+    const groups = Array.isArray(d.house_groups) ? d.house_groups : [];
+    const sends = [
+      ...groups.map((g) => ({ key: String(g.houseId), bucket: g, emails: (g.emails || []).filter(Boolean) })),
+      { key: "general", bucket: null, emails: (d.general_emails || []).filter(Boolean) },
+    ].filter((s) => s.emails.length > 0 && !alreadySent.has(s.key));
+
+    if (sends.length === 0) {
+      console.log(`[mailer] event_message ${row.id}: nothing left to send`);
+      return; // leave it claimed — no recipients, or every bucket already went
+    }
+
+    let failed = false;
+    let people = 0;
+    for (const s of sends) {
+      const { subject, html, text, taskCount } = buildEventEmail(d, APP_URL, s.bucket);
+      try {
+        await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: s.emails, subject, text, html });
+        alreadySent.add(s.key);
+        // Record this bucket immediately, so a later failure (or a crash) can't
+        // cause it to be re-sent on retry.
+        await sb
+          .from("event_messages")
+          .update({ sent_buckets: Array.from(alreadySent) })
+          .eq("id", row.id);
+        people += s.emails.length;
+        console.log(
+          `[mailer] event_message ${row.id} → ${s.bucket ? s.bucket.name : "general"}: ${s.emails.length} recipient(s), ${taskCount} task(s)`,
+        );
+      } catch (e) {
+        failed = true;
+        console.error(`[mailer] event_message ${row.id} → ${s.key} send failed:`, e && e.message);
+      }
+    }
+    if (failed) {
+      // Re-open for the sweep; the sent_buckets above keep it from doubling up.
+      await sb.from("event_messages").update({ email_sent_at: null }).eq("id", row.id);
+    } else {
+      console.log(`[mailer] event_message ${row.id} complete — ${people} recipient(s) across ${sends.length} send(s)`);
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -611,6 +690,15 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .order("created_at", { ascending: false })
       .limit(10);
     for (const row of signupReminderPending || []) await handleSignupReminderEmail(row);
+
+    const { data: eventMsgPending } = await sb
+      .from("event_messages")
+      .select("id, notify_email, email_sent_at, sent_buckets, created_at")
+      .eq("notify_email", true)
+      .is("email_sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of eventMsgPending || []) await handleEventMessage(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -644,6 +732,9 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "fest_reminder_emails" }, (payload) => {
         handleSignupReminderEmail(payload.new).catch((e) => console.error("[mailer] signup reminder handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_messages" }, (payload) => {
+        handleEventMessage(payload.new).catch((e) => console.error("[mailer] event message handle error:", e && e.message));
       })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);

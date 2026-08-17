@@ -2072,9 +2072,82 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   [`EventSheet`](components/EventSheet.tsx) /
   [`EventComposer`](components/EventComposer.tsx) reuse the existing sheet motion,
   Guard privacy wall (`PrivateName` masks guest names), and theme tokens.
+- **📣 Email everyone about an event** (migration
+  [`0190`](supabase/migrations/0190_event_message_email.sql)) — a clean,
+  professional email carrying the event's details **plus exactly what's assigned
+  to it**, so a Work Weekend's task list (each item's **title + its
+  details/notes**, urgency chip, people-needed) lands in inboxes instead of only
+  living in the app. Entry point: a **"📣 Email everyone about this"** row in
+  [`EventSheet`](components/EventSheet.tsx) →
+  [`EventMessageSheet`](components/EventMessageSheet.tsx), open to the same
+  **admin-or-creator** viewers as everything else in that sheet (0187) — not a
+  new capability, since any member can already email Everyone from the People
+  page's `mailto:` composer; this is just a far better delivery mechanism.
+  Client seam [`lib/eventMessages.ts`](lib/eventMessages.ts); the template is
+  [`media-server/event-email-template.js`](media-server/event-email-template.js).
+  - ⚠️⚠️ **ONE SEND PER AUDIENCE ("bucket"), NOT ONE EMAIL.** A house-scoped work
+    item is visible only to that house (0066 RLS / 0189) and a single BCC'd email
+    has one body for everyone — so `event_message_email()` returns recipients
+    **pre-sorted into buckets** and the mailer sends one BCC'd email each: one
+    **per house** that has items on the event (its people get the resort-wide
+    tasks **and** their own house's, in full), plus a **"general"** one for
+    everybody else (resort-wide only, with *no hint* that a house has its own
+    list). A person lands in **exactly one** bucket — keyed off their own
+    `profiles.house_id`, or `family_roster.house_id` when they have no account —
+    so nobody is emailed twice. **Admins are bucketed by their own house** like
+    everyone else rather than receiving every house's list (which would mean
+    several emails to one person); the app already shows an admin everything.
+  - **The house copy SAYS it's the house copy.** Two people comparing emails
+    would otherwise just find a discrepancy and wonder which one is wrong, so
+    the house section carries an italic parchment note between its heading and
+    its cards — "🔒 This part is only in {House}'s copy of this email —
+    everyone else got the same note without these tasks" — and the count line
+    spells the split out ("6 around the resort · 2 for MJT House") instead of a
+    bare total, so a *different* total in a cousin's copy is self-explaining.
+    Both are mirrored in the plain-text part. The general copy stays completely
+    silent about it (no note, no labels, just "6 tasks for this weekend"), which
+    is the point: it must not hint that a list it can't show exists.
+  - **Retry safety across multiple sends.** The older mailer handlers claim one
+    `email_sent_at` and are done; here a failure partway through must not
+    re-send the buckets that already went. `event_messages.sent_buckets text[]`
+    records each bucket as it succeeds, the handler skips anything already
+    listed, and only clears `email_sent_at` (re-opening it for the 3-minute
+    sweep) when something actually failed.
+  - ⚠️ **Only what's ASSIGNED — completed items are excluded outright**
+    (`wi.status <> 'done'` in the RPC). A done task is noise in an email about
+    what still needs doing; the app stays the place to see history.
+  - **Recipients** — three groups, deduped by address: members with an account
+    (verified **or** invited-but-unverified temp accounts), account-less
+    **family_roster** slots with an email (0123, bucketed by their own house),
+    and account-less **committee_roster** slots (0056, always general). Those
+    last two are the "not on the app yet but on the family roster" people — added
+    by hand by an admin, so already vetted, with no `email_alerts` pref or RSVP
+    row to filter on. Default on, switched off with `p_include_roster`.
+  - **Recipients are computed in the RPC, NOT via `alert_recipients()`** — that
+    one predates the approval gate and doesn't check `profiles.approved` (so it
+    would email the family's work-weekend plan to a self-signed-up unapproved
+    address, exactly what 0181/0183 exist to prevent), and it has no roster
+    UNIONs or bucketing. Otherwise it follows the broadcast-email doctrine:
+    honors `email_alerts` for account holders (a mass send that overrides
+    someone's own email opt-out is also how a sending domain gets flagged) and
+    honors the 0096/0127 event-targeting rule (skip anyone who explicitly RSVP'd
+    "Can't make it" — a default-on checkbox). The **sender is included**, like
+    the meeting-confirmed email, so they see exactly what went out.
+  - **The template is previewable, and the preview can't drift.** It lives in its
+    own module (not inline in `alert-mailer.js` like the older emails) so
+    `scripts/preview-event-email.js` can render **both variants** to HTML/PDF
+    from the very same `buildEventEmail()` the mailer calls — a preview that
+    could disagree with the real send would be worthless. Print it with headless
+    Chromium (`--print-to-pdf`); no npm dep added.
+  - ⚠️ **Needs a mini `git pull` + restart** (Admin → Media server) like all
+    mailer changes — until then rows queue in `event_messages` and go out on the
+    next restart via the 3-minute sweep.
 - **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
-  Google-Calendar ICS feed (see Backend seams).
+  Google-Calendar ICS feed (see Backend seams); an in-app Activity notification
+  alongside the event email above (email-only today — `send_broadcast_notification`
+  is admin-only, so a member-created event's ping would need a new kind + push
+  wiring).
 
 ## Ask for Help
 
