@@ -2,11 +2,17 @@
 //
 // Lives in its own module — rather than inline in alert-mailer.js like the older
 // emails — so `scripts/preview-event-email.js` can render the EXACT same markup
-// to a PDF for review. If the preview and the real send could drift, the preview
-// would be worthless; there is one builder and both call it.
+// for review. If the preview and the real send could drift, the preview would be
+// worthless; there is one builder and both call it.
 //
-// Input is the `event_message_email()` RPC row verbatim (snake_case columns,
-// work_items/house_counts as parsed jsonb) plus the app's base URL.
+// ONE BUILD PER BUCKET. The mailer sends a separate BCC'd email per audience:
+// one per house that has items on the event (its people see the resort-wide list
+// AND their own house's list), plus a "general" one for everybody else (the
+// resort-wide list only, with no hint a house has its own). Pass that house as
+// `bucket`; pass null for the general send. See the migration header for why.
+//
+// Only OPEN items ever reach here — the RPC filters completed ones out, since a
+// done task is noise in an email about what still needs doing.
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -31,9 +37,8 @@ function urgencyLabel(it) {
   return it.customLabel ? `${dot} ${it.customLabel}` : dot;
 }
 
-/** One work item as its own titled card: the title, then ITS DETAILS, then the
- *  urgency/headcount meta line. `muted` renders an already-done item. */
-function itemCard(it, muted) {
+/** One task as its own card: the title, then ITS DETAILS, then urgency + headcount. */
+function itemCard(it) {
   const meta = [
     urgencyLabel(it) ? `<span style="white-space:nowrap">${escapeHtml(urgencyLabel(it))}</span>` : "",
     it.peopleNeeded ? `<span style="white-space:nowrap">👥 ${Number(it.peopleNeeded)} needed</span>` : "",
@@ -42,26 +47,33 @@ function itemCard(it, muted) {
     .join('<span style="color:#c8cfcb"> · </span>');
   return `<tr><td style="padding:0 0 10px">
 <table role="presentation" style="width:100%;border-collapse:separate;border-spacing:0">
-<tr><td style="padding:12px 15px;background:${muted ? "#f7f7f5" : "#f4f8f5"};border-left:3px solid ${muted ? "#cdcdc6" : "#15503a"};border-radius:9px">
-<div style="font-size:15.5px;font-weight:600;line-height:1.35;color:${muted ? "#8b918d" : "#14241c"}${muted ? ";text-decoration:line-through" : ""}">${escapeHtml(it.title || "")}</div>
+<tr><td style="padding:12px 15px;background:#f4f8f5;border-left:3px solid #15503a;border-radius:9px">
+<div style="font-size:15.5px;font-weight:600;line-height:1.35;color:#14241c">${escapeHtml(it.title || "")}</div>
 ${it.notes ? `<div style="margin-top:5px;font-size:13.5px;color:#4a5a52;line-height:1.55;white-space:pre-wrap">${escapeHtml(it.notes)}</div>` : ""}
 ${meta ? `<div style="margin-top:7px;font-size:12px;color:#6b7b73">${meta}</div>` : ""}
 </td></tr></table>
 </td></tr>`;
 }
 
+function itemGroup(label, items) {
+  if (!items || !items.length) return "";
+  return `<p style="margin:0 0 9px;font-size:12.5px;font-weight:700;color:#14241c">${escapeHtml(label)}</p>
+<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px">${items.map(itemCard).join("")}</table>`;
+}
+
 /**
- * Build the subject + HTML + plain-text parts.
- * @param {object} d   an `event_message_email()` row
+ * Build the subject + HTML + plain-text parts for ONE bucket.
+ * @param {object} d       an `event_message_email()` row
  * @param {string} appUrl  base app URL (no trailing slash)
+ * @param {object|null} bucket  the house this send is for ({name, emoji, items}),
+ *                              or null for the general (resort-wide-only) send
  */
-function buildEventEmail(d, appUrl) {
-  const items = Array.isArray(d.work_items) ? d.work_items : [];
-  const houses = Array.isArray(d.house_counts) ? d.house_counts : [];
-  const open = items.filter((i) => i.status !== "done");
-  const done = items.filter((i) => i.status === "done");
+function buildEventEmail(d, appUrl, bucket = null) {
+  const mlr = Array.isArray(d.mlr_items) ? d.mlr_items : [];
+  const houseItems = bucket && Array.isArray(bucket.items) ? bucket.items : [];
   const emoji = d.event_emoji || "📅";
   const link = `${appUrl}/events?open=${encodeURIComponent(d.event_id)}`;
+  const total = mlr.length + houseItems.length;
 
   const detailRows = [
     ...(d.event_when ? [["When", escapeHtml(d.event_when)]] : []),
@@ -74,37 +86,17 @@ function buildEventEmail(d, appUrl) {
     )
     .join("");
 
-  const openCards = open.length
-    ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0">${open.map((i) => itemCard(i, false)).join("")}</table>`
-    : "";
-  const doneCards = done.length
-    ? `<p style="margin:16px 0 8px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8b918d">Already done</p>
-<table role="presentation" style="width:100%;border-collapse:collapse">${done.map((i) => itemCard(i, true)).join("")}</table>`
-    : "";
-  // Houses get a COUNT only — their items are private to that house (0066/0189).
-  const houseLines = houses.length
-    ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:14px 0 0">${houses
-        .map(
-          (h) =>
-            `<tr><td style="padding:9px 13px;background:#f7f7f5;border-radius:9px;font-size:13px;color:#6b7b73;line-height:1.45">${escapeHtml(h.emoji || "🏠")} <strong style="color:#14241c">${escapeHtml(h.name || "House")}</strong> · ${Number(h.count)} item${Number(h.count) === 1 ? "" : "s"} planned <span style="color:#a3a9a5">— details in the app</span></td></tr>
-<tr><td style="height:7px;line-height:7px">&nbsp;</td></tr>`,
-        )
-        .join("")}</table>`
-    : "";
-
-  const plannedCount = open.length + done.length;
-  const workSection =
-    plannedCount || houses.length
-      ? `<div style="margin:26px 0 0">
-<p style="margin:0 0 3px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#15503a">What&rsquo;s planned</p>
-<p style="margin:0 0 13px;font-size:13px;color:#8b918d">${
-          plannedCount
-            ? `${open.length} item${open.length === 1 ? "" : "s"} to tackle${done.length ? ` · ${done.length} already done` : ""}`
-            : "Around the resort"
-        }</p>
-${openCards}${doneCards}${houseLines}
+  // Scope headings only when there are two groups to tell apart; a general send
+  // with just the resort list doesn't need to be labelled twice.
+  const showLabels = mlr.length > 0 && houseItems.length > 0;
+  const workSection = total
+    ? `<div style="margin:26px 0 0">
+<p style="margin:0 0 3px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#15503a">What&rsquo;s assigned</p>
+<p style="margin:0 0 14px;font-size:13px;color:#8b918d">${total} task${total === 1 ? "" : "s"} for this weekend</p>
+${showLabels ? itemGroup("🌲 Around the resort", mlr) : `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 4px">${mlr.map(itemCard).join("")}</table>`}
+${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${bucket.name || "Your house"}`, houseItems) : ""}
 </div>`
-      : "";
+    : "";
 
   const noteBlock = d.body
     ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:20px 0 0"><tr><td style="padding:14px 16px;background:#f6f6f1;border-radius:10px">
@@ -125,14 +117,14 @@ ${detailRows ? `<table role="presentation" style="border-collapse:collapse;font-
 ${noteBlock}
 ${workSection}
 <p style="margin:28px 0 0"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">RSVP &amp; see the full plan →</a></p>
-<p style="margin:11px 0 0;font-size:12.5px;color:#8b918d;line-height:1.5">Tap above to say if you&rsquo;re coming, see who else is, and check work off as it gets done.</p>
+<p style="margin:11px 0 0;font-size:12.5px;color:#8b918d;line-height:1.5">Tap above to say if you&rsquo;re coming, see who else is, and check tasks off as they get done.</p>
 <hr style="border:none;border-top:1px solid #e8e8e4;margin:26px 0 13px">
 <p style="color:#a3a9a5;font-size:11.5px;margin:0;line-height:1.6">Muskellunge Lake Resort · Muskellunge Lake, 5 mi from Tomahawk on Hwy 8, Tomahawk, WI<br>You&rsquo;re receiving this because you&rsquo;re on the family roster for Muskellunge Lake Resort.</p>
 </div>`;
 
-  const textItems = (list, heading) =>
-    list.length
-      ? `\n${heading}\n${list
+  const textGroup = (label, items) =>
+    items && items.length
+      ? `\n${label}\n${items
           .map((i) => {
             const meta = [urgencyLabel(i), i.peopleNeeded ? `${i.peopleNeeded} needed` : ""].filter(Boolean).join(" · ");
             return `  • ${i.title}${meta ? `  [${meta}]` : ""}${
@@ -145,18 +137,12 @@ ${workSection}
     d.event_location ? `\nWhere: ${d.event_location}` : ""
   }${d.event_description ? `\n\n${d.event_description}` : ""}${
     d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""
-  }${plannedCount || houses.length ? `\n\nWHAT'S PLANNED` : ""}${textItems(open, "To tackle:")}${textItems(
-    done,
-    "Already done:",
-  )}${
-    houses.length
-      ? `\n${houses
-          .map((h) => `  • ${h.name}: ${h.count} item${Number(h.count) === 1 ? "" : "s"} planned (details in the app)`)
-          .join("\n")}\n`
-      : ""
-  }\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort`;
+  }${total ? `\n\nWHAT'S ASSIGNED — ${total} task${total === 1 ? "" : "s"}` : ""}${textGroup(
+    showLabels ? "Around the resort:" : "",
+    mlr,
+  )}${houseItems.length ? textGroup(`${bucket.name || "Your house"}:`, houseItems) : ""}\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort`;
 
-  return { subject, html, text, plannedCount };
+  return { subject, html, text, taskCount: total };
 }
 
 module.exports = { buildEventEmail, escapeHtml, urgencyLabel };

@@ -130,8 +130,15 @@ export function EventMessageSheet({
     >
       <p className="text-sm text-foreground/70">
         Sends a laid-out email with this event&rsquo;s date, place, description
-        {includeWorkItems ? ", and everything planned for it" : ""} — plus a button to RSVP in the app.
+        {includeWorkItems ? ", and the tasks assigned to it" : ""} — plus a button to RSVP in the app.
       </p>
+      {includeWorkItems && houseCount > 0 && (
+        <p className="rounded-xl bg-primary/5 px-3 py-2.5 text-xs text-foreground/70 ring-1 ring-primary/15">
+          Because a house&rsquo;s tasks are private to that house, people in a house get their own version of
+          the email — the resort-wide tasks <em>plus</em> their house&rsquo;s. Everyone else gets the
+          resort-wide tasks only. All sent blind, so nobody sees who else got it.
+        </p>
+      )}
 
       <div className="space-y-2">
         <SectionLabel>
@@ -201,14 +208,15 @@ export function EventMessageSheet({
         <SectionLabel>What goes in it</SectionLabel>
         <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
           <span className="min-w-0">
-            <span className="text-sm font-medium">Include the work items planned</span>
+            <span className="text-sm font-medium">Include the tasks assigned</span>
             <span className="block text-xs text-muted">
               {mlrCount > 0
-                ? `${mlrCount} resort-wide item${mlrCount === 1 ? "" : "s"} listed in full — title and details.`
-                : "No resort-wide items on this event yet."}
+                ? `${mlrCount} resort-wide task${mlrCount === 1 ? "" : "s"}, each with its details.`
+                : "No resort-wide tasks on this event yet."}
               {houseCount > 0
-                ? ` House items (${houseCount}) show as a count only — they're private to that house.`
+                ? ` A house's ${houseCount} task${houseCount === 1 ? "" : "s"} only go to that house's own people.`
                 : ""}
+              {" Completed tasks are left out."}
             </span>
           </span>
           <input

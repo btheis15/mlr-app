@@ -1,10 +1,10 @@
 -- 0190_event_message_email.sql
--- "Email everyone about this event" — a polished, laid-out email describing an
--- event AND everything planned as part of it, so a work weekend's actual task
--- list (each item's title + details) lands in people's inboxes instead of only
--- living in the app. Same shape as the cabin "message guests" feature (0120):
--- one log row per send carrying a notify_email flag + a claimed email_sent_at,
--- with the mac-mini alert-mailer building and BCC'ing the message.
+-- "Email everyone about this event" — a clean, professional email describing an
+-- event AND exactly what's assigned to it, so a work weekend's task list (each
+-- item's title + details) lands in people's inboxes instead of only living in
+-- the app. Same shape as the cabin "message guests" feature (0120): one log row
+-- per send carrying a notify_email flag + a claimed email_sent_at, with the
+-- mac-mini alert-mailer building and BCC'ing the mail.
 --
 -- WHO CAN SEND: admin OR the event's own creator — the 0187 doctrine, so the
 -- member who spun up the Work Weekend can email about it without being an
@@ -14,32 +14,47 @@
 -- (Family Fest, a gcal/meeting-sourced row) has no `events.created_by` to
 -- match, so it stays admin-only — same as update_event/sync_event_work_items.
 --
--- ⚠️ WORK-ITEM PRIVACY. A house-scoped work item is visible only to that
--- house's members + admins (0066 RLS, and the count-only treatment in 0189).
--- One BCC'd email can't be scoped per recipient, so the email embeds ONLY the
--- resort-wide (house_id is null) items in full and reduces each house's items
--- to a "🏠 MJT House · 2 items — in the app" count line, exactly matching what
--- EventSheet shows a non-member. Do NOT "improve" this by inlining house items
--- without first splitting the send per house-group.
+-- ⚠️⚠️ ONE SEND PER AUDIENCE ("buckets"), NOT ONE EMAIL.
+-- A house-scoped work item is visible only to that house's members + admins
+-- (0066 RLS / 0189), and a single BCC'd email has one body for everyone — so
+-- this returns the recipients pre-sorted into buckets and the mailer sends one
+-- email per bucket:
+--   • one bucket PER HOUSE that has items on this event → that house's people
+--     get the resort-wide items AND their own house's items, in full;
+--   • the "general" bucket (everyone else — no house, or a house with nothing
+--     assigned here) → resort-wide items only, with no hint that a house has
+--     its own list.
+-- Every send is BCC, so nobody sees who else got it (and can't infer buckets).
+-- A person lands in EXACTLY ONE bucket — keyed off their own profiles.house_id
+-- (or family_roster.house_id when they have no account) — so nobody is emailed
+-- twice. Admins are bucketed by their own house like everyone else rather than
+-- getting every house's list, which would mean several emails to one person;
+-- the app already shows an admin everything.
 --
--- RECIPIENTS — three groups, unioned (so a duplicate address collapses):
+-- ⚠️ ONLY WHAT'S ASSIGNED. Completed items are excluded outright
+-- (`wi.status <> 'done'`) — a done task is noise in an email about what still
+-- needs doing. The app remains the place to see history.
+--
+-- RECIPIENTS — three groups, deduped by address:
 --   1. Members with an account (verified, OR invited-but-unverified temp
 --      accounts from /admin/invite), gated on profiles.approved + email_alerts.
---   2. Account-less **family_roster** slots with an email (0123).
---   3. Account-less **committee_roster** slots with an email (0056).
+--   2. Account-less **family_roster** slots with an email (0123) — bucketed by
+--      that slot's own house_id.
+--   3. Account-less **committee_roster** slots with an email (0056) — no house
+--      concept there, so always the general bucket.
 -- Groups 2-3 are the people who "aren't on the app yet but are on the family
 -- roster" — added by hand by an admin, so they're already vetted, and they have
--- no email_alerts pref or RSVP row to filter on. They're included by default and
--- switched off with p_include_roster, mirroring the same UNIONs the meeting
--- emails use (0123, restored in 0133).
+-- no email_alerts pref or RSVP row to filter on. Included by default, switched
+-- off with p_include_roster, mirroring the UNIONs the meeting emails use (0123,
+-- restored in 0133).
 --
 -- Computed here rather than reusing alert_recipients() (0127) for two reasons:
 -- that function predates the approval gate and does not check
 -- profiles.approved — emailing the family's work-weekend plan to a
 -- self-signed-up, not-yet-approved address is exactly what 0181/0183 exist to
--- prevent — and it has no roster UNIONs. Otherwise the rules match the
--- established doctrine: honors profiles.email_alerts for account holders (this
--- is a broadcast, not a transactional receipt — see the PRINCIPLE note in
+-- prevent — and it has no roster UNIONs or bucketing. Otherwise the rules match
+-- the established doctrine: honors profiles.email_alerts for account holders
+-- (this is a broadcast, not a transactional receipt — see the PRINCIPLE note in
 -- CLAUDE.md's meeting-email section, and note that overriding someone's own
 -- email opt-out on a mass send is also how a sending domain gets flagged), and
 -- honors the event-targeting rule from 0096/0127 (skip anyone who explicitly
@@ -71,6 +86,11 @@ create table if not exists public.event_messages (
   include_roster        boolean not null default true,
   recipient_count       integer,
   notify_email          boolean not null default true,
+  -- Which buckets ('general' or a house uuid) have already been sent. The
+  -- multi-send above means a failure partway through must NOT re-send the
+  -- buckets that already went out on retry; the mailer appends each bucket here
+  -- as it succeeds and skips anything already listed.
+  sent_buckets          text[] not null default '{}',
   email_sent_at         timestamptz,
   created_at            timestamptz not null default now()
 );
@@ -167,10 +187,9 @@ begin
   if v_body is not null and length(v_body) > 4000
     then raise exception 'Keep the message under 4000 characters'; end if;
 
-  -- Count now (same predicate the mailer's recipient list uses) so the UI can
-  -- say "emailing N people" without waiting on the mini.
+  -- Total distinct people across every bucket (same predicates the mailer's own
+  -- recipient query uses) so the UI can say "emailing N people" immediately.
   select count(*) into v_count from (
-    -- Members with an account (verified, or invited-but-unverified temp).
     select u.email::text as email
     from public.profiles p
     join auth.users u on u.id = p.id
@@ -216,10 +235,11 @@ revoke all on function public.send_event_message(text, text, text, text, text, b
 grant execute on function public.send_event_message(text, text, text, text, text, boolean, boolean, boolean) to authenticated;
 
 -- ── 4. Service-role payload for the mailer ────────────────────────────────────
--- Everything the email needs in one round-trip: the send's own copy, the live
--- event details, the resort-wide work items IN FULL (title + notes — the whole
--- point: "what is this task actually?"), a count-only summary per house, and
--- the recipient addresses.
+-- One round-trip returning everything for EVERY bucket:
+--   mlr_items      — resort-wide open items, in full (every bucket gets these)
+--   house_groups   — [{houseId, name, emoji, items[], emails[]}] one per house
+--                    that has open items on this event
+--   general_emails — everyone not in one of those houses
 create or replace function public.event_message_email(p_message uuid)
 returns table(
   subject           text,
@@ -231,9 +251,9 @@ returns table(
   event_emoji       text,
   event_location    text,
   event_description text,
-  work_items        jsonb,
-  house_counts      jsonb,
-  emails            text[]
+  mlr_items         jsonb,
+  house_groups      jsonb,
+  general_emails    text[]
 )
 language plpgsql
 security definer
@@ -253,11 +273,85 @@ begin
   end;
 
   return query
+  with items as (
+    -- Open items only — a completed task is noise in a "here's what's assigned"
+    -- email. `rank` mirrors urgencyRank() in lib/workItems.ts, where a `custom`
+    -- urgency sorts between this_year and next_year.
+    select
+      wi.house_id,
+      wi.created_at,
+      case wi.urgency
+        when 'asap'         then 0
+        when 'this_year'    then 10
+        when 'custom'       then 15
+        when 'next_year'    then 20
+        when 'nice_to_have' then 30
+        else 40
+      end as rank,
+      jsonb_build_object(
+        'title',        wi.title,
+        'notes',        wi.notes,
+        'urgency',      wi.urgency,
+        'customLabel',  wi.custom_label,
+        'customColor',  wi.custom_color,
+        'peopleNeeded', wi.people_needed
+      ) as item
+    from public.event_work_items ewi
+    join public.work_items wi on wi.id = ewi.work_item_id
+    where ewi.event_id = m.event_id
+      and wi.status <> 'done'
+      and m.include_work_items
+  ),
+  item_houses as (
+    select distinct i.house_id as hid from items i where i.house_id is not null
+  ),
+  -- Every recipient with the ONE bucket they belong to: their own house when
+  -- that house has items here, else null (= the general bucket).
+  recips as (
+    select
+      u.email::text as email,
+      case when p.house_id in (select ih.hid from item_houses ih) then p.house_id end as bucket
+    from public.profiles p
+    join auth.users u on u.id = p.id
+    where u.email is not null
+      and (p.approved is true or p.is_admin is true)
+      and p.email_alerts = true
+      and not (
+        m.exclude_not_attending
+        and exists (
+          select 1 from public.event_attendance ea
+          where ea.event_id = m.event_id and ea.user_id = p.id and ea.status = 'not_going'
+        )
+      )
+    union all
+    -- Account-less family roster — bucketed by that slot's own house.
+    select
+      btrim(fr.email),
+      case when fr.house_id in (select ih.hid from item_houses ih) then fr.house_id end
+    from public.family_roster fr
+    where m.include_roster
+      and fr.linked_user_id is null
+      and nullif(btrim(fr.email), '') is not null
+    union all
+    -- Account-less committee roster — no house concept, always general.
+    select btrim(cr.email), null::uuid
+    from public.committee_roster cr
+    where m.include_roster
+      and cr.linked_user_id is null
+      and nullif(btrim(cr.email), '') is not null
+  ),
+  -- Collapse duplicate addresses to a single bucket, preferring a house one so
+  -- a house member is never demoted to the general (house-less) email.
+  bucketed as (
+    select r.email, (array_agg(r.bucket) filter (where r.bucket is not null))[1] as bucket
+    from recips r
+    group by r.email
+  )
   select
     m.subject,
     m.body,
-    (select coalesce(nullif(btrim(p.display_name), ''), 'A member')
-       from public.profiles p where p.id = m.sender_id),
+    (select coalesce(nullif(btrim(pr.display_name), ''), 'A member')
+       from public.profiles pr where pr.id = m.sender_id),
     m.event_id,
     m.event_title,
     coalesce(
@@ -272,84 +366,23 @@ begin
     (select e.emoji from public.events e where e.id = v_event),
     (select e.location from public.events e where e.id = v_event),
     (select e.description from public.events e where e.id = v_event),
-    -- Resort-wide items only, ordered like the app's checklist (urgency, then
-    -- newest). `custom` sorts between this_year and next_year, matching
-    -- urgencyRank() in lib/workItems.ts.
-    case when m.include_work_items then (
-      select jsonb_agg(x order by x_rank, x_created desc)
-      from (
-        select
-          jsonb_build_object(
-            'title',        wi.title,
-            'notes',        wi.notes,
-            'urgency',      wi.urgency,
-            'customLabel',  wi.custom_label,
-            'customColor',  wi.custom_color,
-            'peopleNeeded', wi.people_needed,
-            'status',       wi.status
-          ) as x,
-          case wi.urgency
-            when 'asap'         then 0
-            when 'this_year'    then 10
-            when 'custom'       then 15
-            when 'next_year'    then 20
-            when 'nice_to_have' then 30
-            else 40
-          end as x_rank,
-          wi.created_at as x_created
-        from public.event_work_items ewi
-        join public.work_items wi on wi.id = ewi.work_item_id
-        where ewi.event_id = m.event_id
-          and wi.house_id is null
-      ) s
-    ) end,
-    -- Per-house COUNTS only — never the titles (see the privacy note up top).
-    case when m.include_work_items then (
-      select jsonb_agg(
-               jsonb_build_object('name', h.name, 'emoji', h.emoji, 'count', c.n)
-               order by h.position, h.name
-             )
-      from (
-        select wi.house_id as hid, count(*) as n
-        from public.event_work_items ewi
-        join public.work_items wi on wi.id = ewi.work_item_id
-        where ewi.event_id = m.event_id
-          and wi.house_id is not null
-        group by wi.house_id
-      ) c
-      join public.houses h on h.id = c.hid
-    ) end,
-    array(
-      -- Members with an account (verified, or invited-but-unverified temp).
-      select u.email::text
-      from public.profiles p
-      join auth.users u on u.id = p.id
-      where u.email is not null
-        and (p.approved is true or p.is_admin is true)
-        and p.email_alerts = true
-        and not (
-          m.exclude_not_attending
-          and exists (
-            select 1 from public.event_attendance ea
-            where ea.event_id = m.event_id and ea.user_id = p.id and ea.status = 'not_going'
-          )
-        )
-      union  -- dedupes against the account list and across both rosters
-      -- Account-less family roster (0123) — manually added by an admin, so
-      -- they're vetted; they have no email_alerts pref and no RSVP row.
-      select btrim(fr.email)
-      from public.family_roster fr
-      where m.include_roster
-        and fr.linked_user_id is null
-        and nullif(btrim(fr.email), '') is not null
-      union
-      -- Account-less committee roster (0056) — same reasoning.
-      select btrim(cr.email)
-      from public.committee_roster cr
-      where m.include_roster
-        and cr.linked_user_id is null
-        and nullif(btrim(cr.email), '') is not null
-    );
+    (select jsonb_agg(i.item order by i.rank, i.created_at desc)
+       from items i where i.house_id is null),
+    (select jsonb_agg(
+              jsonb_build_object(
+                'houseId', h.id,
+                'name',    h.name,
+                'emoji',   h.emoji,
+                'items',   (select jsonb_agg(i.item order by i.rank, i.created_at desc)
+                              from items i where i.house_id = h.id),
+                'emails',  (select coalesce(array_agg(b.email), '{}'::text[])
+                              from bucketed b where b.bucket = h.id)
+              ) order by h.position, h.name
+            )
+       from public.houses h
+      where exists (select 1 from items i where i.house_id = h.id)),
+    (select coalesce(array_agg(b.email), '{}'::text[])
+       from bucketed b where b.bucket is null);
 end;
 $$;
 revoke all on function public.event_message_email(uuid) from public, anon, authenticated;
