@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { WorkItem } from "@/lib/types";
-import { fetchWorkItems, addWorkItemToEvent } from "@/lib/workItems";
+import type { House, WorkItem } from "@/lib/types";
+import { fetchWorkItems, addWorkItemToEvent, urgencyMeta } from "@/lib/workItems";
+import { fetchHouses } from "@/lib/houses";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 
@@ -32,18 +33,24 @@ export function EventWorkItemPicker({
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const [items, setItems] = useState<WorkItem[]>([]);
+  const [houses, setHouses] = useState<House[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchWorkItems().then((all) => {
+    Promise.all([fetchWorkItems(), fetchHouses()]).then(([all, hs]) => {
       setItems(all.filter((i) => i.status === "open" && !alreadyLinkedIds.has(i.id)));
+      setHouses(hs);
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const houseById = new Map(houses.map((h) => [h.id, h]));
+  const scopeLabel = (item: WorkItem) =>
+    item.houseId === null ? "🌲 Around the Resort" : `${houseById.get(item.houseId)?.emoji ?? "🏠"} ${houseById.get(item.houseId)?.name ?? "House"}`;
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -117,7 +124,20 @@ export function EventWorkItemPicker({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm">{item.title}</span>
-                  {item.category && <span className="text-[10px] text-faint">{item.category}</span>}
+                  {item.category && <span className="block text-[10px] text-faint">{item.category}</span>}
+                  <span className="mt-1 flex flex-wrap items-center gap-1">
+                    {item.urgency && (() => {
+                      const meta = urgencyMeta(item);
+                      return meta ? (
+                        <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${meta.chip}`}>
+                          {meta.emoji} {meta.label}
+                        </span>
+                      ) : null;
+                    })()}
+                    <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
+                      {scopeLabel(item)}
+                    </span>
+                  </span>
                 </span>
               </label>
             ))}
