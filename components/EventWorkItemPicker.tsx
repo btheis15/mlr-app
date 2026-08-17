@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
-import { fetchWorkItems, addWorkItemToEvent, urgencyMeta } from "@/lib/workItems";
+import { fetchWorkItems, addWorkItemToEvent, urgencyMeta, workItemScopeLabel } from "@/lib/workItems";
 import { fetchHouses } from "@/lib/houses";
 import { Sheet, SectionLabel } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
@@ -47,10 +47,6 @@ export function EventWorkItemPicker({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const houseById = new Map(houses.map((h) => [h.id, h]));
-  const scopeLabel = (item: WorkItem) =>
-    item.houseId === null ? "🌲 Around the Resort" : `${houseById.get(item.houseId)?.emoji ?? "🏠"} ${houseById.get(item.houseId)?.name ?? "House"}`;
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -135,7 +131,7 @@ export function EventWorkItemPicker({
                       ) : null;
                     })()}
                     <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
-                      {scopeLabel(item)}
+                      {workItemScopeLabel(item, houses)}
                     </span>
                   </span>
                 </span>

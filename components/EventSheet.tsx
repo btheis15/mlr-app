@@ -8,6 +8,7 @@ import {
   fetchEventWorkItems,
   fetchEventWorkItemHouseCounts,
   removeWorkItemFromEvent,
+  groupWorkItemsByScope,
   type EventWorkItemHouseCount,
 } from "@/lib/workItems";
 import { fetchHouses } from "@/lib/houses";
@@ -86,18 +87,15 @@ export function EventSheet({
     fetchHouses().then(setHouses);
   }, [event.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const houseById = new Map(houses.map((h) => [h.id, h]));
-  const mlrWorkItems = workItems.filter((i) => i.houseId === null);
-  const houseWorkItems = new Map<string, WorkItem[]>();
-  for (const item of workItems) {
-    if (item.houseId === null) continue;
-    const list = houseWorkItems.get(item.houseId) ?? [];
-    list.push(item);
-    houseWorkItems.set(item.houseId, list);
-  }
+  // Sections in position order (shared with WorkChecklist's own grouping) —
+  // "🌲 Around the Resort" first, then each house that has VISIBLE items.
+  const workItemSections = groupWorkItemsByScope(workItems, houses);
   // A house the viewer has a count for but no visible items in isn't one
-  // they're a member of — show its count, not its (invisible) details.
-  const hiddenHouseCounts = houseCounts.filter((hc) => !houseWorkItems.has(hc.houseId));
+  // they're a member of — show its count, not its (invisible) details. Order
+  // is inherited from houseCounts, which the 0189 RPC already returns by
+  // house position.
+  const visibleHouseIds = new Set(workItems.filter((i) => i.houseId !== null).map((i) => i.houseId as string));
+  const hiddenHouseCounts = houseCounts.filter((hc) => !visibleHouseIds.has(hc.houseId));
   const days = eventDays(event.startDate, event.endDate);
   const showDays = event.dayRsvp && days.length > 1;
   const myEffective = mine ? effectiveStatus(mine.status, mine.days) : null;
@@ -144,7 +142,14 @@ export function EventSheet({
     setWorkItems((cur) => cur.filter((i) => i.id !== item.id));
     const { error } = await removeWorkItemFromEvent(event.id, item.id);
     setRemovingItemId(null);
-    if (error) setWorkItems(prev);
+    if (error) {
+      setWorkItems(prev);
+      return;
+    }
+    // Keep houseCounts in lockstep — otherwise removing a house-scoped item's
+    // last visible row flips that section straight into a stale "🔒 N items
+    // planned" line for the very person who could see it a moment ago.
+    fetchEventWorkItemHouseCounts(event.id).then(setHouseCounts);
   };
 
   const when = isOngoing(event, today) ? "Happening now" : relativeDays(today, event.startDate);
@@ -344,28 +349,16 @@ export function EventSheet({
                 )}
               </div>
 
-              {mlrWorkItems.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="px-0.5 text-xs font-semibold text-foreground/60">🌲 Around the Resort</p>
+              {workItemSections.map((s) => (
+                <div key={s.key} className="space-y-1.5">
+                  <p className="px-0.5 text-xs font-semibold text-foreground/60">
+                    {s.emoji} {s.title}
+                  </p>
                   <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
-                    {mlrWorkItems.map(renderWorkItemRow)}
+                    {s.items.map(renderWorkItemRow)}
                   </div>
                 </div>
-              )}
-
-              {[...houseWorkItems.entries()].map(([houseId, items]) => {
-                const h = houseById.get(houseId);
-                return (
-                  <div key={houseId} className="space-y-1.5">
-                    <p className="px-0.5 text-xs font-semibold text-foreground/60">
-                      {h?.emoji ?? "🏠"} {h?.name ?? "House"}
-                    </p>
-                    <div className="divide-y divide-border overflow-hidden rounded-xl ring-1 ring-border">
-                      {items.map(renderWorkItemRow)}
-                    </div>
-                  </div>
-                );
-              })}
+              ))}
 
               {hiddenHouseCounts.map((hc) => (
                 <p
@@ -377,7 +370,7 @@ export function EventSheet({
                 </p>
               ))}
 
-              {mlrWorkItems.length === 0 && houseWorkItems.size === 0 && hiddenHouseCounts.length === 0 && (
+              {workItemSections.length === 0 && hiddenHouseCounts.length === 0 && (
                 <p className="text-xs text-faint">No work items yet.</p>
               )}
             </div>
