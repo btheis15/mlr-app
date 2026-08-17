@@ -19,10 +19,15 @@ export interface EventMessageInput {
   includeWorkItems?: boolean;
   /** Skip anyone who RSVP'd "Can't make it" (default true — the 0096 rule). */
   excludeNotAttending?: boolean;
+  /** Also email family on the roster who don't have an app account yet —
+   *  family_roster / committee_roster slots with an email but no linked
+   *  account (default true). */
+  includeRoster?: boolean;
 }
 
 /** Queue the email. Resolves with how many members it will reach (opted into
- *  email alerts, approved, minus "can't make it" when that's on) — the row is
+ *  email alerts, approved, plus account-less rostered family, minus "can't make
+ *  it" when that's on) — the row is
  *  picked up by the mini within seconds via Realtime, or on its next 3-minute
  *  sweep. */
 export async function sendEventMessage(
@@ -37,6 +42,7 @@ export async function sendEventMessage(
     p_body: input.body?.trim() || null,
     p_include_work_items: input.includeWorkItems ?? true,
     p_exclude_not_attending: input.excludeNotAttending ?? true,
+    p_include_roster: input.includeRoster ?? true,
   });
   if (error) {
     // Pre-migration (the RPC doesn't exist yet) — say so plainly rather than

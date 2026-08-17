@@ -35,6 +35,7 @@ export function EventMessageSheet({
   const [body, setBody] = useState("");
   const [includeWorkItems, setIncludeWorkItems] = useState(true);
   const [excludeNotAttending, setExcludeNotAttending] = useState(true);
+  const [includeRoster, setIncludeRoster] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentCount, setSentCount] = useState<number | null>(null);
@@ -54,6 +55,7 @@ export function EventMessageSheet({
       body,
       includeWorkItems,
       excludeNotAttending,
+      includeRoster,
     });
     setPending(false);
     if (err) { setError(err); return; }
@@ -85,10 +87,10 @@ export function EventMessageSheet({
       >
         <p className="text-sm text-foreground/70">
           {sentCount === 0
-            ? "Nobody has email alerts turned on right now, so there was no one to email. The event is still in the app for everyone."
-            : `Sending to ${sentCount} member${sentCount === 1 ? "" : "s"} who have email alerts on${
-                excludeNotAttending ? ", skipping anyone who said they can't make it" : ""
-              }.`}
+            ? "There was nobody to email — no one has an email address on file with alerts on. The event is still in the app for everyone."
+            : `Sending to ${sentCount} ${sentCount === 1 ? "person" : "people"}${
+                includeRoster ? ", including family on the roster who aren't on the app yet" : ""
+              }${excludeNotAttending ? ", skipping anyone who said they can't make it" : ""}.`}
         </p>
         {sentCount > 0 && (
           <p className="text-xs text-muted">
@@ -160,6 +162,42 @@ export function EventMessageSheet({
       </div>
 
       <div className="space-y-2">
+        <SectionLabel>Who gets it</SectionLabel>
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm font-medium">Include family who aren&rsquo;t on the app yet</span>
+            <span className="block text-xs text-muted">
+              Anyone added to the family or a committee roster with an email address, even without an
+              account. Turn this off to email only people who use the app.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={includeRoster}
+            onChange={(e) => setIncludeRoster(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+          <span className="min-w-0">
+            <span className="text-sm font-medium">Skip anyone who said they can&rsquo;t make it</span>
+            <span className="block text-xs text-muted">
+              Everyone else gets it, even if they haven&rsquo;t RSVP&rsquo;d yet.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={excludeNotAttending}
+            onChange={(e) => setExcludeNotAttending(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+          />
+        </label>
+        <p className="px-0.5 text-xs text-faint">
+          App members who turned email alerts off in their own profile are always skipped.
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <SectionLabel>What goes in it</SectionLabel>
         <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
           <span className="min-w-0">
@@ -177,20 +215,6 @@ export function EventMessageSheet({
             type="checkbox"
             checked={includeWorkItems}
             onChange={(e) => setIncludeWorkItems(e.target.checked)}
-            className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-          />
-        </label>
-        <label className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
-          <span className="min-w-0">
-            <span className="text-sm font-medium">Skip anyone who said they can&rsquo;t make it</span>
-            <span className="block text-xs text-muted">
-              Everyone else with email alerts on gets it, even if they haven&rsquo;t RSVP&rsquo;d yet.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            checked={excludeNotAttending}
-            onChange={(e) => setExcludeNotAttending(e.target.checked)}
             className="h-5 w-5 shrink-0 accent-[var(--color-primary)]"
           />
         </label>
