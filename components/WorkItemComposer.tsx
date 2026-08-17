@@ -55,6 +55,8 @@ export function WorkItemComposer({
   const [urgency, setUrgency] = useState<WorkItemUrgency>(item?.urgency ?? "this_year");
   const [customLabel, setCustomLabel] = useState(item?.customLabel ?? "");
   const [customColor, setCustomColor] = useState<WorkItemUrgencyColor>(item?.customColor ?? "blue");
+  const [recurring, setRecurring] = useState(item?.recurEveryYears != null);
+  const [recurYears, setRecurYears] = useState<number>(item?.recurEveryYears ?? 3);
   const [houseId, setHouseId] = useState<string | null>(item?.houseId ?? null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(preLinkedEventId ?? null);
   const [events, setEvents] = useState<ResortEvent[]>([]);
@@ -129,6 +131,7 @@ export function WorkItemComposer({
           urgency,
           customLabel: customLabel.trim(),
           customColor,
+          recurEveryYears: recurring ? recurYears : null,
           houseId,
         });
         if (err) throw new Error(err);
@@ -145,6 +148,7 @@ export function WorkItemComposer({
           urgency,
           customLabel: customLabel.trim(),
           customColor,
+          recurEveryYears: recurring ? recurYears : null,
           houseId,
         });
         if (err) throw new Error(err);
@@ -376,6 +380,54 @@ export function WorkItemComposer({
             </button>
           </span>
         </div>
+      </div>
+
+      {/* Recurring — comes back due every N years, no notification */}
+      <div className="space-y-2">
+        <SectionLabel>Does this repeat?</SectionLabel>
+        <button
+          type="button"
+          onClick={() => setRecurring((r) => !r)}
+          className={`press flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium ring-1 transition-colors ${
+            recurring ? "bg-primary/10 text-primary ring-primary/30" : "bg-card text-foreground/70 ring-border"
+          }`}
+        >
+          <span>🔁 Recurring — comes back on a schedule</span>
+          <span>{recurring ? "✓" : ""}</span>
+        </button>
+        {recurring && (
+          <div className="space-y-2 rounded-xl bg-card p-3 ring-1 ring-border">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground/70">Every how many years?</span>
+              <span className="flex items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="Fewer years"
+                  onClick={() => setRecurYears((n) => Math.max(1, n - 1))}
+                  disabled={recurYears <= 1}
+                  className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="w-8 text-center text-sm font-semibold tabular-nums">{recurYears}</span>
+                <button
+                  type="button"
+                  aria-label="More years"
+                  onClick={() => setRecurYears((n) => Math.min(15, n + 1))}
+                  disabled={recurYears >= 15}
+                  className="press flex min-h-11 min-w-11 items-center justify-center rounded-full bg-background text-lg ring-1 ring-border disabled:opacity-40"
+                >
+                  +
+                </button>
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              When checked off, this quietly reappears as a new open item on January 1st of the year it's next
+              due — so there's time to plan ahead before the season it's due. No notification is sent when it
+              comes back.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Link to an event (add mode only, when upcoming events exist, not when pre-linked) */}

@@ -116,6 +116,11 @@ export function WorkItemSheet({
             👥 {item.peopleNeeded} needed
           </span>
         )}
+        {item.recurEveryYears != null && (
+          <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-xs font-medium text-muted ring-1 ring-border">
+            🔁 Every {item.recurEveryYears} year{item.recurEveryYears === 1 ? "" : "s"}
+          </span>
+        )}
       </span>
       {item.status === "done" && (
         <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">

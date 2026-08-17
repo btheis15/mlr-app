@@ -407,6 +407,11 @@ function WorkItemRow({
               👥 {item.peopleNeeded} needed
             </span>
           )}
+          {item.recurEveryYears != null && (
+            <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
+              🔁 Every {item.recurEveryYears}yr{item.recurEveryYears === 1 ? "" : "s"}
+            </span>
+          )}
           {item.commentCount > 0 && (
             <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
               💬 {item.commentCount}

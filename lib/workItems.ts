@@ -78,13 +78,19 @@ function mapRow(r: Record<string, unknown>): WorkItem {
     createdBy: (r.created_by as string | null) ?? null,
     completedBy: (r.completed_by as string | null) ?? null,
     completedAt: (r.completed_at as string | null) ?? null,
+    recurEveryYears: (r.recur_every_years as number | null) ?? null,
+    surfaceOn: (r.surface_on as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
 }
 
 /** All work items the viewer can see (RLS returns MLR items + the viewer's house
- *  items), open first then done (newest-first within each group), with media. */
+ *  items), open first then done (newest-first within each group), with media.
+ *  A recurring item's auto-created next cycle carries a future `surfaceOn` (Jan 1
+ *  of the year it's next due) and is filtered out here until that date arrives —
+ *  it exists in the DB right away (so the recurrence isn't lost) but stays out of
+ *  sight so it doesn't pop back up mid-season, only once planning season starts. */
 export async function fetchWorkItems(): Promise<WorkItem[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   try {
@@ -93,7 +99,8 @@ export async function fetchWorkItems(): Promise<WorkItem[]> {
       .select("*, work_item_media(*), work_item_comments(count)")
       .order("status", { ascending: true })       // 'done' sorts after 'open'
       .order("created_at", { ascending: false });
-    return (data ?? []).map(mapRow);
+    const today = new Date().toISOString().slice(0, 10);
+    return (data ?? []).map(mapRow).filter((i) => !i.surfaceOn || i.surfaceOn <= today);
   } catch {
     return [];
   }
@@ -127,6 +134,8 @@ export async function createWorkItem(input: {
   customLabel?: string | null;
   customColor?: WorkItemUrgencyColor | null;
   houseId?: string | null;
+  /** Recurs every N years (1-15); null/undefined = one-off. */
+  recurEveryYears?: number | null;
 }): Promise<{ id?: string; error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { data, error } = await supabase.rpc("create_work_item", {
@@ -138,6 +147,7 @@ export async function createWorkItem(input: {
     p_urgency: input.urgency ?? null,
     p_custom_label: input.urgency === "custom" ? input.customLabel ?? null : null,
     p_custom_color: input.urgency === "custom" ? input.customColor ?? null : null,
+    p_recur_every_years: input.recurEveryYears ?? null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -275,6 +285,8 @@ export async function updateWorkItem(
     customLabel?: string | null;
     customColor?: WorkItemUrgencyColor | null;
     houseId?: string | null;
+    /** Recurs every N years (1-15); null/undefined = one-off. */
+    recurEveryYears?: number | null;
   },
 ): Promise<{ error?: string }> {
   if (!supabase) return { error: "Not connected" };
@@ -289,6 +301,7 @@ export async function updateWorkItem(
     p_urgency: input.urgency ?? null,
     p_custom_label: input.urgency === "custom" ? input.customLabel ?? null : null,
     p_custom_color: input.urgency === "custom" ? input.customColor ?? null : null,
+    p_recur_every_years: input.recurEveryYears ?? null,
   });
   return error ? { error: error.message } : {};
 }

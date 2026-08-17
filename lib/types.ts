@@ -360,6 +360,13 @@ export interface WorkItem {
   // Who marked it done + when (migration 0088) — null while status is 'open'.
   completedBy: string | null;
   completedAt: string | null;
+  // Recurring items (migration 0186): a task due every N years (1-15). When
+  // checked off, a fresh open copy is auto-created (no notification) dated to
+  // surface Jan 1 of the year it's next due, so people plan ahead all year
+  // instead of it popping back up mid-season. `surfaceOn` is only set on those
+  // auto-created copies — a normal item's is always null.
+  recurEveryYears: number | null;
+  surfaceOn: string | null;
   createdAt: string;
   updatedAt: string;
 }
