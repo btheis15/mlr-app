@@ -207,6 +207,7 @@ export const RESORT_EVENTS: ResortEvent[] = [
     dayRsvp: true,
     source: "admin",
     persisted: false,
+    createdBy: null,
   },
   {
     id: "up-north-4th-2026",
@@ -223,6 +224,7 @@ export const RESORT_EVENTS: ResortEvent[] = [
     dayRsvp: false,
     source: "admin",
     persisted: false,
+    createdBy: null,
   },
 ];
 

@@ -180,7 +180,7 @@ export function FestRsvp() {
           today={today}
           onSetStatus={(s, days) => setStatus(event.id, s, days)}
           onClose={() => setOpen(false)}
-          isAdmin={isAdmin}
+          canManage={isAdmin}
           initialDay={focusDay}
         />
       )}

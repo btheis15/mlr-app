@@ -13,9 +13,10 @@ import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { useSheetDismiss } from "@/lib/hooks";
 
 // The event detail sheet: dates, location, description, the RSVP control, an
-// optional per-day drill-down (Family Fest), and who's coming. Admins can edit or
-// delete a real (DB) event. Scaffolding + dismiss motion come from Sheet /
-// useSheetDismiss.
+// optional per-day drill-down (Family Fest), and who's coming. An admin OR the
+// event's own creator (`canManage`, migration 0187) can edit/delete a real (DB)
+// event and assign work items to it. Scaffolding + dismiss motion come from
+// Sheet / useSheetDismiss.
 
 export function EventSheet({
   event,
@@ -24,7 +25,7 @@ export function EventSheet({
   today,
   onSetStatus,
   onClose,
-  isAdmin = false,
+  canManage = false,
   onEdit,
   onChanged,
   initialDay = null,
@@ -39,7 +40,7 @@ export function EventSheet({
    *  an inline retry message. */
   onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void | Promise<boolean>;
   onClose: () => void;
-  isAdmin?: boolean;
+  canManage?: boolean;
   /** Open the admin composer to edit this event (real DB events only). */
   onEdit?: () => void;
   /** Reload the parent after a delete. */
@@ -128,7 +129,7 @@ export function EventSheet({
         </>
       }
       footer={
-        isAdmin && event.persisted ? (
+        canManage && event.persisted ? (
           <div className="flex items-center gap-2">
             {onEdit && (
               <button
@@ -238,11 +239,11 @@ export function EventSheet({
           )}
 
           {/* Work items planned for this event — always visible to admins */}
-          {(workItems.length > 0 || isAdmin) && (
+          {(workItems.length > 0 || canManage) && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <SectionLabel>Work items planned</SectionLabel>
-                {isAdmin && (
+                {canManage && (
                   <button
                     type="button"
                     onClick={() => setAddingWorkItem(true)}

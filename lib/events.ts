@@ -74,7 +74,7 @@ export async function fetchEvents(): Promise<ResortEvent[]> {
     try {
       const { data } = await sb
         .from("events")
-        .select("id, slug, kind, title, emoji, description, location, start_date, start_time, end_date, day_rsvp, source")
+        .select("id, slug, kind, title, emoji, description, location, start_date, start_time, end_date, day_rsvp, source, created_by")
         .order("start_date", { ascending: true });
       dbEvents = ((data ?? []) as EventRow[]).map(mapEventRow);
     } catch {
@@ -313,6 +313,7 @@ interface EventRow {
   end_date: string | null;
   day_rsvp: boolean;
   source: string;
+  created_by: string | null;
 }
 
 function mapEventRow(r: EventRow): ResortEvent {
@@ -330,6 +331,7 @@ function mapEventRow(r: EventRow): ResortEvent {
     dayRsvp: r.day_rsvp,
     source: (r.source as ResortEvent["source"]) ?? "admin",
     persisted: true,
+    createdBy: r.created_by ?? null,
   };
 }
 

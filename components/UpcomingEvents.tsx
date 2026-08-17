@@ -23,7 +23,7 @@ import type { AttendanceStatus, ResortEvent } from "@/lib/types";
 export function UpcomingEvents() {
   const { today } = useDemoDate();
   const ffSeason = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
-  const { isAdmin } = useIdentity();
+  const { isAdmin, userId } = useIdentity();
   const { events, summaries, mine, loading, canRsvp, setStatus } = useEvents();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -88,7 +88,7 @@ export function UpcomingEvents() {
           today={today}
           onSetStatus={(s, days) => setStatus(openEvent.id, s, days)}
           onClose={() => setOpenId(null)}
-          isAdmin={isAdmin}
+          canManage={isAdmin || (!!userId && openEvent.createdBy === userId)}
         />
       )}
     </section>

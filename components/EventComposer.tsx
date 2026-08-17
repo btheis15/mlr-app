@@ -8,11 +8,16 @@ import { useDemoDate } from "@/lib/DemoDateProvider";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { ReminderScheduler } from "@/components/ReminderScheduler";
+import { useIdentity } from "@/components/IdentityProvider";
 
-// Admin create/edit form for a resort event, in a bottom sheet (scaffolding +
-// dismiss motion from Sheet / useSheetDismiss). Family Fest isn't edited here —
-// it's synthesized from FAMILY_FEST. New events default to today; multi-day
-// events can offer the per-day RSVP drill-down.
+// Create/edit form for a resort event, in a bottom sheet (scaffolding + dismiss
+// motion from Sheet / useSheetDismiss). Any signed-in member can create an
+// event and assign work items to it (migration 0187) — e.g. spinning up a Work
+// Weekend and lining up its tasks without needing admin access; editing an
+// existing one is admin OR that event's own creator (gated by the caller only
+// mounting this for someone who's allowed to, and enforced again server-side).
+// Family Fest isn't edited here — it's synthesized from FAMILY_FEST. New events
+// default to today; multi-day events can offer the per-day RSVP drill-down.
 
 export const KINDS: { value: EventKind; label: string }[] = [
   { value: "work_weekend", label: "Work Weekend" },
@@ -31,6 +36,7 @@ export function EventComposer({
   onSaved: () => void;
 }) {
   const { today } = useDemoDate();
+  const { isAdmin } = useIdentity();
   const editing = Boolean(event);
   const { closing, close } = useSheetDismiss(onClose);
   const [title, setTitle] = useState(event?.title ?? "");
@@ -227,7 +233,10 @@ export function EventComposer({
             />
           </div>
 
-          {event?.persisted && (
+          {/* Scheduled reminders ride the admin-only broadcast queue (0097), so
+              this is hidden from a non-admin creator rather than offering a
+              control that would fail server-side. */}
+          {isAdmin && event?.persisted && (
             <div className="space-y-2">
               <SectionLabel>
                 Reminders <span className="font-normal normal-case text-faint">(optional)</span>

@@ -91,6 +91,9 @@ export default function EventsPage() {
     const m = mine[e.id];
     return m ? effectiveStatus(m.status, m.days) : null;
   };
+  // Any signed-in member can create an event (0187) — editing/deleting it, and
+  // assigning work items to it, is admin OR that event's own creator.
+  const canManageEvent = (e: ResortEvent) => isAdmin || (!!userId && e.createdBy === userId);
 
   const allUpcoming = today ? upcomingEvents(events, today) : [];
   // Events you've said you can't make tuck into their own collapsible group below
@@ -122,15 +125,15 @@ export default function EventsPage() {
         <MeetingSection surface="card" scope={{ type: "family" }} members={members} />
       )}
 
-      {isAdmin && isSupabaseConfigured && (
+      {isSupabaseConfigured && (
         <div className="flex gap-2">
           <button
-            onClick={() => setComposer({ mode: "new" })}
+            onClick={() => (user ? setComposer({ mode: "new" }) : promptSignIn())}
             className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
           >
             + New event
           </button>
-          {canOrganizePoll && (
+          {isAdmin && canOrganizePoll && (
             <button
               onClick={() => setComposePoll(true)}
               className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
@@ -182,7 +185,7 @@ export default function EventsPage() {
         <ComingSoonCTA
           icon="🌲"
           title="No events on the calendar yet"
-          note={isAdmin ? "Tap + New event to add the first one." : "Check back soon — events will show up here."}
+          note={isSupabaseConfigured ? "Tap + New event to add the first one." : "Check back soon — events will show up here."}
         />
       ) : (
         <>
@@ -261,9 +264,9 @@ export default function EventsPage() {
           today={today}
           onSetStatus={(s, days) => setStatus(openEvent.id, s, days)}
           onClose={() => setOpenId(null)}
-          isAdmin={isAdmin}
+          canManage={canManageEvent(openEvent)}
           onEdit={
-            isAdmin && openEvent.persisted
+            canManageEvent(openEvent) && openEvent.persisted
               ? () => {
                   setComposer({ mode: "edit", event: openEvent });
                   setOpenId(null);
