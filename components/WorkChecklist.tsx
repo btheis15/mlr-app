@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
-import { fetchWorkItems, markWorkItemDone, urgencyMeta, urgencyRank } from "@/lib/workItems";
+import { fetchWorkItems, markWorkItemDone, urgencyMeta, urgencyRank, groupWorkItemsByScope, type WorkScopeSection } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
 import { timeAgo } from "@/lib/format";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -26,13 +26,6 @@ interface MemberRow extends WorkItemMember {
 // collapse into a "X done" count so each section stays clean.
 
 const PREVIEW = 5;
-
-interface Section {
-  key: string;
-  title: string;
-  emoji: string;
-  items: WorkItem[];
-}
 
 // Snapshot shape for the shared SWR cache: item visibility is RLS-gated on
 // house membership (an MLR item is public, a house item only shows to that
@@ -118,19 +111,9 @@ export function WorkChecklist() {
 
   const signedIn = Boolean(user);
 
-  // Build sections: MLR (house_id null) first, then each house that has items,
-  // ordered by the house's position. Empty sections are dropped.
-  const houseById = new Map(houses.map((h) => [h.id, h]));
-  const sections: Section[] = [];
-  const mlr = items.filter((i) => i.houseId === null);
-  if (mlr.length) sections.push({ key: "mlr", title: "Around the Resort", emoji: "🌲", items: mlr });
-  for (const h of houses) {
-    const hi = items.filter((i) => i.houseId === h.id);
-    if (hi.length) sections.push({ key: h.id, title: h.name, emoji: h.emoji, items: hi });
-  }
-  // Fallback: items whose house isn't in the fetched list (shouldn't normally happen).
-  const orphans = items.filter((i) => i.houseId !== null && !houseById.has(i.houseId));
-  if (orphans.length) sections.push({ key: "other", title: "Other", emoji: "🔧", items: orphans });
+  // Sections: MLR (house_id null) first, then each house that has items,
+  // ordered by the house's position (shared with EventSheet's own grouping).
+  const sections: WorkScopeSection[] = groupWorkItemsByScope(items, houses);
 
   const totalOpen = items.filter((i) => i.status === "open").length;
   const totalDone = items.filter((i) => i.status === "done").length;

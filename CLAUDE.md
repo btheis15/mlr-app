@@ -2019,7 +2019,32 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   so attaching an already-listed task (e.g. "Take out Pier") no longer means
   re-typing it as a brand-new item. A ✕ on each linked item unlinks it from the
   event (`remove_work_item_from_event`, migration 0188 — same admin-or-creator
-  gate, never deletes the item itself from the checklist);
+  gate, never deletes the item itself from the checklist). **`EventSheet`'s
+  "Work items planned" list is grouped by scope** — "🌲 Around the Resort" then
+  one group per house, in house `position` order — via a shared
+  `groupWorkItemsByScope(items, houses)` helper in
+  [`lib/workItems.ts`](lib/workItems.ts) that `WorkChecklist` also uses now
+  (was duplicated inline in both), plus a matching single-item
+  `workItemScopeLabel()` for `EventWorkItemPicker`'s flat list. A house-scoped
+  item is RLS-gated (0066) to that house's members + admins, so a non-member's
+  `fetchEventWorkItems()` already silently drops those rows; a new
+  `event_work_item_house_counts()` RPC (migration
+  [`0189`](supabase/migrations/0189_event_work_item_house_counts.sql),
+  SECURITY DEFINER, ordered by house position, mirrors
+  `fest_schedule_signup_counts`' "aggregate is fine to reveal, specifics
+  aren't" shape) fills in a **"🔒 MJT House · 2 items planned — details only
+  visible to that house"** line instead of that house's items just vanishing
+  with no trace. ⚠️ **Gated on `is_approved_member()`** — a SECURITY DEFINER
+  read bypasses RLS entirely, so without that check a self-signed-up,
+  not-yet-approved account (the exact threat [`0181`](supabase/migrations/0181_member_approval.sql)/[`0183`](supabase/migrations/0183_verified_member_reads.sql)
+  exist for) could call it directly and read every house's name + item count
+  for any event, even though `houses`/`work_items` are themselves locked to
+  approved members (0183) — **any new SECURITY DEFINER read needs this same
+  check**, it's easy to add a bypass-everything function and forget the gate.
+  On the client, removing a work item from an event also **refetches the house
+  counts**, not just the items — otherwise unlinking the last visible item in
+  a house you belong to flips that section straight into a stale "🔒 N items
+  planned" line for yourself until the next full reload.
   [`EventComposer`](components/EventComposer.tsx) hides its
   **Reminders** section from a non-admin creator — scheduled reminders ride the
   admin-only broadcast queue (0097), so a member sees no control that would

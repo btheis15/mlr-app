@@ -4,7 +4,7 @@
 // SECURITY DEFINER RPCs. Degrades to safe no-ops with no backend.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency, WorkItemUrgencyColor } from "@/lib/types";
+import type { House, WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency, WorkItemUrgencyColor } from "@/lib/types";
 
 /** Display + sort metadata for each fixed urgency level (most urgent first).
  *  Chip uses Tailwind palette classes. `custom` has no fixed label/emoji/chip —
@@ -114,10 +114,79 @@ export async function fetchEventWorkItems(eventId: string): Promise<WorkItem[]> 
       .from("event_work_items")
       .select("work_item_id, work_items(*)")
       .eq("event_id", eventId);
+    // Sort client-side (open first then done, newest-first within each) —
+    // .order() on an embedded to-one relation orders the outer rows, not
+    // reliably by the joined columns; mirrors fetchWorkItems()' own order.
     return (data ?? [])
       .map((r: any) => r.work_items)
       .filter(Boolean)
-      .map(mapRow);
+      .map(mapRow)
+      .sort((a, b) =>
+        a.status !== b.status
+          ? a.status === "open" ? -1 : 1
+          : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+  } catch {
+    return [];
+  }
+}
+
+/** One scope section of the work checklist: MLR ("Around the Resort") or one
+ *  house. Shared by WorkChecklist (the full checklist) and EventSheet (an
+ *  event's linked items) so the grouping/ordering logic — and what to do with
+ *  an item whose house isn't in the fetched `houses` list — lives in one
+ *  place. `houses` should already be ordered by position (fetchHouses() is). */
+export interface WorkScopeSection {
+  key: string;
+  title: string;
+  emoji: string;
+  items: WorkItem[];
+}
+export function groupWorkItemsByScope(items: WorkItem[], houses: House[]): WorkScopeSection[] {
+  const houseById = new Map(houses.map((h) => [h.id, h]));
+  const sections: WorkScopeSection[] = [];
+  const mlr = items.filter((i) => i.houseId === null);
+  if (mlr.length) sections.push({ key: "mlr", title: "Around the Resort", emoji: "🌲", items: mlr });
+  for (const h of houses) {
+    const hi = items.filter((i) => i.houseId === h.id);
+    if (hi.length) sections.push({ key: h.id, title: h.name, emoji: h.emoji, items: hi });
+  }
+  // Fallback: an item whose house isn't in the fetched list (shouldn't normally happen).
+  const orphans = items.filter((i) => i.houseId !== null && !houseById.has(i.houseId));
+  if (orphans.length) sections.push({ key: "other", title: "Other", emoji: "🔧", items: orphans });
+  return sections;
+}
+
+/** "🌲 Around the Resort" or a house's "{emoji} {name}" for one item — the
+ *  single-item counterpart to groupWorkItemsByScope(), for a flat list (e.g.
+ *  EventWorkItemPicker) rather than sectioned groups. */
+export function workItemScopeLabel(item: Pick<WorkItem, "houseId">, houses: House[]): string {
+  if (item.houseId === null) return "🌲 Around the Resort";
+  const h = houses.find((x) => x.id === item.houseId);
+  return h ? `${h.emoji} ${h.name}` : "🔧 Other";
+}
+
+/** Per-house COUNTS of work items linked to an event, for every house — even
+ *  one the viewer isn't a member of (unlike fetchEventWorkItems, which is
+ *  RLS-scoped to MLR + the viewer's own house). Lets the event sheet show
+ *  "🔒 MJT House · 2 items" for a house the viewer can't see the details of,
+ *  instead of those items just silently vanishing (migration 0189). */
+export interface EventWorkItemHouseCount {
+  houseId: string;
+  name: string;
+  emoji: string;
+  count: number;
+}
+export async function fetchEventWorkItemHouseCounts(eventId: string): Promise<EventWorkItemHouseCount[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  try {
+    const { data } = await supabase.rpc("event_work_item_house_counts", { p_event_id: eventId });
+    return ((data ?? []) as { house_id: string; house_name: string; house_emoji: string; item_count: number }[]).map((r) => ({
+      houseId: r.house_id,
+      name: r.house_name,
+      emoji: r.house_emoji,
+      count: r.item_count,
+    }));
   } catch {
     return [];
   }
