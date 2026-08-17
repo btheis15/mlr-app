@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { WorkItem, WorkItemComment } from "@/lib/types";
-import { fetchWorkItemComments, addWorkItemComment, removeWorkItemComment, URGENCY_META } from "@/lib/workItems";
+import { fetchWorkItemComments, addWorkItemComment, removeWorkItemComment, urgencyMeta } from "@/lib/workItems";
 import { Sheet } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -103,11 +103,14 @@ export function WorkItemSheet({
         {item.createdAt ? ` · ${formatWhen(item.createdAt)}` : ""}
       </p>
       <span className="flex flex-wrap items-center gap-1.5">
-        {item.urgency && (
-          <span className={`inline-block rounded-md px-1.5 py-0.5 text-xs font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
-            {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
-          </span>
-        )}
+        {item.urgency && (() => {
+          const meta = urgencyMeta(item);
+          return meta ? (
+            <span className={`inline-block rounded-md px-1.5 py-0.5 text-xs font-semibold ring-1 ${meta.chip}`}>
+              {meta.emoji} {meta.label}
+            </span>
+          ) : null;
+        })()}
         {item.peopleNeeded != null && (
           <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-xs font-medium text-muted ring-1 ring-border">
             👥 {item.peopleNeeded} needed

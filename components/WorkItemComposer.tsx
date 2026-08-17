@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { House, ResortEvent, WorkItem, WorkItemMedia, WorkItemUrgency } from "@/lib/types";
+import type { House, ResortEvent, WorkItem, WorkItemMedia, WorkItemUrgency, WorkItemUrgencyColor } from "@/lib/types";
 import {
   createWorkItem,
   updateWorkItem,
@@ -10,6 +10,7 @@ import {
   addWorkItemMedia,
   removeWorkItemMedia,
   URGENCY_META,
+  CUSTOM_URGENCY_COLORS,
 } from "@/lib/workItems";
 import { fetchEvents, upcomingEvents } from "@/lib/events";
 import { uploadToMini, prepareImageForUpload, uploadErrorMessage, describeFailedUploads } from "@/lib/media";
@@ -52,6 +53,8 @@ export function WorkItemComposer({
   const [peopleNeeded, setPeopleNeeded] = useState<number>(item?.peopleNeeded ?? 0);
   const [status, setStatus] = useState<"open" | "done">(item?.status ?? "open");
   const [urgency, setUrgency] = useState<WorkItemUrgency>(item?.urgency ?? "this_year");
+  const [customLabel, setCustomLabel] = useState(item?.customLabel ?? "");
+  const [customColor, setCustomColor] = useState<WorkItemUrgencyColor>(item?.customColor ?? "blue");
   const [houseId, setHouseId] = useState<string | null>(item?.houseId ?? null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(preLinkedEventId ?? null);
   const [events, setEvents] = useState<ResortEvent[]>([]);
@@ -71,7 +74,7 @@ export function WorkItemComposer({
     fetchEvents().then((all) => setEvents(upcomingEvents(all, today)));
   }, [editing, preLinkedEventId]);
 
-  const canSubmit = title.trim().length > 0 && !pending;
+  const canSubmit = title.trim().length > 0 && !pending && (urgency !== "custom" || customLabel.trim().length > 0);
 
   // Upload the freshly-picked files to the mini + attach them to a work item.
   //
@@ -124,6 +127,8 @@ export function WorkItemComposer({
           status,
           peopleNeeded: parsed,
           urgency,
+          customLabel: customLabel.trim(),
+          customColor,
           houseId,
         });
         if (err) throw new Error(err);
@@ -138,6 +143,8 @@ export function WorkItemComposer({
           notes: notes.trim() || undefined,
           peopleNeeded: parsed,
           urgency,
+          customLabel: customLabel.trim(),
+          customColor,
           houseId,
         });
         if (err) throw new Error(err);
@@ -232,7 +239,7 @@ export function WorkItemComposer({
       <div className="space-y-2">
         <SectionLabel>How urgent?</SectionLabel>
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(URGENCY_META) as WorkItemUrgency[]).map((u) => (
+          {(Object.keys(URGENCY_META) as Exclude<WorkItemUrgency, "custom">[]).map((u) => (
             <ScopeChip
               key={u}
               label={`${URGENCY_META[u].emoji} ${URGENCY_META[u].label}`}
@@ -240,7 +247,34 @@ export function WorkItemComposer({
               onClick={() => setUrgency(u)}
             />
           ))}
+          <ScopeChip label="✏️ Custom" active={urgency === "custom"} onClick={() => setUrgency("custom")} />
         </div>
+        {urgency === "custom" && (
+          <div className="space-y-2 rounded-xl bg-card p-3 ring-1 ring-border">
+            <input
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+              placeholder='e.g. "By Labor Day"'
+              maxLength={40}
+              className={`${sel} w-full`}
+            />
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(CUSTOM_URGENCY_COLORS) as WorkItemUrgencyColor[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCustomColor(c)}
+                  aria-label={c}
+                  className={`press flex h-9 w-9 items-center justify-center rounded-full text-lg ring-2 transition-colors ${
+                    customColor === c ? "ring-primary" : "ring-transparent"
+                  }`}
+                >
+                  {CUSTOM_URGENCY_COLORS[c].emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scope: MLR (everyone) or a house */}

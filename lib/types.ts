@@ -320,8 +320,13 @@ export type WorkItemStatus = "open" | "done";
 
 /** How urgent a work item is — drives its chip + sort order (ASAP first).
  *  asap = needs doing right away · this_year = must happen this year ·
- *  nice_to_have = would be nice but isn't pressing. */
-export type WorkItemUrgency = "asap" | "this_year" | "nice_to_have";
+ *  next_year = fine to wait until next year · nice_to_have = would be nice
+ *  but isn't pressing · custom = a free-text wording + picked color, for a
+ *  more specific timing than the fixed tiers (e.g. "By Labor Day"). */
+export type WorkItemUrgency = "asap" | "this_year" | "next_year" | "nice_to_have" | "custom";
+
+/** Preset colors a custom urgency chip can use. */
+export type WorkItemUrgencyColor = "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "gray";
 
 /** A photo/video attached to a work item (so people can see what a task is about). */
 export interface WorkItemMedia {
@@ -345,6 +350,9 @@ export interface WorkItem {
   status: WorkItemStatus;
   peopleNeeded: number | null;
   urgency: WorkItemUrgency | null;
+  // Only set when urgency === "custom".
+  customLabel: string | null;
+  customColor: WorkItemUrgencyColor | null;
   houseId: string | null;
   media: WorkItemMedia[];
   commentCount: number;

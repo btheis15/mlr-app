@@ -4,19 +4,46 @@
 // SECURITY DEFINER RPCs. Degrades to safe no-ops with no backend.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency } from "@/lib/types";
+import type { WorkItem, WorkItemComment, WorkItemMedia, WorkItemStatus, WorkItemUrgency, WorkItemUrgencyColor } from "@/lib/types";
 
-/** Display + sort metadata for each urgency level (most urgent first). Chip uses
- *  Tailwind palette classes. */
-export const URGENCY_META: Record<WorkItemUrgency, { label: string; emoji: string; rank: number; chip: string }> = {
+/** Display + sort metadata for each fixed urgency level (most urgent first).
+ *  Chip uses Tailwind palette classes. `custom` has no fixed label/emoji/chip —
+ *  see `urgencyMeta()`, which fills those in from the item's own custom_label/
+ *  custom_color. */
+export const URGENCY_META: Record<Exclude<WorkItemUrgency, "custom">, { label: string; emoji: string; rank: number; chip: string }> = {
   asap:         { label: "ASAP",         emoji: "🔴", rank: 0, chip: "bg-red-500/15 text-red-700 ring-red-500/30" },
   this_year:    { label: "This year",    emoji: "🟡", rank: 1, chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
-  nice_to_have: { label: "Nice to have", emoji: "🟢", rank: 2, chip: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" },
+  next_year:    { label: "Next year",    emoji: "🔵", rank: 2, chip: "bg-blue-500/15 text-blue-700 ring-blue-500/30" },
+  nice_to_have: { label: "Nice to have", emoji: "🟢", rank: 3, chip: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" },
 };
 
-/** Sort rank for an item's urgency (unset sorts last). */
-export function urgencyRank(u: WorkItemUrgency | null): number {
-  return u ? URGENCY_META[u].rank : 3;
+/** Preset colors a custom urgency can pick, with matching emoji + chip classes. */
+export const CUSTOM_URGENCY_COLORS: Record<WorkItemUrgencyColor, { emoji: string; chip: string }> = {
+  red:    { emoji: "🔴", chip: "bg-red-500/15 text-red-700 ring-red-500/30" },
+  orange: { emoji: "🟠", chip: "bg-orange-500/15 text-orange-700 ring-orange-500/30" },
+  yellow: { emoji: "🟡", chip: "bg-amber-500/15 text-amber-700 ring-amber-500/30" },
+  green:  { emoji: "🟢", chip: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" },
+  blue:   { emoji: "🔵", chip: "bg-blue-500/15 text-blue-700 ring-blue-500/30" },
+  purple: { emoji: "🟣", chip: "bg-purple-500/15 text-purple-700 ring-purple-500/30" },
+  gray:   { emoji: "⚪", chip: "bg-gray-500/15 text-gray-700 ring-gray-500/30" },
+};
+
+/** Display metadata for any item's urgency — fixed tiers read from URGENCY_META;
+ *  `custom` builds its label/emoji/chip from the item's own custom_label/color. */
+export function urgencyMeta(item: Pick<WorkItem, "urgency" | "customLabel" | "customColor">): { label: string; emoji: string; chip: string } | null {
+  if (!item.urgency) return null;
+  if (item.urgency !== "custom") return URGENCY_META[item.urgency];
+  const color = item.customColor ?? "gray";
+  const { emoji, chip } = CUSTOM_URGENCY_COLORS[color];
+  return { label: item.customLabel ?? "Custom", emoji, chip };
+}
+
+/** Sort rank for an item's urgency (unset sorts last; custom sorts with "this year"). */
+export function urgencyRank(item: Pick<WorkItem, "urgency" | "customColor"> | WorkItemUrgency | null): number {
+  const u = item && typeof item === "object" ? item.urgency : item;
+  if (!u) return 4;
+  if (u === "custom") return 1.5;
+  return URGENCY_META[u].rank;
 }
 
 function mapMedia(rows: Record<string, unknown>[] | null | undefined): WorkItemMedia[] {
@@ -40,6 +67,8 @@ function mapRow(r: Record<string, unknown>): WorkItem {
     status: (r.status as WorkItemStatus) ?? "open",
     peopleNeeded: (r.people_needed as number | null) ?? null,
     urgency: (r.urgency as WorkItemUrgency | null) ?? null,
+    customLabel: (r.custom_label as string | null) ?? null,
+    customColor: (r.custom_color as WorkItemUrgencyColor | null) ?? null,
     houseId: (r.house_id as string | null) ?? null,
     media: mapMedia(r.work_item_media as Record<string, unknown>[] | undefined),
     commentCount: (() => {
@@ -95,6 +124,8 @@ export async function createWorkItem(input: {
   category?: string;
   peopleNeeded?: number | null;
   urgency?: WorkItemUrgency | null;
+  customLabel?: string | null;
+  customColor?: WorkItemUrgencyColor | null;
   houseId?: string | null;
 }): Promise<{ id?: string; error?: string }> {
   if (!supabase) return { error: "Not connected" };
@@ -105,6 +136,8 @@ export async function createWorkItem(input: {
     p_people_needed: input.peopleNeeded ?? null,
     p_house_id: input.houseId ?? null,
     p_urgency: input.urgency ?? null,
+    p_custom_label: input.urgency === "custom" ? input.customLabel ?? null : null,
+    p_custom_color: input.urgency === "custom" ? input.customColor ?? null : null,
   });
   if (error) return { error: error.message };
   return { id: data as string };
@@ -232,7 +265,17 @@ export async function markWorkItemDone(id: string): Promise<{ error?: string }> 
  *  the update_work_item RPC enforces this, migration 0079). */
 export async function updateWorkItem(
   id: string,
-  input: { title: string; notes?: string; category?: string; status: WorkItemStatus; peopleNeeded?: number | null; urgency?: WorkItemUrgency | null; houseId?: string | null },
+  input: {
+    title: string;
+    notes?: string;
+    category?: string;
+    status: WorkItemStatus;
+    peopleNeeded?: number | null;
+    urgency?: WorkItemUrgency | null;
+    customLabel?: string | null;
+    customColor?: WorkItemUrgencyColor | null;
+    houseId?: string | null;
+  },
 ): Promise<{ error?: string }> {
   if (!supabase) return { error: "Not connected" };
   const { error } = await supabase.rpc("update_work_item", {
@@ -244,6 +287,8 @@ export async function updateWorkItem(
     p_people_needed: input.peopleNeeded ?? null,
     p_house_id: input.houseId ?? null,
     p_urgency: input.urgency ?? null,
+    p_custom_label: input.urgency === "custom" ? input.customLabel ?? null : null,
+    p_custom_color: input.urgency === "custom" ? input.customColor ?? null : null,
   });
   return error ? { error: error.message } : {};
 }

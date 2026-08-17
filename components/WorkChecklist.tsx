@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { House, WorkItem } from "@/lib/types";
-import { fetchWorkItems, markWorkItemDone, URGENCY_META, urgencyRank } from "@/lib/workItems";
+import { fetchWorkItems, markWorkItemDone, urgencyMeta, urgencyRank } from "@/lib/workItems";
 import { fetchHouses, fetchMyHouse } from "@/lib/houses";
 import { timeAgo } from "@/lib/format";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -247,7 +247,7 @@ export function WorkChecklist() {
           // unrated, keeping the newest-first order within each urgency.
           const open = section.items
             .filter((i) => i.status === "open")
-            .sort((a, b) => urgencyRank(a.urgency) - urgencyRank(b.urgency));
+            .sort((a, b) => urgencyRank(a) - urgencyRank(b));
           const done = section.items
             .filter((i) => i.status === "done")
             .sort((a, b) => new Date(b.completedAt ?? b.updatedAt).getTime() - new Date(a.completedAt ?? a.updatedAt).getTime());
@@ -394,11 +394,14 @@ function WorkItemRow({
           <span className="mt-0.5 block text-xs text-muted leading-snug line-clamp-2">{item.notes}</span>
         )}
         <span className="mt-1 flex flex-wrap items-center gap-1">
-          {item.urgency && (
-            <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${URGENCY_META[item.urgency].chip}`}>
-              {URGENCY_META[item.urgency].emoji} {URGENCY_META[item.urgency].label}
-            </span>
-          )}
+          {item.urgency && (() => {
+            const meta = urgencyMeta(item);
+            return meta ? (
+              <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${meta.chip}`}>
+                {meta.emoji} {meta.label}
+              </span>
+            ) : null;
+          })()}
           {item.peopleNeeded != null && (
             <span className="inline-block rounded-md bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
               👥 {item.peopleNeeded} needed
