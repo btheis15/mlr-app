@@ -19,7 +19,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { EventLink } from "@/lib/types";
 import type { Media, MediaKind } from "@/lib/media";
 import { fetchProfiles } from "@/lib/roles";
-import { payActions, type Action, type MemberContact } from "@/lib/contact";
+import { payActions, type Action, type MemberContact, type PayPrefill } from "@/lib/contact";
 
 /** What's being asked for. The composer picks this FIRST and the form adapts. */
 export type HouseRequestKind = "purchase" | "idea" | "reimbursement";
@@ -666,7 +666,7 @@ export interface PayMethods {
  * 0021); `profiles` is members-readable, so an approver can resolve the
  * requester's options in order to actually pay them.
  */
-export async function fetchPayMethods(userId: string | null): Promise<PayMethods> {
+export async function fetchPayMethods(userId: string | null, prefill?: PayPrefill): Promise<PayMethods> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb || !userId) return { methods: [], resolved: false };
   try {
@@ -678,8 +678,19 @@ export async function fetchPayMethods(userId: string | null): Promise<PayMethods
       .eq("id", userId)
       .maybeSingle();
     if (error || !data) return { methods: [], resolved: false };
-    return { methods: payActions(data as MemberContact), resolved: true };
+    return { methods: payActions(data as MemberContact, prefill), resolved: true };
   } catch {
     return { methods: [], resolved: false };
   }
+}
+
+/**
+ * The pay-link pre-fill for a reimbursement: the total owed, plus a memo so the
+ * transaction is identifiable in someone's Venmo history months later. Uses the
+ * ACTUAL cost when a reviewer has corrected it, otherwise what was submitted.
+ */
+export function payPrefillFor(r: HouseRequest): PayPrefill {
+  // Plain hyphen, not an em dash — this is a payment memo that ends up in
+  // somebody's Venmo history, not prose.
+  return { amount: requestCost(r), note: `MLR: ${r.title}`.slice(0, 80) };
 }

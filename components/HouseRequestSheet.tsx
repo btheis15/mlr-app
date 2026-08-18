@@ -6,6 +6,7 @@ import {
   canDeleteRequest,
   deleteHouseRequest,
   fetchPayMethods,
+  payPrefillFor,
   requestCost,
   statusChip,
   statusLabel,
@@ -67,16 +68,21 @@ export function HouseRequestSheet({
   // can see what the payer is looking at); nobody else needs it.
   const showPayTo = request.kind === "reimbursement" && (canReview || request.mine);
   const [pay, setPay] = useState<PayMethods>({ methods: [], resolved: false });
+  // The total rides IN the pay link, so Venmo / Cash App / PayPal open with the
+  // figure already entered — nobody retypes an amount that's sitting right here,
+  // and nobody fat-fingers it. Recomputed when the reviewer corrects the cost.
+  const prefill = payPrefillFor(request);
   useEffect(() => {
     if (!showPayTo) return;
     let alive = true;
-    fetchPayMethods(request.createdBy).then((p) => {
+    fetchPayMethods(request.createdBy, prefill).then((p) => {
       if (alive) setPay(p);
     });
     return () => {
       alive = false;
     };
-  }, [showPayTo, request.createdBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefill is derived; key off its values so a corrected cost re-signs the links
+  }, [showPayTo, request.createdBy, prefill.amount, prefill.note]);
 
   const withdraw = async () => {
     if (!window.confirm("Take this request back?")) return;
@@ -230,7 +236,15 @@ export function HouseRequestSheet({
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-semibold">{m.label}</span>
                       <span className="block truncate text-xs text-muted">{m.value}</span>
-                      {m.note && <span className="block text-[11px] text-faint">{m.note}</span>}
+                      {/* Only promised where the amount really is in the link —
+                          Zelle has no deep link and Apple Cash can't be pre-filled. */}
+                      {m.prefilled && prefill.amount ? (
+                        <span className="block text-[11px] font-medium text-primary">
+                          opens with {formatMoney(prefill.amount)} filled in
+                        </span>
+                      ) : (
+                        m.note && <span className="block text-[11px] text-faint">{m.note}</span>
+                      )}
                     </span>
                     {m.preferred && (
                       <span className="shrink-0 rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -255,12 +269,14 @@ export function HouseRequestSheet({
                   </div>
                 );
               })}
-              {pay.methods.length > 1 && (
-                <p className="text-[11px] text-faint">
-                  Any of these work — use whichever you have. &ldquo;Prefers this&rdquo; is just a preference, not a
-                  restriction.
-                </p>
-              )}
+              <p className="text-[11px] text-faint">
+                {pay.methods.length > 1
+                  ? "Any of these work — use whichever you have. “Prefers this” is a preference, not a restriction. "
+                  : ""}
+                {pay.methods.some((m) => m.prefilled)
+                  ? "Double-check the amount in the pay app before you send — we fill it in, we can't send it for you."
+                  : ""}
+              </p>
             </div>
           )}
         </div>
