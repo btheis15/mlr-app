@@ -45,7 +45,7 @@ const { extractCapturedAt } = require("./captured-at");
 const { startCapturedAtBackfill } = require("./captured-at-backfill");
 const { startThumbnailBackfill } = require("./thumbnail-backfill");
 const { embedOne, toVectorLiteral } = require("./embed-client");
-const { start: startSearchIndexer } = require("./search-indexer");
+const { start: startSearchIndexer, ensureFresh: ensureSearchIndexFresh } = require("./search-indexer");
 const tiers = require("./media-tiers");
 const { usageFor, startUsageRefresh } = require("./media-usage");
 const { startMirrorSweep, deleteFileEverywhere, listRelFiles } = require("./mirror-sweep");
@@ -1645,6 +1645,12 @@ app.post("/search", searchLimiter, requireUser, express.json({ limit: "8kb" }), 
   const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
   const token = m && m[1];
   if (!token) return res.status(401).json({ error: "Sign in required." });
+
+  // 0) Bring the index up to date. The indexer no longer polls (it reacts to
+  //    content changes and to this call), so a search is one of the two things
+  //    that ever triggers a reconcile. Capped internally and never throws, so a
+  //    slow or failing reconcile can't delay or break the search itself.
+  await ensureSearchIndexFresh();
 
   // 1) Embed the query on the mini (on-device Apple NLContextualEmbedding).
   let vec;
