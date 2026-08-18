@@ -24,6 +24,33 @@ import { useMediaPicker, useSheetDismiss } from "@/lib/hooks";
 import { formatMoney } from "@/lib/format";
 
 /**
+ * Per-kind wording for the links block. The shared LinksEditor defaults to EVENT
+ * copy ("Button text, e.g. Sign up sheet"), which reads as nonsense when you're
+ * pasting an Amazon link for a vacuum — that mismatch is what made it unclear
+ * which box was which.
+ */
+const LINK_COPY: Record<HouseRequestKind, { heading: string; hint: string; urlPlaceholder: string; labelPlaceholder: string }> = {
+  purchase: {
+    heading: "Where to buy it",
+    hint: "Paste the link to the exact thing you mean, so nobody has to go hunting for it.",
+    urlPlaceholder: "amazon.com/…",
+    labelPlaceholder: "e.g. Amazon — 100 pack",
+  },
+  idea: {
+    heading: "Link to an example (optional)",
+    hint: "Only if you have one — a photo, a listing, anything that shows what you're picturing.",
+    urlPlaceholder: "amazon.com/… (optional)",
+    labelPlaceholder: "e.g. Something like these",
+  },
+  reimbursement: {
+    heading: "Link to what you bought (optional)",
+    hint: "Handy if the receipt photo isn't clear about what it was.",
+    urlPlaceholder: "homedepot.com/… (optional)",
+    labelPlaceholder: "e.g. Home Depot — deck stain",
+  },
+};
+
+/**
  * Add or edit a house request (migration 0195). The KIND is chosen first, as
  * three tiles, and the rest of the form adapts to it — an idea asks for almost
  * nothing (which is the point: the friction is why ideas never get written
@@ -391,16 +418,36 @@ export function HouseRequestComposer({
         </p>
       )}
 
+      {/* Two bare stacked inputs read as "which box do I put what in?" — so each
+          field is captioned, the placeholders describe the actual thing being
+          asked for, and the hint says what happens if the name is left blank. */}
       <div className="space-y-1.5">
-        <SectionLabel>{kind === "reimbursement" ? "Link to what you bought (optional)" : "Link to it"}</SectionLabel>
-        <LinksEditor links={links} onChange={setLinks} />
-        {kind === "purchase" && links.length === 0 && (
-          <p className="text-xs text-muted">Paste the Amazon / Home Depot link so nobody has to hunt for it.</p>
+        <SectionLabel>{LINK_COPY[kind].heading}</SectionLabel>
+        <p className="text-xs text-muted">{LINK_COPY[kind].hint}</p>
+        <LinksEditor
+          links={links}
+          onChange={setLinks}
+          showFieldLabels
+          urlPlaceholder={LINK_COPY[kind].urlPlaceholder}
+          labelPlaceholder={LINK_COPY[kind].labelPlaceholder}
+          addLabel={links.length === 0 ? "+ Add a link" : "+ Add another link"}
+        />
+        {links.some((l) => l.href.trim()) && (
+          <p className="text-xs text-faint">
+            Leave the name blank and it&rsquo;ll just show the website, like &ldquo;Open on amazon.com&rdquo;.
+          </p>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <SectionLabel>{kind === "reimbursement" ? "Receipt" : "Photo"} (optional)</SectionLabel>
+        <SectionLabel>{kind === "reimbursement" ? "Receipt photo (optional)" : "Photo (optional)"}</SectionLabel>
+        <p className="text-xs text-muted">
+          {kind === "reimbursement"
+            ? "A picture of the receipt, so whoever pays you back can see the total."
+            : kind === "purchase"
+              ? "A photo of the problem helps — e.g. the cabinet door that sticks."
+              : "A photo of what you're picturing, if you have one."}
+        </p>
         {/* A plain, always-mounted input next to a plain button — never behind a
             popup/menu. See CLAUDE.md's installed-iOS-PWA file-picker incident. */}
         <input
