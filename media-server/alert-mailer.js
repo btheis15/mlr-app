@@ -19,6 +19,10 @@
 // twice — even across reconnects/restarts.
 
 const { buildEventEmail } = require("./event-email-template");
+const {
+  buildHouseRequestEmail,
+  buildHouseRequestDecisionEmail,
+} = require("./house-request-email-template");
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -32,6 +36,15 @@ const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "";
 const USE_GMAIL = !SMTP_HOST && Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
 const ALERT_FROM = process.env.ALERT_FROM || (SMTP_USER ? `Muskellunge Lake Resort <${SMTP_USER}>` : "");
+
+/** The bare address out of a `Name <addr@host>` From header (or the string
+ *  itself). The House Requests emails NAME this address in their footer, so a
+ *  reader understands that the personal mailbox everything sends through isn't
+ *  the person who wrote the message. */
+function fromAddress() {
+  const m = /<([^>]+)>/.exec(ALERT_FROM);
+  return (m ? m[1] : ALERT_FROM || SMTP_USER || "").trim();
+}
 const APP_URL = (process.env.APP_URL || "https://mlr-app-omega.vercel.app").replace(/\/+$/, "");
 
 function enabled() {
@@ -653,6 +666,155 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     }
   }
 
+  // ── House requests (migration 0195) ────────────────────────────────────────
+  // Two emails, both link-free by design (see house-request-email-template.js):
+  //   1. a new request → that house's House Admins (+ every app admin), because
+  //      an approver may not open the app for days and an unseen request is the
+  //      whole problem the feature exists to fix;
+  //   2. the decision → the requester.
+  //
+  // ⚠️ THE REAL SENDER IS ALWAYS CC'd. Every app email leaves from one shared
+  // personal mailbox, so without a copy the person it went out "from" has no
+  // record of what was sent in their name — and the recipient has no idea who
+  // to answer. The template names them in the byline and explains the From
+  // address; the CC is the other half of that.
+  async function handleHouseRequest(row) {
+    if (!row || row.request_email_sent_at) return;
+    const { data: claimed } = await sb
+      .from("house_requests")
+      .update({ request_email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("request_email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return; // already handled
+
+    const [{ data: info, error }, { data: recips, error: rErr }] = await Promise.all([
+      sb.rpc("house_request_notification", { p_request: row.id }),
+      sb.rpc("house_request_approver_emails", { p_request: row.id }),
+    ]);
+    const d = (info || [])[0];
+    if (error || rErr || !d) {
+      console.error("[mailer] house_request lookup error:", (error || rErr || {}).message || "no data");
+      await sb.from("house_requests").update({ request_email_sent_at: null }).eq("id", row.id); // retry
+      return;
+    }
+    const emails = (recips || []).map((r) => r.recipient_email).filter(Boolean);
+    if (emails.length === 0) {
+      // Leave it claimed: there is nobody to tell, and re-running every 3
+      // minutes wouldn't change that. A House Admin named later gets the
+      // in-app notification and the board itself.
+      console.log(`[mailer] house_request ${row.id}: no approvers with an email`);
+      return;
+    }
+
+    const { subject, html, text } = buildHouseRequestEmail(d, { fromAddress: fromAddress() });
+    try {
+      await transport.sendMail({
+        from: ALERT_FROM,
+        to: ALERT_FROM,
+        bcc: emails,
+        // The requester gets their own copy of what went out for them, and
+        // replies from an approver reach them rather than the shared mailbox.
+        ...(d.requester_email ? { cc: d.requester_email, replyTo: d.requester_email } : {}),
+        subject,
+        text,
+        html,
+      });
+      console.log(`[mailer] house_request ${row.id} → ${emails.length} approver(s)`);
+    } catch (e) {
+      console.error("[mailer] house_request send failed:", e && e.message);
+      await sb.from("house_requests").update({ request_email_sent_at: null }).eq("id", row.id);
+    }
+  }
+
+  async function handleHouseRequestDecision(row) {
+    if (!row || row.decision_email_sent_at) return;
+    if (!["approved", "denied", "ordered", "received"].includes(row.status)) return;
+    const { data: claimed } = await sb
+      .from("house_requests")
+      .update({ decision_email_sent_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("decision_email_sent_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) return;
+
+    const { data: info, error } = await sb.rpc("house_request_notification", { p_request: row.id });
+    const d = (info || [])[0];
+    if (error || !d) {
+      console.error("[mailer] house_request_notification error:", error ? error.message : "no data");
+      await sb.from("house_requests").update({ decision_email_sent_at: null }).eq("id", row.id);
+      return;
+    }
+    if (!d.requester_email) {
+      console.log(`[mailer] house_request ${row.id}: requester has no email`);
+      return;
+    }
+
+    const { subject, html, text } = buildHouseRequestDecisionEmail(d, { fromAddress: fromAddress() });
+    try {
+      await transport.sendMail({
+        from: ALERT_FROM,
+        to: d.requester_email,
+        // The House Admin who decided gets a copy of the decision that went out
+        // under their name, and the requester's reply reaches them.
+        ...(d.reviewer_email && d.reviewer_email !== d.requester_email
+          ? { cc: d.reviewer_email, replyTo: d.reviewer_email }
+          : {}),
+        subject,
+        text,
+        html,
+      });
+      console.log(`[mailer] house_request ${row.id} decision (${row.status}) emailed`);
+    } catch (e) {
+      console.error("[mailer] house_request decision send failed:", e && e.message);
+      await sb.from("house_requests").update({ decision_email_sent_at: null }).eq("id", row.id);
+    }
+  }
+
+  // A House Admin CHANGED a request instead of deciding it (the "modify" arm of
+  // approve/deny/modify). Claimed as a request/sent PAIR rather than one column,
+  // so each separate edit can trigger its own notice — the cabin-edit idiom from
+  // migration 0104.
+  async function handleHouseRequestChange(row) {
+    if (!row || !row.change_notify_requested_at) return;
+    if (row.change_email_sent_at && row.change_email_sent_at >= row.change_notify_requested_at) return;
+    const { data: claimed } = await sb
+      .from("house_requests")
+      .update({ change_email_sent_at: row.change_notify_requested_at })
+      .eq("id", row.id)
+      .or(`change_email_sent_at.is.null,change_email_sent_at.lt.${row.change_notify_requested_at}`)
+      .select("id");
+    if (!claimed || claimed.length === 0) return;
+
+    const { data: info, error } = await sb.rpc("house_request_notification", { p_request: row.id });
+    const d = (info || [])[0];
+    if (error || !d || !d.requester_email) {
+      if (error) console.error("[mailer] house_request change lookup error:", error.message);
+      await sb.from("house_requests").update({ change_email_sent_at: null }).eq("id", row.id);
+      return;
+    }
+    const { subject, html, text } = buildHouseRequestDecisionEmail(d, {
+      fromAddress: fromAddress(),
+      outcome: "changed",
+    });
+    try {
+      await transport.sendMail({
+        from: ALERT_FROM,
+        to: d.requester_email,
+        ...(d.reviewer_email && d.reviewer_email !== d.requester_email
+          ? { cc: d.reviewer_email, replyTo: d.reviewer_email }
+          : {}),
+        subject,
+        text,
+        html,
+      });
+      console.log(`[mailer] house_request ${row.id} change emailed`);
+    } catch (e) {
+      console.error("[mailer] house_request change send failed:", e && e.message);
+      await sb.from("house_requests").update({ change_email_sent_at: null }).eq("id", row.id);
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -738,6 +900,34 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .order("created_at", { ascending: false })
       .limit(10);
     for (const row of eventMsgPending || []) await handleEventMessage(row);
+
+    // House requests: new ones needing an approver email, then decisions.
+    // Both tolerate the table not existing yet (pre-0195) — the select just
+    // errors and `data` is null, so the loop is a no-op.
+    const { data: houseReqPending } = await sb
+      .from("house_requests")
+      .select("id, status, request_email_sent_at, created_at")
+      .is("request_email_sent_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    for (const row of houseReqPending || []) await handleHouseRequest(row);
+
+    const { data: houseReqDecided } = await sb
+      .from("house_requests")
+      .select("id, status, decision_email_sent_at, reviewed_at")
+      .in("status", ["approved", "denied", "ordered", "received"])
+      .is("decision_email_sent_at", null)
+      .order("reviewed_at", { ascending: false })
+      .limit(10);
+    for (const row of houseReqDecided || []) await handleHouseRequestDecision(row);
+
+    const { data: houseReqChanged } = await sb
+      .from("house_requests")
+      .select("id, change_notify_requested_at, change_email_sent_at")
+      .not("change_notify_requested_at", "is", null)
+      .order("change_notify_requested_at", { ascending: false })
+      .limit(10);
+    for (const row of houseReqChanged || []) await handleHouseRequestChange(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -775,6 +965,17 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_messages" }, (payload) => {
         handleEventMessage(payload.new).catch((e) => console.error("[mailer] event message handle error:", e && e.message));
       })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_requests" }, (payload) => {
+        handleHouseRequest(payload.new).catch((e) => console.error("[mailer] house request handle error:", e && e.message));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "house_requests" }, (payload) => {
+        handleHouseRequestDecision(payload.new).catch((e) =>
+          console.error("[mailer] house request decision handle error:", e && e.message),
+        );
+        handleHouseRequestChange(payload.new).catch((e) =>
+          console.error("[mailer] house request change handle error:", e && e.message),
+        );
+      })
       .subscribe((status) => {
         console.log("[mailer] realtime:", status);
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -786,7 +987,9 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       });
   }
   subscribeRealtime();
-  console.log("[mailer] watching for alerts + cabin stay decisions/edits/cancellations + meeting proposals to email");
+  console.log(
+    "[mailer] watching for alerts + cabin stay decisions/edits/cancellations + meeting proposals + house requests to email",
+  );
 }
 
 module.exports = { start, enabled };

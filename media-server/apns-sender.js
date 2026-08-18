@@ -339,6 +339,9 @@ async function start() {
     "tournament_published", "tournament_match_ready", "tournament_champion",
     // Private activities (migration 0150) — invited to a private activity/game.
     "private_activity_invite",
+    // House requests (migration 0195) — same gating as web: a request waiting on
+    // a House Admin, and the decision going back to whoever asked.
+    "house_request_submitted", "house_request_decision",
     // Admin test notification (migration 0156) — override push, like help_urgent.
     "admin_test",
     // The "🔔 Activity tab" broadcast channel (send_broadcast_notification) —

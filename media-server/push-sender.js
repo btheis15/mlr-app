@@ -319,6 +319,11 @@ async function start() {
   const PUSHABLE_FEED_TYPES = new Set([
     "committee_join", "cabin_decision", "post_tag", "post_mention", "post_reply",
     "event_rsvp",
+    // House requests (migration 0195) — a request needing a House Admin's
+    // decision, and the decision landing back with whoever asked. Both ON by
+    // default (in DEFAULT_PUSH_TYPES; existing push-on members backfilled in
+    // 0195), since each only reaches the handful of people it concerns.
+    "house_request_submitted", "house_request_decision",
     // A new post on the Main Feed: the feed already fans a `new_post` row out to
     // every other member; relay it to a phone push, gated on push_types — ON by
     // default (in DEFAULT_PUSH_TYPES, existing push-on members backfilled in

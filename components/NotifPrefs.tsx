@@ -63,6 +63,17 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
     ],
   },
   {
+    title: "House requests",
+    rows: [
+      // Deliberately NOT adminOnly: a House Admin (migration 0194) is not an app
+      // admin, so hiding this behind `adminOnly` would take the switch away from
+      // exactly the people who receive it. A member who isn't an approver simply
+      // never gets one.
+      { value: "house_request_submitted", icon: "🧾", label: "New requests to decide", desc: "When someone in your house asks to buy something, suggests an idea, or wants paying back — House Admins get these" },
+      { value: "house_request_decision", icon: "✅", label: "My requests", desc: "When your own request is approved, turned down, ordered, or paid" },
+    ],
+  },
+  {
     title: "Work items",
     rows: [
       { value: "work_item_created", icon: "🔧", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },

@@ -289,6 +289,22 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   the house's calendar, chat, and to-do list; the full calendar (month grid +
   agenda) is `/house/calendar`. Now on **both** web and iOS (shared Supabase tables,
   so they sync). See CLAUDE.md → **Houses (scoped chat + work items)**.
+- **House Admins** — a leadership tier for houses (`profiles.house_admin`, migration
+  [`0194_house_admins.sql`](supabase/migrations/0194_house_admins.sql)), set at Admin →
+  Houses. **Only an app admin who is themselves in that house** can name one; changing
+  someone's house clears it. They approve that house's requests (below). "Resort Admins"
+  (the LEDO Trust) will slot in the same way for resort-wide scope — one predicate,
+  `can_review_house_request()`, is the seam.
+- **House requests** — ideas, purchases and reimbursements (migration
+  [`0195_house_requests.sql`](supabase/migrations/0195_house_requests.sql), `/house/requests`
+  + Admin → House requests). A member submits **💡 an idea**, **🛒 a Purchase Request**
+  (Amazon/Home Depot link + estimate + why), or **🧾 a Request Reimbursement** for
+  something already bought; a House Admin approves, changes or denies it with a note, then
+  marks it **ordered** and **received** — so "approved but nobody bought it" is a visible
+  state instead of a forgotten one. The requester hears every step in-app, on their phone,
+  and by email. Deliberately separate from the work-item to-do list, which keeps its own
+  more prominent place for things that actually *need* doing. See CLAUDE.md → **House
+  requests**.
 - **Home call-out stack** — temporary Home call-outs (future
   news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →

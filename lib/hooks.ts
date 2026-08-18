@@ -26,6 +26,12 @@ import {
 } from "@/lib/tournaments";
 import { fetchPrivateActivities, type PrivateActivity } from "@/lib/privateActivities";
 import { fetchDropBoxes, fetchDropBox, type DropBox } from "@/lib/dropBoxes";
+import {
+  fetchAllHouseRequests,
+  fetchHouseRequests,
+  fetchIsHouseAdmin,
+  type HouseRequest,
+} from "@/lib/houseRequests";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
 import { canEditFest } from "@/lib/festContent";
@@ -1230,6 +1236,121 @@ export function useHouseLists(houseId: string | null): {
     clearChecked,
     uncheckAll,
   };
+}
+
+/**
+ * Is the viewer a House Admin (migration 0194)? Cached the same way
+ * `useCanEditFest` is, and for the same reason: it gates the Approve/Deny
+ * controls on the requests board, so a slow resolve would pop them in a beat
+ * late (or worse, paint the read-only view to the person who's supposed to be
+ * deciding). uid-scoped, wiped on signOut, false for guests / pre-migration.
+ *
+ * Resolved from the REAL `userId`, not `effectiveUserId`: this is a permission,
+ * and an admin using "View as" is read-only anyway (every write no-ops while
+ * `previewAsId` is set), so previewing must not hand the previewed member's
+ * role to the admin or vice versa.
+ */
+export function useIsHouseAdmin(): boolean {
+  const { user, userId, previewAsId } = useIdentity();
+  const { data } = useCachedResource<boolean>(
+    user && userId && !previewAsId ? `isHouseAdmin.${userId}` : null,
+    false,
+    () => fetchIsHouseAdmin(userId),
+    { persist: previewAsId ? undefined : "local" },
+  );
+  return data;
+}
+
+/**
+ * A house's requests board (migration 0195), live. Mirrors `useHouseLists`: a
+ * house-scoped SWR cache + a debounced Realtime subscription filtered to this
+ * house, so a request someone else submits — or a decision a House Admin
+ * makes — lands without a refresh.
+ *
+ * Pass `houseId = null` (not in a house / still resolving) for an inert no-op.
+ * `canReview` only decides which buttons paint; RLS and the RPCs are the real
+ * gate, so an over-permissive value here can't grant anything.
+ */
+export function useHouseRequests(houseId: string | null): {
+  requests: HouseRequest[];
+  loading: boolean;
+  canReview: boolean;
+  reload: () => Promise<void>;
+} {
+  const { userId, isAdmin, previewAsId } = useIdentity();
+  const isHouseAdmin = useIsHouseAdmin();
+  const [schedule] = useDebouncedCallback(250);
+  // A preview session is read-only, so never paint reviewer controls in it.
+  const canReview = (isAdmin || isHouseAdmin) && !previewAsId;
+  const key =
+    isSupabaseConfigured && userId && houseId ? `houseRequests.${userId}.${houseId}.${canReview}` : null;
+  const { data: requests, loading, reload } = useCachedResource<HouseRequest[]>(
+    key,
+    [],
+    () => (houseId ? fetchHouseRequests(houseId, userId, canReview) : Promise.resolve([])),
+    { persist: previewAsId ? undefined : "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !houseId) return;
+    const channel = sb
+      .channel(`house-requests-${houseId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "house_requests", filter: `house_id=eq.${houseId}` },
+        () => schedule(reload),
+      )
+      // Attachments aren't house-scoped in their own row, so this one can't be
+      // filtered server-side; a debounced reload on any change is cheap.
+      .on("postgres_changes", { event: "*", schema: "public", table: "house_request_media" }, () =>
+        schedule(reload),
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [houseId, reload, schedule]);
+
+  return { requests, loading, canReview, reload };
+}
+
+/**
+ * Every house's requests, for the app-admin queue at /admin/house-requests.
+ * RLS already limits this to what the viewer may see, so a House Admin who
+ * somehow reached it only ever gets their own house's rows.
+ */
+export function useAllHouseRequests(): {
+  requests: HouseRequest[];
+  loading: boolean;
+  canReview: boolean;
+  reload: () => Promise<void>;
+} {
+  const { userId, isAdmin, previewAsId } = useIdentity();
+  const isHouseAdmin = useIsHouseAdmin();
+  const [schedule] = useDebouncedCallback(250);
+  const canReview = (isAdmin || isHouseAdmin) && !previewAsId;
+  const key = isSupabaseConfigured && userId ? `houseRequestsAll.${userId}.${canReview}` : null;
+  const { data: requests, loading, reload } = useCachedResource<HouseRequest[]>(
+    key,
+    [],
+    () => fetchAllHouseRequests(userId, canReview),
+    { persist: previewAsId ? undefined : "session" },
+  );
+
+  useEffect(() => {
+    const sb = supabase;
+    if (!isSupabaseConfigured || !sb || !userId) return;
+    const channel = sb
+      .channel(`house-requests-all-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "house_requests" }, () => schedule(reload))
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [userId, reload, schedule]);
+
+  return { requests, loading, canReview, reload };
 }
 
 /**
