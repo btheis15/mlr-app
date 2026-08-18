@@ -3294,16 +3294,42 @@ constraint via the mini):
   endpoint; NaturalLanguage is the right on-device tool.) Build/deploy:
   `embed-service/scripts/build-restart.sh`. Its shared secret + URL live in
   `media-server/.env` (`EMBED_SHARED_SECRET`, `EMBED_URL`).
-- **[`media-server/search-indexer.js`](media-server/search-indexer.js)** — a
-  side-job (like the moderation backfill) that reconciles `content_embeddings`
-  every ~2 min: embeds new/edited posts + chat (service-role → embed-service →
+- **[`media-server/search-indexer.js`](media-server/search-indexer.js)** — reconciles
+  `content_embeddings`: embeds new/edited posts + chat (service-role → embed-service →
   upsert) and prunes orphans (deleted/soft-deleted). It indexes *all* statuses;
   search-time RLS is the only scoping. Tolerates embed-service down / migration
   not yet run (logs + retries).
+  - ⚠️ **IT DOES NOT POLL.** It used to sweep every 2 minutes forever — four table
+    reads per pass whether anything had changed or not, and whether or not anyone
+    ever searched. It now runs in exactly two situations: **(1) content actually
+    changed** — a debounced (5s) Realtime event on `posts` / `post_comments` /
+    `committee_messages` / `house_messages`; **(2) somebody searched** — `/search`
+    awaits `ensureFresh()` first. Idle cost is one already-open websocket and
+    nothing else. There is deliberately **no boot sweep**: realtime covers
+    everything from startup, and whatever was missed while the mini was down gets
+    picked up by the next search.
+  - `ensureFresh()` waits at most ~6s (`SEARCH_INDEX_SEARCH_WAIT_MS`) and skips
+    entirely if a reconcile finished in the last 30s, so a big backfill can never
+    hold a search open and a flurry of searches costs one pass. It never throws —
+    a failed reconcile must not fail the search. Concurrent callers share one
+    in-flight pass.
+  - The realtime channel **resubscribes on drop** like the push/mail senders. That
+    matters more here than it looks: without polling, a dead channel would mean new
+    content isn't indexed until someone happens to search.
+  - If a source table were ever missing from the `supabase_realtime` publication,
+    it degrades to "indexed on search only" rather than never — the search-time
+    reconcile is the backstop for the whole design.
 - **`POST /search`** in [`media-server/server.js`](media-server/server.js) —
-  `requireUser` → embed the query on the mini → call `search_conversations` as
-  the caller (RLS) → return results. Client seam [`lib/search.ts`](lib/search.ts);
-  UI [`ConversationSearch`](components/ConversationSearch.tsx).
+  `requireUser` → **`ensureFresh()`** → embed the query on the mini → call
+  `search_conversations` as the caller (RLS) → return results. Client seam
+  [`lib/search.ts`](lib/search.ts); UI [`ConversationSearch`](components/ConversationSearch.tsx).
+- ⚠️ **`logs/server.err.log` has no rotation, so a tail of it is NOT current state.**
+  828 `[search-index] … delayed connect error: 111` lines accumulated during a past
+  outage and read as an ongoing failure long after the indexer was healthy — that
+  error text is Envoy/Kong phrasing with a *Linux* errno (111 = ECONNREFUSED; macOS
+  would be 61), i.e. it came from Supabase's gateway, not the local embed-service.
+  Before diagnosing from this file, check whether the error count is still
+  *increasing*.
 
 **Ranking is keyword-precise (migrations [`0130`](supabase/migrations/0130_search_hybrid.sql)
 + [`0131`](supabase/migrations/0131_search_keyword_precision.sql)).**

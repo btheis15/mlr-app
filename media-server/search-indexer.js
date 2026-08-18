@@ -27,10 +27,30 @@ const { embedTexts, toVectorLiteral, embedHealthy, EMBED_URL } = require("./embe
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-const FIRST_SWEEP_MS = Number(process.env.SEARCH_INDEX_FIRST_MS || 20 * 1000);
-const SWEEP_MS = Number(process.env.SEARCH_INDEX_SWEEP_MS || 2 * 60 * 1000);
 const EMBED_BATCH = Number(process.env.SEARCH_INDEX_BATCH || 48); // texts per embed call
 const PAGE = 1000; // rows per Supabase read page
+
+// ── Scheduling: NO POLLING ────────────────────────────────────────────────────
+// This used to sweep every 2 minutes forever, doing four table reads per pass
+// whether or not anything had changed and whether or not anyone ever searched.
+// It now runs in exactly two situations:
+//
+//   1. content actually CHANGED — a realtime event on one of the source tables,
+//      debounced so posting ten messages costs one reconcile;
+//   2. somebody SEARCHED — /search awaits a reconcile first, so results are
+//      never stale even if realtime dropped an event.
+//
+// Idle cost is therefore a single already-open websocket and nothing else. There
+// is deliberately no boot sweep either: realtime covers everything from startup,
+// and anything missed while the mini was down is picked up by the next search.
+const DEBOUNCE_MS = Number(process.env.SEARCH_INDEX_DEBOUNCE_MS || 5 * 1000);
+// A reconcile this recent is treated as good enough for an incoming search, so a
+// burst of searches doesn't each trigger their own pass.
+const FRESH_TTL_MS = Number(process.env.SEARCH_INDEX_FRESH_MS || 30 * 1000);
+// How long a search will WAIT for a reconcile before going ahead anyway. A big
+// backfill must never hold a search open — better slightly stale results now than
+// a spinner while 500 messages embed.
+const SEARCH_WAIT_MS = Number(process.env.SEARCH_INDEX_SEARCH_WAIT_MS || 6 * 1000);
 
 // Which surfaces to index. `hasDeleted` marks tables with a soft-delete tombstone
 // (committee/house chat); posts + comments have no deleted_at.
@@ -168,20 +188,98 @@ async function sweepOnce() {
   }
 }
 
+// ── On-demand reconcile, shared by realtime and /search ──────────────────────
+let lastDoneAt = 0;
+let inFlight = null;
+
+/** Run a reconcile, or join the one already running. Never throws. */
+function reconcileNow(reason) {
+  if (inFlight) return inFlight;
+  inFlight = sweepOnce()
+    .catch((e) => console.warn(`[search-index] reconcile error (${reason}): ${e && e.message}`))
+    .finally(() => {
+      lastDoneAt = Date.now();
+      inFlight = null;
+    });
+  return inFlight;
+}
+
+/**
+ * Called by /search before running a query, so a search always sees a current
+ * index — this is what replaces the old 2-minute poll.
+ *
+ * Waits at most `SEARCH_WAIT_MS`: if a large backfill is still going the search
+ * proceeds against whatever is already embedded rather than hanging. Skips
+ * entirely when a reconcile finished within FRESH_TTL_MS, so a flurry of searches
+ * costs one pass. Never throws — a failed reconcile must not fail the search.
+ */
+async function ensureFresh() {
+  try {
+    if (!inFlight && Date.now() - lastDoneAt < FRESH_TTL_MS) return;
+    const work = reconcileNow("search");
+    let timer;
+    await Promise.race([
+      work,
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, SEARCH_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+  } catch {
+    /* search proceeds regardless */
+  }
+}
+
+// ── Realtime: index when content actually changes ─────────────────────────────
+let channel = null;
+let reconnecting = false;
+let debounce = null;
+
+function subscribeRealtime(client) {
+  if (channel) client.removeChannel(channel);
+  const bump = (table) => {
+    // Coalesce a burst (a chat flurry, a bulk delete) into one reconcile.
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      debounce = null;
+      reconcileNow(`realtime:${table}`);
+    }, DEBOUNCE_MS);
+  };
+  channel = client.channel("search-index");
+  for (const src of SOURCES) {
+    channel = channel.on("postgres_changes", { event: "*", schema: "public", table: src.table }, () => bump(src.table));
+  }
+  channel.subscribe((status) => {
+    console.log(`[search-index] realtime: ${status}`);
+    // Same recovery the push/mail senders use — a dropped channel otherwise stays
+    // dead silently, and here that would mean new content never gets indexed
+    // until somebody searched.
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      if (!reconnecting) {
+        reconnecting = true;
+        setTimeout(() => {
+          reconnecting = false;
+          subscribeRealtime(client);
+        }, 5000);
+      }
+    }
+  });
+}
+
 function start() {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     console.warn("[search-index] not started (SUPABASE_URL / SERVICE key missing)");
     return;
   }
+  const client = sb();
+  if (!client) return;
   embedHealthy().then((ok) => {
     console.log(
       `[search-index] armed — embed-service ${ok ? "reachable" : "NOT reachable yet"} at ${EMBED_URL}; ` +
-        `first sweep in ${Math.round(FIRST_SWEEP_MS / 1000)}s, then every ${Math.round(SWEEP_MS / 60000)}m`
+        `no polling: indexes on content change (${Math.round(DEBOUNCE_MS / 1000)}s debounce) and on search`
     );
   });
-  const run = () => sweepOnce().catch((e) => console.warn(`[search-index] sweep error: ${e && e.message}`));
-  setTimeout(run, FIRST_SWEEP_MS);
-  setInterval(run, SWEEP_MS);
+  subscribeRealtime(client);
 }
 
-module.exports = { start, sweepOnce, reconcileSource };
+module.exports = { start, sweepOnce, reconcileSource, reconcileNow, ensureFresh };
