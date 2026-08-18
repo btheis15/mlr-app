@@ -1,18 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KIND_META,
   ageLabel,
+  fetchHouseAdmins,
   requestCost,
   reviewHouseRequest,
   setHouseRequestProgress,
   statusChip,
   statusLabel,
+  type HouseAdmin,
   type HouseRequest,
 } from "@/lib/houseRequests";
 import { formatMoney, plural } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { useIdentity } from "@/components/IdentityProvider";
+
+/**
+ * "Who hears about this if I act?" — resolved and NAMED before any reviewer
+ * action, because a decision also fans a co-admin notice out to the other House
+ * Admins (migration 0198) and that audience was previously invisible in the UI.
+ *
+ * Reads `profiles.house_admin` for the request's own house — the same predicate
+ * the server-side fan-out uses (0199) — so this can't drift from reality. The
+ * requester and the acting admin are filtered out here exactly as the server
+ * filters them.
+ */
+function useCoAdmins(request: HouseRequest): HouseAdmin[] | null {
+  const { userId } = useIdentity();
+  const [all, setAll] = useState<HouseAdmin[] | null>(null);
+  useEffect(() => {
+    if (!request.houseId) {
+      setAll([]);
+      return;
+    }
+    let alive = true;
+    fetchHouseAdmins(request.houseId).then((a) => {
+      if (alive) setAll(a);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [request.houseId]);
+  if (all === null) return null;
+  return all.filter((a) => a.id !== userId && a.id !== request.createdBy);
+}
+
+/** The one-line "and this tells…" disclosure shared by both action panels. */
+function TellsLine({ who, requesterName }: { who: HouseAdmin[] | null; requesterName: string }) {
+  if (who === null) return null;
+  return (
+    <p className="text-[11px] text-faint">
+      <span className="font-semibold">Tells:</span> {requesterName}
+      {who.length > 0 ? `, and ${who.map((a) => a.name).join(", ")}` : ""}
+      {who.length > 0 ? ` (${plural(who.length, "the other House Admin", "the other House Admins")})` : " — nobody else"}
+    </p>
+  );
+}
 
 /**
  * One request as a row. Shared by the member board and the admin queue so the
@@ -99,6 +144,7 @@ export function ReviewActions({
   const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const coAdmins = useCoAdmins(request);
 
   const act = async (approve: boolean) => {
     setBusy(approve ? "approve" : "deny");
@@ -149,8 +195,9 @@ export function ReviewActions({
       </div>
       <label className="flex items-center gap-2 text-xs text-muted">
         <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
-        Email them the decision
+        Email {request.createdByName} the decision
       </label>
+      <TellsLine who={coAdmins} requesterName={request.createdByName} />
       {error && <p className="text-xs text-accent">{error}</p>}
     </div>
   );
@@ -164,6 +211,7 @@ export function ReviewActions({
  */
 export function ProgressActions({ request, onDone }: { request: HouseRequest; onDone: () => void }) {
   const isReimbursement = request.kind === "reimbursement";
+  const coAdmins = useCoAdmins(request);
   const [open, setOpen] = useState(false);
   const [actual, setActual] = useState(request.actualCost != null ? String(request.actualCost) : "");
   const [orderNote, setOrderNote] = useState(request.orderNote ?? "");
@@ -246,6 +294,7 @@ export function ProgressActions({ request, onDone }: { request: HouseRequest; on
           Cancel
         </button>
       </div>
+      <TellsLine who={coAdmins} requesterName={request.createdByName} />
       {error && <p className="text-xs text-accent">{error}</p>}
     </div>
   );

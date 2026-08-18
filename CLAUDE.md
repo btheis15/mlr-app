@@ -736,6 +736,25 @@ house submits one of three kinds; a House Admin decides, then records what happe
   approved/denied/ordered/paid **and the changed case** so one switch governs your own
   request's whole lifecycle), and `house_request_handled` (migration
   [`0198`](supabase/migrations/0198_house_request_coadmin_notify.sql) → the OTHER approvers).
+- ⚠️⚠️ **INCIDENT: a house request emailed + pushed EVERY app admin (fixed by
+  [`0199`](supabase/migrations/0199_house_request_approvers_scoped.sql)).** 0195's
+  `_house_request_approvers` was "House Admins of this house **OR any app admin**", modeled
+  on `cabin_request` — the wrong analogy, since a cabin is a shared resort asset whereas a
+  house's own spending is exactly what the House Admins tier exists to keep inside the
+  house. One MJT House vacuum request reached all 7 app admins, 6 of whom have nothing to
+  do with that house. **The rule now: a house-scoped request notifies that house's House
+  Admins and NOBODY else — no app-admin fallback**, because re-admitting "any app admin"
+  under any condition is the bug. Consequence, accepted deliberately: a house with no House
+  Admin notifies nobody (the request still shows on the board). App admins keep full
+  ACCESS — `can_review_house_request()` is untouched; this governs who gets *contacted*.
+- ⚠️⚠️ **EVERY SEND MUST NAME ITS RECIPIENTS IN THE UI FIRST.** The audience above was
+  undiscoverable from inside the app — Brian only learned it after 6 people were emailed.
+  The composer now renders the resolved recipient list above the send button
+  ("Goes to: …", or a loud "Nobody will be notified" when a house has no House Admin), and
+  both reviewer panels carry a "Tells: …" line since a decision also fans a co-admin notice
+  out (0198). ⚠️ Both previews read **`profiles.house_admin` for that house — the same
+  predicate the server-side fan-out uses** — so they cannot drift; a preview built from a
+  second source is worse than none. Precedent: `event_message_preview()` (0192).
 - ⚠️ **CO-ADMIN VISIBILITY (0198).** A house can have several House Admins, and 0195 let
   each of them see a request arrive but **not what any of the others did about it** — so two
   admins could work the same queue blind, either double-ordering an item or each assuming
