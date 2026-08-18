@@ -43,6 +43,8 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   tournament_match_ready: "🎯",
   tournament_champion: "🥇",
   private_activity_invite: "🎉",
+  house_request_submitted: "🧾",
+  house_request_decision: "🧾",
   broadcast: "📣",
   admin_test: "🧪",
 };

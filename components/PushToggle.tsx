@@ -27,6 +27,8 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "help_response", label: "Responses to my request", desc: "When someone's on the way to help with your request — on by default" },
   { value: "work_item_created", label: "New work items", desc: "When someone adds a task to the checklist (resort-wide, or in your house)" },
   { value: "house_stay_created", label: "New stays at your house", desc: "When someone in your house adds a stay to the house calendar" },
+  { value: "house_request_submitted", label: "New requests to decide", desc: "When your house asks to buy something, suggests an idea, or wants paying back — House Admins get these, on by default" },
+  { value: "house_request_decision", label: "My requests", desc: "When your own request is approved, turned down, ordered, or paid — on by default" },
   { value: "meeting_proposed", label: "New meeting to schedule", desc: "When a meeting is proposed in a committee or house you're in" },
   { value: "meeting_scheduled", label: "Meeting set", desc: "When a proposed meeting is locked to a time" },
   { value: "chat_poll_created", label: "New quick poll", desc: "When someone starts a poll in a committee or house chat you're in" },

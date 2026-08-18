@@ -71,7 +71,9 @@ export type PushType =
   | "tournament_match_ready"
   | "tournament_champion"
   | "private_activity_invite"
-  | "signup_reminder";
+  | "signup_reminder"
+  | "house_request_submitted"
+  | "house_request_decision";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -106,6 +108,13 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   // member themself signed up for. Existing push-on members are backfilled
   // in migration 0159, mirroring 0037's help_request/help_response backfill.
   "signup_reminder",
+  // House requests (migration 0195) — both ON by default. Low-frequency and
+  // actionable in both directions: `submitted` only reaches that house's House
+  // Admins (and app admins), and `decision` only ever concerns a request the
+  // recipient made themself. Existing push-on members are backfilled in 0195,
+  // the 0159/0161/0163 pattern.
+  "house_request_submitted",
+  "house_request_decision",
 ];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
@@ -142,6 +151,8 @@ export type NotifType =
   | "tournament_match_ready"
   | "tournament_champion"
   | "private_activity_invite"
+  | "house_request_submitted"
+  | "house_request_decision"
   | "broadcast"
   | "admin_test";
 
@@ -181,6 +192,8 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "tournament_match_ready",
   "tournament_champion",
   "private_activity_invite",
+  "house_request_submitted",
+  "house_request_decision",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized

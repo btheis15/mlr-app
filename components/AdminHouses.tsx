@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { House } from "@/lib/types";
 import { fetchHouses, saveHouse, deleteHouse, setMemberHouse } from "@/lib/houses";
+import { setHouseAdmin } from "@/lib/houseRequests";
+import { useIdentity } from "@/components/IdentityProvider";
 import { Avatar } from "@/components/Avatar";
 import { MigrationHint } from "@/components/MigrationHint";
 import { SkeletonList } from "@/components/Skeleton";
@@ -33,11 +35,26 @@ interface MemberRow {
 // only, after the fetch) — never during SSR/render — so a cold first render
 // starts empty (the original default output), matching the prerendered HTML and
 // avoiding any hydration mismatch. Admin-only surface, so a singleton is fine.
-let adminHousesCache: { houses: House[]; members: MemberRow[]; rpcReady: boolean } | null = null;
+let adminHousesCache: {
+  houses: House[];
+  members: MemberRow[];
+  rpcReady: boolean;
+  houseAdminIds: string[];
+  houseAdminReady: boolean;
+} | null = null;
 
 export function AdminHouses() {
+  const { userId, previewAsId } = useIdentity();
   const [houses, setHouses] = useState<House[]>(adminHousesCache?.houses ?? []);
   const [members, setMembers] = useState<MemberRow[]>(adminHousesCache?.members ?? []);
+  // Who's a House Admin (migration 0194). Read straight off `profiles` rather
+  // than widening admin_members()' return type — house_admin is a non-PII
+  // boolean on a members-readable table, the same call migration 0181 makes for
+  // `approved`. `houseAdminReady` false = 0194 hasn't been applied yet.
+  const [houseAdminIds, setHouseAdminIds] = useState<Set<string>>(
+    new Set(adminHousesCache?.houseAdminIds ?? []),
+  );
+  const [houseAdminReady, setHouseAdminReady] = useState(adminHousesCache?.houseAdminReady ?? false);
   // Warm cache ⇒ paint immediately (no "Loading…"); the effect still refetches
   // below so the cached view is reconciled with the server.
   const [loading, setLoading] = useState(!adminHousesCache);
@@ -60,17 +77,36 @@ export function AdminHouses() {
     if (!adminHousesCache) setLoading(true);
     const hs = await fetchHouses();
     setHouses(hs);
+
+    // Pre-0194 this errors with 42703 (unknown column) — degrade to "no House
+    // Admins + no toggle", never to a broken panel.
+    let adminIds: string[] = [];
+    let adminsReady = false;
+    const ha = await sb.from("profiles").select("id, house_admin").eq("house_admin", true);
+    if (!ha.error) {
+      adminIds = ((ha.data ?? []) as { id: string }[]).map((r) => r.id);
+      adminsReady = true;
+    }
+    setHouseAdminIds(new Set(adminIds));
+    setHouseAdminReady(adminsReady);
+
     const viaRpc = await sb.rpc("admin_members");
     if (!viaRpc.error && viaRpc.data) {
       const rows = viaRpc.data as MemberRow[];
       setMembers(rows);
       setRpcReady(true);
-      adminHousesCache = { houses: hs, members: rows, rpcReady: true };
+      adminHousesCache = { houses: hs, members: rows, rpcReady: true, houseAdminIds: adminIds, houseAdminReady: adminsReady };
     } else {
       setRpcReady(false);
       // Cache the houses even when the members RPC isn't available yet (pre-
       // migration), so a revisit still paints the list instantly.
-      adminHousesCache = { houses: hs, members: adminHousesCache?.members ?? [], rpcReady: false };
+      adminHousesCache = {
+        houses: hs,
+        members: adminHousesCache?.members ?? [],
+        rpcReady: false,
+        houseAdminIds: adminIds,
+        houseAdminReady: adminsReady,
+      };
     }
     setLoading(false);
   };
@@ -113,12 +149,41 @@ export function AdminHouses() {
     const { error } = await run(m.id, () => setMemberHouse(m.id, hid));
     if (error) { window.alert(error || "Couldn't assign."); return; }
     const house = hid ? houses.find((h) => h.id === hid) ?? null : null;
+    // Moving houses drops the House Admin role with it (set_member_house clears
+    // it server-side, 0194) — reflect that here so the star doesn't linger.
+    if (hid !== m.house_id && houseAdminIds.has(m.id)) {
+      setHouseAdminIds((prev) => {
+        const s = new Set(prev);
+        s.delete(m.id);
+        if (adminHousesCache) adminHousesCache = { ...adminHousesCache, houseAdminIds: Array.from(s) };
+        return s;
+      });
+    }
     setMembers((prev) => {
       const next = prev.map((x) => (x.id === m.id ? { ...x, house_id: hid, house_name: house?.name ?? null } : x));
       // Keep the module cache in step so a remount doesn't paint the pre-assign
       // house/counts until the next background load reconciles.
       if (adminHousesCache) adminHousesCache = { ...adminHousesCache, members: next };
       return next;
+    });
+  };
+
+  // Assigning a member to a house gives up any House Admin role they held in the
+  // old one (set_member_house clears it, 0194) — mirror that locally so the star
+  // doesn't linger until the next background load.
+  const toggleHouseAdmin = async (m: MemberRow) => {
+    const next = !houseAdminIds.has(m.id);
+    const { error } = await run(m.id, () => setHouseAdmin(m.id, next));
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    setHouseAdminIds((prev) => {
+      const s = new Set(prev);
+      if (next) s.add(m.id);
+      else s.delete(m.id);
+      if (adminHousesCache) adminHousesCache = { ...adminHousesCache, houseAdminIds: Array.from(s) };
+      return s;
     });
   };
 
@@ -133,6 +198,13 @@ export function AdminHouses() {
 
   const counts = new Map<string, number>();
   for (const m of members) if (m.house_id) counts.set(m.house_id, (counts.get(m.house_id) ?? 0) + 1);
+
+  // ⚠️ The House Admin rule (migration 0194): you may only set House Admins for
+  // a house you are IN yourself. The RPC enforces it regardless; this is what
+  // keeps the control from appearing where it would only ever fail. Resolved
+  // from the real `userId` (this is a permission, and "View as" is read-only).
+  const myHouseId = members.find((x) => x.id === userId)?.house_id ?? null;
+  const canSetHouseAdmins = houseAdminReady && !!myHouseId && !previewAsId;
 
   return (
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
@@ -199,6 +271,20 @@ export function AdminHouses() {
         </MigrationHint>
       )}
 
+      {!houseAdminReady && !loading && (
+        <MigrationHint file="0194_house_admins.sql">To name House Admins,</MigrationHint>
+      )}
+
+      {houseAdminReady && !loading && (
+        <p className="text-xs text-muted">
+          <span className="font-semibold">House Admins</span> approve their house&rsquo;s requests — purchases, ideas
+          and reimbursements.{" "}
+          {myHouseId
+            ? "You can only set them for your own house."
+            : "You aren't in a house yourself, so you can't set any — assign yourself to one first."}
+        </p>
+      )}
+
       {/* Member assignment */}
       {rpcReady && (
         <>
@@ -240,6 +326,36 @@ export function AdminHouses() {
                         />
                       ))}
                     </div>
+                    {/* House Admin (migration 0194) — the control only appears
+                        for members of YOUR OWN house, since that's the only
+                        place you're allowed to set one. Everyone else just sees
+                        the badge, so who holds the role stays visible. */}
+                    {m.house_id && (
+                      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
+                        {canSetHouseAdmins && m.house_id === myHouseId ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleHouseAdmin(m)}
+                            disabled={busyId === m.id}
+                            aria-pressed={houseAdminIds.has(m.id)}
+                            className={`press rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition-colors disabled:opacity-50 ${
+                              houseAdminIds.has(m.id) ? "bg-accent text-white ring-accent" : "bg-card text-muted ring-border"
+                            }`}
+                          >
+                            {houseAdminIds.has(m.id) ? "★ House Admin" : "☆ Make House Admin"}
+                          </button>
+                        ) : (
+                          houseAdminIds.has(m.id) && (
+                            <span className="rounded-full bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent">
+                              ★ House Admin
+                            </span>
+                          )
+                        )}
+                        {houseAdminIds.has(m.id) && (
+                          <span className="text-[11px] text-faint">approves this house&rsquo;s requests</span>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}

@@ -273,6 +273,28 @@ export function plural(count: number, singular: string, pluralForm?: string): st
 }
 
 /**
+ * US dollars for the House Requests board (migration 0195) — the app's first
+ * real currency display, so it lives here rather than inline (the "all
+ * formatting goes through lib/format.ts" convention).
+ *
+ * Cents are dropped for a whole-dollar amount ("$40", not "$40.00") because
+ * that's how a family writes a price, but KEPT whenever there's a real
+ * fractional part ("$12.99") — rounding a stated cost would misreport it. A
+ * null/blank amount renders as an em dash, never "$0", so "nobody said what it
+ * costs" can't be mistaken for "it's free".
+ */
+export function formatMoney(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return "—";
+  const whole = Math.abs(amount % 1) < 0.005;
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  });
+}
+
+/**
  * Group an already-ordered list into consecutive runs that share a day key
  * (local "YYYY-MM-DD"), e.g. for day-separator headings in the feed/chat.
  * Keeps the input order; `getTs` pulls the timestamp out of each item.

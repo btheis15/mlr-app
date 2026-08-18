@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { setHouseRules } from "@/lib/houses";
-import { useResolvedHouse, useHouseCalendar, useHouseLists } from "@/lib/hooks";
+import { useResolvedHouse, useHouseCalendar, useHouseLists, useHouseRequests } from "@/lib/hooks";
 import { listSummary } from "@/lib/houseLists";
+import { summarize as summarizeRequests } from "@/lib/houseRequests";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isStayPast, stayLabel } from "@/lib/houseCalendar";
 import { formatDateRange } from "@/lib/format";
@@ -109,8 +110,22 @@ function HouseHubBody({
       ? `${topList.emoji} ${topList.title} · ${listSummary(topList)}${lists.length > 1 ? ` · +${lists.length - 1} more` : ""}`
       : "Shopping lists, checklists — start one for the house.";
 
+  // The Requests row's live subtitle — leads with whatever needs a human:
+  // something waiting on a decision first, then something approved that nobody
+  // has actually bought yet (the gap the feature exists to expose).
+  const { requests, loading: requestsLoading } = useHouseRequests(houseId);
+  const reqSummary = summarizeRequests(requests);
+  const requestsSubtitle = requestsLoading
+    ? "Loading…"
+    : reqSummary.waiting > 0
+      ? `${reqSummary.waiting} waiting on a decision${reqSummary.notOrdered > 0 ? ` · ${reqSummary.notOrdered} approved, not bought` : ""}`
+      : reqSummary.notOrdered > 0
+        ? `${reqSummary.notOrdered} approved — nobody's bought ${reqSummary.notOrdered === 1 ? "it" : "them"} yet`
+        : "Ideas, things to buy, money to pay back.";
+
   const calHref = `/house/calendar?house=${slug}`;
   const listsHref = `/house/lists?house=${slug}`;
+  const requestsHref = `/house/requests?house=${slug}`;
   const chatHref = `/posts?house=${slug}`;
   const [emailOpen, setEmailOpen] = useState(false);
 
@@ -196,10 +211,35 @@ function HouseHubBody({
       {/* House rules — a self-titled card, effectively its own section. */}
       <HouseRulesCard houseId={houseId} initialRules={rules} />
 
-      {/* Work items — the house's to-do list (the checklist also shows MLR items). */}
+      {/* Work items — the house's to-do list (the checklist also shows MLR items).
+          Kept ABOVE Requests and left with its own full-width card + urgency
+          chips: these are the things that NEED doing, and they must not read as
+          the same weight as the "should we?" board below. */}
       <section className="space-y-2">
         <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">To-do list</h2>
         <WorkChecklist />
+      </section>
+
+      {/* Requests — deliberately a separate, lighter section than the to-do list
+          above: ideas and purchases to DECIDE on, not jobs to do. */}
+      <section className="space-y-2">
+        <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Requests &amp; ideas</h2>
+        <Link
+          href={requestsHref}
+          className="press flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm"
+        >
+          <span aria-hidden className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sun/12 text-2xl">🧾</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Requests</p>
+            <p className="mt-0.5 truncate text-xs text-foreground/60">{requestsSubtitle}</p>
+          </div>
+          {reqSummary.waiting > 0 && (
+            <span className="shrink-0 rounded-full bg-sun/20 px-2 py-0.5 text-[11px] font-bold tabular-nums">
+              {reqSummary.waiting}
+            </span>
+          )}
+          <span className="shrink-0 text-lg leading-none text-foreground/40" aria-hidden>›</span>
+        </Link>
       </section>
     </div>
   );

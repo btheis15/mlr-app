@@ -31,6 +31,7 @@ const CARDS: {
   { href: "/admin/committees", emoji: "👥", tile: "bg-sun/12", title: "Committees & join requests", sub: "Who's in each + pending requests" },
   { href: "/admin/houses", emoji: "🏠", tile: "bg-primary/12", title: "Houses", sub: "Create houses & assign members" },
   { href: "/admin/cabins", emoji: "🏡", tile: "bg-lake/12", title: "Cabin requests", sub: "Approve room stay requests" },
+  { href: "/admin/house-requests", emoji: "🧾", tile: "bg-accent/12", title: "House requests", sub: "Approve purchases, ideas & reimbursements" },
   { href: "/admin/help-contact", emoji: "☎️", tile: "bg-campfire/12", title: "Help contact", sub: "Who the Help page says to text or call" },
   { href: "/admin/signins", emoji: "🔐", tile: "bg-dusk/12", title: "Sign-ins", sub: "Who joined & recent sign-ins" },
   { href: "/admin/system", emoji: "🖥️", tile: "bg-primary/12", title: "Media server", sub: "Pull latest code & restart the mac mini", ownerOnly: true },

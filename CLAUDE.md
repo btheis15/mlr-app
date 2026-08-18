@@ -646,6 +646,145 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   `HousesService` stay CRUD + realtime, `HouseCalendarView` (month grid + agenda),
   `HouseStayComposer`, `HouseHubView`, and a self-hiding House Hub card on Home.
 
+### House Admins (migration 0194)
+
+Houses were deliberately flat — no lead/organizer tier anywhere (`can_organize_meeting`,
+0116, even states "Houses are admin-only"). **House Admins** add that tier so a house can
+run its own money decisions (see **House requests** below) without funnelling everything
+through an app admin. Same minimal shape as `0177_committee_level_leads.sql`: one additive
+boolean, one inlined predicate, no new tables.
+
+- **`profiles.house_admin`** — a member belongs to at most one house, so this can only
+  ever mean "admin of MY house" and needs no house id of its own (a direct mirror of
+  `is_admin`). **Not in any client update grant**, so `set_house_admin()` is the only
+  write path — the same escalation guard as `is_admin`/`house_id`.
+- ⚠️ **Who can appoint one: an App Admin who is THEMSELVES in that house.** Not any app
+  admin, and *not* a House Admin promoting peers (unlike committee leads, who can). The
+  RPC raises a distinct message per failure so the UI can say why. There is deliberately
+  **no in-app bootstrap** — if no app admin is assigned to a house, the first House Admin
+  there is set by hand in the SQL editor, exactly how the first app admin was (0008).
+- **`is_house_admin(hid)`** is strict — **no app-admin override**, mirroring
+  `is_committee_lead`. It answers "who actually holds the role" and drives the
+  notification fan-out + the "ask one of these people" list, neither of which should
+  silently mean "every app admin". Use **`can_review_house_request(hid)`** (app admin OR
+  House Admin) for permission checks.
+- ⚠️ **`can_review_house_request()` IS THE SEAM FOR THE LEDO TRUST.** "Resort Admins" (the
+  LEDO Trust) will be the approver tier for resort-wide requests — `house_id is null`, the
+  `work_items` convention from 0066. Widen that function's null branch with an
+  `or is_ledo_trustee()` and every RPC, policy and screen picks it up untouched.
+- ⚠️ **Changing houses clears the flag.** `set_member_house` was recreated (from 0064,
+  verified as its only definition — the 0160/0187 rule) to set `house_admin = false`
+  whenever the house actually changes. Without it, someone reassigned from House A to B
+  keeps the flag and silently becomes an approver of B, since `is_house_admin` keys on the
+  *current* `house_id` — a privilege escalation via an unrelated admin action.
+- `admin_members()` is deliberately **untouched** — widening its return type is a risky
+  DROP+CREATE, and `profiles` is members-readable with `house_admin` a non-PII boolean, so
+  the client just reads it directly and joins client-side (migration 0181 gives the same
+  reasoning for `profiles.approved`).
+- **UI:** Admin → Houses ([`AdminHouses`](components/AdminHouses.tsx)) — a ★ toggle on each
+  member chip, rendered only for members of the viewer's own house; everyone else sees the
+  badge read-only so who holds the role stays visible.
+
+## House requests — ideas, purchases & reimbursements (migration 0195)
+
+The path from "somebody noticed the cabinet bumpers are shot" to "somebody who controls
+house funds decided and ordered them" — built because ideas kept dying in conversation
+("we need to stop just only coming up with ideas and actually do it"). Any member of a
+house submits one of three kinds; a House Admin decides, then records what happened.
+
+- **💡 Idea** — "we should have European-style dressers someday." No link or cost
+  required; deliberately the lowest-friction kind, since the friction IS the problem.
+  **🛒 Purchase Request** — link + estimate + quantity + why. **🧾 Request Reimbursement**
+  — "I already bought it", amount required (the RPC rejects one without it), optional
+  receipt photo, and the composer warns you up front if your profile has no payment
+  method, since otherwise nobody knows where to send the money.
+- ⚠️ **The status ladder is the whole point:** `pending → approved → ordered → received`
+  (a reimbursement skips `ordered` — the RPC refuses it — and `received` reads "Paid").
+  **`approved` is NOT terminal**: "approved but nobody bought it" is the actual failure
+  mode, so it's a first-class visible state and its own section in the reviewer queue,
+  not something indistinguishable from done.
+- ⚠️ **NOT work items, and never merged with them.** [`work_items`](lib/workItems.ts) stays
+  the more prominent list of things that NEED doing (urgency tiers, recurrence, event
+  linking). This is the separate "should we?" board. Neither creates the other, there is
+  deliberately **no repair/fix kind**, and on the House Hub the to-do list sits **above**
+  Requests keeping its full-width card + urgency chips so "must do" never flattens into
+  "maybe". Both the composer and the board footer point broken things at the to-do list.
+- **Data model:** `house_requests` (+ `house_request_media`, a `work_item_media` mirror
+  with a `hold_house_request_media_on_flagged` trigger copied from 0171). Members-read —
+  **the whole house sees the whole board**, which is what makes a stuck request visible;
+  ⚠️ that also means a reimbursement *amount* is visible to every member of that house, a
+  deliberate call for a shared house fund. **Zero write policies** — every write goes
+  through a SECURITY DEFINER RPC: `create_house_request`, `update_house_request`
+  (creator-while-pending OR a reviewer any time — this is the "modify" in
+  approve/deny/modify), `review_house_request`, `set_house_request_progress`,
+  `withdraw_house_request`, `add_/remove_house_request_media`.
+- **Attachments reuse the existing `category:"work"` upload path**, so the whole feature
+  needed **no media-server change for uploads** — files land under `work/<ym>/` and are
+  moderated in the background like anything else.
+- **Every reviewer action carries an optional note, and the note travels on every
+  channel** — in-app body, phone push body, and the email. Approve/deny take one in
+  `ReviewActions`; marking ordered takes a "where from / order #" that rides the push too;
+  and ⚠️ **a reviewer's EDIT notifies the requester** (`update_house_request` gained
+  `p_note`/`p_notify` + `change_note`), because silently rewriting someone's ask and then
+  approving "their" request is the one move here that could feel like being overruled
+  behind your back. A creator editing their own pending request notifies nobody. The
+  change email is a **request/sent claim PAIR** (`change_notify_requested_at` /
+  `change_email_sent_at`, the 0104 cabin-edit idiom) so each separate edit can fire its
+  own notice; it restates what the request says NOW, since the reader's copy is stale.
+- **Notifications:** two kinds — `house_request_submitted` (→ that house's House Admins +
+  app admins) and `house_request_decision` (→ the requester, reused for
+  approved/denied/ordered/paid **and the changed case** so one switch governs your own
+  request's whole lifecycle).
+  Both default ON in `notif_types` *and* backfilled into `push_types` for members who
+  already have push on (the 0159/0161/0163 pattern), in both mini senders' pushable sets.
+  Their `NotifPrefs` rows are deliberately **not `adminOnly`** — a House Admin is not an
+  app admin, so that flag would hide the switch from exactly the people who receive it.
+- **Email** ([`media-server/house-request-email-template.js`](media-server/house-request-email-template.js),
+  preview: `node scripts/preview-house-request-email.js`) — its own module so the preview
+  can't drift from the send, and deliberately NOT sharing the event template. Two builders:
+  the new-request email to approvers (the important one — an approver may go days without
+  opening the app) and the decision email to the requester.
+  - ⚠️ **NO LINK TO THE APP, anywhere, by decision.** A member who installed MLR to their
+    Home Screen has their signed-in session in *that* container; a bare link opens the
+    browser, which on iOS is a separate signed-out session — so a link would cost them a
+    re-sign-in rather than save one. The email names the screen in plain text ("House ›
+    Requests") and says how many others are waiting, so "check the app" is a concrete
+    errand. Product links (Amazon, Home Depot) ARE kept — they're the substance of a
+    purchase request and have no session to lose.
+  - ⚠️ **The real sender is NAMED and CC'd on every send.** All app email leaves from one
+    shared personal mailbox, so without this a cousin's request arrives looking like the
+    mailbox owner wrote it, and nobody knows who to answer. The requester (or the deciding
+    House Admin) is the byline subject, is CC'd so they hold a copy of what went out in
+    their name, gets `replyTo`, and a footer states plainly that the From address is the
+    app's one sending account, not the author.
+  - ⚠️ **`set_house_request_progress` re-opens `decision_email_sent_at`** (sets it back to
+    null on a forward step). The approval email already claimed that column and the mailer
+    only sends where it's null — so without this, Ordered/Paid would fire the in-app
+    notification and push but **silently never email**.
+- **Surfaces:** `/house/requests` ([`HouseRequestsScreen`](components/HouseRequestsScreen.tsx),
+  non-dynamic + `?house=<slug>` like the rest of `/house/*`, `?request=<id>` deep-link with
+  the scroll+flash ring) · a Requests section on the House Hub with a live "N waiting"
+  subtitle · Admin → **House requests** (`/admin/house-requests` →
+  [`AdminHouseRequests`](components/AdminHouseRequests.tsx)) grouped **Waiting on you**
+  (oldest first + age badge) → **Approved, not bought** → **Ordered** → collapsed history.
+  Shared card + inline Approve/Modify/Deny in
+  [`HouseRequestCard`](components/HouseRequestCard.tsx) so a stack of requests from six
+  people can be worked top-to-bottom without opening one.
+  - ⚠️ **A House Admin who isn't an app admin can't reach `/admin/*`** (`AdminGuard`), so
+    they get the same inline reviewer controls **on `/house/requests`** — the non-admin
+    cabin-approver split from 0114, where the queue lives on `/request-stay`.
+- **Client:** seam [`lib/houseRequests.ts`](lib/houseRequests.ts) (degrades to empty on
+  42P01/42703, never throws) + `useHouseRequests` / `useAllHouseRequests` /
+  `useIsHouseAdmin` in [`lib/hooks.ts`](lib/hooks.ts). `formatMoney()` was added to
+  [`lib/format.ts`](lib/format.ts) — the app's first real currency display; it drops cents
+  on a whole amount and renders a missing amount as an em dash, never "$0", so "nobody
+  said what it costs" can't read as "it's free". ⚠️ `numeric` comes back from PostgREST as
+  a **string** — the seam coerces it, which is what stops every cost sum being
+  concatenation.
+- ⚠️ **Needs a mini `git pull` + restart** (Admin → Media server) for the email + push;
+  until then requests queue and go out on the next restart via the 3-minute sweep.
+- 📱 **No iOS parity yet** — web only; shared schema/RPCs.
+
 ## Identity, admins & alerts
 
 - **Identity (on-demand, not a gate)** — the whole app is **public to browse**.
