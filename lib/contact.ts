@@ -33,6 +33,9 @@ export interface Action {
    *  equivalent to tapping (Venmo's deep link is just this URL; see
    *  components/PayQRCode.tsx). */
   qr?: string;
+  /** True when a `PayPrefill` amount was baked into `href` — lets the UI promise
+   *  "opens with $84.50 filled in" only where that's actually true. */
+  prefilled?: boolean;
 }
 
 const tel = (s: string) => s.replace(/[^\d+]/g, "");
@@ -50,17 +53,54 @@ export function contactActions(c: MemberContact): Action[] {
   return mark(out, c.contact_preferred);
 }
 
-export function payActions(c: MemberContact): Action[] {
+/**
+ * Optional pre-fill for a pay link, so someone settling a known amount (a house
+ * reimbursement, migration 0195) doesn't retype it into the pay app.
+ *
+ * Only applied where the provider actually supports it — Venmo and Cash App take
+ * an amount, PayPal takes one in the path. **Zelle has no deep link at all** (it's
+ * copy-only, "send in your bank app") and **Apple Cash can't be pre-filled**: its
+ * link just opens Messages, and there's no reliable way to put a figure into the
+ * ＄ field. Those two stay exactly as they are rather than pretending.
+ */
+export interface PayPrefill {
+  /** Dollars, e.g. 84.5. Ignored if not a positive finite number. */
+  amount?: number | null;
+  /** Short "what for" line. Only Venmo carries it. */
+  note?: string | null;
+}
+
+export function payActions(c: MemberContact, prefill?: PayPrefill): Action[] {
   const out: Action[] = [];
+  // Two decimals: every one of these providers wants a plain decimal amount, and
+  // a bare `84.5` reads as an odd figure to a human eyeballing the pay screen.
+  const raw = prefill?.amount;
+  const amount = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw.toFixed(2) : null;
+  // Venmo truncates long notes, and this is a memo, not a description.
+  const note = prefill?.note?.trim() ? prefill.note.trim().slice(0, 80) : null;
+
   // venmo.com/<user>?txn=pay opens straight to the Pay screen (not the profile).
   if (c.venmo) {
-    const venmoUrl = `https://venmo.com/${strip(c.venmo, "@")}?txn=pay`;
-    out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: venmoUrl, brand: "#008CFF", logo: `${ASSETS}/venmo.svg`, qr: venmoUrl });
+    const q = new URLSearchParams({ txn: "pay" });
+    if (amount) q.set("amount", amount);
+    if (note) q.set("note", note);
+    const venmoUrl = `https://venmo.com/${strip(c.venmo, "@")}?${q.toString()}`;
+    // qr stays the SAME url as href on purpose — scanning must do exactly what
+    // tapping does, including the pre-filled amount (see components/PayQRCode.tsx).
+    out.push({ key: "venmo", label: "Venmo", value: `@${strip(c.venmo, "@")}`, href: venmoUrl, brand: "#008CFF", logo: `${ASSETS}/venmo.svg`, qr: venmoUrl, prefilled: Boolean(amount) });
   }
   if (c.zelle) out.push({ key: "zelle", label: "Zelle", value: c.zelle, note: "send in your bank app", brand: "#6D1ED4", logo: `${ASSETS}/zelle.svg` });
   if (c.apple_cash && c.phone) out.push({ key: "applecash", label: "Apple Cash", value: c.phone, href: `sms:${tel(c.phone)}`, note: "opens Messages — tap ＄ to send", brand: "#111111", logo: `${ASSETS}/applepay.svg` });
-  if (c.cashapp) out.push({ key: "cashapp", label: "Cash App", value: `$${strip(c.cashapp, "$")}`, href: `https://cash.app/$${strip(c.cashapp, "$")}`, brand: "#00B843", logo: `${ASSETS}/cashapp.svg` });
-  if (c.paypal) out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "")}`, brand: "#0070BA", logo: `${ASSETS}/paypal.svg` });
+  if (c.cashapp) {
+    const handle = strip(c.cashapp, "$");
+    // Cash App takes the amount as a path segment: cash.app/$handle/12.34
+    out.push({ key: "cashapp", label: "Cash App", value: `$${handle}`, href: `https://cash.app/$${handle}${amount ? `/${amount}` : ""}`, brand: "#00B843", logo: `${ASSETS}/cashapp.svg`, prefilled: Boolean(amount) });
+  }
+  if (c.paypal) {
+    const handle = c.paypal.replace(/^https?:\/\/(www\.)?paypal\.me\//i, "");
+    // PayPal.me likewise: paypal.me/handle/12.34
+    out.push({ key: "paypal", label: "PayPal", value: c.paypal, href: `https://paypal.me/${handle}${amount ? `/${amount}` : ""}`, brand: "#0070BA", logo: `${ASSETS}/paypal.svg`, prefilled: Boolean(amount) });
+  }
   return mark(out, c.pay_preferred);
 }
 
