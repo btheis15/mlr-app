@@ -95,3 +95,75 @@ export function suggestEventNote(event: {
 
   return `Hi everyone — ${opener}${context}\n\nEverything on the list is below. Hope to see you up there.`;
 }
+
+/** One house's version of the email, as the preview reports it — same shape the
+ *  mailer gets, but with a recipient COUNT instead of the addresses. */
+export interface EventMessagePreviewHouse {
+  houseId: string | null;
+  name: string | null;
+  emoji: string | null;
+  items: unknown[] | null;
+  recipients: number;
+}
+
+export interface EventMessagePreview {
+  senderName: string | null;
+  senderEmail: string | null;
+  eventId: string;
+  eventTitle: string;
+  eventWhen: string | null;
+  eventEmoji: string | null;
+  eventLocation: string | null;
+  eventDescription: string | null;
+  mlrItems: unknown[] | null;
+  houseGroups: EventMessagePreviewHouse[];
+  generalRecipients: number;
+}
+
+/**
+ * Dry-run the send: what the email will say, and how many people each version
+ * reaches (migration 0192, `event_message_preview`).
+ *
+ * ⚠️ This deliberately comes from the DATABASE rather than being assembled on
+ * the client. Which items are open, how they rank, and above all how people are
+ * bucketed into per-house versions is decided in SQL — and a house-scoped item
+ * is RLS-invisible to a non-member, so a client-built preview would show a
+ * different email than the one that actually sends. It returns no addresses,
+ * only counts.
+ */
+export async function fetchEventMessagePreview(
+  input: Pick<EventMessageInput, "eventId" | "eventTitle" | "eventWhen" | "includeWorkItems" | "excludeNotAttending" | "includeRoster">,
+): Promise<{ preview?: EventMessagePreview; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { error: "Not connected" };
+  const { data, error } = await supabase.rpc("event_message_preview", {
+    p_event_id: input.eventId,
+    p_event_title: input.eventTitle,
+    p_event_when: input.eventWhen ?? null,
+    p_include_work_items: input.includeWorkItems ?? true,
+    p_exclude_not_attending: input.excludeNotAttending ?? true,
+    p_include_roster: input.includeRoster ?? true,
+  });
+  if (error) {
+    // Pre-migration (function not found) — the composer falls back to sending
+    // without a preview rather than blocking the feature entirely.
+    if (error.code === "PGRST202") return { error: "unavailable" };
+    return { error: error.message };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { error: "Couldn't build a preview" };
+  return {
+    preview: {
+      senderName: row.sender_name ?? null,
+      senderEmail: row.sender_email ?? null,
+      eventId: row.event_id,
+      eventTitle: row.event_title,
+      eventWhen: row.event_when ?? null,
+      eventEmoji: row.event_emoji ?? null,
+      eventLocation: row.event_location ?? null,
+      eventDescription: row.event_description ?? null,
+      mlrItems: row.mlr_items ?? null,
+      houseGroups: Array.isArray(row.house_groups) ? row.house_groups : [],
+      generalRecipients: row.general_recipients ?? 0,
+    },
+  };
+}
