@@ -108,9 +108,11 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
 
   const open = openId ? requests.find((r) => r.id === openId) ?? null : null;
 
-  // The one grouping that matters on the member board: what's still moving vs.
-  // what's waiting on a decision. Everything else stays a flat list — this is a
-  // reading surface for members, not a work queue (that's /admin/house-requests).
+  // The one grouping that matters on the board: what's waiting on a decision vs.
+  // everything else. There is no separate admin queue — deciding is a House Admin
+  // thing and House Admins are members of the house, so this screen IS the queue
+  // (migration 0202 removed the cross-house admin surface, which could only ever
+  // have shown the viewer's own house anyway).
   const waiting = shown.filter((r) => requestGroup(r) === "waiting");
   const rest = shown.filter((r) => requestGroup(r) !== "waiting");
 
