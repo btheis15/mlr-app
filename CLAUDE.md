@@ -2114,10 +2114,35 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
     headcount everyone sees) or **just reply to this email**, which reaches the
     sender via the Reply-To below. Nobody is stuck for not wanting to open the
     app. Mirrored in the plain-text part.
+  - **Nothing sends until it's been reviewed** (migration
+    [`0192`](supabase/migrations/0192_event_message_preview.sql)). The composer's
+    button is **"Preview the email →"**, not Send: it opens a step showing the
+    REAL rendered email — with a pager across **every version that will go out**
+    (one chip per house, plus "Everyone else"), each labelled with how many
+    people it reaches — and only that screen has a send button, beside an Edit
+    that returns to the form. ⚠️ The preview is built by importing the mini's own
+    [`buildEventEmail()`](media-server/event-email-template.js) into the app
+    (`allowJs` + the `@/*` root alias; the module is a pure string builder with
+    no `require`, so it bundles for the browser) and rendering it in an
+    **iframe** — so what's on screen is byte-for-byte the send, and the email's
+    table styles can't leak into the app. **Never fork a second layout for
+    preview.** A `.d.ts` beside the JS gives the app real types.
+    The content comes from `event_message_preview()` — a **dry run of the same
+    SQL** `event_message_email()` runs, taking the composer's unsaved inputs
+    (no `event_messages` row exists yet) and gated on `can_manage_event()`. It
+    deliberately returns **no addresses**, only a per-bucket recipient count,
+    which is what makes it safe to expose to a member caller while the mailer's
+    own function stays service_role-only. Assembling the preview client-side was
+    rejected outright: a house-scoped item is RLS-invisible to a non-member, so
+    the client would render a *different* email than the one that sends. Pre-0192
+    the call 404s (PGRST202) and the composer falls back to sending directly
+    rather than stranding the feature.
   - **The note can be pre-filled** — a "Write one for me" button in
     [`EventMessageSheet`](components/EventMessageSheet.tsx) drops a draft from
     `suggestEventNote()` ([`lib/eventMessages.ts`](lib/eventMessages.ts)) into
-    the box for the sender to edit. ⚠️ It restates **only** what the event row
+    the box for the sender to edit (a plain textarea — freely editable after,
+    and the button reads "Start over" once there's text so it never silently
+    overwrites something typed). ⚠️ It restates **only** what the event row
     already carries — title, dates, location — and must never invent a
     commitment ("lunch is covered", "materials are bought"); a preview or draft
     that reads like a real plan is worse than none. It deliberately omits a task
