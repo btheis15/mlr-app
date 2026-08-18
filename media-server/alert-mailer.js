@@ -589,7 +589,19 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     for (const s of sends) {
       const { subject, html, text, taskCount } = buildEventEmail(d, APP_URL, s.bucket);
       try {
-        await transport.sendMail({ from: ALERT_FROM, to: ALERT_FROM, bcc: s.emails, subject, text, html });
+        // From stays the resort's shared mailbox (deliverability + nobody's
+        // personal address is exposed), but replies belong to whoever actually
+        // sent this — "can't make Saturday" needs to reach the organizer, not a
+        // mailbox nobody watches. Omitted when the sender's account is gone.
+        await transport.sendMail({
+          from: ALERT_FROM,
+          to: ALERT_FROM,
+          bcc: s.emails,
+          ...(d.sender_email ? { replyTo: d.sender_email } : {}),
+          subject,
+          text,
+          html,
+        });
         alreadySent.add(s.key);
         // Record this bucket immediately, so a later failure (or a crash) can't
         // cause it to be re-sent on retry.

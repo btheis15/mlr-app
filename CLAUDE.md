@@ -2107,6 +2107,23 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
     Both are mirrored in the plain-text part. The general copy stays completely
     silent about it (no note, no labels, just "6 tasks for this weekend"), which
     is the point: it must not hint that a list it can't show exists.
+  - **The sender is always NAMED, and replies go to them** (migration
+    [`0191`](supabase/migrations/0191_event_message_sender.sql)). Every mini
+    email goes out as `ALERT_FROM` — the resort's shared mailbox — never the
+    clicker's address, which is right for deliverability and privacy but left a
+    member-sent note reading as "from the resort" with no idea who organized it
+    (and replies landing in a mailbox nobody watches). A **byline directly under
+    the title** — "Sent by {name} · replies to this email go straight to them" —
+    is rendered **unconditionally**, and `event_message_email()` returns
+    `sender_email` so the mailer sets `replyTo`. Naming the sender every time IS
+    the "someone else sent this" disclaimer: there's deliberately **no
+    special-case** for an owner/usual-sender (nothing reliable to compare
+    against — `lib/owner.ts`'s `OWNER_EMAIL` gates the media-server restart and
+    wiring email copy to it would break the day that address changes), and a
+    line that only appears sometimes is one readers learn to skip. A deleted
+    sender account yields a null email — the byline still names them, the
+    `replyTo` header is just omitted. The return TYPE changed, so 0191 is a
+    DROP + CREATE recreated from 0190's current production body (the 0160 rule).
   - **Retry safety across multiple sends.** The older mailer handlers claim one
     `email_sent_at` and are done; here a failure partway through must not
     re-send the buckets that already went. `event_messages.sent_buckets text[]`
