@@ -221,7 +221,7 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
                         className={`space-y-2 rounded-2xl ${flashId === r.id ? "ring-2 ring-primary" : ""}`}
                       >
                         <HouseRequestCard request={r} onOpen={() => setOpenId(r.id)} />
-                        {canReview && (r.status === "approved" || r.status === "ordered") && (
+                        {canReview && r.status === "approved" && (
                           <ProgressActions request={r} onDone={reload} />
                         )}
                       </div>

@@ -103,8 +103,11 @@ export function statusLabel(r: Pick<HouseRequest, "status" | "kind">): string {
     case "approved":
       return r.kind === "reimbursement" ? "Approved — not paid yet" : "Approved — not ordered yet";
     case "ordered":
+      // Terminal for a purchase/idea — there's no "arrived" step to wait on.
       return "Ordered";
     case "received":
+      // Only reachable for a reimbursement now; the other wording is kept so any
+      // pre-existing row still reads sensibly rather than showing a raw status.
       return r.kind === "reimbursement" ? "Paid" : "Got it";
     case "denied":
       return "Not approved";
@@ -146,9 +149,19 @@ export function requestGroup(r: HouseRequest): HouseRequestGroup {
   return "done";
 }
 
-/** True once a request has reached a state that no longer needs anyone. */
+/**
+ * True once a request has reached a state that no longer needs anyone.
+ *
+ * ⚠️ **`ordered` is the END OF THE LINE for a purchase or an idea** — there's no
+ * "it arrived" step to chase, because something that's been ordered obviously
+ * turns up, and asking a House Admin to come back later and tick a second box is
+ * how a board fills with stale rows nobody closes. `received` survives only for a
+ * REIMBURSEMENT, where it means **Paid** and is genuinely the moment that matters.
+ */
 export function isSettled(r: HouseRequest): boolean {
-  return r.status === "received" || r.status === "denied" || r.status === "withdrawn";
+  return (
+    r.status === "ordered" || r.status === "received" || r.status === "denied" || r.status === "withdrawn"
+  );
 }
 
 /** Whole-dollar-ish money for the summary strip; `null` reads as no number. */
@@ -564,9 +577,10 @@ export function deleteHouseRequest(id: string): Promise<Res> {
   return rpc("delete_house_request", { p_id: id });
 }
 
-/** Client-side twin of 0201's gate — keep the two in step. */
+/** Client-side twin of 0201's gate — keep the two in step. Anything settled (which
+ *  now includes an ordered purchase, see isSettled) or any test row. */
 export function canDeleteRequest(r: HouseRequest): boolean {
-  return r.testOnly || r.status === "received" || r.status === "denied" || r.status === "withdrawn";
+  return r.testOnly || isSettled(r);
 }
 
 export async function addHouseRequestMedia(

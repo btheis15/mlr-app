@@ -126,14 +126,13 @@ export function HouseRequestSheet({
         ? [{ label: "Withdrawn", at: request.reviewedAt, done: true }]
         : [
             { label: "Approved", at: request.reviewedAt, done: request.reviewedAt !== null && request.status !== "pending" },
+            // ⚠️ A purchase/idea ENDS at Ordered — no "Here" step. Something
+            // that's been ordered obviously turns up, and a second box for a
+            // House Admin to tick later is just a row nobody ever closes.
+            // A reimbursement ends at Paid, which is the moment that matters.
             ...(request.kind === "reimbursement"
-              ? []
+              ? [{ label: "Paid", at: request.receivedAt, done: request.receivedAt !== null }]
               : [{ label: "Ordered", at: request.orderedAt, done: request.orderedAt !== null }]),
-            {
-              label: request.kind === "reimbursement" ? "Paid" : "Here",
-              at: request.receivedAt,
-              done: request.receivedAt !== null,
-            },
           ]),
   ];
 
@@ -316,7 +315,8 @@ export function HouseRequestSheet({
       {canAct && request.status === "pending" && (
         <ReviewActions request={request} onDone={onChanged} onModify={onEdit} />
       )}
-      {canAct && (request.status === "approved" || request.status === "ordered") && (
+      {/* Only from `approved` — ordered/paid is the end, nothing follows. */}
+      {canAct && request.status === "approved" && (
         <ProgressActions request={request} onDone={onChanged} />
       )}
 
