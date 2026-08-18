@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EventLink } from "@/lib/types";
 import {
   KIND_META,
@@ -21,7 +21,7 @@ import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { LinksEditor, cleanLinks, toEditableLinks, type EditableLink } from "@/components/LinksEditor";
 import { useIdentity } from "@/components/IdentityProvider";
 import { useMediaPicker, useSheetDismiss } from "@/lib/hooks";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, plural } from "@/lib/format";
 
 /**
  * Per-kind wording for the links block. The shared LinksEditor defaults to EVENT
@@ -111,6 +111,12 @@ export function HouseRequestComposer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reviewerEditing = editing && !!request && !request.mine;
+  // ⚠️ The picker is a plain always-mounted <input> with a plain always-mounted
+  // sibling button that .click()s it — the PostsView shape. Do NOT move either
+  // behind a popup/menu/sheet: in an installed iOS PWA the file never arrives and
+  // there is NO error, which read as "sending photos just doesn't work" for as
+  // long as chat's old "+" menu existed (see CLAUDE.md's incident writeup).
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Only the reimbursement form needs this, so don't pay for the read until
   // that kind is actually selected.
@@ -150,7 +156,8 @@ export function HouseRequestComposer({
   })();
 
   // A reimbursement without an amount can't be acted on — 0195 rejects it
-  // server-side too, so this is the friendly version of the same rule.
+  // server-side too, so this is the friendly version of the same rule. It's the
+  // TOTAL across everything on the receipt, not a per-item price.
   const needsAmount = kind === "reimbursement";
   const canSubmit = title.trim().length > 0 && !pending && (!needsAmount || (parsedCost ?? 0) > 0);
 
@@ -171,10 +178,14 @@ export function HouseRequestComposer({
     },
     reimbursement: {
       titleLabel: "What did you buy?",
-      titlePlaceholder: "Two gallons of deck stain",
+      // Hints that several items on one receipt are fine — the common case is a
+      // whole hardware run, not a single purchase.
+      titlePlaceholder: "Deck stain, brushes and a drop cloth",
       reasonLabel: "What was it for?",
       reasonPlaceholder: "Picked these up for the work weekend so we didn't lose the day to a hardware run.",
-      costLabel: "How much was it?",
+      // "How much was it?" reads as one item. A reimbursement is usually several,
+      // so ask for the total outright.
+      costLabel: "What's the total?",
     },
   };
   const copy = COPY[kind];
@@ -439,23 +450,59 @@ export function HouseRequestComposer({
         )}
       </div>
 
+      {/* Multiple files were always supported by the input; nothing SAID so, and
+          the singular label implied one. A reimbursement gets a firmer nudge —
+          the receipt is the evidence whoever pays out is checking. */}
       <div className="space-y-1.5">
-        <SectionLabel>{kind === "reimbursement" ? "Receipt photo (optional)" : "Photo (optional)"}</SectionLabel>
+        <SectionLabel>
+          {kind === "reimbursement" ? "Receipt photos" : "Photos (optional)"}
+        </SectionLabel>
         <p className="text-xs text-muted">
           {kind === "reimbursement"
-            ? "A picture of the receipt, so whoever pays you back can see the total."
+            ? "Take a photo of the receipt, or upload one you already have — it's how whoever pays you back checks the total. Add as many as you need (a long receipt often takes two)."
             : kind === "purchase"
-              ? "A photo of the problem helps — e.g. the cabinet door that sticks."
-              : "A photo of what you're picturing, if you have one."}
+              ? "A photo of the problem helps — e.g. the cabinet door that sticks. You can add more than one."
+              : "A photo of what you're picturing, if you have one. You can add more than one."}
         </p>
-        {/* A plain, always-mounted input next to a plain button — never behind a
-            popup/menu. See CLAUDE.md's installed-iOS-PWA file-picker incident. */}
-        <input
-          type="file"
-          multiple
-          onChange={media.add}
-          className="block w-full text-xs text-muted file:mr-3 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary"
-        />
+        {/* "Choose Files" is browser-supplied text that can't be changed, so the
+            real button is ours and the input is hidden beside it. On a phone this
+            opens the native sheet — Take Photo, Photo Library, or a file — which
+            is why the label says both. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="press rounded-full bg-primary/10 px-4 py-2 text-sm font-semibold text-primary"
+          >
+            {media.previews.length > 0
+              ? "📷 Add another"
+              : kind === "reimbursement"
+                ? "📷 Take a photo or upload"
+                : "📷 Add a photo"}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            onChange={media.add}
+            className="hidden"
+          />
+        </div>
+        {/* A reimbursement with no receipt attached isn't blocked — sometimes
+            there genuinely isn't one — but it shouldn't sail through silently
+            either, since it's the first thing the approver will look for. */}
+        {kind === "reimbursement" && media.previews.length === 0 && (
+          <p className="rounded-xl bg-sun/12 p-2.5 text-xs text-foreground/80">
+            📸 No receipt attached yet. You can still send it, but a photo saves whoever&rsquo;s paying you from having
+            to ask.
+          </p>
+        )}
+        {media.previews.length > 0 && (
+          <p className="text-xs font-semibold text-primary">
+            {media.previews.length} {plural(media.previews.length, "photo")} ready
+          </p>
+        )}
         {media.previews.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {media.previews.map((p, i) => (
