@@ -747,6 +747,16 @@ house submits one of three kinds; a House Admin decides, then records what happe
   under any condition is the bug. Consequence, accepted deliberately: a house with no House
   Admin notifies nobody (the request still shows on the board). App admins keep full
   ACCESS — `can_review_house_request()` is untouched; this governs who gets *contacted*.
+- **Deleting a finished request** (migration
+  [`0201`](supabase/migrations/0201_house_request_delete.sql)) — reviewers can permanently
+  remove a settled row (received / denied / withdrawn) or **any test row in any state**, so
+  test junk doesn't accumulate. ⚠️ A still-PENDING request is deliberately NOT deletable
+  (unless it's a test): quietly deleting someone's open ask isn't the same as denying it —
+  a denial leaves them a note, a name and a timestamp, a deletion just makes their request
+  evaporate. **Approved-but-unordered is also not deletable**, since that's precisely the
+  "somebody still has to buy this" state the feature exists to keep visible. `canDeleteRequest()`
+  in the seam mirrors the SQL gate so the button only appears where the RPC would succeed.
+  Attachments cascade; the FILES go via orphan-sweep's 7-day quarantine like all media.
 - **"Just test it — only notify me"** (migration
   [`0200`](supabase/migrations/0200_house_request_test_only.sql)) — a checkbox in the
   composer, shown only to reviewers, that submits a **real** request through the entire

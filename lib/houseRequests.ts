@@ -576,6 +576,25 @@ export function withdrawHouseRequest(id: string): Promise<Res> {
   return rpc("withdraw_house_request", { p_id: id });
 }
 
+/**
+ * Permanently remove a finished request — for clearing test rows and dead
+ * entries off the board (migration 0201). Reviewers only.
+ *
+ * ⚠️ A still-PENDING request can't be deleted unless it's a test row: quietly
+ * deleting an open ask is not the same as denying it, since a denial leaves the
+ * requester a note and a name while a deletion just makes their request vanish.
+ * `canDeleteRequest()` mirrors the server rule so the button only appears where
+ * the RPC would actually succeed.
+ */
+export function deleteHouseRequest(id: string): Promise<Res> {
+  return rpc("delete_house_request", { p_id: id });
+}
+
+/** Client-side twin of 0201's gate — keep the two in step. */
+export function canDeleteRequest(r: HouseRequest): boolean {
+  return r.testOnly || r.status === "received" || r.status === "denied" || r.status === "withdrawn";
+}
+
 export async function addHouseRequestMedia(
   requestId: string,
   url: string,
