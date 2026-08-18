@@ -7,10 +7,11 @@ import {
   KIND_META,
   addHouseRequestMedia,
   createHouseRequest,
-  fetchMyPayHint,
+  fetchPayMethods,
   updateHouseRequest,
   type HouseRequest,
   type HouseRequestKind,
+  type PayMethods,
 } from "@/lib/houseRequests";
 import { prepareImageForUpload, uploadErrorMessage, uploadToMini } from "@/lib/media";
 import { supabase } from "@/lib/supabase";
@@ -59,8 +60,8 @@ export function HouseRequestComposer({
   // on a phone and a number input silently yields NaN for "40." mid-typing.
   const [cost, setCost] = useState(request?.estCost != null ? String(request.estCost) : "");
   const [quantity, setQuantity] = useState(request?.quantity != null ? String(request.quantity) : "");
-  const [payHint, setPayHint] = useState<string | null>(null);
-  const [payHintLoaded, setPayHintLoaded] = useState(false);
+  const [pay, setPay] = useState<PayMethods>({ methods: [], resolved: false });
+  const [payLoaded, setPayLoaded] = useState(false);
   // A reviewer's "why I changed it" note + whether to email it. Only shown when
   // a House Admin is editing SOMEONE ELSE'S request — a member fixing their own
   // wording has nobody to explain it to.
@@ -73,17 +74,17 @@ export function HouseRequestComposer({
   // Only the reimbursement form needs this, so don't pay for the read until
   // that kind is actually selected.
   useEffect(() => {
-    if (kind !== "reimbursement" || payHintLoaded) return;
+    if (kind !== "reimbursement" || payLoaded) return;
     let alive = true;
-    fetchMyPayHint(userId).then((h) => {
+    fetchPayMethods(userId).then((p) => {
       if (!alive) return;
-      setPayHint(h);
-      setPayHintLoaded(true);
+      setPay(p);
+      setPayLoaded(true);
     });
     return () => {
       alive = false;
     };
-  }, [kind, payHintLoaded, userId]);
+  }, [kind, payLoaded, userId]);
 
   const parsedCost = (() => {
     const n = Number.parseFloat(cost.replace(/[^0-9.]/g, ""));
@@ -377,11 +378,25 @@ export function HouseRequestComposer({
         )}
       </div>
 
-      {kind === "reimbursement" && payHintLoaded && (
+      {/* Only speak up once we've actually looked (`resolved`) — a failed read
+          must never be reported as "you haven't set anything up". */}
+      {kind === "reimbursement" && payLoaded && pay.resolved && (
         <div className="rounded-xl bg-background p-3 text-xs ring-1 ring-border">
-          {payHint ? (
+          {pay.methods.length > 0 ? (
             <>
-              They&rsquo;ll pay you back on <span className="font-semibold">{payHint}</span>, from your profile.
+              <p className="text-muted">
+                Whoever pays this will see <span className="font-semibold">every</span> way you take money, and use
+                whichever they have too:
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {pay.methods.map((m) => (
+                  <li key={m.key} className="flex items-baseline gap-1.5">
+                    <span className="font-semibold">{m.label}</span>
+                    <span className="min-w-0 truncate text-muted">{m.value}</span>
+                    {m.preferred && <span className="shrink-0 text-[10px] text-faint">preferred</span>}
+                  </li>
+                ))}
+              </ul>
             </>
           ) : (
             <>

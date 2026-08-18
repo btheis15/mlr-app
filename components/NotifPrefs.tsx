@@ -71,6 +71,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
       // never gets one.
       { value: "house_request_submitted", icon: "🧾", label: "New requests to decide", desc: "When someone in your house asks to buy something, suggests an idea, or wants paying back — House Admins get these" },
       { value: "house_request_decision", icon: "✅", label: "My requests", desc: "When your own request is approved, turned down, ordered, or paid" },
+      { value: "house_request_handled", icon: "🤝", label: "What the other House Admins did", desc: "When another House Admin approves, changes, or orders something — so you both aren't handling the same request" },
     ],
   },
   {

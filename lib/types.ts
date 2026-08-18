@@ -73,7 +73,8 @@ export type PushType =
   | "private_activity_invite"
   | "signup_reminder"
   | "house_request_submitted"
-  | "house_request_decision";
+  | "house_request_decision"
+  | "house_request_handled";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -115,6 +116,9 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   // the 0159/0161/0163 pattern.
   "house_request_submitted",
   "house_request_decision",
+  // Another House Admin acted (migration 0198) — so two admins working the same
+  // queue don't double-order an item or each assume the other handled it.
+  "house_request_handled",
 ];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
@@ -153,6 +157,7 @@ export type NotifType =
   | "private_activity_invite"
   | "house_request_submitted"
   | "house_request_decision"
+  | "house_request_handled"
   | "broadcast"
   | "admin_test";
 
@@ -194,6 +199,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "private_activity_invite",
   "house_request_submitted",
   "house_request_decision",
+  "house_request_handled",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized

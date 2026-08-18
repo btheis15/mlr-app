@@ -359,4 +359,103 @@ ${sentByText(decider, didWhat, opts.fromAddress, Boolean(d.reviewer_email))}
   return { subject, html, text };
 }
 
-module.exports = { buildHouseRequestEmail, buildHouseRequestDecisionEmail, escapeHtml, money };
+/**
+ * The co-admin email (migration 0198) → the OTHER House Admins, when one of them
+ * acts. Its whole job is answering "who did what to whose request", because a
+ * house with several admins otherwise has two people working one queue blind —
+ * double-ordering an item, or each assuming the other had it.
+ *
+ * Deliberately a FYI, not a task: no "you decide this one" block, and it says
+ * plainly that nothing is needed from the reader.
+ *
+ * @param {object} d  a `house_request_notification()` row (post-action)
+ * @param {object} [opts]  { fromAddress }
+ */
+function buildHouseRequestCoadminEmail(d, opts = {}) {
+  const k = kindOf(d.kind);
+  const actor = d.last_action_by_name || "A House Admin";
+  const who = d.requester_name || "a member";
+  const houseName = d.house_name || "MLR";
+  const cost = hasMoney(d.actual_cost) ? d.actual_cost : d.est_cost;
+
+  const VERB = {
+    approved: { emoji: "✅", past: "approved" },
+    denied: { emoji: "🚫", past: "turned down" },
+    ordered: { emoji: "📦", past: "ordered" },
+    received: d.kind === "reimbursement" ? { emoji: "💵", past: "paid" } : { emoji: "🎉", past: "marked as here" },
+    changed: { emoji: "✏️", past: "changed" },
+  };
+  const v = VERB[d.last_action] || VERB.approved;
+  // The note the actor left, whichever kind of action it was — the most useful
+  // line for a co-admin trying to understand a call they weren't part of.
+  const note = d.last_action === "changed" ? d.change_note : d.review_note;
+
+  const detailRows =
+    row("What", `<strong>${escapeHtml(d.title || "")}</strong>`) +
+    row("Asked for by", escapeHtml(who)) +
+    row("House", escapeHtml(houseName)) +
+    row("Type", `${k.emoji} ${escapeHtml(k.label)}`) +
+    (hasMoney(cost)
+      ? row(hasMoney(d.actual_cost) ? "Actual" : k.costLabel, `<strong>${money(cost)}</strong>`)
+      : "") +
+    row("Now", `<strong>${v.emoji} ${escapeHtml(v.past)}</strong> by ${escapeHtml(actor)}`);
+
+  const noteBlock = note && String(note).trim()
+    ? `<table role="presentation" style="width:100%;border-collapse:collapse;margin:20px 0 0"><tr><td style="padding:14px 16px;background:#fbf9f1;border:1px solid #efe8d5;border-radius:10px">
+<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8b918d;margin-bottom:6px">${escapeHtml(
+        actor,
+      )} said</div>
+<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap">${escapeHtml(note)}</div>
+</td></tr></table>`
+    : "";
+
+  const fyiBlock = `<table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 0"><tr><td style="padding:16px 18px;background:#f4f8f5;border:1px solid #dbe7df;border-radius:12px">
+<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">Nothing needed from you.</p>
+<p style="margin:0;font-size:14px;color:#4a5a52;line-height:1.6">This is just so the House Admins all know where things stand${
+    d.last_action === "approved" ? " — somebody still has to actually buy it" : ""
+  }. The full list is in the <strong>MLR app</strong> under <strong>House &rsaquo; Requests</strong>.</p>
+</td></tr></table>`;
+
+  const title = `<p style="font-size:22px;margin:0 0 4px;line-height:1.25"><strong>${v.emoji} ${escapeHtml(
+    actor,
+  )} ${escapeHtml(v.past)} ${escapeHtml(who)}&rsquo;s ${escapeHtml(k.label.toLowerCase())}</strong></p>`;
+  const byline = `<p style="margin:0 0 18px;font-size:13px;color:#6b7b73;line-height:1.5">You&rsquo;re getting this because you&rsquo;re a House Admin for <strong style="color:#14241c">${escapeHtml(
+    houseName,
+  )}</strong>.</p>`;
+
+  const html = shell(
+    title,
+    `${byline}
+<table role="presentation" style="border-collapse:collapse;font-size:14.5px;margin:0">${detailRows}</table>
+${noteBlock}
+${fyiBlock}`,
+    sentByNote(actor, `${v.past} this`, opts.fromAddress, false),
+  );
+
+  const subject = `${v.emoji} ${actor} ${v.past} ${who}'s ${k.label.toLowerCase()} — ${d.title || ""}`;
+
+  const text = `${actor.toUpperCase()} ${v.past.toUpperCase()} ${who.toUpperCase()}'S ${k.label.toUpperCase()}
+What: ${d.title || ""}
+Asked for by: ${who}
+House: ${houseName}${hasMoney(cost) ? `\n${hasMoney(d.actual_cost) ? "Actual" : k.costLabel}: ${money(cost)}` : ""}
+Now: ${v.past} by ${actor}${note && String(note).trim() ? `\n\n${actor} said: ${note}` : ""}
+
+NOTHING NEEDED FROM YOU.
+This is just so the House Admins all know where things stand${
+    d.last_action === "approved" ? " — somebody still has to actually buy it" : ""
+  }. The full list is in the MLR app under House > Requests.
+
+${sentByText(actor, `${v.past} this`, opts.fromAddress, false)}
+
+— Muskellunge Lake Resort`;
+
+  return { subject, html, text };
+}
+
+module.exports = {
+  buildHouseRequestEmail,
+  buildHouseRequestDecisionEmail,
+  buildHouseRequestCoadminEmail,
+  escapeHtml,
+  money,
+};

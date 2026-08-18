@@ -342,6 +342,8 @@ async function start() {
     // House requests (migration 0195) — same gating as web: a request waiting on
     // a House Admin, and the decision going back to whoever asked.
     "house_request_submitted", "house_request_decision",
+    // Another House Admin acted (0198) — same gating as web.
+    "house_request_handled",
     // Admin test notification (migration 0156) — override push, like help_urgent.
     "admin_test",
     // The "🔔 Activity tab" broadcast channel (send_broadcast_notification) —

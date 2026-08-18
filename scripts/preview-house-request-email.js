@@ -16,6 +16,7 @@ const path = require("node:path");
 const {
   buildHouseRequestEmail,
   buildHouseRequestDecisionEmail,
+  buildHouseRequestCoadminEmail,
 } = require("../media-server/house-request-email-template");
 
 const FROM = "brian@example.com";
@@ -181,6 +182,48 @@ const VARIANTS = [
           actual_cost: 84.5,
           review_note: "Sent it on Venmo, thanks for grabbing these.",
           order_note: null,
+        },
+        { fromAddress: FROM },
+      ),
+  },
+  {
+    file: "09-coadmin-approved.html",
+    label: "To the OTHER House Admins — Lee approved Brian's request (migration 0198)",
+    build: () =>
+      buildHouseRequestCoadminEmail(
+        {
+          ...base,
+          requester_name: "Brian",
+          kind: "purchase",
+          title: "Soft-close bumpers — 100 pack",
+          last_action: "approved",
+          last_action_by_name: "Lee",
+          reviewer_name: "Lee",
+          reviewer_email: "lee@example.com",
+          est_cost: 24.99,
+          actual_cost: null,
+          review_note: "Cheap fix, no reason to wait on it.",
+        },
+        { fromAddress: FROM },
+      ),
+  },
+  {
+    file: "10-coadmin-paid.html",
+    label: "To the OTHER House Admins — Lee paid Brian's reimbursement",
+    build: () =>
+      buildHouseRequestCoadminEmail(
+        {
+          ...base,
+          requester_name: "Brian",
+          kind: "reimbursement",
+          title: "Two gallons of deck stain",
+          last_action: "received",
+          last_action_by_name: "Lee",
+          reviewer_name: "Lee",
+          reviewer_email: "lee@example.com",
+          est_cost: 84.5,
+          actual_cost: 84.5,
+          review_note: "Sent on Zelle — he has Venmo listed first but Zelle is what I've got.",
         },
         { fromAddress: FROM },
       ),

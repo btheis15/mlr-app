@@ -324,6 +324,8 @@ async function start() {
     // default (in DEFAULT_PUSH_TYPES; existing push-on members backfilled in
     // 0195), since each only reaches the handful of people it concerns.
     "house_request_submitted", "house_request_decision",
+    // Another House Admin acted (0198) — keeps co-admins from double-handling.
+    "house_request_handled",
     // A new post on the Main Feed: the feed already fans a `new_post` row out to
     // every other member; relay it to a phone push, gated on push_types — ON by
     // default (in DEFAULT_PUSH_TYPES, existing push-on members backfilled in
