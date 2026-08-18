@@ -25,7 +25,9 @@ const SAMPLE = {
     "Come for the whole weekend or just a few hours Saturday, whatever works.\n\n" +
     "Bring waders if you have them, and a cordless drill if you own one. " +
     "Lunch both days is covered.",
-  sender_name: "Brian Theis",
+  sender_name: "Megan Theis",
+  // A NON-admin member who created the event — the case the byline exists for.
+  sender_email: "megan@example.com",
   event_id: "9f1c7e2a-0000-4000-8000-00000000abcd",
   event_title: "Fall Work Weekend + Megan's 30th B-Day",
   event_when: "Sep 25 – 27, 2026",

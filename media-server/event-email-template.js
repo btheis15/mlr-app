@@ -126,6 +126,19 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
 </td></tr></table>`
     : "";
 
+  // ── Who sent this ──────────────────────────────────────────────────────────
+  // ALWAYS shown, never conditional. The From line is the resort's shared
+  // mailbox for every app email, so without this a member-sent note reads as
+  // coming from "the resort" and nobody knows who organized it — or who to
+  // reply to. Naming the sender every time IS the "someone else sent this"
+  // disclaimer; a line that only appears sometimes is one people learn to skip.
+  // Sits directly under the title as a byline, the pattern readers already know.
+  const senderName = escapeHtml(d.sender_name || "a member");
+  const replyClause = d.sender_email
+    ? " &middot; replies to this email go straight to them"
+    : "";
+  const byline = `<p style="margin:0 0 18px;font-size:13px;color:#6b7b73;line-height:1.5">Sent by <strong style="color:#14241c">${senderName}</strong>${replyClause}</p>`;
+
   const subject = d.subject
     ? `${emoji} ${d.subject}`
     : `${emoji} ${d.event_title}${d.event_when ? ` — ${d.event_when}` : ""}`;
@@ -133,7 +146,8 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:560px">
 <p style="margin:0 0 16px;color:#15503a;font-weight:700;font-size:11.5px;letter-spacing:.13em">MUSKELLUNGE LAKE RESORT</p>
 <p style="font-size:22px;margin:0 0 4px;line-height:1.25"><strong>${escapeHtml(emoji)} ${escapeHtml(d.event_title)}</strong></p>
-<div style="height:3px;width:44px;background:#15503a;border-radius:2px;margin:12px 0 18px"></div>
+<div style="height:3px;width:44px;background:#15503a;border-radius:2px;margin:12px 0 14px"></div>
+${byline}
 ${detailRows ? `<table role="presentation" style="border-collapse:collapse;font-size:14.5px;margin:0">${detailRows}</table>` : ""}
 ${noteBlock}
 ${workSection}
@@ -154,7 +168,7 @@ ${workSection}
           })
           .join("\n")}\n`
       : "";
-  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}${
+  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}\nSent by ${d.sender_name || "a member"}${d.sender_email ? " (replies go straight to them)" : ""}${
     d.event_location ? `\nWhere: ${d.event_location}` : ""
   }${d.event_description ? `\n\n${d.event_description}` : ""}${
     d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""
