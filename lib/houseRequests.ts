@@ -62,6 +62,9 @@ export interface HouseRequest {
   estCost: number | null;
   quantity: number | null;
   status: HouseRequestStatus;
+  /** A test submission (0200) — only its author was notified, and only they and
+   *  app admins can see it. Badged in the UI so it's never mistaken for a real ask. */
+  testOnly: boolean;
   createdBy: string;
   createdByName: string;
   createdAt: string;
@@ -230,6 +233,7 @@ interface RequestRow {
   est_cost: string | number | null;
   quantity: number | null;
   status: HouseRequestStatus;
+  test_only?: boolean | null;
   created_by: string;
   created_at: string;
   reviewed_by: string | null;
@@ -251,9 +255,13 @@ function num(v: string | number | null): number | null {
 }
 
 const SELECT =
-  "id, house_id, kind, title, reason, links, est_cost, quantity, status, created_by, created_at," +
+  "id, house_id, kind, title, reason, links, est_cost, quantity, status, test_only, created_by, created_at," +
   " reviewed_by, reviewed_at, review_note, actual_cost, order_note, ordered_at, received_at," +
   " house_request_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by)";
+// Pre-0200 fallback: no test_only column yet. Without this the whole read fails
+// with 42703 and the board renders empty, which the `ready` flag would then
+// report as "migration missing" — so keep it a graceful degrade, not a wipe.
+const SELECT_NO_TEST = SELECT.replace(" test_only,", "");
 
 function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, names: Map<string, string>): HouseRequest {
   return {
@@ -266,6 +274,7 @@ function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, 
     estCost: num(row.est_cost),
     quantity: row.quantity,
     status: row.status,
+    testOnly: row.test_only === true,
     createdBy: row.created_by,
     createdByName: names.get(row.created_by) ?? "Member",
     createdAt: row.created_at,
@@ -323,11 +332,20 @@ export async function fetchHouseRequests(
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
   try {
-    const { data, error } = await sb
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with / without test_only) can't share one inferred type
+    let res: any = await sb
       .from("house_requests")
       .select(SELECT)
       .eq("house_id", houseId)
       .order("created_at", { ascending: false });
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb
+        .from("house_requests")
+        .select(SELECT_NO_TEST)
+        .eq("house_id", houseId)
+        .order("created_at", { ascending: false });
+    }
+    const { data, error } = res;
     if (error) {
       const missing = isMissingTable(error) || isMissingColumn(error);
       if (!missing) console.warn("fetchHouseRequests: read error", error.message);
@@ -348,7 +366,12 @@ export async function fetchAllHouseRequests(
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
   try {
-    const { data, error } = await sb.from("house_requests").select(SELECT).order("created_at", { ascending: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see fetchHouseRequests
+    let res: any = await sb.from("house_requests").select(SELECT).order("created_at", { ascending: false });
+    if (res.error && isMissingColumn(res.error)) {
+      res = await sb.from("house_requests").select(SELECT_NO_TEST).order("created_at", { ascending: false });
+    }
+    const { data, error } = res;
     if (error) {
       const missing = isMissingTable(error) || isMissingColumn(error);
       if (!missing) console.warn("fetchAllHouseRequests: read error", error.message);
@@ -447,12 +470,19 @@ export interface HouseRequestInput {
   links: EventLink[];
   estCost: number | null;
   quantity: number | null;
+  /**
+   * A test submission (migration 0200): a real request that runs the whole
+   * pipeline — RPC, realtime, push, email — but notifies ONLY the person who
+   * made it, and stays hidden from the rest of the house. For checking the
+   * plumbing works without paging the family.
+   */
+  testOnly?: boolean;
 }
 
 export async function createHouseRequest(input: HouseRequestInput): Promise<IdRes> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const { data, error } = await sb.rpc("create_house_request", {
+  const params = {
     p_house_id: input.houseId,
     p_kind: input.kind,
     p_title: input.title,
@@ -460,7 +490,22 @@ export async function createHouseRequest(input: HouseRequestInput): Promise<IdRe
     p_links: input.links,
     p_est_cost: input.estCost,
     p_quantity: input.quantity,
+  };
+  let { data, error } = await sb.rpc("create_house_request", {
+    ...params,
+    p_test_only: input.testOnly ?? false,
   });
+  // Pre-0200 fallback: no p_test_only param yet. Only safe to retry WITHOUT the
+  // flag when it wasn't set — silently dropping a "notify just me" would page the
+  // whole house, which is the opposite of what was asked for.
+  const isStale = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === "PGRST202" || /find the function|schema cache/i.test(e.message ?? ""));
+  if (isStale(error)) {
+    if (input.testOnly) {
+      return { error: "Test mode needs migration 0200_house_request_test_only.sql applied first." };
+    }
+    ({ data, error } = await sb.rpc("create_house_request", params));
+  }
   return error ? { error: error.message } : { id: data as string };
 }
 

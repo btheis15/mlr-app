@@ -39,6 +39,7 @@ export function HouseRequestComposer({
   houseId,
   houseName,
   request,
+  canTest = false,
   onClose,
   onSaved,
 }: {
@@ -46,6 +47,8 @@ export function HouseRequestComposer({
   houseName: string;
   /** Present = edit mode (creator while pending, or a reviewer any time). */
   request?: HouseRequest | null;
+  /** Show the "only notify me" testing switch — reviewers only (0200). */
+  canTest?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -69,6 +72,10 @@ export function HouseRequestComposer({
   // so the preview cannot disagree with who actually gets contacted. A preview
   // built from a second source would be worse than none.
   const [recipients, setRecipients] = useState<HouseAdmin[] | null>(null);
+  // "Just test it" (migration 0200) — a real request through the whole pipeline
+  // that notifies only its author and stays off everyone else's board. Offered
+  // only to people who'd actually be testing the review side.
+  const [testOnly, setTestOnly] = useState(false);
   // A reviewer's "why I changed it" note + whether to email it. Only shown when
   // a House Admin is editing SOMEONE ELSE'S request — a member fixing their own
   // wording has nobody to explain it to.
@@ -203,7 +210,7 @@ export function HouseRequestComposer({
         return;
       }
     } else {
-      const { id: newId, error: err } = await createHouseRequest({ houseId, kind, ...payload });
+      const { id: newId, error: err } = await createHouseRequest({ houseId, kind, ...payload, testOnly });
       if (err || !newId) {
         setPending(false);
         setError(err ?? "Couldn't save that.");
@@ -252,7 +259,12 @@ export function HouseRequestComposer({
           {/* Named, resolved, and directly above the button that sends it. */}
           {!editing && recipients !== null && (
             <p className="text-xs text-muted">
-              {recipients.length === 0 ? (
+              {testOnly ? (
+                <>
+                  <span className="font-semibold text-primary">Goes to: just you.</span> Nobody else is notified and it
+                  stays off {houseName}&rsquo;s board.
+                </>
+              ) : recipients.length === 0 ? (
                 <>
                   <span className="font-semibold text-accent">Nobody will be notified.</span> {houseName} has no House
                   Admin yet, so this will sit on the board until one is named.
@@ -479,6 +491,26 @@ export function HouseRequestComposer({
             They get a notification either way — the box only controls the email.
           </p>
         </div>
+      )}
+
+      {/* Testing switch — shown only to the people who'd be exercising the review
+          side. A regular member has nothing to test and doesn't need the choice. */}
+      {!editing && canTest && (
+        <label className="flex items-start gap-2 rounded-xl bg-background p-3 ring-1 ring-border">
+          <input
+            type="checkbox"
+            checked={testOnly}
+            onChange={(e) => setTestOnly(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+          />
+          <span className="text-xs">
+            <span className="font-semibold">Just test it — only notify me</span>
+            <span className="mt-0.5 block text-muted">
+              Runs the whole thing for real (notification, phone push, email) but sends all of it to you and nobody
+              else. Stays hidden from the rest of {houseName}, and shows a TEST badge so you can tell it apart.
+            </span>
+          </span>
+        </label>
       )}
 
       {error && <p className="text-xs text-accent">{error}</p>}

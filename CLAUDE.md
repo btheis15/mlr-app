@@ -747,6 +747,20 @@ house submits one of three kinds; a House Admin decides, then records what happe
   under any condition is the bug. Consequence, accepted deliberately: a house with no House
   Admin notifies nobody (the request still shows on the board). App admins keep full
   ACCESS — `can_review_house_request()` is untouched; this governs who gets *contacted*.
+- **"Just test it — only notify me"** (migration
+  [`0200`](supabase/migrations/0200_house_request_test_only.sql)) — a checkbox in the
+  composer, shown only to reviewers, that submits a **real** request through the entire
+  pipeline (RPC → realtime → push → email) while notifying **only its author** and staying
+  hidden from the rest of the house (`test_only`, folded into the read policy). Exists
+  because testing against the live family is how 6 app admins got paged about a vacuum.
+  Badged `TEST` on the card. ⚠️ Two non-obvious pieces: `_notify` returns early when
+  recipient = actor, so the self-notification passes **`p_actor => null`** — otherwise it's
+  impossible to notify yourself; and `create_house_request` gained a defaulted param, so
+  0200 **DROPs the old 7-arg signature** first (two overloads differing only by a trailing
+  default is the 0115 cabin bug, where every call silently resolved to the older one).
+  `_notify_house_request_coadmins` and both email-recipient RPCs skip test rows, so all
+  four channels stay quiet. The client refuses to fall back pre-0200 when the flag is set —
+  silently dropping a "notify just me" would page the whole house.
 - ⚠️⚠️ **EVERY SEND MUST NAME ITS RECIPIENTS IN THE UI FIRST.** The audience above was
   undiscoverable from inside the app — Brian only learned it after 6 people were emailed.
   The composer now renders the resolved recipient list above the send button
