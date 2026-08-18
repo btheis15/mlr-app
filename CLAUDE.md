@@ -2107,6 +2107,22 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
     Both are mirrored in the plain-text part. The general copy stays completely
     silent about it (no note, no labels, just "6 tasks for this weekend"), which
     is the point: it must not hint that a list it can't show exists.
+  - **It always says how to answer.** The email's whole job is finding out who's
+    coming, so "Can you make it? Let us know." is its own bordered block above
+    the footer — **rendered unconditionally**, never a faint caption under a
+    button — offering two routes: **RSVP in the app** (which moves the real
+    headcount everyone sees) or **just reply to this email**, which reaches the
+    sender via the Reply-To below. Nobody is stuck for not wanting to open the
+    app. Mirrored in the plain-text part.
+  - **The note can be pre-filled** — a "Write one for me" button in
+    [`EventMessageSheet`](components/EventMessageSheet.tsx) drops a draft from
+    `suggestEventNote()` ([`lib/eventMessages.ts`](lib/eventMessages.ts)) into
+    the box for the sender to edit. ⚠️ It restates **only** what the event row
+    already carries — title, dates, location — and must never invent a
+    commitment ("lunch is covered", "materials are bought"); a preview or draft
+    that reads like a real plan is worse than none. It deliberately omits a task
+    COUNT (the shared note body appears in every bucket, and would contradict
+    the per-bucket count line) and the RSVP ask (the template always renders it).
   - **The sender is always NAMED, and replies go to them** (migration
     [`0191`](supabase/migrations/0191_event_message_sender.sql)). Every mini
     email goes out as `ALERT_FROM` — the resort's shared mailbox — never the

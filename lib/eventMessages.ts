@@ -54,3 +54,44 @@ export async function sendEventMessage(
   }
   return { count: typeof data === "number" ? data : 0 };
 }
+
+/**
+ * A starting draft for the note, built ONLY from what's already stored.
+ *
+ * ⚠️ RULE: this may restate facts the event itself carries — its title, dates,
+ * location — and nothing else. It must never invent a commitment nobody made
+ * ("lunch is covered", "bring a drill", "materials are bought"). The sender is
+ * the only source for anything beyond the record, and this is a draft they edit
+ * before sending, not a substitute for them.
+ *
+ * Deliberately says nothing about how many tasks there are: a house member and
+ * a non-member get different lists, and the email already prints an accurate
+ * per-copy count line. A number typed into the shared note body would appear in
+ * every version and contradict it (see the bucketing note in migration 0190).
+ *
+ * The "let us know if you can make it" ask is NOT here either — the email
+ * template renders that unconditionally, so putting it in the draft too would
+ * just say it twice.
+ */
+export function suggestEventNote(event: {
+  title: string;
+  when?: string | null;
+  location?: string | null;
+  description?: string | null;
+}): string {
+  const title = event.title?.trim() || "this";
+  const when = event.when?.trim();
+  const location = event.location?.trim();
+
+  const opener = when
+    ? `${title} is ${when}${location ? ` at ${location}` : ""}.`
+    : `${title} is coming up${location ? ` at ${location}` : ""}.`;
+
+  // Skip this line when the event's own description already says what it's
+  // for — the email prints that under "About" right above the note.
+  const context = event.description?.trim()
+    ? ""
+    : " Here's what's planned so far.";
+
+  return `Hi everyone — ${opener}${context}\n\nEverything on the list is below. Hope to see you up there.`;
+}
