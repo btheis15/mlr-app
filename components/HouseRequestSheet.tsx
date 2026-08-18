@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import {
   KIND_META,
+  canDeleteRequest,
+  deleteHouseRequest,
   fetchPayMethods,
   requestCost,
   statusChip,
@@ -80,6 +82,27 @@ export function HouseRequestSheet({
     if (!window.confirm("Take this request back?")) return;
     setBusy(true);
     const { error } = await withdrawHouseRequest(request.id);
+    setBusy(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    onChanged();
+    close();
+  };
+
+  // Clearing finished rows / test junk (0201). The confirm is deliberately
+  // heavier for a REAL request than a test one — deleting a genuine, already-paid
+  // reimbursement throws away the only record that it happened, whereas a test row
+  // nobody else could see is pure noise.
+  const canDelete = canAct && canDeleteRequest(request);
+  const remove = async () => {
+    const msg = request.testOnly
+      ? `Delete this test request?\n\n"${request.title}"`
+      : `Delete "${request.title}" for good?\n\nThis is the record that it happened — once it's gone there's no history of it on the board. Nobody is notified.`;
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    const { error } = await deleteHouseRequest(request.id);
     setBusy(false);
     if (error) {
       window.alert(error);
@@ -299,6 +322,16 @@ export function HouseRequestSheet({
             className="press rounded-xl px-3 py-2 text-sm font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
           >
             Take it back
+          </button>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={busy}
+            className="press rounded-xl px-3 py-2 text-sm font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
+          >
+            {request.testOnly ? "Delete test" : "Delete"}
           </button>
         )}
       </div>
