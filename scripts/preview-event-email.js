@@ -13,6 +13,17 @@
 //   chromium --headless --disable-gpu --no-pdf-header-footer \
 //     --print-to-pdf=preview.pdf file:///abs/path/preview.html
 
+// ⚠️ SAMPLE DATA ONLY — and it must stay obviously generic.
+// Nothing here is a real plan, and nothing invented here should ever read like
+// a commitment the family has actually made ("lunch is covered", "materials are
+// bought"). A preview is for checking LAYOUT; if its filler is mistaken for
+// real content it has done harm rather than good. Keep the note text plainly
+// placeholder-shaped, and never add specifics nobody agreed to.
+//
+// None of this reaches a real send: a live email renders only what's in the
+// database — the event's own title/date/location/description, the sender's
+// typed note, and each work item's title + notes.
+
 const fs = require("fs");
 const path = require("path");
 const { buildEventEmail } = require("../media-server/event-email-template");
@@ -20,16 +31,17 @@ const { buildEventEmail } = require("../media-server/event-email-template");
 // Shaped exactly like an `event_message_email()` row.
 const SAMPLE = {
   subject: null, // left blank → subject falls back to the event name + dates
+  // Placeholder on purpose — see the note at the top of this file. This is where
+  // whatever the sender types in "A note to include" appears.
   body:
-    "Hey everybody — pulling the pier and closing up the boathouse before the weather turns. " +
-    "Come for the whole weekend or just a few hours Saturday, whatever works.\n\n" +
-    "Bring waders if you have them, and a cordless drill if you own one. " +
-    "Lunch both days is covered.",
+    "[Sample note] This is where the note the sender types in the app shows up — " +
+    "whatever they want to say up front, in their own words.\n\n" +
+    "It keeps their line breaks, and it is left out entirely when they don't write one.",
   sender_name: "Megan Theis",
   // A NON-admin member who created the event — the case the byline exists for.
   sender_email: "megan@example.com",
   event_id: "9f1c7e2a-0000-4000-8000-00000000abcd",
-  event_title: "Fall Work Weekend + Megan's 30th B-Day",
+  event_title: "Fall Work Weekend",
   event_when: "Sep 25 – 27, 2026",
   event_emoji: "🛟",
   event_location: "Down by the Lake",
