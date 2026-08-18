@@ -698,11 +698,21 @@ house submits one of three kinds; a House Admin decides, then records what happe
   — "I already bought it", amount required (the RPC rejects one without it), optional
   receipt photo, and the composer warns you up front if your profile has no payment
   method, since otherwise nobody knows where to send the money.
-- ⚠️ **The status ladder is the whole point:** `pending → approved → ordered → received`
-  (a reimbursement skips `ordered` — the RPC refuses it — and `received` reads "Paid").
-  **`approved` is NOT terminal**: "approved but nobody bought it" is the actual failure
-  mode, so it's a first-class visible state and its own section in the reviewer queue,
-  not something indistinguishable from done.
+- ⚠️ **The status ladder:** `pending → approved → ordered` for a purchase or an idea, and
+  `pending → approved → received` ("Paid") for a reimbursement, which skips `ordered`
+  outright (the RPC refuses it). **`approved` is NOT terminal** — "approved but nobody
+  bought it" is the actual failure mode, so it's a first-class visible state rather than
+  something indistinguishable from done.
+  - ⚠️ **`ordered` IS terminal, and there is deliberately no "it arrived" step.** A thing
+    that's been ordered obviously turns up, and a second box for a House Admin to come back
+    and tick later is exactly how a board fills with stale rows nobody closes. So the
+    timeline reads Submitted → Approved → Ordered and stops; `ProgressActions` offers a
+    forward step **only from `approved`** and renders nothing afterwards. `received` remains
+    reachable only for a reimbursement, where it means the money actually went out.
+    `isSettled()` therefore counts `ordered` as done (so it lands in the Done filter and
+    becomes deletable), and `statusLabel`'s non-reimbursement "Got it" wording is kept only
+    so any pre-existing row still reads sensibly. The DB still *allows* `received` for a
+    purchase — nothing creates it — so restoring the step would need no migration.
 - ⚠️ **NOT work items, and never merged with them.** [`work_items`](lib/workItems.ts) stays
   the more prominent list of things that NEED doing (urgency tiers, recurrence, event
   linking). This is the separate "should we?" board. Neither creates the other, there is

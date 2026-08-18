@@ -226,11 +226,15 @@ export function ProgressActions({ request, onDone }: { request: HouseRequest; on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const next: "ordered" | "received" =
-    isReimbursement || request.status === "ordered" ? "received" : "ordered";
-  const label = next === "ordered" ? "Mark ordered" : isReimbursement ? "Mark paid" : "Mark it's here";
+  // ⚠️ ONE forward step, and only from `approved`. A purchase ends at Ordered and
+  // a reimbursement ends at Paid — there is no follow-up box to tick, so once a
+  // request has moved there's nothing left to render here at all.
+  const next: "ordered" | "received" | null =
+    request.status !== "approved" ? null : isReimbursement ? "received" : "ordered";
+  const label = next === "received" ? "Mark paid" : "Mark ordered";
 
   const go = async () => {
+    if (!next) return;
     setBusy(true);
     setError(null);
     const parsed = Number.parseFloat(actual.replace(/[^0-9.]/g, ""));
@@ -248,6 +252,9 @@ export function ProgressActions({ request, onDone }: { request: HouseRequest; on
     setOpen(false);
     onDone();
   };
+
+  // Nothing further to do — it's ordered (or paid), which is the end.
+  if (!next) return null;
 
   if (!open) {
     return (
