@@ -7,8 +7,10 @@ import {
   KIND_META,
   addHouseRequestMedia,
   createHouseRequest,
+  fetchHouseAdmins,
   fetchPayMethods,
   updateHouseRequest,
+  type HouseAdmin,
   type HouseRequest,
   type HouseRequestKind,
   type PayMethods,
@@ -62,6 +64,11 @@ export function HouseRequestComposer({
   const [quantity, setQuantity] = useState(request?.quantity != null ? String(request.quantity) : "");
   const [pay, setPay] = useState<PayMethods>({ methods: [], resolved: false });
   const [payLoaded, setPayLoaded] = useState(false);
+  // ⚠️ WHO THIS WILL REACH, shown before the send. Read from the same predicate
+  // the fan-out uses (profiles.house_admin for this house — see migration 0199),
+  // so the preview cannot disagree with who actually gets contacted. A preview
+  // built from a second source would be worse than none.
+  const [recipients, setRecipients] = useState<HouseAdmin[] | null>(null);
   // A reviewer's "why I changed it" note + whether to email it. Only shown when
   // a House Admin is editing SOMEONE ELSE'S request — a member fixing their own
   // wording has nobody to explain it to.
@@ -85,6 +92,19 @@ export function HouseRequestComposer({
       alive = false;
     };
   }, [kind, payLoaded, userId]);
+
+  // Resolve the audience as soon as the sheet opens — never at submit time,
+  // since the whole point is seeing it BEFORE deciding to send.
+  useEffect(() => {
+    if (editing) return; // an edit notifies the requester, not the admins
+    let alive = true;
+    fetchHouseAdmins(houseId).then((a) => {
+      if (alive) setRecipients(a);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [editing, houseId]);
 
   const parsedCost = (() => {
     const n = Number.parseFloat(cost.replace(/[^0-9.]/g, ""));
@@ -228,14 +248,37 @@ export function HouseRequestComposer({
         </div>
       }
       footer={
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!canSubmit}
-          className="press w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {pending ? "Sending…" : editing ? "Save changes" : "Send it"}
-        </button>
+        <div className="space-y-2">
+          {/* Named, resolved, and directly above the button that sends it. */}
+          {!editing && recipients !== null && (
+            <p className="text-xs text-muted">
+              {recipients.length === 0 ? (
+                <>
+                  <span className="font-semibold text-accent">Nobody will be notified.</span> {houseName} has no House
+                  Admin yet, so this will sit on the board until one is named.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold">Goes to:</span>{" "}
+                  {recipients.map((r) => r.name).join(", ")}{" "}
+                  <span className="text-faint">
+                    ({recipients.length === 1 ? "the only House Admin" : `${recipients.length} House Admins`} for{" "}
+                    {houseName}
+                    {recipients.some((r) => r.id === userId) ? ", including you" : ""})
+                  </span>
+                </>
+              )}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit}
+            className="press w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {pending ? "Sending…" : editing ? "Save changes" : "Send it"}
+          </button>
+        </div>
       }
     >
       {/* Kind first — the form below adapts to it. Fixed while editing. */}
