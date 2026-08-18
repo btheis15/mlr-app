@@ -182,13 +182,14 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
   const replyClause = d.sender_email
     ? " &middot; replies to this email go straight to them"
     : "";
-  // The mailer always sends through ONE shared account (mac-mini
-  // ALERT_FROM) regardless of who actually wrote the note — so the inbox's
-  // From line can show a name that has nothing to do with who's really
+  // The mailer always sends through ONE personal email account (mac-mini
+  // ALERT_FROM — set up specifically to run the app's automated mail)
+  // regardless of who actually wrote the note — so the inbox's From line
+  // shows that account's name, which has nothing to do with who's really
   // behind this message. Said plainly, every time, right under the byline
   // that names the real sender — otherwise a reader who only glances at the
   // From line assumes whoever that account belongs to personally wrote this.
-  const senderNote = `<p style="margin:-4px 0 18px;font-size:11.5px;color:#8b918d;line-height:1.5">This went out through the resort&rsquo;s one shared mail account — that&rsquo;s just how it&rsquo;s delivered, not who wrote it. ${senderName} above is who this is really from.</p>`;
+  const senderNote = `<p style="margin:-4px 0 18px;font-size:11.5px;color:#8b918d;line-height:1.5">This was sent from the personal email account set up to send the app&rsquo;s automated mail — not necessarily who wrote it. ${senderName} above is who this is really from.</p>`;
   const byline = `<p style="margin:0 0 4px;font-size:13px;color:#6b7b73;line-height:1.5">Sent by <strong style="color:#14241c">${senderName}</strong>${replyClause}</p>${senderNote}`;
 
   const subject = d.subject
@@ -235,7 +236,7 @@ ${respondBlock}
           })
           .join("\n")}\n`
       : "";
-  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}${calUrl ? `\nAdd to calendar: ${calUrl}` : ""}\nSent by ${d.sender_name || "a member"}${d.sender_email ? " (replies go straight to them)" : ""}\n(This went out through the resort's one shared mail account — that's just how it's delivered, not who wrote it.)${
+  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}${calUrl ? `\nAdd to calendar: ${calUrl}` : ""}\nSent by ${d.sender_name || "a member"}${d.sender_email ? " (replies go straight to them)" : ""}\n(This was sent from the personal email account set up to send the app's automated mail — not necessarily who wrote it.)${
     d.event_location ? `\nWhere: ${d.event_location}` : ""
   }${d.event_description ? `\n\n${d.event_description}` : ""}${
     d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""

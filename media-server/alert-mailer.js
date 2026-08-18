@@ -581,11 +581,12 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
 
     // The sender ALWAYS gets a copy of whatever actually goes out — guaranteed,
     // not contingent on their own email_alerts pref or which bucket they'd
-    // normally land in (ALERT_FROM is a shared/personal mailbox that sends on
-    // everyone's behalf, so the person who actually wrote this needs their own
-    // proof of exactly what went out, regardless of preferences). Stripped out
-    // of each bucket's bcc list first so they never get the same email twice
-    // (once as a hidden bcc recipient, once as the visible Cc).
+    // normally land in (ALERT_FROM is one personal email account that sends
+    // every app email on everyone's behalf, so the person who actually wrote
+    // this needs their own proof of exactly what went out, regardless of
+    // preferences). Stripped out of each bucket's bcc list first so they never
+    // get the same email twice (once as a hidden bcc recipient, once as the
+    // visible Cc).
     const senderEmailLower = d.sender_email ? d.sender_email.toLowerCase() : null;
     if (senderEmailLower) {
       for (const s of sends) {
