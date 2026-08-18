@@ -33,7 +33,9 @@ function escapeHtml(s) {
 const KIND = {
   purchase: { emoji: "🛒", label: "Purchase Request", costLabel: "Estimated" },
   idea: { emoji: "💡", label: "Idea", costLabel: "Rough cost" },
-  reimbursement: { emoji: "🧾", label: "Reimbursement", costLabel: "Amount spent" },
+  // "Total" not "Amount", since a reimbursement is usually several things on one
+  // receipt — matches the composer's "What's the total?".
+  reimbursement: { emoji: "🧾", label: "Reimbursement", costLabel: "Total spent" },
 };
 
 function kindOf(kind) {

@@ -164,7 +164,7 @@ export function HouseRequestSheet({
                 ? `actual · estimated ${formatMoney(request.estCost)}`
                 : "actual"
               : request.kind === "reimbursement"
-                ? "already spent"
+                ? "total spent"
                 : "estimated"}
             {request.quantity && request.quantity > 1 ? ` · ×${request.quantity}` : ""}
           </span>
