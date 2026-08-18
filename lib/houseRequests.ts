@@ -358,32 +358,6 @@ export async function fetchHouseRequests(
   }
 }
 
-/** Every request the viewer can see, across all houses — the admin queue. */
-export async function fetchAllHouseRequests(
-  viewerId: string | null,
-  canReview = false,
-): Promise<HouseRequestsResult> {
-  const sb = supabase;
-  if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see fetchHouseRequests
-    let res: any = await sb.from("house_requests").select(SELECT).order("created_at", { ascending: false });
-    if (res.error && isMissingColumn(res.error)) {
-      res = await sb.from("house_requests").select(SELECT_NO_TEST).order("created_at", { ascending: false });
-    }
-    const { data, error } = res;
-    if (error) {
-      const missing = isMissingTable(error) || isMissingColumn(error);
-      if (!missing) console.warn("fetchAllHouseRequests: read error", error.message);
-      return { requests: [], ready: !missing };
-    }
-    const rows = (data ?? []) as unknown as RequestRow[];
-    return { requests: await finish(rows, viewerId, () => canReview), ready: true };
-  } catch {
-    return NO_HOUSE_REQUESTS;
-  }
-}
-
 /** Resolve every display name in one bulk call, then map the rows. */
 async function finish(
   rows: RequestRow[],

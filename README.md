@@ -297,14 +297,17 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   `can_review_house_request()`, is the seam.
 - **House requests** — ideas, purchases and reimbursements (migration
   [`0195_house_requests.sql`](supabase/migrations/0195_house_requests.sql), `/house/requests`
-  + Admin → House requests). A member submits **💡 an idea**, **🛒 a Purchase Request**
+  ). A member submits **💡 an idea**, **🛒 a Purchase Request**
   (Amazon/Home Depot link + estimate + why), or **🧾 a Request Reimbursement** for
   something already bought; a House Admin approves, changes or denies it with a note, then
   marks it **ordered** and **received** — so "approved but nobody bought it" is a visible
   state instead of a forgotten one. The requester hears every step in-app, on their phone,
-  and by email. Deliberately separate from the work-item to-do list, which keeps its own
-  more prominent place for things that actually *need* doing. See CLAUDE.md → **House
-  requests**.
+  and by email. **Only that house's House Admins can decide, and you only ever see your own
+  house's board** — being an app admin grants neither (migration
+  [`0202`](supabase/migrations/0202_house_requests_house_admins_only.sql)); it only lets you
+  appoint House Admins for a house you're in. Deliberately separate from the work-item
+  to-do list, which keeps its own more prominent place for things that actually *need*
+  doing. See CLAUDE.md → **House requests**.
 - **Home call-out stack** — temporary Home call-outs (future
   news/alerts) stack as **swipe-away cards on top of** the permanent Family Fest
   spotlight ([`components/HomeSpotlight.tsx`](components/HomeSpotlight.tsx) →

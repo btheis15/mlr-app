@@ -745,8 +745,31 @@ house submits one of three kinds; a House Admin decides, then records what happe
   do with that house. **The rule now: a house-scoped request notifies that house's House
   Admins and NOBODY else — no app-admin fallback**, because re-admitting "any app admin"
   under any condition is the bug. Consequence, accepted deliberately: a house with no House
-  Admin notifies nobody (the request still shows on the board). App admins keep full
-  ACCESS — `can_review_house_request()` is untouched; this governs who gets *contacted*.
+  Admin notifies nobody (the request still shows on the board).
+- ⚠️⚠️ **AND app admins could still DECIDE and READ everything (fixed by
+  [`0202`](supabase/migrations/0202_house_requests_house_admins_only.sql)).** 0199 scoped
+  who gets *notified* but left `can_review_house_request()` as "app admin OR House Admin",
+  so with Beth + leetheis as MJT House's House Admins, **all 7 app admins could still
+  approve / deny / modify / delete its requests** — four of them not even in the house —
+  and every app admin could read every house's board. **The rule now:**
+  - **see** — the request's author, and the members of its house. **No app-admin
+    override.** ⚠️ The read policy compares `house_id` *directly* rather than calling
+    `is_house_member()`, because that helper grants app admins a blanket pass (0064) and
+    using it would silently re-open cross-house reads through the back door.
+  - **decide** — the House Admins of that house, **only**. Being an app admin grants
+    nothing. This one function gates review / progress / reviewer-edit / media / delete, so
+    they all narrow together.
+  - **your own ask** — modify while pending, or withdraw. Keyed on authorship, so it's
+    unaffected either way. A test row is also always its author's to delete, since
+    otherwise anyone who stopped being a House Admin could never clear their own tests.
+  - Being an app admin still means something: only an app admin **in** a house can appoint
+    its House Admins (`set_house_admin`, 0194). Authority is delegated, not lost, and no
+    house can get permanently stuck.
+  - **`/admin/house-requests` was DELETED** along with `AdminHouseRequests`,
+    `useAllHouseRequests` and `fetchAllHouseRequests`: a cross-house queue is meaningless
+    once nobody can see across houses, and a screen promising "every house" that can only
+    show one is worse than no screen. `/house/requests` *is* the queue — House Admins are
+    members of their house, so they already have it.
 - **Deleting a finished request** (migration
   [`0201`](supabase/migrations/0201_house_request_delete.sql)) — reviewers can permanently
   remove a settled row (received / denied / withdrawn) or **any test row in any state**, so
@@ -830,18 +853,18 @@ house submits one of three kinds; a House Admin decides, then records what happe
     null on a forward step). The approval email already claimed that column and the mailer
     only sends where it's null — so without this, Ordered/Paid would fire the in-app
     notification and push but **silently never email**.
-- **Surfaces:** `/house/requests` ([`HouseRequestsScreen`](components/HouseRequestsScreen.tsx),
-  non-dynamic + `?house=<slug>` like the rest of `/house/*`, `?request=<id>` deep-link with
-  the scroll+flash ring) · a Requests section on the House Hub with a live "N waiting"
-  subtitle · Admin → **House requests** (`/admin/house-requests` →
-  [`AdminHouseRequests`](components/AdminHouseRequests.tsx)) grouped **Waiting on you**
-  (oldest first + age badge) → **Approved, not bought** → **Ordered** → collapsed history.
-  Shared card + inline Approve/Modify/Deny in
-  [`HouseRequestCard`](components/HouseRequestCard.tsx) so a stack of requests from six
+- **Surfaces — one screen, no admin variant:** `/house/requests`
+  ([`HouseRequestsScreen`](components/HouseRequestsScreen.tsx), non-dynamic + `?house=<slug>`
+  like the rest of `/house/*`, `?request=<id>` deep-link with the scroll+flash ring), plus a
+  Requests section on the House Hub with a live "N waiting" subtitle. Inline
+  Approve/Modify/Deny lives on the card itself
+  ([`HouseRequestCard`](components/HouseRequestCard.tsx)) so a stack of requests from six
   people can be worked top-to-bottom without opening one.
-  - ⚠️ **A House Admin who isn't an app admin can't reach `/admin/*`** (`AdminGuard`), so
-    they get the same inline reviewer controls **on `/house/requests`** — the non-admin
-    cabin-approver split from 0114, where the queue lives on `/request-stay`.
+  - ⚠️ **There is deliberately no `/admin/*` surface** (0202 deleted the one that existed).
+    A House Admin is a member of their house, not necessarily an app admin, and `AdminGuard`
+    would lock them out of their own queue — the same reason the non-admin cabin approver
+    works on `/request-stay` rather than `/admin/cabins` (0114). Since app admins have
+    neither cross-house visibility nor authority, an admin queue has nothing left to show.
 - **Client:** seam [`lib/houseRequests.ts`](lib/houseRequests.ts) (degrades to empty on
   42P01/42703, never throws) + `useHouseRequests` / `useAllHouseRequests` /
   `useIsHouseAdmin` in [`lib/hooks.ts`](lib/hooks.ts). ⚠️ The fetches return
