@@ -143,6 +143,19 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
     ? `${emoji} ${d.subject}`
     : `${emoji} ${d.event_title}${d.event_when ? ` — ${d.event_when}` : ""}`;
 
+  // ── How to respond ─────────────────────────────────────────────────────────
+  // ALWAYS rendered. The whole point of the email is finding out who's coming,
+  // so "here's how to answer" can't be a faint caption under a button — it's
+  // given its own bordered block with the ask stated first. Two routes on
+  // purpose: the app (which updates the real headcount everyone sees) and a
+  // plain reply, which reaches the sender directly via Reply-To. Nobody gets
+  // stuck because they don't want to open the app.
+  const respondBlock = `<table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 0"><tr><td style="padding:16px 18px;background:#f4f8f5;border:1px solid #dbe7df;border-radius:12px">
+<p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">Can you make it? Let us know.</p>
+<p style="margin:0 0 14px"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">RSVP in the app →</a></p>
+<p style="margin:0;font-size:13px;color:#4a5a52;line-height:1.6">Tapping through lets you say Going, Maybe, or Can&rsquo;t make it &mdash; and you can see who else is coming and check tasks off as they get done.<br>Not up for the app? <strong>Just reply to this email</strong> and you&rsquo;ll be added by hand.</p>
+</td></tr></table>`;
+
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:560px">
 <p style="margin:0 0 16px;color:#15503a;font-weight:700;font-size:11.5px;letter-spacing:.13em">MUSKELLUNGE LAKE RESORT</p>
 <p style="font-size:22px;margin:0 0 4px;line-height:1.25"><strong>${escapeHtml(emoji)} ${escapeHtml(d.event_title)}</strong></p>
@@ -151,8 +164,7 @@ ${byline}
 ${detailRows ? `<table role="presentation" style="border-collapse:collapse;font-size:14.5px;margin:0">${detailRows}</table>` : ""}
 ${noteBlock}
 ${workSection}
-<p style="margin:28px 0 0"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">RSVP &amp; see the full plan →</a></p>
-<p style="margin:11px 0 0;font-size:12.5px;color:#8b918d;line-height:1.5">Tap above to say if you&rsquo;re coming, see who else is, and check tasks off as they get done.</p>
+${respondBlock}
 <hr style="border:none;border-top:1px solid #e8e8e4;margin:26px 0 13px">
 <p style="color:#a3a9a5;font-size:11.5px;margin:0;line-height:1.6">Muskellunge Lake Resort · Muskellunge Lake, 5 mi from Tomahawk on Hwy 8, Tomahawk, WI<br>You&rsquo;re receiving this because you&rsquo;re on the family roster for Muskellunge Lake Resort.</p>
 </div>`;
@@ -184,7 +196,7 @@ ${workSection}
     houseItems.length
       ? `\n${houseName}:\n  (Only in ${houseName}'s copy of this email — everyone else got the same note without these tasks.)${textGroup("", houseItems)}`
       : ""
-  }\nRSVP & see the full plan: ${link}\n\n— Muskellunge Lake Resort`;
+  }\nCAN YOU MAKE IT? LET US KNOW.\nRSVP in the app: ${link}\nOr just reply to this email and you'll be added by hand.\n\n— Muskellunge Lake Resort`;
 
   return { subject, html, text, taskCount: total };
 }

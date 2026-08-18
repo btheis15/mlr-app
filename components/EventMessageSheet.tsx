@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ResortEvent, WorkItem } from "@/lib/types";
 import { formatDateRange } from "@/lib/format";
-import { sendEventMessage } from "@/lib/eventMessages";
+import { sendEventMessage, suggestEventNote } from "@/lib/eventMessages";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { useSheetDismiss } from "@/lib/hooks";
 
@@ -155,9 +155,27 @@ export function EventMessageSheet({
       </div>
 
       <div className="space-y-2">
-        <SectionLabel>
-          A note to include <span className="font-normal normal-case text-faint">(optional)</span>
-        </SectionLabel>
+        <div className="flex items-end justify-between gap-3">
+          <SectionLabel>
+            A note to include <span className="font-normal normal-case text-faint">(optional)</span>
+          </SectionLabel>
+          <button
+            type="button"
+            onClick={() =>
+              setBody(
+                suggestEventNote({
+                  title: event.title,
+                  when: formatDateRange(event.startDate, event.endDate),
+                  location: event.location,
+                  description: event.description,
+                }),
+              )
+            }
+            className="press shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary"
+          >
+            {body.trim() ? "Start over" : "Write one for me"}
+          </button>
+        </div>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -166,6 +184,10 @@ export function EventMessageSheet({
           placeholder="Anything you want to say up front — what to bring, when to show up, who to find when you get there…"
           className={`${FIELD} w-full resize-none`}
         />
+        <p className="px-0.5 text-xs text-faint">
+          A draft is only ever built from this event&rsquo;s own name, dates and place &mdash; edit it
+          freely. The email always asks people to RSVP, so you don&rsquo;t need to.
+        </p>
       </div>
 
       <div className="space-y-2">
