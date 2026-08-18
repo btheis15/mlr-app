@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import type { AttendanceStatus, AttendanceSummary, EventAttendance, House, ResortEvent, WorkItem } from "@/lib/types";
 import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
-import { deleteEvent, effectiveStatus, eventDays, goingByDay, isOngoing, myGoingDays } from "@/lib/events";
+import {
+  deleteEvent,
+  effectiveStatus,
+  eventDays,
+  goingByDay,
+  isOngoing,
+  myGoingDays,
+  removeEventAttendanceEntry,
+} from "@/lib/events";
 import {
   fetchEventWorkItems,
   fetchEventWorkItemHouseCounts,
@@ -19,6 +27,7 @@ import { Sheet, SectionLabel } from "@/components/Sheet";
 import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { EventWorkItemPicker } from "@/components/EventWorkItemPicker";
 import { EventMessageSheet } from "@/components/EventMessageSheet";
+import { EventAttendeeAdd } from "@/components/EventAttendeeAdd";
 import { useSheetDismiss } from "@/lib/hooks";
 
 // The event detail sheet: dates, location, description, the RSVP control, and
@@ -78,6 +87,18 @@ export function EventSheet({
   const [addingWorkItem, setAddingWorkItem] = useState(false);
   const [pickingWorkItems, setPickingWorkItems] = useState(false);
   const [emailingEveryone, setEmailingEveryone] = useState(false);
+  const [addingAttendee, setAddingAttendee] = useState(false);
+  const [removingAttendeeId, setRemovingAttendeeId] = useState<string | null>(null);
+  const allAttendance = [...summary.going, ...summary.maybe, ...summary.notGoing];
+
+  const removeAttendee = async (a: EventAttendance) => {
+    if (!window.confirm(`Remove ${a.name} from this event's RSVP list?`)) return;
+    setRemovingAttendeeId(a.id);
+    await removeEventAttendanceEntry(a.id);
+    setRemovingAttendeeId(null);
+    // The parent's `summary` updates on its own via the events-live realtime
+    // subscription (useEvents({realtime:true})) — no manual refetch here.
+  };
 
   const reloadWorkItems = () => {
     fetchEventWorkItems(event.id).then(setWorkItems);
@@ -212,6 +233,14 @@ export function EventSheet({
         workItems={workItems}
         hiddenHouseItemCount={hiddenHouseCounts.reduce((n, hc) => n + hc.count, 0)}
         onClose={() => setEmailingEveryone(false)}
+      />
+    )}
+    {addingAttendee && (
+      <EventAttendeeAdd
+        eventId={event.id}
+        existing={allAttendance}
+        onClose={() => setAddingAttendee(false)}
+        onAdded={() => {}}
       />
     )}
     <Sheet
@@ -407,7 +436,18 @@ export function EventSheet({
 
           {/* Who's coming */}
           <div className="space-y-2">
-            <SectionLabel>Who&rsquo;s coming</SectionLabel>
+            <div className="flex items-center justify-between">
+              <SectionLabel>Who&rsquo;s coming</SectionLabel>
+              {canManage && !guest && (
+                <button
+                  type="button"
+                  onClick={() => setAddingAttendee(true)}
+                  className="press text-xs font-semibold text-primary"
+                >
+                  + Add someone
+                </button>
+              )}
+            </div>
             {guest ? (
               // Guests can't read the roster (members-only under RLS) — an
               // honest sign-in nudge instead of a false "No RSVPs yet".
@@ -445,8 +485,8 @@ export function EventSheet({
                 </div>
                 {dayFilter === null ? (
                   <div className="space-y-3">
-                    <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
-                    <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
+                    <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} canManage={canManage} onRemove={removeAttendee} removingId={removingAttendeeId} />
+                    <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} canManage={canManage} onRemove={removeAttendee} removingId={removingAttendeeId} />
                   </div>
                 ) : (
                   <RosterGroup
@@ -454,14 +494,17 @@ export function EventSheet({
                     dotClass="bg-primary"
                     people={byDay[dayFilter] ?? []}
                     emptyText="No one’s marked this day yet."
+                    canManage={canManage}
+                    onRemove={removeAttendee}
+                    removingId={removingAttendeeId}
                   />
                 )}
               </div>
             ) : (
               <div className="space-y-3">
-                <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} />
-                <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} />
-                <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} />
+                <RosterGroup label="Going" dotClass="bg-primary" people={summary.going} canManage={canManage} onRemove={removeAttendee} removingId={removingAttendeeId} />
+                <RosterGroup label="Maybe" dotClass="bg-sun" people={summary.maybe} canManage={canManage} onRemove={removeAttendee} removingId={removingAttendeeId} />
+                <RosterGroup label="Can’t make" dotClass="bg-foreground/30" people={summary.notGoing} canManage={canManage} onRemove={removeAttendee} removingId={removingAttendeeId} />
               </div>
             )}
           </div>
@@ -509,12 +552,19 @@ function RosterGroup({
   dotClass,
   people,
   emptyText,
+  canManage = false,
+  onRemove,
+  removingId,
 }: {
   label: string;
   dotClass: string;
   people: EventAttendance[];
   /** When set, render the header + this message instead of nothing on an empty group. */
   emptyText?: string;
+  /** Shows a ✕ on each pill (guest/roster/member alike) that removes it. */
+  canManage?: boolean;
+  onRemove?: (a: EventAttendance) => void;
+  removingId?: string | null;
 }) {
   if (people.length === 0 && !emptyText) return null;
   return (
@@ -529,13 +579,29 @@ function RosterGroup({
         <div className="flex flex-wrap gap-1.5">
           {people.map((p) => (
             <span
-              key={p.userId}
-              className="inline-flex items-center gap-1.5 rounded-full bg-card py-1 pl-1 pr-2.5 ring-1 ring-border"
+              key={p.id}
+              className="inline-flex items-center gap-1.5 rounded-full bg-card py-1 pl-1 pr-2 ring-1 ring-border"
               title={p.confirmed ? undefined : "Said available in a poll — hasn't confirmed for this event yet"}
             >
               <Avatar name={p.name} url={p.avatarUrl} size={20} />
               <PrivateName name={p.name} className="text-xs font-medium" />
+              {!p.userId && (
+                <span className="rounded-full bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted ring-1 ring-border">
+                  {p.rosterId ? "family" : "guest"}
+                </span>
+              )}
               {!p.confirmed && <span className="text-[10px] text-muted">(hasn&rsquo;t confirmed)</span>}
+              {canManage && onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(p)}
+                  disabled={removingId === p.id}
+                  aria-label={`Remove ${p.name}`}
+                  className="press ml-0.5 shrink-0 text-foreground/30 hover:text-accent disabled:opacity-40"
+                >
+                  ✕
+                </button>
+              )}
             </span>
           ))}
         </div>

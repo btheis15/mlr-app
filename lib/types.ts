@@ -785,10 +785,25 @@ export type AttendanceStatus = "going" | "maybe" | "not_going";
  *  events with the drill-down on (keys are ISO dates). `name`/`avatarUrl` are
  *  joined from the member's profile when the roster loads. `confirmed` is false
  *  only for a status carried over from a meeting poll's winning slot (see
- *  finalize_meeting_as_event) until the member re-taps their own RSVP. */
+ *  finalize_meeting_as_event) until the member re-taps their own RSVP.
+ *
+ *  A row is exactly ONE of three kinds (migration 0196), never more than one
+ *  id set: a real member (`userId`), a pre-registered family_roster person
+ *  with no account yet (`rosterId`), or an outside guest with neither
+ *  (`guestName`, free text — someone brought up to help who isn't family).
+ *  A guest row also carries `sponsorUserId` (required at creation — "who do
+ *  they know", a real member) and an optional `guestEmail` (so they can get
+ *  emails about just this one event). `addedBy` is set only when a manager
+ *  added the row on someone else's behalf, never for a self-RSVP. */
 export interface EventAttendance {
+  id: string;
   eventId: string;
-  userId: string;
+  userId?: string | null;
+  rosterId?: string | null;
+  guestName?: string | null;
+  guestEmail?: string | null;
+  sponsorUserId?: string | null;
+  addedBy?: string | null;
   name: string;
   avatarUrl: string | null;
   status: AttendanceStatus;

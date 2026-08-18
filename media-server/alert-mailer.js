@@ -579,8 +579,34 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       { key: "general", bucket: null, emails: (d.general_emails || []).filter(Boolean) },
     ].filter((s) => s.emails.length > 0 && !alreadySent.has(s.key));
 
+    // The sender ALWAYS gets a copy of whatever actually goes out — guaranteed,
+    // not contingent on their own email_alerts pref or which bucket they'd
+    // normally land in (ALERT_FROM is a shared/personal mailbox that sends on
+    // everyone's behalf, so the person who actually wrote this needs their own
+    // proof of exactly what went out, regardless of preferences). Stripped out
+    // of each bucket's bcc list first so they never get the same email twice
+    // (once as a hidden bcc recipient, once as the visible Cc).
+    const senderEmailLower = d.sender_email ? d.sender_email.toLowerCase() : null;
+    if (senderEmailLower) {
+      for (const s of sends) {
+        s.emails = s.emails.filter((e) => e.toLowerCase() !== senderEmailLower);
+      }
+    }
+
     if (sends.length === 0) {
-      console.log(`[mailer] event_message ${row.id}: nothing left to send`);
+      if (senderEmailLower) {
+        // Nobody else to email (e.g. no one's opted in yet) — the sender still
+        // gets to see exactly what would have gone out.
+        const { subject, html, text } = buildEventEmail(d, APP_URL, null);
+        try {
+          await transport.sendMail({ from: ALERT_FROM, to: d.sender_email, subject, text, html });
+          console.log(`[mailer] event_message ${row.id}: no other recipients — sent the sender their own copy`);
+        } catch (e) {
+          console.error(`[mailer] event_message ${row.id} sender-only copy failed:`, e && e.message);
+        }
+      } else {
+        console.log(`[mailer] event_message ${row.id}: nothing left to send`);
+      }
       return; // leave it claimed — no recipients, or every bucket already went
     }
 
@@ -597,7 +623,7 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
           from: ALERT_FROM,
           to: ALERT_FROM,
           bcc: s.emails,
-          ...(d.sender_email ? { replyTo: d.sender_email } : {}),
+          ...(d.sender_email ? { cc: d.sender_email, replyTo: d.sender_email } : {}),
           subject,
           text,
           html,

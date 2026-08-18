@@ -176,6 +176,8 @@ export function EventMessageSheet({
         event_id: preview.eventId,
         event_title: preview.eventTitle,
         event_when: preview.eventWhen,
+        event_start_date: preview.eventStartDate,
+        event_end_date: preview.eventEndDate,
         event_emoji: preview.eventEmoji,
         event_location: preview.eventLocation,
         event_description: preview.eventDescription,

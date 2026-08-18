@@ -73,7 +73,9 @@ export function presentFromAttendance(
     } else {
       going = effectiveStatus(r.status, r.days) === "going";
     }
-    if (going) seen.set(r.userId, { userId: r.userId, name: r.name, avatarUrl: r.avatarUrl });
+    // Presence only means real members (a manually-added guest/roster entry,
+    // migration 0194, has no account to be "present" as).
+    if (going && r.userId) seen.set(r.userId, { userId: r.userId, name: r.name, avatarUrl: r.avatarUrl });
   }
   return Array.from(seen.values());
 }

@@ -37,10 +37,13 @@ function urgencyLabel(it) {
   return it.customLabel ? `${dot} ${it.customLabel}` : dot;
 }
 
-/** One task as its own card: the title, then ITS DETAILS, then urgency + headcount. */
+/** One task as its own card: the title, then ITS DETAILS, then headcount.
+ *  No urgency label here — once a task is on an event, it's part of the plan;
+ *  the this-year/nice-to-have tiering is a backlog-triage concept that only
+ *  makes sense on the app's full work-item list, not in a "here's what's
+ *  happening this weekend" email. */
 function itemCard(it) {
   const meta = [
-    urgencyLabel(it) ? `<span style="white-space:nowrap">${escapeHtml(urgencyLabel(it))}</span>` : "",
     it.peopleNeeded ? `<span style="white-space:nowrap">👥 ${Number(it.peopleNeeded)} needed</span>` : "",
   ]
     .filter(Boolean)
@@ -67,6 +70,37 @@ function itemGroup(label, items, note) {
 ${noteHtml}<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px">${items.map(itemCard).join("")}</table>`;
 }
 
+// Pure string arithmetic on "YYYY-MM-DD" — never hand a bare date string to
+// `new Date()` for anything that renders (see the 0168 migration's incident
+// writeup: that parses as UTC midnight and silently shows a day early in any
+// negative-offset zone). Date.UTC is only used here to add one calendar day,
+// then read back immediately in UTC fields — no local-zone rendering involved.
+function addOneDayCompact(ymd) {
+  const [y, m, d] = String(ymd).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, "0")}${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** A one-tap "Add to calendar" link (Google Calendar's TEMPLATE action, no
+ *  OAuth — same convention as `googleCalendarCreateUrl` in lib/meetings.ts).
+ *  Always an ALL-DAY range: these are resort events with a date range, not a
+ *  specific call time, and an all-day event sidesteps timezone conversion
+ *  entirely. Google's `dates` end is exclusive, so a same-day event needs
+ *  start+1 as its end. Returns null for a seed/synthesized event with no real
+ *  `events` row to read dates from. */
+function addToCalendarUrl(d) {
+  if (!d.event_start_date) return null;
+  const startCompact = String(d.event_start_date).replace(/-/g, "");
+  const endCompact = addOneDayCompact(d.event_end_date || d.event_start_date);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: d.event_title || "",
+    dates: `${startCompact}/${endCompact}`,
+  });
+  if (d.event_location) params.set("location", d.event_location);
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 /**
  * Build the subject + HTML + plain-text parts for ONE bucket.
  * @param {object} d       an `event_message_email()` row
@@ -78,11 +112,22 @@ function buildEventEmail(d, appUrl, bucket = null) {
   const mlr = Array.isArray(d.mlr_items) ? d.mlr_items : [];
   const houseItems = bucket && Array.isArray(bucket.items) ? bucket.items : [];
   const emoji = d.event_emoji || "📅";
-  const link = `${appUrl}/events?open=${encodeURIComponent(d.event_id)}`;
   const total = mlr.length + houseItems.length;
+  const calUrl = addToCalendarUrl(d);
+
+  // The "When" cell carries the add-to-calendar link right under the date —
+  // an arrow hints it's tappable, the same visual idiom as the old RSVP
+  // button, without needing a full block of its own.
+  const whenValue = d.event_when
+    ? `${escapeHtml(d.event_when)}${
+        calUrl
+          ? `<br><a href="${calUrl}" style="display:inline-block;margin-top:5px;font-size:12.5px;font-weight:600;color:#15503a;text-decoration:none">📅 Add to calendar →</a>`
+          : ""
+      }`
+    : "";
 
   const detailRows = [
-    ...(d.event_when ? [["When", escapeHtml(d.event_when)]] : []),
+    ...(d.event_when ? [["When", whenValue]] : []),
     ...(d.event_location ? [["Where", escapeHtml(d.event_location)]] : []),
     ...(d.event_description ? [["About", escapeHtml(d.event_description)]] : []),
   ]
@@ -137,7 +182,14 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
   const replyClause = d.sender_email
     ? " &middot; replies to this email go straight to them"
     : "";
-  const byline = `<p style="margin:0 0 18px;font-size:13px;color:#6b7b73;line-height:1.5">Sent by <strong style="color:#14241c">${senderName}</strong>${replyClause}</p>`;
+  // The mailer always sends through ONE shared account (mac-mini
+  // ALERT_FROM) regardless of who actually wrote the note — so the inbox's
+  // From line can show a name that has nothing to do with who's really
+  // behind this message. Said plainly, every time, right under the byline
+  // that names the real sender — otherwise a reader who only glances at the
+  // From line assumes whoever that account belongs to personally wrote this.
+  const senderNote = `<p style="margin:-4px 0 18px;font-size:11.5px;color:#8b918d;line-height:1.5">This went out through the resort&rsquo;s one shared mail account — that&rsquo;s just how it&rsquo;s delivered, not who wrote it. ${senderName} above is who this is really from.</p>`;
+  const byline = `<p style="margin:0 0 4px;font-size:13px;color:#6b7b73;line-height:1.5">Sent by <strong style="color:#14241c">${senderName}</strong>${replyClause}</p>${senderNote}`;
 
   const subject = d.subject
     ? `${emoji} ${d.subject}`
@@ -146,14 +198,17 @@ ${houseItems.length ? itemGroup(`${bucket.emoji || "🏠"} ${houseName}`, houseI
   // ── How to respond ─────────────────────────────────────────────────────────
   // ALWAYS rendered. The whole point of the email is finding out who's coming,
   // so "here's how to answer" can't be a faint caption under a button — it's
-  // given its own bordered block with the ask stated first. Two routes on
-  // purpose: the app (which updates the real headcount everyone sees) and a
-  // plain reply, which reaches the sender directly via Reply-To. Nobody gets
-  // stuck because they don't want to open the app.
+  // given its own bordered block with the ask stated first. Deliberately NO
+  // link to the app: a member with the app installed to their Home Screen/Dock
+  // has a signed-in session living in THAT container, but tapping a bare link
+  // opens the browser instead (a separate, signed-out session on iOS — see
+  // InstallFirstNudge's note in components/IdentityProvider.tsx), so the link
+  // would cost them a re-sign-in rather than saving one. Just naming both
+  // routes in plain text — open the app yourself, or reply here — costs
+  // nothing and can't misroute anyone.
   const respondBlock = `<table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 0"><tr><td style="padding:16px 18px;background:#f4f8f5;border:1px solid #dbe7df;border-radius:12px">
-<p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">Can you make it? Let us know.</p>
-<p style="margin:0 0 14px"><a href="${link}" style="display:inline-block;background:#15503a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">RSVP in the app →</a></p>
-<p style="margin:0;font-size:13px;color:#4a5a52;line-height:1.6">Tapping through lets you say Going, Maybe, or Can&rsquo;t make it &mdash; and you can see who else is coming and check tasks off as they get done.<br>Not up for the app? <strong>Just reply to this email</strong> and you&rsquo;ll be added by hand.</p>
+<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">Can you make it? Let us know.</p>
+<p style="margin:0;font-size:14px;color:#4a5a52;line-height:1.6">RSVP on the app (Going, Maybe, or Can&rsquo;t make it) &mdash; or just <strong>reply to this email</strong> and you&rsquo;ll be added by hand.</p>
 </td></tr></table>`;
 
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14241c;max-width:560px">
@@ -173,14 +228,14 @@ ${respondBlock}
     items && items.length
       ? `\n${label}\n${items
           .map((i) => {
-            const meta = [urgencyLabel(i), i.peopleNeeded ? `${i.peopleNeeded} needed` : ""].filter(Boolean).join(" · ");
+            const meta = [i.peopleNeeded ? `${i.peopleNeeded} needed` : ""].filter(Boolean).join(" · ");
             return `  • ${i.title}${meta ? `  [${meta}]` : ""}${
               i.notes ? `\n      ${String(i.notes).replace(/\n/g, "\n      ")}` : ""
             }`;
           })
           .join("\n")}\n`
       : "";
-  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}\nSent by ${d.sender_name || "a member"}${d.sender_email ? " (replies go straight to them)" : ""}${
+  const text = `${d.event_title}${d.event_when ? `\n${d.event_when}` : ""}${calUrl ? `\nAdd to calendar: ${calUrl}` : ""}\nSent by ${d.sender_name || "a member"}${d.sender_email ? " (replies go straight to them)" : ""}\n(This went out through the resort's one shared mail account — that's just how it's delivered, not who wrote it.)${
     d.event_location ? `\nWhere: ${d.event_location}` : ""
   }${d.event_description ? `\n\n${d.event_description}` : ""}${
     d.body ? `\n\nNote from ${d.sender_name || "the organizer"}:\n${d.body}` : ""
@@ -196,7 +251,7 @@ ${respondBlock}
     houseItems.length
       ? `\n${houseName}:\n  (Only in ${houseName}'s copy of this email — everyone else got the same note without these tasks.)${textGroup("", houseItems)}`
       : ""
-  }\nCAN YOU MAKE IT? LET US KNOW.\nRSVP in the app: ${link}\nOr just reply to this email and you'll be added by hand.\n\n— Muskellunge Lake Resort`;
+  }\nCAN YOU MAKE IT? LET US KNOW.\nRSVP on the app, or just reply to this email and you'll be added by hand.\n\n— Muskellunge Lake Resort`;
 
   return { subject, html, text, taskCount: total };
 }

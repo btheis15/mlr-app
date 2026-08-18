@@ -685,6 +685,7 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
       setMine((m) => ({
         ...m,
         [eventId]: {
+          id: m[eventId]?.id ?? eventId,
           eventId,
           userId: m[eventId]?.userId ?? "",
           name: m[eventId]?.name ?? user.name,

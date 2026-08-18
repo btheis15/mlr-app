@@ -111,9 +111,7 @@ export async function fetchAttendance(): Promise<EventAttendance[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [];
   try {
-    const { data } = await sb
-      .from("event_attendance")
-      .select("event_id, user_id, status, days, confirmed, profiles(display_name, avatar_url)");
+    const { data } = await sb.from("event_attendance").select(ATTENDANCE_SELECT);
     return ((data ?? []) as AttendanceRow[]).map(mapAttendanceRow);
   } catch {
     return [];
@@ -131,7 +129,7 @@ export async function fetchMyAttendance(asUserId?: string): Promise<Record<strin
     if (!uid) return {};
     const { data } = await sb
       .from("event_attendance")
-      .select("event_id, user_id, status, days, confirmed, profiles(display_name, avatar_url)")
+      .select(ATTENDANCE_SELECT)
       .eq("user_id", uid);
     for (const r of (data ?? []) as AttendanceRow[]) {
       const a = mapAttendanceRow(r);
@@ -335,9 +333,28 @@ function mapEventRow(r: EventRow): ResortEvent {
   };
 }
 
+// Shared between fetchAttendance/fetchMyAttendance so the two selects can't
+// drift — a roster/guest row (migration 0196) needs the family_roster embed
+// too, not just profiles.
+//
+// ⚠️ event_attendance has THREE FKs to profiles now (user_id, sponsor_user_id,
+// added_by), so the `profiles(...)` embed MUST name the FK explicitly or
+// PostgREST 300s with "more than one relationship found" (the same
+// tournaments/tournament_entrants trap — see 0196's header note). Only
+// user_id's name/avatar is actually rendered anywhere today, so that's the
+// only one embedded.
+const ATTENDANCE_SELECT =
+  "id, event_id, user_id, roster_id, guest_name, guest_email, sponsor_user_id, added_by, status, days, confirmed, profiles!event_attendance_user_id_fkey(display_name, avatar_url), family_roster(name)" as const;
+
 interface AttendanceRow {
+  id: string;
   event_id: string;
-  user_id: string;
+  user_id: string | null;
+  roster_id: string | null;
+  guest_name: string | null;
+  guest_email: string | null;
+  sponsor_user_id: string | null;
+  added_by: string | null;
   status: string;
   days: Record<string, AttendanceStatus> | null;
   confirmed: boolean;
@@ -347,17 +364,92 @@ interface AttendanceRow {
     | { display_name: string | null; avatar_url: string | null }
     | { display_name: string | null; avatar_url: string | null }[]
     | null;
+  family_roster?: { name: string | null } | { name: string | null }[] | null;
 }
 
 function mapAttendanceRow(r: AttendanceRow): EventAttendance {
   const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+  const roster = Array.isArray(r.family_roster) ? r.family_roster[0] : r.family_roster;
+  const name =
+    (p?.display_name && p.display_name.trim()) ||
+    (roster?.name && roster.name.trim()) ||
+    (r.guest_name && r.guest_name.trim()) ||
+    "Member";
   return {
+    id: r.id,
     eventId: r.event_id,
     userId: r.user_id,
-    name: (p?.display_name && p.display_name.trim()) || "Member",
+    rosterId: r.roster_id,
+    guestName: r.guest_name,
+    guestEmail: r.guest_email,
+    sponsorUserId: r.sponsor_user_id,
+    addedBy: r.added_by,
+    name,
     avatarUrl: p?.avatar_url ?? null,
     status: r.status as AttendanceStatus,
     days: r.days,
     confirmed: r.confirmed,
   };
+}
+
+/**
+ * Manually add someone already known to the family — a real member (pass
+ * `userId`) OR a pre-registered `family_roster` person with no account yet
+ * (pass `rosterId`). Exactly one. Admin-or-creator gated server-side
+ * (`can_manage_event`, migration 0196) — call sites gate the UI the same way.
+ */
+export async function addEventFamilyMember(
+  eventId: string,
+  who: { userId: string } | { rosterId: string },
+  status: AttendanceStatus = "going",
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return { error: "Not connected" };
+  const { error } = await sb.rpc("add_event_family_member", {
+    p_event_id: eventId,
+    p_user_id: "userId" in who ? who.userId : null,
+    p_roster_id: "rosterId" in who ? who.rosterId : null,
+    p_status: status,
+  });
+  if (error) return { error: error.message };
+  return {};
+}
+
+/**
+ * Manually add an outside guest — a typed name, no account or roster link,
+ * because there's nothing in the app to link to. Same gate as above.
+ * `sponsorUserId` ("who do they know") is REQUIRED — a real member, picked
+ * from a dropdown in the UI. `email` is optional: a guest has no app account,
+ * so it's the only way to keep them in the loop about updates to THIS event
+ * specifically (never used for anything else).
+ */
+export async function addEventGuest(
+  eventId: string,
+  name: string,
+  sponsorUserId: string,
+  status: AttendanceStatus = "going",
+  email?: string | null,
+): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return { error: "Not connected" };
+  const { error } = await sb.rpc("add_event_guest", {
+    p_event_id: eventId,
+    p_name: name.trim(),
+    p_sponsor_user_id: sponsorUserId,
+    p_status: status,
+    p_email: email?.trim() || null,
+  });
+  if (error) return { error: error.message };
+  return {};
+}
+
+/** Remove any one attendance row by id — a manager can pull any entry
+ *  (guest, roster, or a member's own), or a member can remove their own row
+ *  this way too (mirrors clear_event_attendance, addressed by id). */
+export async function removeEventAttendanceEntry(id: string): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return { error: "Not connected" };
+  const { error } = await sb.rpc("remove_event_attendance_entry", { p_id: id });
+  if (error) return { error: error.message };
+  return {};
 }

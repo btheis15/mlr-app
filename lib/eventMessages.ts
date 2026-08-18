@@ -112,6 +112,10 @@ export interface EventMessagePreview {
   eventId: string;
   eventTitle: string;
   eventWhen: string | null;
+  /** Real "YYYY-MM-DD" dates, distinct from `eventWhen`'s formatted string —
+   *  feeds the email's "Add to calendar" link. Null for a seed event. */
+  eventStartDate: string | null;
+  eventEndDate: string | null;
   eventEmoji: string | null;
   eventLocation: string | null;
   eventDescription: string | null;
@@ -158,6 +162,8 @@ export async function fetchEventMessagePreview(
       eventId: row.event_id,
       eventTitle: row.event_title,
       eventWhen: row.event_when ?? null,
+      eventStartDate: row.event_start_date ?? null,
+      eventEndDate: row.event_end_date ?? null,
       eventEmoji: row.event_emoji ?? null,
       eventLocation: row.event_location ?? null,
       eventDescription: row.event_description ?? null,

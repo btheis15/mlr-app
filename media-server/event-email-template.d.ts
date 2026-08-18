@@ -36,6 +36,10 @@ export interface EventEmailData {
   event_id?: string | null;
   event_title?: string | null;
   event_when?: string | null;
+  /** Real "YYYY-MM-DD" dates, distinct from the formatted `event_when` string
+   *  — feeds the "Add to calendar" link. Null for a seed/synthesized event. */
+  event_start_date?: string | null;
+  event_end_date?: string | null;
   event_emoji?: string | null;
   event_location?: string | null;
   event_description?: string | null;

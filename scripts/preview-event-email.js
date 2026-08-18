@@ -43,6 +43,8 @@ const SAMPLE = {
   event_id: "9f1c7e2a-0000-4000-8000-00000000abcd",
   event_title: "Fall Work Weekend",
   event_when: "Sep 25 – 27, 2026",
+  event_start_date: "2026-09-25",
+  event_end_date: "2026-09-27",
   event_emoji: "🛟",
   event_location: "Down by the Lake",
   event_description:
