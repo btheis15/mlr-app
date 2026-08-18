@@ -103,6 +103,14 @@ export function HouseRequestCard({
           {request.quantity && request.quantity > 1 ? ` · ×${request.quantity}` : ""}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {/* A test submission (0200) — only its author was notified and only
+              they + app admins can see it. Badged first so it reads as a test
+              before anything else on the row does. */}
+          {request.testOnly && (
+            <span className="rounded-full bg-dusk/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-dusk">
+              Test
+            </span>
+          )}
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusChip(request.status)}`}>
             {statusLabel(request)}
           </span>

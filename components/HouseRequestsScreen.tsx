@@ -275,6 +275,7 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
           houseId={houseId}
           houseName={houseName}
           request={editing}
+          canTest={canReview}
           onClose={() => {
             setComposing(false);
             setEditing(null);
