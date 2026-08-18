@@ -22,6 +22,7 @@ const { buildEventEmail } = require("./event-email-template");
 const {
   buildHouseRequestEmail,
   buildHouseRequestDecisionEmail,
+  buildHouseRequestCoadminEmail,
 } = require("./house-request-email-template");
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -815,6 +816,62 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
     }
   }
 
+  // One House Admin acted, so tell the OTHERS (migration 0198) — "Lee approved
+  // Brian's reimbursement". Without it, two admins work the same queue blind and
+  // either double-order something or each assume the other had it.
+  //
+  // ⚠️ The CC convention is deliberately inverted here vs. the other two emails:
+  // the actor is the one person who must NOT be a recipient (they did it, and
+  // house_request_coadmin_emails already excludes them), so there's nothing to CC
+  // them on. replyTo still points at them — they're who a question is for.
+  async function handleHouseRequestHandled(row) {
+    if (!row || !row.handled_notify_requested_at) return;
+    if (row.handled_email_sent_at && row.handled_email_sent_at >= row.handled_notify_requested_at) return;
+    const { data: claimed } = await sb
+      .from("house_requests")
+      .update({ handled_email_sent_at: row.handled_notify_requested_at })
+      .eq("id", row.id)
+      .or(`handled_email_sent_at.is.null,handled_email_sent_at.lt.${row.handled_notify_requested_at}`)
+      .select("id");
+    if (!claimed || claimed.length === 0) return;
+
+    const [{ data: info, error }, { data: recips, error: rErr }] = await Promise.all([
+      sb.rpc("house_request_notification", { p_request: row.id }),
+      sb.rpc("house_request_coadmin_emails", { p_request: row.id }),
+    ]);
+    const d = (info || [])[0];
+    if (error || rErr || !d) {
+      console.error("[mailer] house_request co-admin lookup error:", (error || rErr || {}).message || "no data");
+      await sb.from("house_requests").update({ handled_email_sent_at: null }).eq("id", row.id);
+      return;
+    }
+    const emails = (recips || []).map((r) => r.recipient_email).filter(Boolean);
+    if (emails.length === 0) {
+      // A one-admin house — nobody to keep in the loop. Leave it claimed; a
+      // retry every 3 minutes wouldn't change that.
+      console.log(`[mailer] house_request ${row.id}: no co-admins to inform`);
+      return;
+    }
+
+    const { subject, html, text } = buildHouseRequestCoadminEmail(d, { fromAddress: fromAddress() });
+    try {
+      await transport.sendMail({
+        from: ALERT_FROM,
+        to: ALERT_FROM,
+        bcc: emails,
+        // A question about this decision belongs with whoever made it.
+        ...(d.reviewer_email ? { replyTo: d.reviewer_email } : {}),
+        subject,
+        text,
+        html,
+      });
+      console.log(`[mailer] house_request ${row.id} (${d.last_action}) → ${emails.length} co-admin(s)`);
+    } catch (e) {
+      console.error("[mailer] house_request co-admin send failed:", e && e.message);
+      await sb.from("house_requests").update({ handled_email_sent_at: null }).eq("id", row.id);
+    }
+  }
+
   // Sweep everything unsent — alerts + cabin decisions/edits/cancellations.
   // Runs on startup AND on a recurring timer (see below), since realtime can
   // silently drop (CHANNEL_ERROR/TIMED_OUT) without ever recovering on its
@@ -928,6 +985,14 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
       .order("change_notify_requested_at", { ascending: false })
       .limit(10);
     for (const row of houseReqChanged || []) await handleHouseRequestChange(row);
+
+    const { data: houseReqHandled } = await sb
+      .from("house_requests")
+      .select("id, handled_notify_requested_at, handled_email_sent_at")
+      .not("handled_notify_requested_at", "is", null)
+      .order("handled_notify_requested_at", { ascending: false })
+      .limit(10);
+    for (const row of houseReqHandled || []) await handleHouseRequestHandled(row);
   }
   await sweep();
   setInterval(() => sweep().catch((e) => console.error("[mailer] sweep error:", e && e.message)), 3 * 60 * 1000);
@@ -974,6 +1039,9 @@ ${d.subject ? `<p style="margin:0 0 10px;font-size:15px"><strong>${escapeHtml(d.
         );
         handleHouseRequestChange(payload.new).catch((e) =>
           console.error("[mailer] house request change handle error:", e && e.message),
+        );
+        handleHouseRequestHandled(payload.new).catch((e) =>
+          console.error("[mailer] house request co-admin handle error:", e && e.message),
         );
       })
       .subscribe((status) => {

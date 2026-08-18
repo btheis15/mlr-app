@@ -731,10 +731,36 @@ house submits one of three kinds; a House Admin decides, then records what happe
   change email is a **request/sent claim PAIR** (`change_notify_requested_at` /
   `change_email_sent_at`, the 0104 cabin-edit idiom) so each separate edit can fire its
   own notice; it restates what the request says NOW, since the reader's copy is stale.
-- **Notifications:** two kinds — `house_request_submitted` (→ that house's House Admins +
-  app admins) and `house_request_decision` (→ the requester, reused for
+- **Notifications:** three kinds — `house_request_submitted` (→ that house's House Admins +
+  app admins), `house_request_decision` (→ the requester, reused for
   approved/denied/ordered/paid **and the changed case** so one switch governs your own
-  request's whole lifecycle).
+  request's whole lifecycle), and `house_request_handled` (migration
+  [`0198`](supabase/migrations/0198_house_request_coadmin_notify.sql) → the OTHER approvers).
+- ⚠️ **CO-ADMIN VISIBILITY (0198).** A house can have several House Admins, and 0195 let
+  each of them see a request arrive but **not what any of the others did about it** — so two
+  admins could work the same queue blind, either double-ordering an item or each assuming
+  the other had it. Any reviewer action now also fans `house_request_handled` out to the
+  other approvers, naming who did what to whose request ("Lee approved Brian's
+  reimbursement"), with the actor's note. `_notify` already skips the actor, so they're
+  excluded for free; the **requester is excluded explicitly** (they get
+  `house_request_decision`, and two notifications for one event reads as a bug). The email
+  half is a FYI with no call to action and inverts the CC convention — the actor is the one
+  person who must not receive it, so `replyTo` points at them instead. Backed by
+  `last_action` / `last_action_by` + a `handled_notify_requested_at`/`handled_email_sent_at`
+  claim pair, and `house_request_coadmin_emails()`. 0198 recreates the three write RPCs from
+  0195's bodies (their current production form) — the 0160/0187 rule — and DROP+CREATEs
+  `house_request_notification()` to widen its return type.
+- ⚠️ **A reimbursement shows EVERY way the requester takes money, to the approver** — via
+  the shared `payActions()` (`lib/contact.ts`), the same builder MemberSheet's Pay section
+  uses, so handles/deep-links/preferred-ordering can't drift. Preferred is floated and
+  flagged but **nothing is hidden**: whoever pays out may only have Zelle, and if the
+  requester also has Zelle they should just be paid on Zelle. The preference is a hint,
+  never a restriction. ⚠️ `pay_preferred` stores `'applecash'` but the COLUMN is
+  **`apple_cash`** (0021, a boolean opt-in, not a handle) — selecting the non-existent
+  `applecash` made PostgREST reject the whole select with 42703, which read back as "no
+  payment method" and told people who HAD filled it in that they hadn't. `fetchPayMethods()`
+  returns a `resolved` flag for exactly that reason: a failed read must render nothing, since
+  it can't prove a negative.
   Both default ON in `notif_types` *and* backfilled into `push_types` for members who
   already have push on (the 0159/0161/0163 pattern), in both mini senders' pushable sets.
   Their `NotifPrefs` rows are deliberately **not `adminOnly`** — a House Admin is not an
@@ -775,7 +801,12 @@ house submits one of three kinds; a House Admin decides, then records what happe
     cabin-approver split from 0114, where the queue lives on `/request-stay`.
 - **Client:** seam [`lib/houseRequests.ts`](lib/houseRequests.ts) (degrades to empty on
   42P01/42703, never throws) + `useHouseRequests` / `useAllHouseRequests` /
-  `useIsHouseAdmin` in [`lib/hooks.ts`](lib/hooks.ts). `formatMoney()` was added to
+  `useIsHouseAdmin` in [`lib/hooks.ts`](lib/hooks.ts). ⚠️ The fetches return
+  `{requests, ready}`, and the "run the migration" hint keys on **`ready`**, never on
+  `requests.length === 0` — an empty board and an unapplied migration both produce an empty
+  array, and conflating them showed a permanent "run 0195" nag on a perfectly healthy empty
+  board (the same class of bug as the callout fallback masking an unreadable
+  `committee_areas`). `formatMoney()` was added to
   [`lib/format.ts`](lib/format.ts) — the app's first real currency display; it drops cents
   on a whole amount and renders a missing amount as an em dash, never "$0", so "nobody
   said what it costs" can't read as "it's free". ⚠️ `numeric` comes back from PostgREST as

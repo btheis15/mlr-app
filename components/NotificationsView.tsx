@@ -45,6 +45,7 @@ const TYPE_EMOJI: Record<NotifType, string> = {
   private_activity_invite: "🎉",
   house_request_submitted: "🧾",
   house_request_decision: "🧾",
+  house_request_handled: "🤝",
   broadcast: "📣",
   admin_test: "🧪",
 };

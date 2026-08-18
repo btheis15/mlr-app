@@ -19,6 +19,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { EventLink } from "@/lib/types";
 import type { Media, MediaKind } from "@/lib/media";
 import { fetchProfiles } from "@/lib/roles";
+import { payActions, type Action, type MemberContact } from "@/lib/contact";
 
 /** What's being asked for. The composer picks this FIRST and the form adapts. */
 export type HouseRequestKind = "purchase" | "idea" | "reimbursement";
@@ -290,9 +291,25 @@ function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, 
 }
 
 /**
- * Every request on a house's board, newest first. `houseId = null` fetches the
- * resort-wide (house_id is null) board instead — used by the admin queue's "all
- * houses" mode via `fetchAllHouseRequests`.
+ * The board, plus whether the feature actually EXISTS yet.
+ *
+ * ⚠️ `ready` is the difference between "0195 hasn't been applied" and "nobody has
+ * asked for anything yet" — two states that both produce an empty array. Keying a
+ * "run the migration" hint on `requests.length === 0` shows it forever on a
+ * healthy, empty board, which is the same class of bug as the callout fallback
+ * masking an unreadable table (see CLAUDE.md's committee_areas incident).
+ */
+export interface HouseRequestsResult {
+  requests: HouseRequest[];
+  ready: boolean;
+}
+
+/** Empty + ready — the safe default: never accuse the DB of missing a table we
+ *  haven't actually failed to read. Also what the prerendered HTML renders. */
+export const NO_HOUSE_REQUESTS: HouseRequestsResult = { requests: [], ready: true };
+
+/**
+ * Every request on a house's board, newest first.
  *
  * `canReview` is resolved by the CALLER (an app admin, or a House Admin of this
  * house) rather than re-derived per row: RLS and the RPCs are the real gate, and
@@ -302,9 +319,9 @@ export async function fetchHouseRequests(
   houseId: string,
   viewerId: string | null,
   canReview = false,
-): Promise<HouseRequest[]> {
+): Promise<HouseRequestsResult> {
   const sb = supabase;
-  if (!isSupabaseConfigured || !sb) return [];
+  if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
   try {
     const { data, error } = await sb
       .from("house_requests")
@@ -312,15 +329,14 @@ export async function fetchHouseRequests(
       .eq("house_id", houseId)
       .order("created_at", { ascending: false });
     if (error) {
-      if (!isMissingTable(error) && !isMissingColumn(error)) {
-        console.warn("fetchHouseRequests: read error", error.message);
-      }
-      return [];
+      const missing = isMissingTable(error) || isMissingColumn(error);
+      if (!missing) console.warn("fetchHouseRequests: read error", error.message);
+      return { requests: [], ready: !missing };
     }
     const rows = (data ?? []) as unknown as RequestRow[];
-    return finish(rows, viewerId, () => canReview);
+    return { requests: await finish(rows, viewerId, () => canReview), ready: true };
   } catch {
-    return [];
+    return NO_HOUSE_REQUESTS;
   }
 }
 
@@ -328,21 +344,20 @@ export async function fetchHouseRequests(
 export async function fetchAllHouseRequests(
   viewerId: string | null,
   canReview = false,
-): Promise<HouseRequest[]> {
+): Promise<HouseRequestsResult> {
   const sb = supabase;
-  if (!isSupabaseConfigured || !sb) return [];
+  if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
   try {
     const { data, error } = await sb.from("house_requests").select(SELECT).order("created_at", { ascending: false });
     if (error) {
-      if (!isMissingTable(error) && !isMissingColumn(error)) {
-        console.warn("fetchAllHouseRequests: read error", error.message);
-      }
-      return [];
+      const missing = isMissingTable(error) || isMissingColumn(error);
+      if (!missing) console.warn("fetchAllHouseRequests: read error", error.message);
+      return { requests: [], ready: !missing };
     }
     const rows = (data ?? []) as unknown as RequestRow[];
-    return finish(rows, viewerId, () => canReview);
+    return { requests: await finish(rows, viewerId, () => canReview), ready: true };
   } catch {
-    return [];
+    return NO_HOUSE_REQUESTS;
   }
 }
 
@@ -545,36 +560,62 @@ export function setHouseAdmin(target: string, value: boolean): Promise<Res> {
 }
 
 /**
- * Does the viewer have any way to BE paid on file? Only used by the
- * reimbursement form, to tell someone up front that nobody knows where to send
- * their money — which is far more useful than discovering it after the request
- * is approved. Returns the preferred method's label, or null when nothing is
- * set. Reads the same `profiles` pay columns ContactPaySettings writes (0006).
+ * ⚠️ The `pay_preferred` VALUE and the COLUMN name are not the same word for
+ * Apple Cash: `pay_preferred` stores `'applecash'` (migration 0006's comment),
+ * but the column is **`apple_cash`** — and unlike the others it's a boolean
+ * opt-in, not a handle (migration 0021). Selecting the non-existent `applecash`
+ * made PostgREST reject the WHOLE select with 42703, which read back as "this
+ * member has no payment method" and told people who'd filled it in that they
+ * hadn't. Hence the explicit pref→column map.
  */
-export async function fetchMyPayHint(userId: string | null): Promise<string | null> {
+const PAY_METHODS: { pref: string; column: string; label: string }[] = [
+  { pref: "venmo", column: "venmo", label: "Venmo" },
+  { pref: "zelle", column: "zelle", label: "Zelle" },
+  { pref: "applecash", column: "apple_cash", label: "Apple Cash" },
+  { pref: "cashapp", column: "cashapp", label: "Cash App" },
+  { pref: "paypal", column: "paypal", label: "PayPal" },
+];
+
+export interface PayMethods {
+  /**
+   * EVERY way this person can be paid, not just their preferred one — with the
+   * preferred floated to the front and flagged. ⚠️ Showing only the preference
+   * would be actively harmful here: whoever pays out may only *have* Zelle, and
+   * if the requester also has Zelle they should just be paid on Zelle. The
+   * preference is a hint, never a restriction.
+   */
+  methods: Action[];
+  /**
+   * Did we actually manage to look? `false` when the read failed or there's no
+   * backend — in which case the UI must show NOTHING rather than "no payment
+   * method on file", because a failed query can't prove a negative. Conflating
+   * those two is what made this claim people had set nothing up when they had.
+   */
+  resolved: boolean;
+}
+
+/**
+ * Every registered way to pay a member. Reuses `payActions()` (lib/contact.ts)
+ * — the same builder MemberSheet's Pay section uses — so the handles, deep
+ * links, brand colors and preferred-first ordering are identical everywhere and
+ * can't drift. Reads the `profiles` columns ContactPaySettings writes (0006 +
+ * 0021); `profiles` is members-readable, so an approver can resolve the
+ * requester's options in order to actually pay them.
+ */
+export async function fetchPayMethods(userId: string | null): Promise<PayMethods> {
   const sb = supabase;
-  if (!isSupabaseConfigured || !sb || !userId) return null;
+  if (!isSupabaseConfigured || !sb || !userId) return { methods: [], resolved: false };
   try {
     const { data, error } = await sb
       .from("profiles")
-      .select("pay_preferred, venmo, zelle, applecash, cashapp, paypal")
+      // `phone` is needed too: Apple Cash sends via Messages, so payActions()
+      // only offers it when there's a number to send to.
+      .select(`phone, pay_preferred, ${PAY_METHODS.map((m) => m.column).join(", ")}`)
       .eq("id", userId)
       .maybeSingle();
-    if (error || !data) return null;
-    const p = data as Record<string, string | boolean | null>;
-    const has = (v: string | boolean | null | undefined) => (typeof v === "string" ? !!v.trim() : !!v);
-    const preferred = typeof p.pay_preferred === "string" ? p.pay_preferred : null;
-    const labels: Record<string, string> = {
-      venmo: "Venmo",
-      zelle: "Zelle",
-      applecash: "Apple Cash",
-      cashapp: "Cash App",
-      paypal: "PayPal",
-    };
-    if (preferred && has(p[preferred])) return labels[preferred] ?? preferred;
-    for (const key of Object.keys(labels)) if (has(p[key])) return labels[key];
-    return null;
+    if (error || !data) return { methods: [], resolved: false };
+    return { methods: payActions(data as MemberContact), resolved: true };
   } catch {
-    return null;
+    return { methods: [], resolved: false };
   }
 }

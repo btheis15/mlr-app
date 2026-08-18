@@ -30,7 +30,9 @@ import {
   fetchAllHouseRequests,
   fetchHouseRequests,
   fetchIsHouseAdmin,
+  NO_HOUSE_REQUESTS,
   type HouseRequest,
+  type HouseRequestsResult,
 } from "@/lib/houseRequests";
 import { markPending } from "@/lib/appReady";
 import { readPersisted, useCachedResource, writePersisted } from "@/lib/swrCache";
@@ -1275,6 +1277,9 @@ export function useHouseRequests(houseId: string | null): {
   requests: HouseRequest[];
   loading: boolean;
   canReview: boolean;
+  /** false only when migration 0195 genuinely isn't applied — never for an
+   *  empty-but-healthy board (see HouseRequestsResult). */
+  ready: boolean;
   reload: () => Promise<void>;
 } {
   const { userId, isAdmin, previewAsId } = useIdentity();
@@ -1284,10 +1289,10 @@ export function useHouseRequests(houseId: string | null): {
   const canReview = (isAdmin || isHouseAdmin) && !previewAsId;
   const key =
     isSupabaseConfigured && userId && houseId ? `houseRequests.${userId}.${houseId}.${canReview}` : null;
-  const { data: requests, loading, reload } = useCachedResource<HouseRequest[]>(
+  const { data, loading, reload } = useCachedResource<HouseRequestsResult>(
     key,
-    [],
-    () => (houseId ? fetchHouseRequests(houseId, userId, canReview) : Promise.resolve([])),
+    NO_HOUSE_REQUESTS,
+    () => (houseId ? fetchHouseRequests(houseId, userId, canReview) : Promise.resolve(NO_HOUSE_REQUESTS)),
     { persist: previewAsId ? undefined : "session" },
   );
 
@@ -1312,7 +1317,7 @@ export function useHouseRequests(houseId: string | null): {
     };
   }, [houseId, reload, schedule]);
 
-  return { requests, loading, canReview, reload };
+  return { requests: data.requests, loading, canReview, ready: data.ready, reload };
 }
 
 /**
@@ -1324,6 +1329,7 @@ export function useAllHouseRequests(): {
   requests: HouseRequest[];
   loading: boolean;
   canReview: boolean;
+  ready: boolean;
   reload: () => Promise<void>;
 } {
   const { userId, isAdmin, previewAsId } = useIdentity();
@@ -1331,9 +1337,9 @@ export function useAllHouseRequests(): {
   const [schedule] = useDebouncedCallback(250);
   const canReview = (isAdmin || isHouseAdmin) && !previewAsId;
   const key = isSupabaseConfigured && userId ? `houseRequestsAll.${userId}.${canReview}` : null;
-  const { data: requests, loading, reload } = useCachedResource<HouseRequest[]>(
+  const { data, loading, reload } = useCachedResource<HouseRequestsResult>(
     key,
-    [],
+    NO_HOUSE_REQUESTS,
     () => fetchAllHouseRequests(userId, canReview),
     { persist: previewAsId ? undefined : "session" },
   );
@@ -1350,7 +1356,7 @@ export function useAllHouseRequests(): {
     };
   }, [userId, reload, schedule]);
 
-  return { requests, loading, canReview, reload };
+  return { requests: data.requests, loading, canReview, ready: data.ready, reload };
 }
 
 /**

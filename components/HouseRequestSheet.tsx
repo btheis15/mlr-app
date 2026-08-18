@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KIND_META,
+  fetchPayMethods,
   requestCost,
   statusChip,
   statusLabel,
   toMedia,
   withdrawHouseRequest,
   type HouseRequest,
+  type PayMethods,
 } from "@/lib/houseRequests";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Sheet, SectionLabel } from "@/components/Sheet";
@@ -55,6 +57,24 @@ export function HouseRequestSheet({
   const canAct = canReview && !previewAsId;
   const canWithdraw = request.mine && request.status === "pending" && !previewAsId;
   const visibleMedia = request.media.filter((m) => m.status !== "hidden");
+
+  // ⚠️ On a reimbursement, whoever is paying needs EVERY way this person takes
+  // money — not just their preferred one. The payer may only have Zelle, and if
+  // the requester also has Zelle they should simply be paid on Zelle. Loaded for
+  // the reviewer (who has to act on it) and for the requester themself (so they
+  // can see what the payer is looking at); nobody else needs it.
+  const showPayTo = request.kind === "reimbursement" && (canReview || request.mine);
+  const [pay, setPay] = useState<PayMethods>({ methods: [], resolved: false });
+  useEffect(() => {
+    if (!showPayTo) return;
+    let alive = true;
+    fetchPayMethods(request.createdBy).then((p) => {
+      if (alive) setPay(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showPayTo, request.createdBy]);
 
   const withdraw = async () => {
     if (!window.confirm("Take this request back?")) return;
@@ -164,6 +184,61 @@ export function HouseRequestSheet({
           <MediaGrid media={visibleMedia.map(toMedia)} />
           {visibleMedia.some((m) => m.status === "pending") && (
             <p className="text-xs text-faint">One of these is held for review — only you and admins can see it.</p>
+          )}
+        </div>
+      )}
+
+      {/* How to actually pay them. Every registered method, preferred first but
+          none hidden — the payer uses whichever they also have. */}
+      {showPayTo && pay.resolved && (
+        <div className="space-y-1.5">
+          <SectionLabel>{request.mine ? "How they'll pay you" : `How to pay ${request.createdByName}`}</SectionLabel>
+          {pay.methods.length === 0 ? (
+            <p className="rounded-xl bg-background p-3 text-xs text-muted ring-1 ring-border">
+              {request.mine
+                ? "You haven't added a way to get paid — add one in your profile so they know where to send it."
+                : `${request.createdByName} hasn't added a payment method. Ask them how they'd like it.`}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {pay.methods.map((m) => {
+                const inner = (
+                  <>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{m.label}</span>
+                      <span className="block truncate text-xs text-muted">{m.value}</span>
+                      {m.note && <span className="block text-[11px] text-faint">{m.note}</span>}
+                    </span>
+                    {m.preferred && (
+                      <span className="shrink-0 rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        prefers this
+                      </span>
+                    )}
+                  </>
+                );
+                return m.href ? (
+                  <a
+                    key={m.key}
+                    href={m.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="press flex items-center gap-2 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border"
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={m.key} className="flex items-center gap-2 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+                    {inner}
+                  </div>
+                );
+              })}
+              {pay.methods.length > 1 && (
+                <p className="text-[11px] text-faint">
+                  Any of these work — use whichever you have. &ldquo;Prefers this&rdquo; is just a preference, not a
+                  restriction.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -72,7 +72,7 @@ export function HouseRequestsScreen({ slug }: { slug?: string | null }) {
 type Filter = "open" | "done" | "mine" | "all";
 
 function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
-  const { requests, loading, canReview, reload } = useHouseRequests(houseId);
+  const { requests, loading, canReview, ready, reload } = useHouseRequests(houseId);
   const { previewAsId } = useIdentity();
   const [filter, setFilter] = useState<Filter>("open");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -163,7 +163,9 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
             This is where an idea stops being just an idea. Add the thing you keep meaning to mention — a House Admin
             will approve it, deny it, or change it, and you&rsquo;ll see what happened.
           </p>
-          <MigrationHint file="0195_house_requests.sql">To turn requests on,</MigrationHint>
+          {/* Only when the table genuinely isn't there — an empty board is a
+              perfectly healthy state and must not nag about a migration. */}
+          {!ready && <MigrationHint file="0195_house_requests.sql">To turn requests on,</MigrationHint>}
         </div>
       ) : (
         <>
