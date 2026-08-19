@@ -21,6 +21,60 @@ exists — with **one exception that needs SQL run first** (0209, see WS-N1).
 
 ---
 
+## ✅ AUDITED against the real iOS source (2026-08-19)
+
+The standing round's statuses were **inferred from `CLAUDE.md`**, not read from the
+iOS repo — its own caveats said so. `btheis15/mlr-app-ios` @ `7a6795f` has now been
+read directly (231 Swift files). Three things change as a result.
+
+### 1. All five "true blockers" are DONE. Ignore that list.
+Every one is implemented, including the big one — **signed media reads**
+(`MLRApp/Services/MediaTokenService.swift`, 166 lines, commit `9c0dfb4` *"Sign
+media-server URLs so photos load once MEDIA_AUTH enforcement turns on"*). It has
+the two properties the spec insisted on: **host-based** matching (not a string
+prefix) and a **refresh on every app open** (`ensure(force:)`), so a signing-key
+rotation self-heals. Pending-approval gating, APNs registration, chat-media
+signing and cache-clearing on sign-out are all present too.
+→ **This means `MEDIA_AUTH` may be promotable from `report` to `on`.** Verify
+first with the mini's WOULD-BLOCK log per
+[`ios-parity-2026-08-PROMPT.md`](ios-parity-2026-08-PROMPT.md) — exercise photos
+**and a scrubbed video** (Range requests are a separate failure mode), then check
+for zero iOS user-agent hits.
+
+### 2. iOS already has most of what the standing round called missing.
+Real implementations, not stubs: `DropBoxesService` (201), `TournamentsService`
+(269), `MeetingsService` (495), `ChatPollsService` (148), `PrivateActivitiesService`
+(123), `FamilyRosterService` (183), `WorkItemsService` (377), `EventsService` (409).
+**Treat that round's ADD items as AUDIT items** until each is checked. iOS work
+landed right after those docs were generated, which is why they read as stale.
+
+### 3. ⚠️⚠️ Two live bugs on the phones, found by this audit
+Neither doc knew about either.
+
+**a. The compiled-in fest window is WRONG, and it's what drives the season.**
+`FamilyFestConfig` (`MLRApp/Shared/Utilities/FestSeason.swift`) hardcodes
+`startDate = "2026-07-27"`, `endDate = "2026-07-31"`. The database says
+**2026-07-26 → 2026-08-01**. `FestSeason.current()` computes from the hardcoded
+pair, and **seven surfaces** consume it (`HomeView`, `FestOverviewView`,
+`FestStatus`, `FestDuesCalculator`, `MjtHouseDuesView`, `RootView`, the widget and
+the Siri intent). Consequences already realised: during the week iOS showed
+**"Day n of 5"** instead of *of 7*, and on **Aug 1 — the actual final day** — iOS
+had already flipped to "wrap". Fixing this is the same job as correction **C2**:
+resolve the window from `fest_config`, don't compile it in.
+
+**b. The widget and Siri say Family Fest "starts today" — right now.**
+iOS clamps `daysUntilStart` to `max(0, …)` (FestSeason.swift:93), and the
+off-season branch treats `0` as *starting today*. With the fest three weeks past,
+`FamilyFestCountdownWidget` renders **"Today!" / "See you there"** and
+`FestCountdownIntent` speaks **"Family Fest starts today!"**.
+⚠️ **This is the exact same clamp-to-zero-reads-as-happening-now bug the web had**
+— there, zero meant *"the moment has arrived"* and produced "🎉 Family Fest is on".
+iOS's in-app cards are fine (a real `OffSeasonCard`, no false "it's on"), so this
+hides on the home screen and in Siri rather than in the app. The **`concluded`
+phase (C1) is the fix**, which makes C1 a live-bug fix on iOS, not a tidy-up.
+
+---
+
 ## ⚠️ FIRST: three corrections to the standing spec
 
 These aren't new features. They're places where building from the existing area
