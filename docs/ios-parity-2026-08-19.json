@@ -16,7 +16,7 @@
       }
     },
     "delta_scope": {
-      "prs": "#540–#579 (40 merged)",
+      "prs": "#540–#581 (42 merged)",
       "migrations": "0185–0209 (25)"
     },
     "prose": "docs/ios-parity-2026-08-19.md",
@@ -136,7 +136,7 @@
       "large": 1,
       "medium": 5
     },
-    "gotchas_captured": 132,
+    "gotchas_captured": 154,
     "workstreams": 7
   },
   "features": [
@@ -199,7 +199,12 @@
       ],
       "webFiles": [],
       "gotchas": [
-        "Supersedes the permission model in docs/ios-parity-2026-08/09-events-and-cabins.md."
+        "Supersedes the permission model in docs/ios-parity-2026-08/09-events-and-cabins.md.",
+        "⚠️⚠️ THE HOST PANEL MUST OWN ITS OWN LIST. On web this shipped rendering a `hosts` prop threaded from the parent, and only ONE of the three surfaces that mount the event sheet passed a refresh. Picking a committee wrote the row, the picker closed, and the panel still said 'Nobody yet' — the click looked like it did nothing while the database had the host. Load hosts inside the host panel on appear and refetch after every add/remove; treat anything handed in as a first-paint seed only.",
+        "⚠️ This is the SECOND time this shape hit the same screen (web PR #572 was 'Add someone to an event does nothing', same cause). A fix that says 'the parent must refetch' does not survive the next caller. Own the fetch where the mutation happens.",
+        "⚠️ A write that returns no error but changes nothing must SAY SO. A silent success and a silent failure look identical, which is what made the web bug need a database query to diagnose.",
+        "⚠️ NO HOST IS A COMPLETE ANSWER, not an unfinished form — a holiday weekend has nobody running it, somebody may put an event on the calendar without hosting it, and blank is the DEFAULT for every event. Don't word the empty state as a gap to fill ('Nobody yet — name a host'); word it as how the event currently works, with naming one offered as the optional narrowing it is. Also say what removing the last host DOES: it hands the event back to the whole family.",
+        "Synthesized events (holiday weekends, Family Fest) have no `events` row and therefore no creator, so they are permanently hostless and should not offer a host editor at all."
       ]
     },
     {
@@ -228,7 +233,12 @@
         "event_hosts.event_id is TEXT with no FK (matching event_attendance) so synthesized events like 'family-fest-2026' can carry hosts. Do not type it as uuid.",
         "Read RLS is members-only — a host row names a person (0081 doctrine). A guest gets an empty list; render no host line.",
         "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
-        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit."
+        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit.",
+        "⚠️⚠️ THE HOST PANEL MUST OWN ITS OWN LIST. On web this shipped rendering a `hosts` prop threaded from the parent, and only ONE of the three surfaces that mount the event sheet passed a refresh. Picking a committee wrote the row, the picker closed, and the panel still said 'Nobody yet' — the click looked like it did nothing while the database had the host. Load hosts inside the host panel on appear and refetch after every add/remove; treat anything handed in as a first-paint seed only.",
+        "⚠️ This is the SECOND time this shape hit the same screen (web PR #572 was 'Add someone to an event does nothing', same cause). A fix that says 'the parent must refetch' does not survive the next caller. Own the fetch where the mutation happens.",
+        "⚠️ A write that returns no error but changes nothing must SAY SO. A silent success and a silent failure look identical, which is what made the web bug need a database query to diagnose.",
+        "⚠️ NO HOST IS A COMPLETE ANSWER, not an unfinished form — a holiday weekend has nobody running it, somebody may put an event on the calendar without hosting it, and blank is the DEFAULT for every event. Don't word the empty state as a gap to fill ('Nobody yet — name a host'); word it as how the event currently works, with naming one offered as the optional narrowing it is. Also say what removing the last host DOES: it hands the event back to the whole family.",
+        "Synthesized events (holiday weekends, Family Fest) have no `events` row and therefore no creator, so they are permanently hostless and should not offer a host editor at all."
       ]
     },
     {
@@ -255,7 +265,12 @@
         "event_hosts.event_id is TEXT with no FK (matching event_attendance) so synthesized events like 'family-fest-2026' can carry hosts. Do not type it as uuid.",
         "Read RLS is members-only — a host row names a person (0081 doctrine). A guest gets an empty list; render no host line.",
         "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
-        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit."
+        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit.",
+        "⚠️⚠️ THE HOST PANEL MUST OWN ITS OWN LIST. On web this shipped rendering a `hosts` prop threaded from the parent, and only ONE of the three surfaces that mount the event sheet passed a refresh. Picking a committee wrote the row, the picker closed, and the panel still said 'Nobody yet' — the click looked like it did nothing while the database had the host. Load hosts inside the host panel on appear and refetch after every add/remove; treat anything handed in as a first-paint seed only.",
+        "⚠️ This is the SECOND time this shape hit the same screen (web PR #572 was 'Add someone to an event does nothing', same cause). A fix that says 'the parent must refetch' does not survive the next caller. Own the fetch where the mutation happens.",
+        "⚠️ A write that returns no error but changes nothing must SAY SO. A silent success and a silent failure look identical, which is what made the web bug need a database query to diagnose.",
+        "⚠️ NO HOST IS A COMPLETE ANSWER, not an unfinished form — a holiday weekend has nobody running it, somebody may put an event on the calendar without hosting it, and blank is the DEFAULT for every event. Don't word the empty state as a gap to fill ('Nobody yet — name a host'); word it as how the event currently works, with naming one offered as the optional narrowing it is. Also say what removing the last host DOES: it hands the event back to the whole family.",
+        "Synthesized events (holiday weekends, Family Fest) have no `events` row and therefore no creator, so they are permanently hostless and should not offer a host editor at all."
       ]
     },
     {
@@ -284,7 +299,12 @@
         "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
         "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit.",
         "Removal re-checks permission BEFORE deleting, since removing the last host WIDENS access.",
-        "Committee options must be filtered to real uuids — the web's committee fetch falls back to a seed whose id is the SLUG."
+        "Committee options must be filtered to real uuids — the web's committee fetch falls back to a seed whose id is the SLUG.",
+        "⚠️⚠️ THE HOST PANEL MUST OWN ITS OWN LIST. On web this shipped rendering a `hosts` prop threaded from the parent, and only ONE of the three surfaces that mount the event sheet passed a refresh. Picking a committee wrote the row, the picker closed, and the panel still said 'Nobody yet' — the click looked like it did nothing while the database had the host. Load hosts inside the host panel on appear and refetch after every add/remove; treat anything handed in as a first-paint seed only.",
+        "⚠️ This is the SECOND time this shape hit the same screen (web PR #572 was 'Add someone to an event does nothing', same cause). A fix that says 'the parent must refetch' does not survive the next caller. Own the fetch where the mutation happens.",
+        "⚠️ A write that returns no error but changes nothing must SAY SO. A silent success and a silent failure look identical, which is what made the web bug need a database query to diagnose.",
+        "⚠️ NO HOST IS A COMPLETE ANSWER, not an unfinished form — a holiday weekend has nobody running it, somebody may put an event on the calendar without hosting it, and blank is the DEFAULT for every event. Don't word the empty state as a gap to fill ('Nobody yet — name a host'); word it as how the event currently works, with naming one offered as the optional narrowing it is. Also say what removing the last host DOES: it hands the event back to the whole family.",
+        "Synthesized events (holiday weekends, Family Fest) have no `events` row and therefore no creator, so they are permanently hostless and should not offer a host editor at all."
       ]
     },
     {

@@ -10,7 +10,7 @@ gained *after* it was written, plus the places where it is now **wrong**.
 | | |
 |---|---|
 | **Standing spec covers** | web `main` through **PR #539** / migration **0184** |
-| **This addendum covers** | **40 merged PRs (#540–#579)** and **25 migrations (0185–0209)** |
+| **This addendum covers** | **42 merged PRs (#540–#581)** and **25 migrations (0185–0209)** |
 | **Web source** | `btheis15/mlr-app` @ `origin/main` |
 | **iOS target** | `btheis15/mlr-app-ios` |
 | **Machine-readable** | [`ios-parity-2026-08-19.json`](ios-parity-2026-08-19.json) |
@@ -95,6 +95,27 @@ An event now carries zero or more **hosts**, each either a **person** or a whole
       p_committee_id)` (exactly one of the two ids), `remove_event_host(p_id)`.
 
 ⚠️ **Gotchas, each from a real decision:**
+- ⚠️⚠️ **THE HOST PANEL MUST OWN ITS OWN LIST — this already shipped broken on
+  web once.** It rendered a `hosts` value threaded from the parent, and only one
+  of the **three** surfaces that mount the event sheet passed a refresh. Picking
+  "Resort Maintenance" wrote the row, the picker closed, and the panel still said
+  *"Nobody yet"* — the click looked like it did nothing while the database had the
+  host all along. **Load hosts inside the panel on appear and refetch after every
+  add/remove;** treat anything handed in as a first-paint seed only. This was the
+  **second** time this exact shape hit this one screen (web #572, "Add someone to
+  an event does nothing", same cause) — a fix phrased as *"the parent must
+  refetch"* does not survive the next caller.
+- ⚠️ **A write that returns no error but changes nothing must SAY SO.** A silent
+  success and a silent failure look identical, which is what made the web bug take
+  a database query to diagnose.
+- ⚠️ **"No host" is a COMPLETE answer, not an unfinished form.** A holiday weekend
+  has nobody running it, somebody may put an event on the calendar without hosting
+  it, and blank is the **default** for every event. Don't word the empty state as a
+  gap to fill; word it as how the event currently works, with naming a host offered
+  as the optional narrowing it is — and say what removing the last one *does*
+  (hands the event back to the whole family). ⚠️ Synthesized events (holiday
+  weekends, Family Fest) have no `events` row, so they're permanently hostless and
+  should not offer a host editor at all.
 - **Do NOT re-implement the permission rule client-side.** It needs the viewer's
   committee memberships, which of those they lead, AND whether each committee has
   any leads at all. The web deliberately asks the database for exactly this
