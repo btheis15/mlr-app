@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import {
   KIND_META,
   canDeleteRequest,
+  canRestoreRequest,
   deleteHouseRequest,
+  restoreHouseRequest,
+  tombstoneLabel,
   fetchPayMethods,
   nextStep,
   payPrefillFor,
@@ -110,15 +113,18 @@ export function HouseRequestSheet({
     close();
   };
 
-  // Clearing finished rows / test junk (0201). The confirm is deliberately
-  // heavier for a REAL request than a test one — deleting a genuine, already-paid
-  // reimbursement throws away the only record that it happened, whereas a test row
-  // nobody else could see is pure noise.
-  const canDelete = canAct && canDeleteRequest(request);
+  // Removing (0208) is a SOFT delete — it leaves a tombstone on the board naming
+  // who removed it, for 7 days, then disappears on its own. That's what makes it
+  // safe to offer on your OWN request at any status: nothing evaporates, so the
+  // confirm can be honest and light rather than a warning about losing history.
+  // ⚠️ `canReview` is deliberately NOT part of `canAct` here — your own request is
+  // yours to remove whether or not you're a House Admin.
+  const canDelete = !previewAsId && canDeleteRequest(request, canReview);
+  const canRestore = !previewAsId && canRestoreRequest(request, canReview);
   const remove = async () => {
     const msg = request.testOnly
-      ? `Delete this test request?\n\n"${request.title}"`
-      : `Delete "${request.title}" for good?\n\nThis is the record that it happened — once it's gone there's no history of it on the board. Nobody is notified.`;
+      ? `Delete this test request?\n\n"${request.title}"\n\nIt's only ever been visible to you, so this removes it outright.`
+      : `Remove "${request.title}"?\n\nIt stays on the board marked as removed — with your name on it — for 7 days so nobody's left wondering where it went, then disappears. You can undo it in the meantime.`;
     if (!window.confirm(msg)) return;
     setBusy(true);
     const { error } = await deleteHouseRequest(request.id);
@@ -129,6 +135,16 @@ export function HouseRequestSheet({
     }
     onChanged();
     close();
+  };
+  const restore = async () => {
+    setBusy(true);
+    const { error } = await restoreHouseRequest(request.id);
+    setBusy(false);
+    if (error) {
+      window.alert(error);
+      return;
+    }
+    onChanged();
   };
 
   const steps: { label: string; at: string | null; done: boolean }[] = [
@@ -212,6 +228,19 @@ export function HouseRequestSheet({
           </p>
         )}
       </div>
+
+      {/* Say it plainly at the top: this one's been removed, by whom, and how
+          long it'll still be here. Opening a tombstone shouldn't look like
+          opening a live request. */}
+      {request.deletedAt && (
+        <div className="rounded-2xl bg-foreground/5 p-4 ring-1 ring-border">
+          <p className="text-sm font-semibold">🗑️ {tombstoneLabel(request)}</p>
+          <p className="mt-1 text-xs text-muted">
+            It&rsquo;s kept here for a few days so nobody wonders where it went, then it disappears on its own.
+            {canRestore ? " Put it back if that was a mistake." : ""}
+          </p>
+        </div>
+      )}
 
       {(cost !== null || request.quantity) && (
         <div className="flex items-baseline gap-2 rounded-2xl bg-card p-4 ring-1 ring-border">
@@ -446,7 +475,17 @@ export function HouseRequestSheet({
             disabled={busy}
             className="press rounded-xl px-3 py-2 text-sm font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
           >
-            {request.testOnly ? "Delete test" : "Delete"}
+            {request.testOnly ? "Delete test" : "Remove"}
+          </button>
+        )}
+        {canRestore && (
+          <button
+            type="button"
+            onClick={restore}
+            disabled={busy}
+            className="press flex-1 rounded-xl bg-primary py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Put it back
           </button>
         )}
       </div>

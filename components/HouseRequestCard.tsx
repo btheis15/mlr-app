@@ -12,6 +12,7 @@ import {
   setHouseRequestProgress,
   statusChip,
   statusLabel,
+  tombstoneLabel,
   type HouseAdmin,
   type HouseRequest,
 } from "@/lib/houseRequests";
@@ -122,6 +123,14 @@ export function HouseRequestCard({
           {request.testOnly && (
             <span className="rounded-full bg-dusk/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-dusk">
               Test
+            </span>
+          )}
+          {/* A removed request stays put for 7 days saying WHO removed it — so
+              anyone hunting for it can tell "somebody took it back" from "it was
+              never submitted", which is the confusion this exists to prevent. */}
+          {request.deletedAt && (
+            <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] font-semibold text-muted">
+              {tombstoneLabel(request)}
             </span>
           )}
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusChip(request.status)}`}>
