@@ -65,6 +65,14 @@ export interface HouseRequest {
   /** A test submission (0200) — only its author was notified, and only they and
    *  app admins can see it. Badged in the UI so it's never mistaken for a real ask. */
   testOnly: boolean;
+  /**
+   * Set when this row changed kind in place — today only `"purchase"`, meaning
+   * "was a purchase request until the requester bought it themselves" (0207).
+   * Surfaced on the sheet so an approved reimbursement doesn't look like it was
+   * always a receipt, and the approval on it isn't misread as approving a spend
+   * that had already happened.
+   */
+  convertedFromKind: HouseRequestKind | null;
   createdBy: string;
   createdByName: string;
   createdAt: string;
@@ -438,6 +446,7 @@ interface RequestRow {
   quantity: number | null;
   status: HouseRequestStatus;
   test_only?: boolean | null;
+  converted_from_kind?: HouseRequestKind | null;
   created_by: string;
   created_at: string;
   reviewed_by: string | null;
@@ -459,13 +468,18 @@ function num(v: string | number | null): number | null {
 }
 
 const SELECT =
-  "id, house_id, kind, title, reason, links, est_cost, quantity, status, test_only, created_by, created_at," +
+  "id, house_id, kind, title, reason, links, est_cost, quantity, status, test_only, converted_from_kind, created_by, created_at," +
   " reviewed_by, reviewed_at, review_note, actual_cost, order_note, ordered_at, received_at," +
   " house_request_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by)";
-// Pre-0200 fallback: no test_only column yet. Without this the whole read fails
-// with 42703 and the board renders empty, which the `ready` flag would then
-// report as "migration missing" — so keep it a graceful degrade, not a wipe.
-const SELECT_NO_TEST = SELECT.replace(" test_only,", "");
+// ⚠️ A COLUMN-GROUP LADDER, newest migration first. An unknown column fails the
+// WHOLE select with 42703 and the board renders empty — which the `ready` flag
+// would then report as "migration missing", i.e. a healthy board nagging about a
+// migration that HAS been run. So each newer column group peels off in turn:
+// 0207's `converted_from_kind`, then 0200's `test_only`. Same idiom as
+// insertMediaRow's ladder for 0176/0173.
+const SELECT_NO_CONVERTED = SELECT.replace(" converted_from_kind,", "");
+const SELECT_NO_TEST = SELECT_NO_CONVERTED.replace(" test_only,", "");
+const SELECT_LADDER = [SELECT, SELECT_NO_CONVERTED, SELECT_NO_TEST];
 
 function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, names: Map<string, string>): HouseRequest {
   return {
@@ -479,6 +493,7 @@ function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, 
     quantity: row.quantity,
     status: row.status,
     testOnly: row.test_only === true,
+    convertedFromKind: row.converted_from_kind ?? null,
     createdBy: row.created_by,
     createdByName: names.get(row.created_by) ?? "Member",
     createdAt: row.created_at,
@@ -536,18 +551,17 @@ export async function fetchHouseRequests(
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return NO_HOUSE_REQUESTS;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- two select shapes (with / without test_only) can't share one inferred type
-    let res: any = await sb
-      .from("house_requests")
-      .select(SELECT)
-      .eq("house_id", houseId)
-      .order("created_at", { ascending: false });
-    if (res.error && isMissingColumn(res.error)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the ladder's select shapes can't share one inferred type
+    let res: any = null;
+    for (const select of SELECT_LADDER) {
       res = await sb
         .from("house_requests")
-        .select(SELECT_NO_TEST)
+        .select(select)
         .eq("house_id", houseId)
         .order("created_at", { ascending: false });
+      // Only a MISSING COLUMN is worth stepping down for — any other error is
+      // real and must be reported, not retried into a false empty board.
+      if (!res.error || !isMissingColumn(res.error)) break;
     }
     const { data, error } = res;
     if (error) {
@@ -748,6 +762,62 @@ export function setHouseRequestProgress(
     p_actual_cost: actualCost ?? null,
     p_order_note: orderNote?.trim() ? orderNote.trim() : null,
   });
+}
+
+/**
+ * How far over the approved estimate a receipt can land before it needs a second
+ * OK. ⚠️ Mirrors `_house_request_overspend_grace()` in migration 0207 — the
+ * client only uses it to TELL the requester what will happen before they submit;
+ * the server decides. Keep the two numbers in step.
+ */
+export const OVERSPEND_GRACE = 25;
+
+/**
+ * Will converting this request need a fresh approval? Pure, so the conversion
+ * form can say so up front rather than surprising someone afterwards.
+ */
+export function conversionNeedsReapproval(r: HouseRequest, actualCost: number): boolean {
+  if (r.status !== "approved") return true; // nothing was approved to begin with
+  if (r.estCost === null) return false; // approved with no number = no ceiling to breach
+  return actualCost > r.estCost + OVERSPEND_GRACE;
+}
+
+/**
+ * "They told me to just buy it and they'd pay me back" — turn a purchase request
+ * into a reimbursement **in place**, keeping the title, reason, links, photos,
+ * discussion and the approval already on it (migration 0207).
+ *
+ * ⚠️ Requester-only, and that's a correctness rule rather than a permission
+ * preference: a reimbursement pays `createdBy`, so if anyone else could convert
+ * it the money would be routed to the person who ASKED for the item instead of
+ * the person who actually paid. The server enforces the same.
+ *
+ * Resolves the resulting status — `approved` (just needs paying) or `pending`
+ * (the receipt was materially over what was approved, so it needs another look).
+ */
+export async function convertToReimbursement(
+  id: string,
+  actualCost: number,
+  opts?: { note?: string; title?: string; links?: EventLink[] },
+): Promise<{ status?: HouseRequestStatus; error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { data, error } = await sb.rpc("convert_request_to_reimbursement", {
+    p_id: id,
+    p_actual_cost: actualCost,
+    p_note: opts?.note?.trim() ? opts.note.trim() : null,
+    p_title: opts?.title?.trim() ? opts.title.trim() : null,
+    p_links: opts?.links ?? null,
+  });
+  if (error) {
+    // Pre-0207 the function doesn't exist yet. Say so plainly instead of
+    // surfacing PostgREST's "schema cache" wording at a family member.
+    if (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? "")) {
+      return { error: "This needs migration 0207_house_request_buy_it_myself.sql applied first." };
+    }
+    return { error: error.message };
+  }
+  return { status: (data as HouseRequestStatus) ?? "approved" };
 }
 
 export function withdrawHouseRequest(id: string): Promise<Res> {

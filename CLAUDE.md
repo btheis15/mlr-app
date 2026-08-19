@@ -796,6 +796,44 @@ house submits one of three kinds; a House Admin decides, then records what happe
     personally out of pocket, which reads very differently from an unordered purchase, and
     an approved *idea* belongs in neither. Lumping all three under "approved, not bought
     yet" is what turned an agreed idea into a permanent chore.
+  - ⚠️ **"They told me to just grab it" — a purchase request converts to a reimbursement
+    IN PLACE** (migration
+    [`0207`](supabase/migrations/0207_house_request_buy_it_myself.sql),
+    [`HouseRequestBuyItMyself`](components/HouseRequestBuyItMyself.tsx)). The most common
+    way this board went stale: a House Admin says in person *"easier if you just order it,
+    we'll pay you back"*, and re-typing the whole thing as a reimbursement is enough
+    friction that nobody did — they just bought it and the request sat there. One button
+    on the sheet now asks only for **the total and the receipt**; the title, reason, links,
+    photos, discussion and the approval already on it all carry over.
+    - ⚠️ **Requester-only, and that's a CORRECTNESS rule, not a permissions preference.**
+      A reimbursement pays `created_by` — the pay-methods panel resolves *that* person's
+      Venmo/Zelle. If a House Admin could convert someone else's request, the money would
+      route to whoever ASKED for the item rather than whoever actually paid for it.
+    - ⚠️ **The approval survives; re-approval is demanded only when the number moved.**
+      Making somebody re-approve a $7 item because the receipt came to $9.12 is exactly
+      the friction this removes — but an approved estimate isn't a blank cheque either.
+      Anything more than `_house_request_overspend_grace()` (**$25**) over what was
+      approved drops back to `pending`, and a still-`pending` request stays pending. The
+      form **states which will happen, live, as the amount is typed** —
+      `conversionNeedsReapproval()` mirrors the SQL rule; keep the two in step.
+    - `converted_from_kind`/`converted_at` keep the provenance, and the sheet says
+      "Started as a purchase request — they bought it themselves." Without it an approved
+      reimbursement reads as though it was always a receipt, and its approval looks like
+      someone approved a spend that had already happened.
+    - `quantity` is **cleared** on conversion: it's a purchase-request idea ("get me 2"),
+      and on a receipt the total already covers however many, so keeping it made the sheet
+      read "$42 · ×2" and imply $84 was owed.
+    - The form also lets you **swap the title/link** (bought a different one — better
+      price, original out of stock), collapsed behind "Bought something different?" so the
+      common case stays a two-field form. 0207 additionally widens
+      `update_house_request` so the **creator can edit their own request while `pending`
+      OR `approved`** (was pending-only) — changing the link after approval is a normal
+      need, and it locks once the request is ordered/paid/denied/withdrawn.
+  - ⚠️ `fetchHouseRequests` uses a **column-group ladder** (`SELECT_LADDER`): an unknown
+    column fails the WHOLE select with 42703 and renders an empty board, which `ready`
+    would then report as "migration missing" — a healthy board nagging about a migration
+    that HAS been run. Newest group peels off first (0207's `converted_from_kind`, then
+    0200's `test_only`); only a missing-column error steps down, never a real one.
   - ⚠️ **`canDeleteRequest()` spells its statuses out and must NOT call `isSettled()`.**
     They used to be the same predicate; now `isSettled` counts an approved idea as done
     (for the Open/Done filter) while the server still refuses to delete any `approved` row
