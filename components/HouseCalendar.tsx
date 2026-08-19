@@ -7,7 +7,16 @@ import { Sheet } from "@/components/Sheet";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { eventDays, effectiveStatus, EMPTY_SUMMARY, upcomingEvents, isOngoing } from "@/lib/events";
 import { isStayActive, isStayPast, stayLabel, stayHeadCount } from "@/lib/houseCalendar";
-import { fetchHouseMembers, impliedStays, type HouseMember, type ImpliedStay } from "@/lib/housePresence";
+import {
+  fetchHouseMembers,
+  fetchHouseRosterMembers,
+  impliedStays,
+  occupantsOnDay,
+  stayingCount,
+  type HouseMember,
+  type HouseRosterMember,
+  type ImpliedStay,
+} from "@/lib/housePresence";
 import { useCachedResource } from "@/lib/swrCache";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { formatDateRange, relativeDays } from "@/lib/format";
@@ -114,6 +123,17 @@ export function HouseCalendar({
     () => fetchHouseMembers(houseId),
     { persist: "local" },
   );
+  // ⚠️ …and the house's people who have NO app account yet (family_roster,
+  // 0123). They can't RSVP themselves, but a host can add them to an event, and
+  // being assigned to this house means they're staying HERE. Billy is assigned to
+  // MJT House and coming up; before this the calendar didn't know he existed,
+  // because the derivation only looked at `profiles`.
+  const { data: rosterMembers } = useCachedResource<HouseRosterMember[]>(
+    isSupabaseConfigured ? `houseRoster.${houseId}` : null,
+    [],
+    () => fetchHouseRosterMembers(houseId),
+    { persist: "local" },
+  );
   // Built from each event's `summary.going` rather than a raw attendance list —
   // `useEvents` doesn't expose the raw rows, and `going` is already rolled up by
   // `effectiveStatus`, so a Maybe can't leak in on the way through. The rows keep
@@ -123,8 +143,17 @@ export function HouseCalendar({
     [events.summaries],
   );
   const implied = useMemo(
-    () => (today ? impliedStays({ events: events.events, attendance: goingRows, members, stays, today }) : []),
-    [events.events, goingRows, members, stays, today],
+    () =>
+      today
+        ? impliedStays({ events: events.events, attendance: goingRows, members, rosterMembers, stays, today })
+        : [],
+    [events.events, goingRows, members, rosterMembers, stays, today],
+  );
+  // The number on the heading — people, not rows (a stay's extra guest_names are
+  // extra people sleeping there, and nobody is double-counted).
+  const staying = useMemo(
+    () => stayingCount({ stays: upcomingStays, implied }),
+    [upcomingStays, implied],
   );
 
   return (
@@ -216,7 +245,9 @@ export function HouseCalendar({
 
       {/* ── Who's staying ──────────────────────────────────────────────────── */}
       <section className="space-y-2">
-        <h3 className="px-0.5 text-sm font-bold">🏡 Who&rsquo;s staying</h3>
+        <h3 className="px-0.5 text-sm font-bold">
+          🏡 Who&rsquo;s staying{staying > 0 && <span className="text-muted"> ({staying})</span>}
+        </h3>
         {loading ? (
           <SkeletonList />
         ) : upcomingStays.length === 0 && implied.length === 0 ? (
@@ -237,10 +268,14 @@ export function HouseCalendar({
             {implied.map((i) => (
               <ImpliedStayRow key={i.id} implied={i} today={today} onOpen={() => setOpenEventId(i.eventId)} />
             ))}
+            {/* Built as ONE template string rather than JSX text nodes around
+                {houseName}: interleaving an expression with prose renders as
+                “MJT Housegoing” the moment a formatter wraps the line between
+                them, which is exactly how this read on screen. A template
+                literal has no whitespace semantics to get wrong. */}
             {implied.length > 0 && (
               <p className="px-0.5 pt-0.5 text-[11px] text-faint">
-                Anyone from {houseName} going to a resort event is counted as staying — even if they&rsquo;re tenting or
-                in a cabin. Adding a real stay replaces the RSVP row with your actual dates.
+                {`Anyone from ${houseName} going to a resort event is counted as staying — even if they’re tenting or in a cabin — along with anyone assigned to ${houseName} who isn’t on the app yet, and any guest a ${houseName} member is bringing. Adding a real stay replaces the RSVP row with your actual dates.`}
               </p>
             )}
           </>
@@ -306,6 +341,7 @@ export function HouseCalendar({
         <DaySheet
           day={openDay}
           stays={staysByDay[openDay] ?? []}
+          implied={implied}
           events={eventsByDay[openDay] ?? []}
           today={today}
           onOpenStay={(id) => {
@@ -377,8 +413,17 @@ function ImpliedStayRow({
           {when && !active && <span className="text-faint"> · {when}</span>}
         </p>
         {/* Why this row exists, named — otherwise it reads as a stay somebody
-            forgot they added. */}
-        <p className="truncate text-xs text-muted">Going to {implied.eventTitle}</p>
+            forgot they added. The three `via` cases genuinely differ: a member
+            said yes themselves, a roster person was added FOR them (they have no
+            account to say it with), and a guest is here because a housemate
+            vouched for them — "Going to X" would be wrong for the last two. */}
+        <p className="truncate text-xs text-muted">
+          {implied.via === "guest" && implied.sponsorName
+            ? `Guest of ${implied.sponsorName} · ${implied.eventTitle}`
+            : implied.via === "roster"
+              ? `Added to ${implied.eventTitle}`
+              : `Going to ${implied.eventTitle}`}
+        </p>
       </div>
       <span className="shrink-0 text-lg leading-none text-foreground/30" aria-hidden>
         ›
@@ -438,6 +483,7 @@ function StayRow({
 function DaySheet({
   day,
   stays,
+  implied,
   events,
   today,
   onOpenStay,
@@ -446,7 +492,10 @@ function DaySheet({
   onClose,
 }: {
   day: string;
+  /** Real stays overlapping this day (already filtered by the caller). */
   stays: HouseStay[];
+  /** Derived stays overlapping this day — the half this sheet used to ignore. */
+  implied: ImpliedStay[];
   events: ResortEvent[];
   today: string;
   onOpenStay: (id: string) => void;
@@ -454,6 +503,8 @@ function DaySheet({
   onAdd?: () => void;
   onClose: () => void;
 }) {
+  // One shared derivation for "who's here on this day" — see occupantsOnDay.
+  const occupants = occupantsOnDay({ day, stays, implied });
   // Lightweight sheet reusing the shared Sheet primitive via a dynamic import
   // would be overkill; DaySheet builds directly on Sheet like the others.
   const heading = new Date(`${day}T00:00:00`).toLocaleDateString("en-US", {
@@ -479,29 +530,75 @@ function DaySheet({
           ))}
         </div>
       )}
+      {/* ⚠️⚠️ This block used to read `stays` only, so tapping Sep 25 said
+          "Staying (0) · Nobody's marked a stay for this day yet" while "Who's
+          staying" — three inches lower on the same screen — listed five people
+          for Sep 25–27. Both were reading the same data; only the list below knew
+          that an RSVP to a resort event counts as being at the house. Neither
+          derives it now: both call occupantsOnDay(), so they cannot disagree
+          again. */}
       <div className="space-y-1.5">
         <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
-          Staying ({stays.length})
+          Staying ({occupants.length})
         </p>
-        {stays.length === 0 ? (
-          <p className="px-0.5 text-sm text-muted">Nobody&rsquo;s marked a stay for this day yet.</p>
+        {occupants.length === 0 ? (
+          <p className="px-0.5 text-sm text-muted">Nobody&rsquo;s here on this day yet.</p>
         ) : (
-          stays.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => onOpenStay(s.id)}
-              className="press flex w-full items-center gap-2 rounded-xl bg-card p-2.5 text-left ring-1 ring-border"
-            >
-              <Avatar name={s.authorName} url={s.authorAvatarUrl} size={28} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{stayLabel(s)}</span>
-                <span className="block truncate text-xs text-muted">
-                  <PrivateName name={s.authorName} />
-                  {stayHeadCount(s) > 1 && ` · ${stayHeadCount(s)} people`}
+          occupants.map((o) =>
+            o.kind === "stay" ? (
+              <button
+                key={o.key}
+                onClick={() => {
+                  const match = stays.find((s) => `stay:${s.id}` === o.key);
+                  if (match) onOpenStay(match.id);
+                }}
+                className="press flex w-full items-center gap-2 rounded-xl bg-card p-2.5 text-left ring-1 ring-border"
+              >
+                <Avatar name={o.name} url={o.avatarUrl} size={28} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    <PrivateName name={o.name} />
+                  </span>
+                  {o.guestNames.length > 0 && (
+                    <span className="block truncate text-xs text-muted">
+                      with {o.guestNames.join(", ")}
+                    </span>
+                  )}
                 </span>
-              </span>
-            </button>
-          ))
+              </button>
+            ) : (
+              // Derived from an RSVP — dashed ring + an "RSVP" chip, matching
+              // ImpliedStayRow below, and taps through to the EVENT (there's no
+              // stay row to open).
+              <button
+                key={o.key}
+                onClick={() => {
+                  const match = implied.find((i) => i.id === o.key);
+                  if (match) onOpenEvent(match.eventId);
+                }}
+                className="press flex w-full items-center gap-2 rounded-xl bg-card p-2.5 text-left ring-1 ring-dashed ring-border"
+              >
+                <Avatar name={o.name} url={o.avatarUrl} size={28} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="min-w-0 truncate text-sm font-medium">
+                      <PrivateName name={o.name} />
+                    </span>
+                    <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-accent">
+                      RSVP
+                    </span>
+                  </span>
+                  <span className="block truncate text-xs text-muted">
+                    {o.via === "guest" && o.sponsorName
+                      ? `Guest of ${o.sponsorName} · ${o.eventTitle}`
+                      : o.via === "roster"
+                        ? `Added to ${o.eventTitle}`
+                        : `Going to ${o.eventTitle}`}
+                  </span>
+                </span>
+              </button>
+            ),
+          )
         )}
       </div>
     </DaySheetShell>

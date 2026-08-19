@@ -5,7 +5,14 @@ import { useEvents, useHouseCalendar } from "@/lib/hooks";
 import { useCachedResource } from "@/lib/swrCache";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { fetchHouseMembers, impliedStays, nextPresence, type HouseMember } from "@/lib/housePresence";
+import {
+  fetchHouseMembers,
+  fetchHouseRosterMembers,
+  impliedStays,
+  nextPresence,
+  type HouseMember,
+  type HouseRosterMember,
+} from "@/lib/housePresence";
 import { requestCost, type HouseRequest } from "@/lib/houseRequests";
 import { formatDateRange, formatMoney, plural } from "@/lib/format";
 
@@ -63,6 +70,16 @@ export function HouseDeliveryNudge({
     () => fetchHouseMembers(houseId),
     { persist: "local" },
   );
+  // ⚠️ The house's account-less people too (family_roster, 0123). This nudge asks
+  // "will anybody be there to take delivery?", and somebody without an app
+  // account is just as able to sign for a package — leaving them out would skip a
+  // reminder for a trip that IS happening.
+  const { data: rosterMembers } = useCachedResource<HouseRosterMember[]>(
+    isSupabaseConfigured ? `houseRoster.${houseId}` : null,
+    [],
+    () => fetchHouseRosterMembers(houseId),
+    { persist: "local" },
+  );
 
   // ⚠️ PURCHASES ONLY. An approved reimbursement needs paying, not delivering,
   // and an approved idea has nothing to buy at all — neither has any relationship
@@ -78,9 +95,16 @@ export function HouseDeliveryNudge({
   );
   const presence = useMemo(() => {
     if (!today) return null;
-    const implied = impliedStays({ events: events.events, attendance: goingRows, members, stays, today });
+    const implied = impliedStays({
+      events: events.events,
+      attendance: goingRows,
+      members,
+      rosterMembers,
+      stays,
+      today,
+    });
     return nextPresence({ stays, implied, today });
-  }, [events.events, goingRows, members, stays, today]);
+  }, [events.events, goingRows, members, rosterMembers, stays, today]);
 
   if (unordered.length === 0 || !presence || presence.daysUntil > NUDGE_WITHIN_DAYS) return null;
 
