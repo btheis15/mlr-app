@@ -4,6 +4,33 @@
 
 > ✅ **Fact-checked.** Every table, column and RPC named below was verified against the migrations by a second pass; **9 correction(s)** were applied.
 
+> ⚠️⚠️ **PARTLY SUPERSEDED by web PR #577 (2026-08-19) — read this before building any of it.**
+> This document was generated against web `main` @ PR #539 and describes the fest section as
+> it was *then*. Two of its foundations have since changed, and porting them as written would
+> reproduce a bug that has already been fixed on web:
+>
+> 1. **The season has FIVE phases, not four.** A new `concluded` phase (past `WRAP_TAIL_DAYS`)
+>    was added to `lib/festSeason.ts`. Previously `off-season` meant *both* "the fest is still
+>    ahead" and "the fest is over", so a finished fest fell into the branch that renders a
+>    countdown to its own start date — which clamps at zero and reads **"🎉 Family Fest is on
+>    — welcome Up North!"**. Family Fest 2026 advertised itself as live for ~3 weeks after it
+>    ended. Also note `isTakeover` is now `isPlanning || isLive || isWrap` explicitly, not
+>    `phase !== "off-season"`.
+> 2. **`fest_config` is now read as MANY rows, not one.** This doc's "one row per `fest_year`
+>    (PK)" line was always true of the schema, but the web client pinned a hardcoded
+>    `FEST_YEAR = 2026` — which is what iOS mirrors today. Web now resolves the current fest
+>    as the **newest** row (`lib/festYears.ts`), which is what makes a **Past Years** archive
+>    (`/family-fest/past?year=<yyyy>`) and creating a new fest year in-app possible. There is
+>    **no new table, column or migration** — this is purely how the rows are read.
+>
+> Consequences for the iOS port: the fest year must be resolved, not compiled in; a finished
+> fest needs a concluded state; the archive needs a read-only week view (no edit affordances
+> even for admins, no sign-up cards — but keep tournament brackets); and any "start next year"
+> UI must **insert** a `fest_config` row rather than editing the current one's dates.
+> ⚠️ The fest week is **decided by a family poll every year** and must never be defaulted or
+> computed from the previous year. See **Family Fest season** and **Fest years: the archive &
+> starting fresh** in `CLAUDE.md` for the current model.
+
 ### The Family Fest section
 
 Family Fest is the one week of the year the whole family is on the same lake at the same time, and this section is what they hold in their hands while it happens. On web it is `/family-fest/*` — a section of the resort app with its own parchment/Renaissance identity, its own sub-nav, and a four-phase "season" that swells and recedes across the calendar year. On iOS it must be **the** way to experience that week: everything below works with no signal, updates a Lock Screen, and drops the week into the system calendar. Parity is the floor here; the phone is the device people actually use at the lake.

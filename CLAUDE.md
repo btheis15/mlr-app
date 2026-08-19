@@ -1368,7 +1368,11 @@ was needed for any of this**.
 - 📱 **iOS is not updated** — the native app mirrors `festSeason.ts` and reads
   `fest_config` with its own hardcoded year, so it will keep treating the newest
   fest as the only one and has no Past Years. Shared schema, no backend change
-  needed; see [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+  needed. ⚠️ **Do not port the fest section from
+  [`docs/ios-parity-2026-08/13-family-fest.md`](docs/ios-parity-2026-08/13-family-fest.md)
+  without reading this section first** — that doc predates this change and
+  describes the four-phase season and the one-fest-at-a-time content layer, so
+  building to it would reproduce the "finished fest says it's live" bug.
 
 ## Family Fest dues calculator
 
@@ -3948,7 +3952,9 @@ not a forwarded link. Server half:
   iOS devices across 2 members (Brian, Annette) and the native app has no
   `/media-token` support — enforcement 403s every photo in it. Promote to `on` only
   after iOS ships the token, verified via `report` mode's WOULD-BLOCK log. Full iOS
-  handoff spec: [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+  handoff spec: [`docs/ios-parity-2026-08/`](docs/ios-parity-2026-08/) (media server +
+  signed reads are §15) — **`docs/IOS_PARITY.md` does not exist**; that filename was
+  referenced here for a while and led nowhere.
 - **A cookie would be simpler and was DECLINED (2026-08-10).** Same-origin it isn't —
   app on `vercel.app`, media on `duckdns.org` are different *sites*, so the cookie
   would be third-party and Safari/iOS blocks it. Making it work needs a real domain
