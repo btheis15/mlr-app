@@ -46,6 +46,7 @@ export function HouseRequestSheet({
   onChanged,
   onEdit,
   onPromote,
+  onBuyItMyself,
 }: {
   request: HouseRequest;
   canReview: boolean;
@@ -59,6 +60,8 @@ export function HouseRequestSheet({
    * softer way of asking for the same thing.
    */
   onPromote?: () => void;
+  /** "They told me to just buy it and they'd pay me back" (0207). */
+  onBuyItMyself?: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const { previewAsId } = useIdentity();
@@ -192,6 +195,16 @@ export function HouseRequestSheet({
           </span>
         </div>
         <p className="text-xs leading-relaxed text-foreground/80">{meta.deal}</p>
+        {/* ⚠️ Don't let a converted row rewrite its own history. Without this an
+            approved reimbursement reads as though it was always a receipt — and
+            the approval on it looks like someone approved a spend that had
+            already happened, rather than the purchase it actually approved. */}
+        {request.convertedFromKind === "purchase" && (
+          <p className="text-xs text-muted">
+            Started as a purchase request — {request.mine ? "you" : request.createdByName} bought it{" "}
+            {request.mine ? "yourself" : "themselves"} instead.
+          </p>
+        )}
         {next && (
           <p className="text-xs font-semibold text-foreground/70">
             <span aria-hidden>→ </span>
@@ -322,6 +335,32 @@ export function HouseRequestSheet({
       )}
 
       <DecisionNote request={request} />
+
+      {/* ⚠️ "They told me to just grab it." The single most common way this board
+          goes stale: a House Admin says in person "easier if you just order it,
+          we'll pay you back", and the request is then abandoned rather than
+          re-typed as a reimbursement. One tap converts it in place, keeping
+          everything already written. Requester only — the payout follows
+          `createdBy`, so the person who paid has to be the one to say so. */}
+      {onBuyItMyself &&
+        request.mine &&
+        request.kind === "purchase" &&
+        (request.status === "approved" || request.status === "pending") &&
+        !previewAsId && (
+          <div className="space-y-1.5 rounded-2xl bg-accent/10 p-3">
+            <p className="text-xs leading-relaxed text-foreground/80">
+              Told to just grab it yourself? Buy it and ask for your money back instead — everything you&rsquo;ve
+              already written here comes with it.
+            </p>
+            <button
+              type="button"
+              onClick={onBuyItMyself}
+              className="press w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
+            >
+              🧾 I bought it myself — pay me back
+            </button>
+          </div>
+        )}
 
       {/* The idea's payoff. Open to ANY member of the house (not just reviewers) —
           noticing that an agreed idea is ready to actually buy isn't an admin

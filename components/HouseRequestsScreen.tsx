@@ -26,6 +26,7 @@ import { HouseRequestCard, ProgressActions, ReviewActions } from "@/components/H
 import { HouseRequestSheet } from "@/components/HouseRequestSheet";
 import { HouseRequestComposer } from "@/components/HouseRequestComposer";
 import { HouseDeliveryNudge } from "@/components/HouseDeliveryNudge";
+import { HouseRequestBuyItMyself } from "@/components/HouseRequestBuyItMyself";
 import { useIdentity } from "@/components/IdentityProvider";
 
 /**
@@ -112,6 +113,8 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
   const [composing, setComposing] = useState(false);
   // A NEW purchase request seeded from an agreed idea — never an edit of it.
   const [promoting, setPromoting] = useState<HouseRequest | null>(null);
+  // Converting a purchase request I made into "I bought it, pay me back" (0207).
+  const [buying, setBuying] = useState<HouseRequest | null>(null);
 
   const deepLinkId = useUrlParam("request");
   const flashId = useDeepLinkFlash("request-", deepLinkId, !loading);
@@ -349,6 +352,18 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
             setPromoting(open);
             setOpenId(null);
           }}
+          onBuyItMyself={() => {
+            setBuying(open);
+            setOpenId(null);
+          }}
+        />
+      )}
+
+      {buying && (
+        <HouseRequestBuyItMyself
+          request={buying}
+          onClose={() => setBuying(null)}
+          onDone={reload}
         />
       )}
 
