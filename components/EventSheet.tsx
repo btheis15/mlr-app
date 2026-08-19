@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { AttendanceStatus, AttendanceSummary, EventAttendance, House, ResortEvent, WorkItem } from "@/lib/types";
+import type { EventHost } from "@/lib/eventHosts";
 import { formatDateLong, formatDateRange, relativeDays } from "@/lib/format";
 import {
   deleteEvent,
@@ -28,11 +30,22 @@ import { WorkItemComposer } from "@/components/WorkItemComposer";
 import { EventWorkItemPicker } from "@/components/EventWorkItemPicker";
 import { EventMessageSheet } from "@/components/EventMessageSheet";
 import { EventAttendeeAdd } from "@/components/EventAttendeeAdd";
+import { EventHostEditor } from "@/components/EventHostEditor";
 import { useSheetDismiss } from "@/lib/hooks";
 
-// The event detail sheet: dates, location, description, the RSVP control, and
-// who's coming. An admin OR the event's own creator (`canManage`, migration
-// 0187) can edit/delete a real (DB) event and assign work items to it — its
+// The event detail sheet: dates, location, description, who's HOSTING, the RSVP
+// control, and who's coming.
+//
+// `canManage` (who may edit the event, assign work items, email everyone and
+// RSVP other people) is host-aware since migration 0209: no hosts ⇒ any signed-in
+// member, person hosts ⇒ those people, a committee host ⇒ its leads (or any
+// member of it when it has no leads) — always plus an app admin and the event's
+// creator. It is resolved SERVER-SIDE and handed in as a prop; don't recompute it
+// here (see lib/eventHosts.ts for why). `canDelete` is deliberately narrower —
+// it drops the "any member" fallback, because deleting takes everyone's RSVPs
+// with it. Anyone can always RSVP THEMSELVES regardless of any of this.
+//
+// A manager can edit/delete a real (DB) event and assign work items to it — its
 // "+ Add" button opens EventWorkItemPicker to pick from EXISTING open
 // checklist items (with a "create a new item instead" escape hatch), not just
 // create-a-new-one — and each linked item gets a ✕ to unlink it from the event
@@ -47,6 +60,8 @@ export function EventSheet({
   onSetStatus,
   onClose,
   canManage = false,
+  canDelete,
+  hosts = [],
   onEdit,
   onChanged,
   initialDay = null,
@@ -62,6 +77,13 @@ export function EventSheet({
   onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void | Promise<boolean>;
   onClose: () => void;
   canManage?: boolean;
+  /** Whether the viewer may DELETE (migration 0209) — deliberately narrower than
+   *  `canManage`, which includes "any member, because this event has no host".
+   *  Deleting destroys every RSVP on the event, so it needs someone who actually
+   *  owns it. Defaults to `canManage` for callers that don't distinguish. */
+  canDelete?: boolean;
+  /** Who's running this event (migration 0209) — people and/or committees. */
+  hosts?: EventHost[];
   /** Open the admin composer to edit this event (real DB events only). */
   onEdit?: () => void;
   /** Reload the parent after a delete. */
@@ -70,6 +92,9 @@ export function EventSheet({
   initialDay?: string | null;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
+  // Callers that don't distinguish the two fall back to canManage, so this stays
+  // a pure widening of the old single-flag behaviour.
+  const mayDelete = canDelete ?? canManage;
   // Guests can't read event_attendance (RLS lockdown, 0081) — their summary is
   // an empty roster, so the "Who's coming" section and the per-day tallies
   // would read as a false "no RSVPs yet". Show a sign-in affordance instead
@@ -282,14 +307,19 @@ export function EventSheet({
                 Edit
               </button>
             )}
-            <button
-              type="button"
-              onClick={remove}
-              disabled={deleting}
-              className="press flex-1 rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent ring-1 ring-accent/20 disabled:opacity-50"
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </button>
+            {/* Delete is gated separately (0209): a hostless event is editable by
+                any member, but erasing it — and everyone's RSVPs with it — stays
+                with an admin, the creator, or a named host. */}
+            {mayDelete && (
+              <button
+                type="button"
+                onClick={remove}
+                disabled={deleting}
+                className="press flex-1 rounded-xl bg-accent/10 py-2.5 text-sm font-semibold text-accent ring-1 ring-accent/20 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            )}
           </div>
         ) : undefined
       }
@@ -302,6 +332,35 @@ export function EventSheet({
             <p className="text-sm text-foreground/70">
               📍 <Protected label="Sign in for location">{event.location}</Protected>
             </p>
+          )}
+
+          {/* Who's running it (0209). A committee host links through to the
+              committee so "who do I ask about this?" is one tap. Guests see
+              nothing here — event_hosts is members-only read, since a host row
+              names a person (the 0081 doctrine). */}
+          {hosts.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-sm text-foreground/70">
+              <span className="text-foreground/50">Hosted by</span>
+              {hosts.map((h) =>
+                h.slug ? (
+                  <Link
+                    key={h.id}
+                    href={`/committees/${h.slug}`}
+                    className="press rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary"
+                  >
+                    {h.emoji ? `${h.emoji} ` : ""}
+                    {h.displayName}
+                  </Link>
+                ) : (
+                  <span
+                    key={h.id}
+                    className="rounded-full bg-card px-2.5 py-1 text-xs font-semibold ring-1 ring-border"
+                  >
+                    <PrivateName name={h.displayName} />
+                  </span>
+                ),
+              )}
+            </div>
           )}
 
           {event.description && <p className="text-sm text-foreground/70">{event.description}</p>}
@@ -424,6 +483,16 @@ export function EventSheet({
                 <p className="text-xs text-faint">No work items yet.</p>
               )}
             </div>
+          )}
+
+          {/* Who's hosting (0209) — the thing that decides who else can manage
+              this event and RSVP people to it. Real DB events only: a
+              synthesized event (Family Fest, the holiday weekends) CAN carry
+              hosts as far as the schema goes, but it has no `events` row and so
+              no creator, meaning management there is still admin-only —
+              offering a host editor would imply otherwise. */}
+          {canManage && event.persisted && (
+            <EventHostEditor eventId={event.id} hosts={hosts} onChanged={() => onChanged?.()} />
           )}
 
           {/* Email everyone about this event — the event's details plus the work
