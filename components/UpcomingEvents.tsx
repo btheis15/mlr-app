@@ -24,7 +24,10 @@ export function UpcomingEvents() {
   const { today } = useDemoDate();
   const ffSeason = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
   const { isAdmin, userId } = useIdentity();
-  const { events, summaries, mine, loading, canRsvp, setStatus } = useEvents();
+  // ⚠️ `reload` is needed even though Home deliberately runs WITHOUT realtime:
+  // the event sheet's add/remove-attendee actions have no other way to refresh
+  // here, and without it they silently appeared to do nothing.
+  const { events, summaries, mine, loading, canRsvp, setStatus, reload } = useEvents();
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (!today || loading) return null;
@@ -89,6 +92,7 @@ export function UpcomingEvents() {
           onSetStatus={(s, days) => setStatus(openEvent.id, s, days)}
           onClose={() => setOpenId(null)}
           canManage={isAdmin || (!!userId && openEvent.createdBy === userId)}
+          onChanged={reload}
         />
       )}
     </section>
