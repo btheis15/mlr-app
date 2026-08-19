@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { useCurrentFestSeason } from "@/lib/useFestSeason";
+import { useEventHosting } from "@/lib/eventHosts";
 import { useEvents } from "@/lib/hooks";
 import { EMPTY_SUMMARY, effectiveStatus, upcomingEvents } from "@/lib/events";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -28,6 +29,14 @@ export function UpcomingEvents() {
   // here, and without it they silently appeared to do nothing.
   const { events, summaries, mine, loading, canRsvp, setStatus, reload } = useEvents();
   const [openId, setOpenId] = useState<string | null>(null);
+  // ⚠️ Host-aware permissions, resolved server-side — the SAME hook /events uses,
+  // so the one shared EventSheet can't be quietly stricter on Home than on the
+  // calendar. Called before the early return below to keep hook order stable.
+  // `oldRule` is the pre-0209 predicate, used only as the pre-migration fallback.
+  const { hosts, permFor, reload: reloadHosting } = useEventHosting(
+    events,
+    (e) => isAdmin || (!!userId && e.createdBy === userId),
+  );
 
   if (!today || loading) return null;
 
@@ -90,8 +99,13 @@ export function UpcomingEvents() {
           today={today}
           onSetStatus={(s, days) => setStatus(openEvent.id, s, days)}
           onClose={() => setOpenId(null)}
-          canManage={isAdmin || (!!userId && openEvent.createdBy === userId)}
-          onChanged={reload}
+          canManage={permFor(openEvent.id).canManage}
+          canDelete={permFor(openEvent.id).canDelete}
+          hosts={hosts.get(openEvent.id) ?? []}
+          onChanged={() => {
+            reload();
+            reloadHosting();
+          }}
         />
       )}
     </section>
