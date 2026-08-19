@@ -84,6 +84,14 @@ export interface HouseRequest {
   orderNote: string | null;
   orderedAt: string | null;
   receivedAt: string | null;
+  /**
+   * Soft delete (migration 0208). A removed request STAYS on the board, marked as
+   * removed and naming who did it, for 7 days — so a House Admin hunting for a
+   * request they half-remember can tell "somebody took it back" from "it was never
+   * submitted". After 7 days the read policy stops returning it entirely.
+   */
+  deletedAt: string | null;
+  deletedByName: string | null;
   media: HouseRequestMediaItem[];
   /** Resolved client-side: is this the viewer's own request? */
   mine: boolean;
@@ -336,10 +344,11 @@ export function requestGroup(r: HouseRequest): HouseRequestGroup {
  * REIMBURSEMENT, where it means **Paid** and is genuinely the moment that matters.
  */
 export function isSettled(r: HouseRequest): boolean {
+  // Removed (0208) — nobody needs to act on it; it's a 7-day tombstone.
+  if (r.deletedAt) return true;
   // An approved IDEA is settled too — the house said yes and there's nothing to
   // buy. ⚠️ This is PRESENTATION only (the Open/Done filter). Do NOT reuse it as
-  // the delete gate: the server still refuses to delete an `approved` row of any
-  // kind (0203), so `canDeleteRequest` mirrors that SQL directly instead.
+  // the delete gate: `canDeleteRequest` mirrors the SQL directly instead.
   if (r.status === "approved") return r.kind === "idea";
   return (
     r.status === "ordered" || r.status === "received" || r.status === "denied" || r.status === "withdrawn"
@@ -456,6 +465,8 @@ interface RequestRow {
   order_note: string | null;
   ordered_at: string | null;
   received_at: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   house_request_media: MediaRow[] | null;
 }
 
@@ -469,17 +480,18 @@ function num(v: string | number | null): number | null {
 
 const SELECT =
   "id, house_id, kind, title, reason, links, est_cost, quantity, status, test_only, converted_from_kind, created_by, created_at," +
-  " reviewed_by, reviewed_at, review_note, actual_cost, order_note, ordered_at, received_at," +
+  " reviewed_by, reviewed_at, review_note, actual_cost, order_note, ordered_at, received_at, deleted_at, deleted_by," +
   " house_request_media(id, storage_path, thumbnail_url, media_type, status, uploaded_by)";
 // ⚠️ A COLUMN-GROUP LADDER, newest migration first. An unknown column fails the
 // WHOLE select with 42703 and the board renders empty — which the `ready` flag
 // would then report as "migration missing", i.e. a healthy board nagging about a
 // migration that HAS been run. So each newer column group peels off in turn:
-// 0207's `converted_from_kind`, then 0200's `test_only`. Same idiom as
-// insertMediaRow's ladder for 0176/0173.
-const SELECT_NO_CONVERTED = SELECT.replace(" converted_from_kind,", "");
+// 0208's `deleted_at`/`deleted_by`, then 0207's `converted_from_kind`, then 0200's
+// `test_only`. Same idiom as insertMediaRow's ladder for 0176/0173.
+const SELECT_NO_DELETED = SELECT.replace(" deleted_at, deleted_by,", "");
+const SELECT_NO_CONVERTED = SELECT_NO_DELETED.replace(" converted_from_kind,", "");
 const SELECT_NO_TEST = SELECT_NO_CONVERTED.replace(" test_only,", "");
-const SELECT_LADDER = [SELECT, SELECT_NO_CONVERTED, SELECT_NO_TEST];
+const SELECT_LADDER = [SELECT, SELECT_NO_DELETED, SELECT_NO_CONVERTED, SELECT_NO_TEST];
 
 function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, names: Map<string, string>): HouseRequest {
   return {
@@ -505,6 +517,8 @@ function assemble(row: RequestRow, viewerId: string | null, canReview: boolean, 
     orderNote: row.order_note,
     orderedAt: row.ordered_at,
     receivedAt: row.received_at,
+    deletedAt: row.deleted_at ?? null,
+    deletedByName: row.deleted_by ? names.get(row.deleted_by) ?? "Someone" : null,
     media: (row.house_request_media ?? []).map((m) => ({
       id: m.id,
       url: m.storage_path,
@@ -586,6 +600,7 @@ async function finish(
   for (const r of rows) {
     ids.add(r.created_by);
     if (r.reviewed_by) ids.add(r.reviewed_by);
+    if (r.deleted_by) ids.add(r.deleted_by);
   }
   const names = new Map((await fetchProfiles(Array.from(ids))).map((p) => [p.id, p.name]));
   return rows.map((r) => assemble(r, viewerId, canReview(r), names));
@@ -839,20 +854,45 @@ export function deleteHouseRequest(id: string): Promise<Res> {
 }
 
 /**
- * Client-side twin of **0203's** gate — keep the two in step, and spell the
- * statuses out rather than calling `isSettled()`. They used to be the same
- * function, but `isSettled` now counts an approved IDEA as done for the
- * Open/Done filter, and the server still refuses to delete any `approved` row —
- * so sharing it would paint a Delete button the RPC answers with an error.
+ * Client-side twin of **0208's** gate. Removal is now a soft delete that leaves a
+ * 7-day tombstone, which is what makes it safe to open up: your own request is
+ * yours to remove at ANY status, because it no longer evaporates — it shows on the
+ * board as removed, with your name on it. A House Admin can remove any in their
+ * house on the same terms.
+ *
+ * ⚠️ Still spelled out rather than reusing `isSettled()`: that one counts an
+ * approved idea as done for the Open/Done filter, which is presentation, not
+ * permission. Keep this mirroring the SQL.
  */
-export function canDeleteRequest(r: HouseRequest): boolean {
-  return (
-    r.testOnly ||
-    r.status === "ordered" ||
-    r.status === "received" ||
-    r.status === "denied" ||
-    r.status === "withdrawn"
-  );
+export function canDeleteRequest(r: HouseRequest, canReview = false): boolean {
+  if (r.deletedAt) return false; // already gone — offer Restore instead
+  return r.mine || canReview;
+}
+
+/** Can this removal still be undone? Only while the tombstone is up (0208). */
+export function canRestoreRequest(r: HouseRequest, canReview = false): boolean {
+  return Boolean(r.deletedAt) && (r.mine || canReview) && tombstoneDaysLeft(r) > 0;
+}
+
+/** Whole days the tombstone stays visible; 0 once it's aged out. */
+export function tombstoneDaysLeft(r: HouseRequest, now = Date.now()): number {
+  if (!r.deletedAt) return 0;
+  const elapsed = now - new Date(r.deletedAt).getTime();
+  return Math.max(0, 7 - Math.floor(elapsed / 86_400_000));
+}
+
+/** "Removed by Beth · hidden in 6 days" — the whole point of the tombstone. */
+export function tombstoneLabel(r: HouseRequest): string | null {
+  if (!r.deletedAt) return null;
+  const left = tombstoneDaysLeft(r);
+  const who = r.deletedByName ?? "Someone";
+  const when = left <= 0 ? "hidden now" : left === 1 ? "hidden tomorrow" : `hidden in ${left} days`;
+  return `Removed by ${who} · ${when}`;
+}
+
+/** Undo a removal while the tombstone is still up (0208). */
+export function restoreHouseRequest(id: string): Promise<Res> {
+  return rpc("restore_house_request", { p_id: id });
 }
 
 export async function addHouseRequestMedia(
