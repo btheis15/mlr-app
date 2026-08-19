@@ -28,7 +28,38 @@
     "caveats": [
       "Generated from the web repo (migrations + CLAUDE.md + the PR list), not from the iOS checkout — iosStatus is inferred from what CLAUDE.md records about the native app.",
       "Every RPC and column named here was read out of the migration files, but ALWAYS re-grep supabase/migrations/ before wiring a parameter name: Supabase keys RPC args by NAME."
-    ]
+    ],
+    "audited": {
+      "date": "2026-08-19",
+      "ios_commit": "7a6795f",
+      "swift_files": 231,
+      "method": "The iOS repo was cloned read-only and grepped directly. Statuses below are VERIFIED, not inferred from CLAUDE.md as in the standing round.",
+      "findings": [
+        "All FIVE of the standing round's true blockers are DONE — including signed media reads (MLRApp/Services/MediaTokenService.swift, commit 9c0dfb4), with host-based matching and refresh-on-every-open. Ignore that blocker list. MEDIA_AUTH may be promotable from report to on after verifying the mini's WOULD-BLOCK log (exercise a scrubbed VIDEO too, not just photos).",
+        "iOS already has real implementations of much of what the standing round marked ADD: DropBoxesService (201 lines), TournamentsService (269), MeetingsService (495), ChatPollsService (148), PrivateActivitiesService (123), FamilyRosterService (183), WorkItemsService (377), EventsService (409). Treat that round's ADD items as AUDIT items.",
+        "LIVE BUG: FamilyFestConfig hardcodes startDate 2026-07-27 / endDate 2026-07-31, but fest_config says 2026-07-26 / 2026-08-01. FestSeason.current() computes from the hardcoded pair and SEVEN surfaces consume it. iOS showed 'Day n of 5' instead of of 7 during the week, and flipped to wrap on Aug 1 — the actual last day.",
+        "LIVE BUG: iOS clamps daysUntilStart to max(0,…) and the off-season branch treats 0 as 'starts today', so RIGHT NOW the home-screen widget says 'Today! / See you there' and Siri says 'Family Fest starts today!' — three weeks after it ended. Same clamp-to-zero-reads-as-now bug the web had. The concluded phase (C1) is the fix, making C1 a live-bug fix on iOS rather than a tidy-up."
+      ],
+      "verified_absent": [
+        "event_hosts / EventHost",
+        "house_requests / house_admin",
+        "event email (send_event_message, event_message_preview)",
+        "add_event_family_member / add_event_guest",
+        "fest concluded phase",
+        "fest Past Years",
+        "work item custom urgency (custom_label)",
+        "work item recurrence (recur_every_years)",
+        "event_work_item_house_counts",
+        "impliedStays / house presence"
+      ],
+      "verified_present": [
+        "MediaTokenService (signed /f reads)",
+        "pending-approval gating",
+        "APNs registration",
+        "signOut cache clear",
+        "add_work_item_to_event (WorkItemsService.swift:280)"
+      ]
+    }
   },
   "how_to_use": {
     "read_first": [
@@ -118,8 +149,8 @@
     "features_enumerated": 29,
     "by_ios_status": {
       "wrong-in-spec": 3,
-      "missing": 21,
-      "has-it-audit-depth": 5
+      "missing": 20,
+      "has-it-audit-depth": 6
     },
     "by_workstream": {
       "WS-N4": 5,
@@ -136,7 +167,7 @@
       "large": 1,
       "medium": 5
     },
-    "gotchas_captured": 154,
+    "gotchas_captured": 155,
     "workstreams": 7
   },
   "features": [
@@ -826,7 +857,7 @@
       "id": "event-work-item-picker",
       "name": "Pick an event's work items from the existing checklist",
       "whatItDoes": "Multi-select over existing open items, each showing its urgency and scope, with a create-new escape hatch.",
-      "iosStatus": "missing",
+      "iosStatus": "has-it-audit-depth",
       "effort": "medium",
       "workstream": "WS-N6",
       "tables": [
@@ -843,7 +874,8 @@
       "webFiles": [],
       "gotchas": [
         "Unlinking never deletes the item itself.",
-        "⚠️ add_work_item_to_event is declared in 0050 WITHOUT a schema prefix (`create or replace function add_work_item_to_event`), unlike almost every other RPC in this codebase. It resolves to public via search_path, but a grep for 'function public.add_work_item_to_event' finds nothing — don't conclude it doesn't exist."
+        "⚠️ add_work_item_to_event is declared in 0050 WITHOUT a schema prefix (`create or replace function add_work_item_to_event`), unlike almost every other RPC in this codebase. It resolves to public via search_path, but a grep for 'function public.add_work_item_to_event' finds nothing — don't conclude it doesn't exist.",
+        "AUDIT, not ADD: iOS already calls add_work_item_to_event (WorkItemsService.swift:280). Check the PICKER UI and the urgency/scope display rather than the link itself."
       ]
     },
     {

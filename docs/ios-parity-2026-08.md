@@ -8,8 +8,17 @@
 > Admins**, **event hosts**) and **three places where this round is now WRONG** —
 > the Family Fest season model, the `fest_config` read model, and
 > `can_manage_event()`. The addendum lists them first, precisely because building
-> from those sections would reproduce bugs the web has already fixed. Everything
-> else here still stands, including the 5 true blockers.
+> from those sections would reproduce bugs the web has already fixed.
+>
+> ⚠️⚠️ **AND THE 5 TRUE BLOCKERS BELOW ARE ALL DONE — don't work from that list.**
+> The iOS repo was audited directly on 2026-08-19 (@ `7a6795f`); every blocker is
+> implemented, **including signed media reads** (`MediaTokenService.swift`, commit
+> `9c0dfb4`). This round's statuses were *inferred from `CLAUDE.md`*, never read
+> from the iOS source, and iOS work landed right after these docs were generated —
+> so a lot of what's marked **ADD** here (Drop Boxes, tournaments, meetings, chat
+> polls, private activities, the family roster) **already exists** and should be
+> treated as **AUDIT**. See the addendum's "AUDITED against the real iOS source"
+> section before planning anything from this file.
 
 Prose companion to **[`ios-parity-2026-08.json`](ios-parity-2026-08.json)**, which is
 the machine-readable work-list. Same pair convention as the July round
