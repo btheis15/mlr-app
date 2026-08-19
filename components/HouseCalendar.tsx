@@ -17,6 +17,7 @@ import {
   type HouseRosterMember,
   type ImpliedStay,
 } from "@/lib/housePresence";
+import { useEventHosting } from "@/lib/eventHosts";
 import { useCachedResource } from "@/lib/swrCache";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { formatDateRange, relativeDays } from "@/lib/format";
@@ -142,6 +143,11 @@ export function HouseCalendar({
     () => Object.values(events.summaries).flatMap((s) => s.going),
     [events.summaries],
   );
+  // Host-aware event permissions — the same hook /events and Home use, so the
+  // shared EventSheet behaves identically wherever it's opened from (this
+  // surface previously passed no canManage at all, so it silently had none).
+  const eventPerms = useEventHosting(events.events, (e) => isAdmin || (!!uid && e.createdBy === uid));
+
   const implied = useMemo(
     () =>
       today
@@ -333,7 +339,13 @@ export function HouseCalendar({
           today={today}
           onSetStatus={(s, days) => events.setStatus(openEvent.id, s, days)}
           onClose={() => setOpenEventId(null)}
-          onChanged={events.reload}
+          canManage={eventPerms.permFor(openEvent.id).canManage}
+          canDelete={eventPerms.permFor(openEvent.id).canDelete}
+          hosts={eventPerms.hosts.get(openEvent.id) ?? []}
+          onChanged={() => {
+            events.reload();
+            eventPerms.reload();
+          }}
         />
       )}
 
