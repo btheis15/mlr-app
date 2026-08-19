@@ -96,8 +96,14 @@ export function EventSheet({
     setRemovingAttendeeId(a.id);
     await removeEventAttendanceEntry(a.id);
     setRemovingAttendeeId(null);
-    // The parent's `summary` updates on its own via the events-live realtime
-    // subscription (useEvents({realtime:true})) — no manual refetch here.
+    // ⚠️ DON'T rely on realtime alone here. This used to say "the parent's
+    // `summary` updates on its own via useEvents({realtime:true})" — true on
+    // /events and the house calendar, but **Home's `UpcomingEvents` calls
+    // `useEvents()` with no realtime at all**, so on Home the row vanished from
+    // the database and stayed on screen. The same sheet renders on three
+    // surfaces with three different data setups; the only thing that works
+    // everywhere is asking the parent to refetch.
+    onChanged?.();
   };
 
   const reloadWorkItems = () => {
@@ -240,7 +246,12 @@ export function EventSheet({
         eventId={event.id}
         existing={allAttendance}
         onClose={() => setAddingAttendee(false)}
-        onAdded={() => {}}
+        // ⚠️ THIS WAS `() => {}`, which made "Add someone" look completely
+        // broken: the add really landed in the database, the sheet closed, and
+        // the roster never changed — so the only feedback was nothing at all.
+        // Adding somebody must ALWAYS refetch (see removeAttendee for why
+        // realtime can't be relied on for it).
+        onAdded={() => onChanged?.()}
       />
     )}
     <Sheet

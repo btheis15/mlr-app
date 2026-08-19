@@ -134,18 +134,38 @@ function FamilyPicker({
   const pick = async (opt: FamilyOption) => {
     setPendingId(opt.id);
     setError(null);
-    const { error: err } =
-      opt.kind === "member"
-        ? await addEventFamilyMember(eventId, { userId: opt.id }, status)
-        : await addEventFamilyMember(eventId, { rosterId: opt.id }, status);
-    setPendingId(null);
-    if (err) { setError(err); return; }
-    onDone();
+    // ⚠️ try/finally, not a bare await: if the call throws rather than returning
+    // an error, `pendingId` would stay set and EVERY row in the list would be
+    // left permanently disabled — a dead sheet with nothing explaining why.
+    try {
+      const { error: err } =
+        opt.kind === "member"
+          ? await addEventFamilyMember(eventId, { userId: opt.id }, status)
+          : await addEventFamilyMember(eventId, { rosterId: opt.id }, status);
+      if (err) {
+        setError(err);
+        return;
+      }
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add them. Try again.");
+    } finally {
+      setPendingId(null);
+    }
   };
 
   return (
     <>
       <StatusPicker value={status} onChange={setStatus} />
+      {/* ⚠️ THE ERROR BELONGS UP HERE, not under the list. It used to render
+          after a ~40-person scrolling list, i.e. far below the fold — so a
+          failed add was indistinguishable from the button doing nothing at all.
+          Feedback has to appear where the person is actually looking. */}
+      {error && (
+        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">
+          {error}
+        </p>
+      )}
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -165,10 +185,17 @@ function FamilyPicker({
                 className="press flex w-full items-center justify-between gap-2 rounded-xl bg-card px-3 py-2.5 text-left ring-1 ring-border disabled:opacity-50"
               >
                 <span className="text-sm font-medium">{opt.name}</span>
-                {opt.kind === "roster" && (
-                  <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
-                    Not on the app yet
-                  </span>
+                {/* Per-row feedback, so a tap visibly does something even on a
+                    slow connection — the list is long and the sheet only closes
+                    once the write lands. */}
+                {pendingId === opt.id ? (
+                  <span className="shrink-0 text-xs font-semibold text-primary">Adding…</span>
+                ) : (
+                  opt.kind === "roster" && (
+                    <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] font-medium text-muted ring-1 ring-border">
+                      Not on the app yet
+                    </span>
+                  )
                 )}
               </button>
             </li>
@@ -180,9 +207,8 @@ function FamilyPicker({
           )}
         </ul>
       )}
-      {error && (
-        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent ring-1 ring-accent/20">{error}</p>
-      )}
+      {/* (The error for this picker is rendered ABOVE the list — see the note
+          there. Deliberately not repeated down here, below the fold.) */}
     </>
   );
 }
