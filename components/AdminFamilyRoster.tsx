@@ -41,6 +41,8 @@ export function AdminFamilyRoster() {
   const [ready, setReady] = useState(true);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  // Collapsed by default: the point of this section is who still needs inviting.
+  const [showJoined, setShowJoined] = useState(false);
   // Once someone's signed up, tapping their name opens their profile sheet.
   const [sheet, setSheet] = useState<{ id: string; name: string; avatarUrl: string | null } | null>(null);
   const { busy: busyId, run } = useBusyAction();
@@ -143,10 +145,23 @@ export function AdminFamilyRoster() {
   }
 
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? people.filter((p) => [p.name, p.email, p.phone, houseName(p.houseId)].some((f) => f?.toLowerCase().includes(q)))
-    : people;
-  const onApp = people.filter((p) => p.linkedUserId).length;
+  const matches = (p: FamilyRosterEntry) =>
+    !q || [p.name, p.email, p.phone, houseName(p.houseId)].some((f) => f?.toLowerCase().includes(q));
+  // ⚠️ Once somebody signs up they are, by definition, no longer "family not on
+  // the app yet" — so they drop out of the list this section exists to be. They
+  // used to sit right in the middle of it wearing a "✓ On the app" badge, which
+  // made the heading contradict its own contents and left an admin scanning past
+  // people who need nothing done for them.
+  //
+  // Tucked into a collapsed disclosure rather than hidden outright: the roster
+  // row still exists and still matters (it's the account link + their house
+  // pre-assignment), so "where did Cathy go?" needs an answer. Same idiom as the
+  // calendar's "Earlier stays" and the broadcast queue's "Previously sent".
+  const pending = people.filter((p) => !p.linkedUserId);
+  const joined = people.filter((p) => p.linkedUserId);
+  const shown = pending.filter(matches);
+  const joinedShown = joined.filter(matches);
+  const onApp = joined.length;
 
   return (
     <>
@@ -154,8 +169,11 @@ export function AdminFamilyRoster() {
       <div className="flex items-center gap-2">
         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">Admin</span>
         <h2 className="text-sm font-semibold">Family roster</h2>
+        {/* Counts what this section is actually FOR — people still to invite —
+            rather than the whole roster including everyone already signed up. */}
         <span className="ml-auto text-xs text-faint">
-          {people.length} {plural(people.length, "person", "people")}{onApp ? ` · ${onApp} on the app` : ""}
+          {pending.length} {plural(pending.length, "person", "people")}
+          {onApp ? ` · ${onApp} joined` : ""}
         </span>
         {uninvited.length > 0 && (
           <button
@@ -248,7 +266,13 @@ export function AdminFamilyRoster() {
             <SkeletonList count={2} />
           ) : shown.length === 0 ? (
             <p className="py-3 text-center text-xs text-faint">
-              {people.length === 0 ? "No one on the roster yet — add family above." : "No one matches that."}
+              {/* ⚠️ Three distinct empty states now that the list is pending-only.
+                  "Everyone's joined" is a WIN and must not read as "no results". */}
+              {people.length === 0
+                ? "No one on the roster yet — add family above."
+                : pending.length === 0
+                  ? "🎉 Everyone on the roster has joined the app."
+                  : "No one matches that."}
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -260,82 +284,107 @@ export function AdminFamilyRoster() {
                 ) : (
                   <li key={p.id} className="flex flex-col gap-2 rounded-xl bg-background p-2.5 ring-1 ring-border">
                     <div className="flex items-center gap-3">
-                      <Avatar name={p.linkedName || p.name} url={p.linkedAvatarUrl} size={32} />
+                      {/* ⚠️ Every `linkedUserId` branch that used to live in this row
+                          is gone: this list is now PENDING-ONLY, so a linked person
+                          can never reach it. Someone who has joined renders in the
+                          "Already on the app" disclosure below instead. */}
+                      <Avatar name={p.name} url={null} size={32} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          {p.linkedUserId ? (
-                            <button
-                              type="button"
-                              onClick={() => setSheet({ id: p.linkedUserId!, name: p.linkedName || p.name, avatarUrl: p.linkedAvatarUrl })}
-                              className="press text-left underline-offset-2 hover:underline"
-                            >
-                              {p.linkedName || p.name}
-                            </button>
-                          ) : (
-                            p.linkedName || p.name
-                          )}
-                          {p.linkedUserId && (
-                            <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary align-middle">
-                              ✓ On the app
-                            </span>
-                          )}
-                        </p>
+                        <p className="truncate text-sm font-medium">{p.name}</p>
                         {p.email && <p className="truncate text-xs text-faint">{p.email}</p>}
                         {p.phone && <p className="truncate text-xs text-faint">{p.phone}</p>}
                       </div>
-                      {!p.linkedUserId && (
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <button
-                            onClick={() => invite(p)}
-                            disabled={!p.email || busyId === p.id || allBusy}
-                            title={p.email ? "Send the welcome email" : "Add an email first"}
-                            className="press rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40"
-                          >
-                            💌 Invite
-                          </button>
-                          <div className="flex gap-1">
-                            <button onClick={() => setEditing(p.id)} className="press rounded-full px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/30">Edit</button>
-                            <button onClick={() => remove(p)} className="press rounded-full px-2 py-0.5 text-xs font-semibold text-accent ring-1 ring-accent/30">Remove</button>
-                          </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <button
+                          onClick={() => invite(p)}
+                          disabled={!p.email || busyId === p.id || allBusy}
+                          title={p.email ? "Send the welcome email" : "Add an email first"}
+                          className="press rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                        >
+                          💌 Invite
+                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={() => setEditing(p.id)} className="press rounded-full px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-primary/30">Edit</button>
+                          <button onClick={() => remove(p)} className="press rounded-full px-2 py-0.5 text-xs font-semibold text-accent ring-1 ring-accent/30">Remove</button>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    {p.linkedUserId ? (
-                      <p className="text-xs text-faint">
-                        Signed up — now a real member{houseName(p.houseId) ? ` (pre-set to ${houseName(p.houseId)})` : ""}. Manage them in the members list above.
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <HouseChip label="None" active={!p.houseId} disabled={busyId === p.id} onClick={() => assign(p, null)} />
-                          {houses.map((h) => (
-                            <HouseChip
-                              key={h.id}
-                              label={`${h.emoji} ${h.name}`}
-                              active={p.houseId === h.id}
-                              disabled={busyId === p.id}
-                              onClick={() => assign(p, h.id)}
-                            />
-                          ))}
-                        </div>
-                        {p.email && committeesByEmail[p.email.trim().toLowerCase()]?.length ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs text-faint" title="They hold these committee spots by email until they sign up — then the spots link to their account.">
-                              On committees (until they join):
-                            </span>
-                            {committeesByEmail[p.email.trim().toLowerCase()].map((c) => (
-                              <span key={c.slug} className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                {c.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </>
-                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <HouseChip label="None" active={!p.houseId} disabled={busyId === p.id} onClick={() => assign(p, null)} />
+                      {houses.map((h) => (
+                        <HouseChip
+                          key={h.id}
+                          label={`${h.emoji} ${h.name}`}
+                          active={p.houseId === h.id}
+                          disabled={busyId === p.id}
+                          onClick={() => assign(p, h.id)}
+                        />
+                      ))}
+                    </div>
+                    {p.email && committeesByEmail[p.email.trim().toLowerCase()]?.length ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-faint" title="They hold these committee spots by email until they sign up — then the spots link to their account.">
+                          On committees (until they join):
+                        </span>
+                        {committeesByEmail[p.email.trim().toLowerCase()].map((c) => (
+                          <span key={c.slug} className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            {c.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ),
               )}
             </ul>
+          )}
+
+          {/* Everyone who has since signed up — out of the way, but findable. */}
+          {joined.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowJoined((v) => !v)}
+                aria-expanded={showJoined}
+                className="press text-xs font-semibold text-foreground/70"
+              >
+                ✓ Already on the app ({joined.length}) {showJoined ? "▾" : "▸"}
+              </button>
+              {showJoined && (
+                <>
+                  <p className="pt-1.5 text-xs text-faint">
+                    These have real accounts now — manage them in the members list above. Their roster row stays as the
+                    link to that account, and keeps whatever house you pre-assigned.
+                  </p>
+                  {joinedShown.length === 0 ? (
+                    <p className="py-2 text-center text-xs text-faint">No one here matches that.</p>
+                  ) : (
+                    <ul className="space-y-1.5 pt-1.5">
+                      {joinedShown.map((p) => (
+                        <li key={p.id} className="flex items-center gap-3 rounded-xl bg-background p-2.5 ring-1 ring-border">
+                          <Avatar name={p.linkedName || p.name} url={p.linkedAvatarUrl} size={28} />
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSheet({ id: p.linkedUserId!, name: p.linkedName || p.name, avatarUrl: p.linkedAvatarUrl })
+                              }
+                              className="press block max-w-full truncate text-left text-sm font-medium underline-offset-2 hover:underline"
+                            >
+                              {p.linkedName || p.name}
+                            </button>
+                            {p.email && <p className="truncate text-xs text-faint">{p.email}</p>}
+                          </div>
+                          {houseName(p.houseId) && (
+                            <span className="shrink-0 text-xs text-faint">{houseName(p.houseId)}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
           )}
         </>
       )}
