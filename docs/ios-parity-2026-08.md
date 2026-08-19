@@ -1,5 +1,16 @@
 # iOS parity catch-up — 2026-08
 
+> ⚠️ **THIS ROUND IS NO LONGER COMPLETE — read
+> [`ios-parity-2026-08-19.md`](ios-parity-2026-08-19.md) alongside it.** This set
+> covers web `main` through **PR #539 / migration 0184**. Since then the web app has
+> merged **40 more PRs (#540–#579)** and **25 migrations (0185–0209)**, including two
+> entirely new features with no coverage here at all (**House requests + House
+> Admins**, **event hosts**) and **three places where this round is now WRONG** —
+> the Family Fest season model, the `fest_config` read model, and
+> `can_manage_event()`. The addendum lists them first, precisely because building
+> from those sections would reproduce bugs the web has already fixed. Everything
+> else here still stands, including the 5 true blockers.
+
 Prose companion to **[`ios-parity-2026-08.json`](ios-parity-2026-08.json)**, which is
 the machine-readable work-list. Same pair convention as the July round
 (`ios-parity-2026-07.{md,json}`), which this **supersedes**.

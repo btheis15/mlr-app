@@ -24,7 +24,11 @@ READ, IN THIS ORDER, AND NOTHING ELSE YET:
 
   1. docs/ios-parity-2026-08-DELTA.md          the 407-item checklist (92KB) — plan from this
   2. docs/ios-parity-2026-08.md                the index: status board, §0 media-token Swift
-  3. docs/ios-parity-2026-08/07-posts-feed-depth-audit.md    <-- the ONE area for this task
+  3. docs/ios-parity-2026-08-19.md             the ADDENDUM (PRs #540-#579): two whole new
+                                               features, and THREE CORRECTIONS where the docs
+                                               above are now wrong. Read its top section even
+                                               if your area isn't in it.
+  4. docs/ios-parity-2026-08/07-posts-feed-depth-audit.md    <-- the ONE area for this task
 
 ⚠️ DO NOT read the whole docs/ios-parity-2026-08/ directory. It's 854KB across 18 files.
 Read the delta plus the ONE area doc you're building. That's the intended working set.
