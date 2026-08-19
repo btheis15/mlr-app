@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useFestSeason } from "@/lib/useFestSeason";
 import { formatDateLong, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay, dayTimeline } from "@/lib/schedule";
 import { eventDays } from "@/lib/events";
@@ -41,6 +40,7 @@ export function FestWeek({
   startDate,
   endDate,
   onContentSaved,
+  readOnly = false,
 }: {
   events: ScheduleEvent[];
   dinners: Dinner[];
@@ -50,11 +50,24 @@ export function FestWeek({
    *  own useFestContent() instance re-fetches (see migration 0099 — FestWeek
    *  is handed `dinners`/`events` as props, so it can't refresh itself). */
   onContentSaved?: () => void;
+  /**
+   * Render a FINISHED fest year as history — the Past Years archive
+   * (/family-fest/past/[year]). Everything that would let someone *act* on the
+   * week is dropped: no edit affordances (for anyone, including an admin — the
+   * Planner writes to the CURRENT year, so its sheets would silently edit the
+   * wrong fest), and no sign-up cards (there's nothing left to sign up for).
+   * Tournament brackets are deliberately KEPT, read-only — who won the musky
+   * tournament is exactly the history worth archiving. It also skips the
+   * permission + drafts fetches entirely, so an archive page costs three
+   * round-trips fewer than the live hub.
+   */
+  readOnly?: boolean;
 }) {
-  const season = useFestSeason(startDate, endDate);
   const { user, userId } = useIdentity();
   // Real session uid drives the chef/crew self-edit checks (no async round-trip).
-  const uid = userId;
+  // Nulled in readOnly mode so a chef browsing 2026's archive doesn't get an
+  // Edit button on their own dinner from a fest that already happened.
+  const uid = readOnly ? null : userId;
   // Full-access editors (admins/committee) can edit ANYTHING on this view —
   // not just the chef/crew-scoped dinner details — by reusing the Planner's
   // own DinnerSheet/ScheduleSheet in place. Those need the member directory +
@@ -72,12 +85,15 @@ export function FestWeek({
   // Cached edit-permission — seeds the last-known value instantly (memory across
   // tab switches, persisted across cold opens) so the Edit affordances don't pop
   // in a frame or two late while the can_edit_fest RPC re-resolves each visit.
-  const { data: canEditAll } = useCachedResource<boolean>(
-    user && userId ? `canEditFest.${userId}` : null,
+  // A null key keeps the hook inert, so an archive page never even asks
+  // can_edit_fest() — there's nothing here anyone may edit.
+  const { data: canEditFestNow } = useCachedResource<boolean>(
+    !readOnly && user && userId ? `canEditFest.${userId}` : null,
     false,
     canEditFest,
     { persist: "local" },
   );
+  const canEditAll = !readOnly && canEditFestNow;
 
   const reloadAdminData = useCallback(() => {
     fetchMemberOptions().then(setMembers);
@@ -121,6 +137,7 @@ export function FestWeek({
                   days={festDayOptions}
                   members={members}
                   onSaved={onSaved}
+                  readOnly={readOnly}
                 />
               ))}
             </ul>
@@ -162,6 +179,7 @@ export function FestWeek({
                       days={festDayOptions}
                       members={members}
                       onSaved={onSaved}
+                      readOnly={readOnly}
                     />
                   ) : (
                     <DinnerRow
@@ -234,6 +252,7 @@ function EventRow({
   days,
   members,
   onSaved,
+  readOnly = false,
 }: {
   event: ScheduleEvent;
   uid: string | null;
@@ -242,6 +261,11 @@ function EventRow({
   days: string[];
   members: FestMemberOption[];
   onSaved: () => void;
+  /** Archive mode — see FestWeek's own `readOnly`. Edit affordances already
+   *  fall away on their own (the parent passes canEditAll false + uid null);
+   *  this additionally drops the SIGN-UP card, which would otherwise invite
+   *  people to claim a slot at a fest that's already over. */
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -317,7 +341,7 @@ function EventRow({
               ))}
             </div>
           )}
-          {event.signupEnabled && (
+          {event.signupEnabled && !readOnly && (
             <ScheduleSignupSlots target={event} kind="schedule" canManage={canEditThis} members={members} />
           )}
           {/* Only mount when the row is open — Expander keeps its children in the

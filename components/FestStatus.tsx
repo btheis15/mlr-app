@@ -17,6 +17,7 @@ import { firstName } from "@/lib/privacy";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
 import { ScheduleDetailsEditSheet } from "@/components/ScheduleDetailsEditSheet";
 import { DinnerSheet, ScheduleSheet } from "@/components/FestPlanner";
+import { StartNextFestYear } from "@/components/StartNextFestYear";
 import { ScheduleSignupSlots } from "@/components/ScheduleSignupSlots";
 import { TournamentSection } from "@/components/TournamentView";
 import {
@@ -52,12 +53,18 @@ import type { ScheduleEvent, Dinner } from "@/lib/types";
  * "post your photos" nudge.
  */
 export function FestStatus({
+  name: festName,
+  tagline: festTagline,
   startDate,
   endDate,
   events,
   dinners,
   onContentSaved,
 }: {
+  /** This fest's own name/tagline — carried over as the starting point when an
+   *  editor opens next year from the concluded state (see StartNextFestYear). */
+  name: string;
+  tagline: string;
   startDate: string;
   endDate: string;
   events: ScheduleEvent[];
@@ -194,6 +201,55 @@ export function FestStatus({
         <Link href={FEST_ALBUM_HREF} className="press mt-2 inline-block text-sm font-semibold text-primary">
           📸 Upload your photos to the Family Fest album →
         </Link>
+      </div>
+    );
+  }
+
+  if (season?.isConcluded) {
+    // The fest is history. This branch exists because the off-season fallthrough
+    // below rendered `<Countdown target={startDate} />` for a start date in the
+    // PAST — which clamps to zero and reads "🎉 Family Fest is on — welcome Up
+    // North!", so a finished fest advertised itself as live indefinitely. It
+    // says thank you instead, and points at the archive where the week now
+    // lives. Editors get the one thing that's actually next: set next year's
+    // dates, which flips this whole section back to a countdown on its own.
+    const year = Number(endDate.slice(0, 4));
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl bg-primary/10 p-4 text-center">
+          <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+            That&rsquo;s a wrap on {Number.isInteger(year) ? year : "this year"}
+          </p>
+          <p className="mt-1 text-lg font-bold text-primary">
+            Thank you for a great Family Fest 🎆
+          </p>
+          <p className="mt-1 text-sm text-muted">See you next year!</p>
+        </div>
+        <Link
+          href="/family-fest/past"
+          className="press flex items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-sm font-semibold text-primary ring-1 ring-border"
+        >
+          <span>🗓️ Look back at Past Years</span>
+          <span aria-hidden className="text-foreground/40">
+            ›
+          </span>
+        </Link>
+        <Link
+          href={FEST_ALBUM_HREF}
+          className="press flex items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-sm font-semibold text-primary ring-1 ring-border"
+        >
+          <span>📸 Photos &amp; videos from the week</span>
+          <span aria-hidden className="text-foreground/40">
+            ›
+          </span>
+        </Link>
+        {canEditAll && (
+          <StartNextFestYear
+            current={{ name: festName, tagline: festTagline, startDate, endDate }}
+            currentYear={year}
+            onCreated={() => onContentSaved?.()}
+          />
+        )}
       </div>
     );
   }

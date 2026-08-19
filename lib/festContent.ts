@@ -9,6 +9,13 @@
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { FAMILY_FEST, SCHEDULE, DINNERS, PAYEES, THINGS_TO_DO } from "@/lib/data";
+import {
+  fetchFestYears,
+  currentFestYear as newestFestYear,
+  SEED_FEST_YEAR,
+  type FestYear,
+} from "@/lib/festYears";
+import { toISODate } from "@/lib/festSeason";
 import type {
   ScheduleEvent,
   Dinner,
@@ -20,8 +27,36 @@ import type {
   EventLink,
 } from "@/lib/types";
 
-/** The fest year these tables are keyed on. Bump (or parameterize) for 2027. */
-const FEST_YEAR = 2026;
+/**
+ * The fest year every read and write here is keyed on. This used to be a
+ * hardcoded `2026`, which meant a new fest needed a code change and a finished
+ * one could never be set aside. It's now resolved from the data — the newest
+ * `fest_config` row (see lib/festYears.ts) — and cached in module scope so the
+ * write paths don't each pay a round-trip to look it up.
+ *
+ * `fetchFestContent()` refreshes it on every load, and `useFestContent`'s
+ * Realtime subscription re-runs that load whenever `fest_config` changes, so an
+ * open Planner starts writing to the new year within a tick of it being created
+ * rather than at the next reload.
+ *
+ * The seed year is the pre-resolution fallback: with no backend (or before the
+ * first fetch lands) writes still target the year the app shipped with, exactly
+ * as the old constant did.
+ */
+let resolvedFestYear: number = SEED_FEST_YEAR.year;
+/** Tracked separately from the value: the resolved year is usually EQUAL to the
+ *  seed year, so comparing against the seed would make every write re-resolve. */
+let festYearResolved = false;
+
+/** The fest year the editing surfaces read and write. Resolves once if no
+ *  content load has run yet (e.g. a Planner deep-link opened cold). */
+async function activeFestYear(): Promise<number> {
+  if (festYearResolved) return resolvedFestYear;
+  const years = await fetchFestYears();
+  resolvedFestYear = newestFestYear(years).year;
+  festYearResolved = true;
+  return resolvedFestYear;
+}
 
 // ── Fallbacks (the in-code seed; identical to the DB seed in migration 0053) ──
 
@@ -134,12 +169,8 @@ export const SEED_CONTENT: FestContent = {
 
 // ── Row shapes (snake_case, straight from Postgres) ───────────────────────────
 
-interface ConfigRow {
-  name: string;
-  tagline: string | null;
-  start_date: string;
-  end_date: string;
-}
+// (No ConfigRow/mapConfig here any more — the config row now arrives already
+// mapped, as the FestYear that named the year we're reading. See lib/festYears.ts.)
 interface DuesRow {
   id: string;
   label: string;
@@ -250,9 +281,6 @@ const CALLOUT_COLUMNS =
 
 // ── Row → domain mappers (snake_case → the existing UI types) ─────────────────
 
-function mapConfig(r: ConfigRow): FestConfigContent {
-  return { name: r.name, tagline: r.tagline ?? "", startDate: r.start_date, endDate: r.end_date };
-}
 function mapDues(r: DuesRow): DuesTier {
   return { id: r.id, label: r.label, amount: r.amount, note: r.note ?? undefined, perDay: r.per_day };
 }
@@ -364,62 +392,120 @@ function mapCallout(r: CalloutRow): HomeCallout {
 
 // ── Reads (public; fall back to the seed on empty / error / no backend) ───────
 
+/**
+ * The CURRENT fest's content — what the hub, Home and the Planner all read.
+ *
+ * "Current" is resolved, not hardcoded: `fetchFestYears()` returns every
+ * `fest_config` row and the newest one wins. That single query also *carries*
+ * the config row, so naming the year costs nothing — it replaces the old
+ * fest_config-by-year lookup instead of adding a round-trip to it. Resolving
+ * here (rather than in a separate hook) also keeps the write paths honest: this
+ * is what refreshes `resolvedFestYear`, and `useFestContent`'s Realtime
+ * subscription re-runs it whenever `fest_config` changes.
+ */
 export async function fetchFestContent(): Promise<FestContent> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return SEED_CONTENT;
   try {
-    const [config, dues, schedule, dinners, payees, activities, callouts] = await Promise.all([
-      sb.from("fest_config").select("name, tagline, start_date, end_date").eq("fest_year", FEST_YEAR).maybeSingle(),
-      sb.from("fest_dues").select("id, label, amount, note, per_day").eq("fest_year", FEST_YEAR).order("position"),
-      sb
-        .from("fest_schedule_items")
-        .select(
-          "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled, signup_hide_names",
-        )
-        .eq("fest_year", FEST_YEAR)
-        .order("day")
-        .order("position"),
-      sb
-        .from("fest_dinners")
-        .select(
-          "id, day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location",
-        )
-        .eq("fest_year", FEST_YEAR)
-        .order("day")
-        .order("position"),
-      sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", FEST_YEAR).order("position"),
-      sb
-        .from("fest_activities")
-        .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email")
-        .eq("fest_year", FEST_YEAR)
-        .order("position"),
-      sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position"),
-    ]);
-
-    const scheduleRows = (schedule.data ?? []) as ScheduleRow[];
-    const dinnerRows = (dinners.data ?? []) as DinnerRow[];
-    const payeeRows = (payees.data ?? []) as PayeeRow[];
-    const activityRows = (activities.data ?? []) as ActivityRow[];
-    const duesRows = (dues.data ?? []) as DuesRow[];
-    const calloutRows = (callouts.data ?? []) as CalloutRow[];
-
-    return {
-      config: config.data ? mapConfig(config.data as ConfigRow) : FALLBACK_CONFIG,
-      // Empty table ⇒ keep the seed so the page is never blank.
-      schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : SCHEDULE,
-      dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : DINNERS,
-      payees: payeeRows.length ? payeeRows.map(mapPayee) : PAYEES,
-      activities: activityRows.length ? activityRows.map(mapActivity) : THINGS_TO_DO,
-      dues: duesRows.length ? duesRows.map(mapDues) : FALLBACK_DUES,
-      // Call-outs degrade on ERROR only (pre-0083 the table doesn't exist —
-      // show the in-code t-shirt seed so Home is unchanged). An EMPTY table is
-      // a real state ("no call-outs"): the seed must not resurrect a card an
-      // editor deliberately deleted.
-      callouts: callouts.error ? FALLBACK_CALLOUTS : calloutRows.map(mapCallout),
-    };
+    const current = newestFestYear(await fetchFestYears());
+    resolvedFestYear = current.year;
+    festYearResolved = true;
+    return await fetchYearContent(current, { seed: true });
   } catch {
     return SEED_CONTENT;
   }
+}
+
+/**
+ * One SPECIFIC year's content, for the Past Years archive
+ * (/family-fest/past/[year]). Same reads as the hub, with two differences that
+ * matter for an archive:
+ *
+ *  - **No seed fallback.** The hub backfills an empty table with the in-code
+ *    2026 seed so it's never blank; an archive must not, or a year with no
+ *    schedule rows would quietly display 2026's week as its own history.
+ *  - **No call-outs.** `home_callouts` isn't year-scoped and is a live "act on
+ *    this now" surface — meaningless on a finished fest.
+ *
+ * Returns null when that year has no config row at all (an unknown /past/1999),
+ * so the page can say so instead of rendering an empty week.
+ */
+export async function fetchFestContentForYear(year: number): Promise<FestContent | null> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) {
+    // No backend: the one year we can still honestly show is the seed year.
+    return year === SEED_FEST_YEAR.year ? SEED_CONTENT : null;
+  }
+  try {
+    const match = (await fetchFestYears()).find((y) => y.year === year);
+    if (!match) return null;
+    return await fetchYearContent(match, { seed: false });
+  } catch {
+    return null;
+  }
+}
+
+/** The shared read for one fest year. `seed` selects the hub's
+ *  never-show-a-blank-page behaviour vs. the archive's show-what-happened. */
+async function fetchYearContent(
+  y: FestYear,
+  { seed }: { seed: boolean },
+): Promise<FestContent> {
+  const sb = supabase;
+  if (!sb) return SEED_CONTENT;
+  const year = y.year;
+  const [dues, schedule, dinners, payees, activities, callouts] = await Promise.all([
+    sb.from("fest_dues").select("id, label, amount, note, per_day").eq("fest_year", year).order("position"),
+    sb
+      .from("fest_schedule_items")
+      .select(
+        "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled, signup_hide_names",
+      )
+      .eq("fest_year", year)
+      .order("day")
+      .order("position"),
+    sb
+      .from("fest_dinners")
+      .select(
+        "id, day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location",
+      )
+      .eq("fest_year", year)
+      .order("day")
+      .order("position"),
+    sb.from("fest_payees").select("id, name, role, venmo, zelle, applecash, paypal, note").eq("fest_year", year).order("position"),
+    sb
+      .from("fest_activities")
+      .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email")
+      .eq("fest_year", year)
+      .order("position"),
+    seed
+      ? sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position")
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const scheduleRows = (schedule.data ?? []) as ScheduleRow[];
+  const dinnerRows = (dinners.data ?? []) as DinnerRow[];
+  const payeeRows = (payees.data ?? []) as PayeeRow[];
+  const activityRows = (activities.data ?? []) as ActivityRow[];
+  const duesRows = (dues.data ?? []) as DuesRow[];
+  const calloutRows = (callouts.data ?? []) as CalloutRow[];
+
+  return {
+    // The config comes from the years list we already loaded, not a second
+    // fest_config read.
+    config: { name: y.name, tagline: y.tagline, startDate: y.startDate, endDate: y.endDate },
+    // Empty table ⇒ keep the seed so the page is never blank (current year only).
+    schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : seed ? SCHEDULE : [],
+    dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : seed ? DINNERS : [],
+    payees: payeeRows.length ? payeeRows.map(mapPayee) : seed ? PAYEES : [],
+    activities: activityRows.length ? activityRows.map(mapActivity) : seed ? THINGS_TO_DO : [],
+    dues: duesRows.length ? duesRows.map(mapDues) : seed ? FALLBACK_DUES : [],
+    // Call-outs degrade on ERROR only (pre-0083 the table doesn't exist —
+    // show the in-code t-shirt seed so Home is unchanged). An EMPTY table is
+    // a real state ("no call-outs"): the seed must not resurrect a card an
+    // editor deliberately deleted.
+    callouts: !seed ? [] : callouts.error ? FALLBACK_CALLOUTS : calloutRows.map(mapCallout),
+  };
 }
 
 /** A short dues blurb for the Home/hub call-outs, e.g. "$100 / adult" — prefers
@@ -469,7 +555,7 @@ async function writeRow(
 ): Promise<{ error?: string; id?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
-  const payload = { ...row, fest_year: FEST_YEAR, updated_at: new Date().toISOString(), updated_by: await currentUid() };
+  const payload = { ...row, fest_year: await activeFestYear(), updated_at: new Date().toISOString(), updated_by: await currentUid() };
   if (id) {
     const { error } = await sb.from(table).update(payload).eq("id", id);
     return error ? { error: error.message } : { id };
@@ -845,13 +931,15 @@ export interface ConfigInput {
   startDate: string;
   endDate: string;
 }
-/** Save the fest config. Keyed by fest_year (upsert), so there's exactly one row. */
+/** Save the CURRENT fest year's config. Keyed by fest_year (upsert), so there's
+ *  exactly one row per fest — editing dates here reshapes that year's week, it
+ *  doesn't create a new one (see startFestYear for that). */
 export async function saveConfig(i: ConfigInput): Promise<{ error?: string }> {
   const sb = supabase;
   if (!sb) return { error: "Not available." };
   const { error } = await sb.from("fest_config").upsert(
     {
-      fest_year: FEST_YEAR,
+      fest_year: await activeFestYear(),
       name: i.name,
       tagline: i.tagline,
       start_date: i.startDate,
@@ -899,7 +987,7 @@ export async function fetchScheduleDrafts(): Promise<ScheduleDraft[]> {
     .select(
       "id, day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position, image_url, links, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, signup_team_size, tournament_enabled, signup_hide_names",
     )
-    .eq("fest_year", FEST_YEAR)
+    .eq("fest_year", await activeFestYear())
     .order("day")
     .order("position");
   return ((data ?? []) as ScheduleDraftRow[]).map((r) => ({
@@ -945,7 +1033,7 @@ export async function fetchDinnerDrafts(): Promise<DinnerDraft[]> {
     .select(
       "id, day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location, position",
     )
-    .eq("fest_year", FEST_YEAR)
+    .eq("fest_year", await activeFestYear())
     .order("day")
     .order("position");
   return ((data ?? []) as DinnerDraftRow[]).map((r) => ({
@@ -973,7 +1061,7 @@ export async function fetchPayeeDrafts(): Promise<PayeeDraft[]> {
   const { data } = await sb
     .from("fest_payees")
     .select("id, name, role, venmo, zelle, applecash, paypal, note, position")
-    .eq("fest_year", FEST_YEAR)
+    .eq("fest_year", await activeFestYear())
     .order("position");
   return ((data ?? []) as PayeeDraftRow[]).map((r) => ({
     id: r.id,
@@ -994,7 +1082,7 @@ export async function fetchDuesDrafts(): Promise<DuesDraft[]> {
   const { data } = await sb
     .from("fest_dues")
     .select("id, label, amount, note, per_day, position")
-    .eq("fest_year", FEST_YEAR)
+    .eq("fest_year", await activeFestYear())
     .order("position");
   return ((data ?? []) as DuesDraftRow[]).map((r) => ({
     id: r.id,
@@ -1012,7 +1100,7 @@ export async function fetchActivityDrafts(): Promise<ActivityDraft[]> {
   const { data } = await sb
     .from("fest_activities")
     .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email, position")
-    .eq("fest_year", FEST_YEAR)
+    .eq("fest_year", await activeFestYear())
     .order("position");
   return ((data ?? []) as ActivityDraftRow[]).map((r) => ({
     id: r.id,
@@ -1059,5 +1147,186 @@ export async function fetchMemberOptions(): Promise<FestMemberOption[]> {
     );
   } catch {
     return [];
+  }
+}
+
+// ── Starting a NEW fest year ──────────────────────────────────────────────────
+
+/** Days between two ISO dates (b − a), date-only and DST-safe. */
+function daysBetween(a: string, b: string): number {
+  const from = new Date(`${a}T00:00:00`).getTime();
+  const to = new Date(`${b}T00:00:00`).getTime();
+  return Math.round((to - from) / 86_400_000);
+}
+
+/** Shift an ISO date by N days, clamped to `max` when given. */
+function shiftDay(iso: string, days: number, max?: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const out = toISODate(d);
+  return max && out > max ? max : out;
+}
+
+// ⚠️ There is deliberately NO function here that proposes next year's dates.
+// The Family Fest week is DIFFERENT EVERY YEAR and the family decides it by
+// POLL — it is not derivable from the last one (not "+1 year", not "the same
+// week 52 weeks on"). A computed default would be a guess wearing the clothes of
+// an answer: these dates drive the countdown, every phase of the season, the day
+// pickers and RSVP, so a plausible-looking placeholder that nobody remembered to
+// change would have the whole app confidently counting down to the wrong week —
+// the same class of bug as the finished fest that kept announcing itself as live.
+// StartNextFestYear starts with the date fields EMPTY and won't create a year
+// until someone enters the week that was actually chosen.
+
+export interface StartFestYearInput {
+  year: number;
+  name: string;
+  tagline: string | null;
+  startDate: string;
+  endDate: string;
+  /** Copy this year's schedule/dinners/dues/payees in as a starting point. */
+  copyFromYear?: number | null;
+}
+
+/**
+ * Open a NEW fest year — the "start fresh" half of the archive cycle.
+ *
+ * This is deliberately NOT `saveConfig` with different dates. `saveConfig`
+ * upserts the CURRENT year's row, so editing 2026's dates to next summer would
+ * drag the finished 2026 fest forward with them: its archive would show the
+ * wrong week, and the hub would go straight back to counting down to a fest
+ * that already happened. A new year is a new row, which is what leaves 2026
+ * intact in Past Years.
+ *
+ * Because the new row is the newest `fest_config`, creating it is all it takes
+ * to hand the hub over: `fetchFestContent()` resolves the current year from the
+ * data, so the section starts planning the new fest and the old one slides into
+ * the archive with nothing else to switch.
+ *
+ * The optional template copy carries over each event's IDENTITY and LOGISTICS
+ * (title, emoji, time, location, description, what-to-bring, lead + crew) with
+ * days shifted onto the new window — but deliberately NOT sign-up configuration
+ * or tournament flags. Those are per-year live state whose slots, rosters and
+ * reminder times are keyed to specific dates; resurrecting them would strand
+ * last year's arrangements in a week that hasn't been planned yet. Turn them
+ * back on per event once the new week has shape.
+ */
+export async function startFestYear(
+  i: StartFestYearInput,
+): Promise<{ error?: string; copied?: number }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  if (i.endDate < i.startDate) return { error: "End date must be on or after the start." };
+
+  const uid = await currentUid();
+  const stamp = { updated_at: new Date().toISOString(), updated_by: uid };
+
+  // Refuse to overwrite a year that already exists — this button's whole job is
+  // to ADD a fest, and an upsert here would silently rewrite a real one.
+  const existing = (await fetchFestYears()).some((y) => y.year === i.year);
+  if (existing) return { error: `Family Fest ${i.year} already exists.` };
+
+  const { error: cfgError } = await sb.from("fest_config").insert({
+    fest_year: i.year,
+    name: i.name,
+    tagline: i.tagline,
+    start_date: i.startDate,
+    end_date: i.endDate,
+    ...stamp,
+  });
+  if (cfgError) return { error: cfgError.message };
+
+  // From here on the year EXISTS — the important part succeeded. A copy failure
+  // is reported but never rolls the year back: an empty new fest is a fine
+  // place to start, and undoing the row would leave the editor with nothing.
+  resolvedFestYear = i.year;
+  festYearResolved = true;
+  if (i.copyFromYear == null) return { copied: 0 };
+
+  try {
+    const from = i.copyFromYear;
+    const [schedule, dinners, dues, payees] = await Promise.all([
+      sb
+        .from("fest_schedule_items")
+        .select(
+          "day, start_time, end_time, title, emoji, location, description, bring, is_private, anytime, lead_user_id, lead_name, lead_phone, crew_user_ids, position",
+        )
+        .eq("fest_year", from)
+        .order("day")
+        .order("position"),
+      sb
+        .from("fest_dinners")
+        .select(
+          "day, title, emoji, chef_user_id, chef_name, chef_phone, crew_user_ids, houses, menu, served_time, served_location, prep_time, prep_location, position",
+        )
+        .eq("fest_year", from)
+        .order("day")
+        .order("position"),
+      sb.from("fest_dues").select("label, amount, note, per_day, position").eq("fest_year", from).order("position"),
+      sb
+        .from("fest_payees")
+        .select("name, role, venmo, zelle, applecash, paypal, note, position")
+        .eq("fest_year", from)
+        .order("position"),
+    ]);
+
+    const source = (await fetchFestYears()).find((y) => y.year === from);
+    // Shift by the gap between the two START dates, so a week moved to a
+    // different part of the summer carries its shape with it. Anything that
+    // falls past the new end (a shorter week) clamps onto the last day rather
+    // than landing outside the fest, where no day card would render it.
+    const shift = source ? daysBetween(source.startDate, i.startDate) : 0;
+
+    const rows: { table: string; payload: Record<string, unknown>[] }[] = [
+      {
+        table: "fest_schedule_items",
+        payload: ((schedule.data ?? []) as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          day: shiftDay(String(r.day), shift, i.endDate),
+          fest_year: i.year,
+          ...stamp,
+        })),
+      },
+      {
+        table: "fest_dinners",
+        payload: ((dinners.data ?? []) as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          day: shiftDay(String(r.day), shift, i.endDate),
+          fest_year: i.year,
+          ...stamp,
+        })),
+      },
+      {
+        table: "fest_dues",
+        payload: ((dues.data ?? []) as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          fest_year: i.year,
+          ...stamp,
+        })),
+      },
+      {
+        table: "fest_payees",
+        payload: ((payees.data ?? []) as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          fest_year: i.year,
+          ...stamp,
+        })),
+      },
+    ];
+
+    let copied = 0;
+    for (const { table, payload } of rows) {
+      if (payload.length === 0) continue;
+      const { error } = await sb.from(table).insert(payload);
+      if (error) return { error: `${i.year} was created, but copying ${table} failed: ${error.message}`, copied };
+      copied += payload.length;
+    }
+    return { copied };
+  } catch (e) {
+    return {
+      error: `Family Fest ${i.year} was created, but copying last year's plan failed: ${
+        e instanceof Error ? e.message : "unknown error"
+      }`,
+    };
   }
 }

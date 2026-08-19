@@ -29,6 +29,20 @@ export function Countdown({ target }: { target: string }) {
   const mins = Math.floor((diff % 3_600_000) / 60_000);
 
   if (now != null && diff === 0) {
+    // Reaching zero means the target moment has arrived — but only say so on the
+    // target DAY itself. `diff` is clamped at 0, so a target in the past also
+    // reads as zero, and this banner used to announce "Family Fest is on" for a
+    // fest that had finished weeks earlier — the whole reason the season model
+    // now has a distinct "concluded" phase (lib/festSeason.ts). Callers should
+    // never render a countdown to a past date; this just makes it impossible for
+    // the component to claim something untrue if one does.
+    const targetDay = new Date(targetMs);
+    const nowDay = new Date(now);
+    const sameDay =
+      targetDay.getFullYear() === nowDay.getFullYear() &&
+      targetDay.getMonth() === nowDay.getMonth() &&
+      targetDay.getDate() === nowDay.getDate();
+    if (!sameDay) return null;
     return (
       <div className="rounded-2xl bg-primary/10 py-3 text-center text-sm font-bold text-primary">
         🎉 Family Fest is on — welcome Up North!

@@ -18,6 +18,7 @@ import { ModalPortal } from "@/components/ModalPortal";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
+import { useFestSeason } from "@/lib/useFestSeason";
 import { useIdentity } from "@/components/IdentityProvider";
 import { ChangeNotifyEditor, emptyChangeNotify, type ChangeNotifyState } from "@/components/ChangeNotifyEditor";
 import { sendActivityNotify, changeMessageDefault } from "@/lib/activityNotify";
@@ -2286,6 +2287,10 @@ function DetailsEditor({
   const [tagline, setTagline] = useState(config.tagline);
   const [startDate, setStartDate] = useState(config.startDate);
   const [endDate, setEndDate] = useState(config.endDate);
+  // The SAVED window, not the in-progress form values — otherwise typing a
+  // future start date would clear the "this fest is over" notice mid-edit,
+  // exactly when it's most worth reading.
+  const season = useFestSeason(config.startDate, config.endDate);
 
   // Keep the form in sync if the live config arrives after first paint.
   useEffect(() => {
@@ -2315,6 +2320,21 @@ function DetailsEditor({
       </div>
       {!validRange && <p className="text-xs text-accent">End date must be on or after the start.</p>}
       <p className="text-xs text-foreground/50">Changing the dates reshapes the week — the day pickers and countdown follow these.</p>
+      {/* This form edits THIS fest year's row. Once that fest is over, moving
+          its dates to next summer is the intuitive-but-wrong way to start a new
+          year: it would drag the finished fest forward, so its Past Years entry
+          would describe a week that never happened and the hub would count down
+          to it all over again. Point at the button that actually adds a year. */}
+      {season?.isConcluded && (
+        <div className="rounded-xl bg-primary/10 p-3 text-xs">
+          <p className="font-semibold text-primary">This fest is already over.</p>
+          <p className="mt-0.5 text-muted">
+            Edit these to correct the record. To plan the next one, use{" "}
+            <strong>Start planning next year</strong> on the Family Fest page — that adds a new
+            year and leaves this one intact in Past Years.
+          </p>
+        </div>
+      )}
       <SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} label="Save details" />
     </div>
   );

@@ -10,6 +10,7 @@ import { FestCommitteesLink } from "@/components/FestCommitteesLink";
 import { FestCover } from "@/components/FestCover";
 import { FAMILY_FEST } from "@/lib/data";
 import { useFestContent } from "@/lib/useFestContent";
+import { useFestSeason } from "@/lib/useFestSeason";
 import { formatDateLong } from "@/lib/format";
 
 /**
@@ -26,6 +27,7 @@ import { formatDateLong } from "@/lib/format";
  */
 export default function FamilyFestPage() {
   const { config, schedule, dinners, reload } = useFestContent({ realtime: true });
+  const season = useFestSeason(config.startDate, config.endDate);
   // Cached edit-permission — the "Edit Family Fest" link seeds instantly instead
   // of popping in a frame or two late each visit (see useCanEditFest).
   const canEdit = useCanEditFest();
@@ -48,8 +50,11 @@ export default function FamilyFestPage() {
         )}
       </header>
 
-      {/* Countdown (and the day-of summary once the week is live). */}
+      {/* Countdown (and the day-of summary once the week is live; the thank-you
+          + a way into Past Years once it's over). */}
       <FestStatus
+        name={config.name}
+        tagline={config.tagline}
         startDate={config.startDate}
         endDate={config.endDate}
         events={schedule}
@@ -66,13 +71,20 @@ export default function FamilyFestPage() {
       {/* Committees stay reachable from the hub. */}
       <FestCommitteesLink />
 
-      <FestWeek
-        events={schedule}
-        dinners={dinners}
-        startDate={config.startDate}
-        endDate={config.endDate}
-        onContentSaved={reload}
-      />
+      {/* Once the fest is over, the week itself moves to Past Years — leaving a
+          finished schedule sitting on the hub is what made the section read as
+          though it hadn't noticed the fest had ended. FestStatus's concluded
+          card links straight to the archive. It comes back the moment a new
+          year exists, since `config` then describes THAT fest. */}
+      {!season?.isConcluded && (
+        <FestWeek
+          events={schedule}
+          dinners={dinners}
+          startDate={config.startDate}
+          endDate={config.endDate}
+          onContentSaved={reload}
+        />
+      )}
     </div>
   );
 }

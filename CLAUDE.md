@@ -51,13 +51,15 @@ standalone `family-fest` repo is being retired/redirected to this section.)*
 deferred to the Supabase phase, NEXT-STEPS §0b), both apps share a **Family Fest
 season model** ([`lib/festSeason.ts`](lib/festSeason.ts), mirrored byte-for-byte
 in the `family-fest` repo) so the fest reads as a *season of the resort* that
-rises and recedes through the year across four phases: **off-season** (quiet
+rises and recedes through the year across five phases: **off-season** (quiet
 banner) → **planning** (from ~60 days out: a partial takeover that rallies
 volunteers and previews what's being planned) → **live** (the event week: MLR
 leads with Family Fest — a "Day n of N + today's events" takeover, a live dot on
 the tab, resort content recedes) → **wrap** (2 weeks after: the full takeover
-lingers, nudging people to post the photos they didn't get to). See **Family
-Fest season** below.
+lingers, nudging people to post the photos they didn't get to) → **concluded**
+(that fest is history: the hub says thank you and the week moves to **Past
+Years**). See **Family Fest season** and **Fest years: the archive & starting
+fresh** below.
 
 **Data model:** a mix by now — Supabase (Postgres + RLS + realtime) backs
 identity, posts/chat, events/RSVP, committees, houses, polls, and more (see the
@@ -74,7 +76,7 @@ seams**.
 | Route | File | Status |
 |---|---|---|
 | `/` | [`app/page.tsx`](app/page.tsx) | Home — **kept lean**, in priority order: `WelcomeCard`/`HomeSignInCTA`, the Family Fest spotlight **call-out stack** ([`HomeSpotlight`](components/HomeSpotlight.tsx) → [`CalloutStack`](components/CalloutStack.tsx): the [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) is the permanent base, temporary call-outs stack on top as swipe-away cards — see **Home call-out stack**), nearest-event spotlight + RSVP ([`UpcomingEvents`](components/UpcomingEvents.tsx)), the collapsed-by-default [`WorkChecklist`](components/WorkChecklist.tsx), the always-visible **quick actions grid** ([`HomeQuickActions`](components/HomeQuickActions.tsx) — Events · Committees · People · Ask for Help · Local Places · Cabin Stay), self-hiding **garnish cards** ([`WeatherCard`](components/WeatherCard.tsx) · [`WhosUpNorthCard`](components/WhosUpNorthCard.tsx) · [`ActivePollCard`](components/ActivePollCard.tsx) · [`BirthdaysCard`](components/BirthdaysCard.tsx) — see **Home delight cards**), [`HouseHubCard`](components/HouseHubCard.tsx), the admin-only [`AdminDashboardCard`](components/AdminDashboardCard.tsx) (a fast `/admin` entry point right under it — see **Admin dashboard**), [`OnThisDayCard`](components/OnThisDayCard.tsx), an "App & help" group, one-line heritage |
-| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion — the full week, including **anytime events** in an "Anytime all week" group (the old separate "activities" were merged into anytime `fest_schedule_items`, migration 0141)) · `dinners` (index page reads like a weekly menu — day, serving time, the menu, head chef, and houses on crew, one scrollable list, no tap-to-expand and no click-through; deliberately omits the crew-prep time/location, which only the crew needs — still editable, just not shown to every reader. Edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link, and still shows the full logistics) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
+| `/family-fest` | [`app/family-fest/`](app/family-fest/) | **Family Fest section** (its own `.ff-section` theme + [`FamilyFestNav`](components/FamilyFestNav.tsx) sticky sub-nav). Overview ([`page.tsx`](app/family-fest/page.tsx): poster + [`FestStatus`](components/FestStatus.tsx) + next-up + [`FestWeek`](components/FestWeek.tsx) accordion — the full week, including **anytime events** in an "Anytime all week" group (the old separate "activities" were merged into anytime `fest_schedule_items`, migration 0141) — hidden once the fest is `concluded`, since the finished week moves to Past Years) · `past` (**Past Years** — the archive of finished fests, `?year=<yyyy>`; see **Fest years: the archive & starting fresh**) · `dinners` (index page reads like a weekly menu — day, serving time, the menu, head chef, and houses on crew, one scrollable list, no tap-to-expand and no click-through; deliberately omits the crew-prep time/location, which only the crew needs — still editable, just not shown to every reader. Edit opens from an always-visible Edit button. The standalone `dinners/[id]` detail route still exists (kept for any direct/deep link, and still shows the full logistics) but nothing in the app links to it anymore) · `pay` ([`PayView`](components/PayView.tsx)). The nav hides on the editor surfaces (`/family-fest/planner`, `/family-fest/master`) |
 | `/posts` | [`app/posts/page.tsx`](app/posts/page.tsx) | **Feed** tab — the resort-wide Posts feed plus a live chat for each committee/house you're in, switchable by pills, no overlay ([`FeedView`](components/FeedView.tsx) wrapping [`PostsView`](components/PostsView.tsx)/[`CommitteeChat`](components/CommitteeChat.tsx)/[`HouseChat`](components/HouseChat.tsx)). Members-only (`SignInWall`) |
 | `/polls` | [`app/polls/page.tsx`](app/polls/page.tsx) | **Polls** — the family's voting booth ([`PollsView`](components/PollsView.tsx) + [`PollComposer`](components/PollComposer.tsx)); any signed-in member can ask a question, one changeable vote each. Members-only (`SignInWall`). Not a tab — reached from the Home [`ActivePollCard`](components/ActivePollCard.tsx) when a poll is open, or `/polls` directly. See **Family polls** |
 | `/admin` | [`app/admin/page.tsx`](app/admin/page.tsx) | **Admin dashboard** — the front door for admin tools (9 cards + a Family Fest Planner link), gated by [`AdminGuard`](app/admin/AdminGuard.tsx). Not a tab — reached from Profile, or the [`AdminDashboardCard`](components/AdminDashboardCard.tsx) on Home. See **Admin dashboard** |
@@ -1211,23 +1213,162 @@ Both apps share a phase model so Family Fest behaves as a season of the resort,
 not a separate app — no backend needed:
 
 - [`lib/festSeason.ts`](lib/festSeason.ts) — pure `getFestSeason(start, end)` →
-  `{ phase: "off-season" | "planning" | "live" | "wrap", isLive, isPlanning,
-  isWrap, isTakeover, daysUntilStart, isSoon, dayNumber, totalDays, daysSinceEnd,
-  wrapDaysLeft }`, plus `toISODate()` and the `PLANNING_LEAD_DAYS` (60) /
-  `WRAP_TAIL_DAYS` (14) window constants. **Mirrored byte-for-byte in the
-  `family-fest` repo** (like the EVENT/FAMILY_FEST seed data) — edit both.
-- [`lib/useFestSeason.ts`](lib/useFestSeason.ts) — client hook; computes the
-  phase **on the client** (returns `null` until mounted → no hydration mismatch).
+  `{ phase: "off-season" | "planning" | "live" | "wrap" | "concluded", isLive,
+  isPlanning, isWrap, isConcluded, isTakeover, daysUntilStart, isSoon, dayNumber,
+  totalDays, daysSinceEnd, wrapDaysLeft }`, plus `toISODate()` and the
+  `PLANNING_LEAD_DAYS` (60) / `WRAP_TAIL_DAYS` (14) window constants.
+  **Mirrored byte-for-byte in the `family-fest` repo** (like the
+  EVENT/FAMILY_FEST seed data) — edit both.
+  - ⚠️⚠️ **"off-season" and "concluded" are BOTH quiet but are NOT the same
+    phase — never collapse them back together.** "off-season" means the fest
+    window is still AHEAD (too far out for the planning takeover); "concluded"
+    means it's BEHIND us and the photo tail has closed. They used to share one
+    phase, and the result was the hub rendering `<Countdown target={startDate}>`
+    for a date in the **past** — which clamps to zero and reads
+    **"🎉 Family Fest is on — welcome Up North!"**, so Family Fest 2026
+    advertised itself as live for weeks after everyone had gone home, with the
+    RSVP card still saying "You're in ✅ · you're here all week" underneath it.
+    Nothing was stale in the DB; the phase model simply had no way to say
+    "that one's over".
+  - ⚠️ `isTakeover` is now spelled out as `isPlanning || isLive || isWrap`, NOT
+    `phase !== "off-season"` — with a fifth phase that negation would have
+    started counting a FINISHED fest as a takeover (hiding it from Upcoming
+    Events, etc.). A concluded fest is quiet, exactly like the off-season.
+  - ⚠️ Empty/malformed dates are guarded to "off-season" explicitly. Every
+    comparison against `NaN` is false, so they'd otherwise fall through to the
+    final branch and report a fest with **no dates at all** as concluded;
+    callers that render before their dates resolve (`FestRsvp` passes `""`)
+    documented off-season as the degrade, so that contract is now enforced.
+- [`lib/useFestSeason.ts`](lib/useFestSeason.ts) — client hooks; compute the
+  phase **on the client** (return `null` until mounted → no hydration mismatch).
   A build-time `new Date()` would freeze the phase at deploy.
+  - `useFestSeason(start, end)` — an explicit window (the fest pages, which
+    already hold a config; the Past Years archive, which is about another year).
+  - **`useCurrentFestSeason()`** — the CURRENT fest's season read from the
+    **database** config. ⚠️ Use this for anything outside `/family-fest/*` that
+    keys off "is the fest happening": [`TabBar`](components/TabBar.tsx),
+    [`UpcomingEvents`](components/UpcomingEvents.tsx),
+    [`HomePreFestCards`](components/HomePreFestCards.tsx),
+    [`FestDuesCallout`](components/FestDuesCallout.tsx),
+    [`FestCommitteesLink`](components/FestCommitteesLink.tsx),
+    [`MjtHouseDuesCard`](components/MjtHouseDuesCard.tsx). All six used to read
+    `FAMILY_FEST.startDate`/`.endDate` from the seed, which was survivable while
+    fest dates could only change in code — but a **new fest year can now be
+    created in-app** (below), so a seed-based season would leave the tab bar and
+    Home counting down to the fest that just ended while the hub planned the next
+    one. It rides the shared `festContent` SWR cache, so it's a deduped read of
+    data Home already loads.
 - Consumers: [`FamilyFestSpotlight`](components/FamilyFestSpotlight.tsx) (home —
   quiet banner → planning partial-takeover → live takeover hero → wrap "post
-  your photos"), [`FestStatus`](components/FestStatus.tsx) (hub — countdown →
-  "Day n of N + Today at the Fest" → wrap photo nudge), and
-  [`TabBar`](components/TabBar.tsx) (live dot on the Family Fest tab during
-  live + wrap).
-- Dates come from `FAMILY_FEST.startDate` / `.endDate` in `lib/data.ts`.
+  your photos" → concluded thank-you), [`FestStatus`](components/FestStatus.tsx)
+  (hub — countdown → "Day n of N + Today at the Fest" → wrap photo nudge →
+  concluded thank-you + Past Years), and [`TabBar`](components/TabBar.tsx) (live
+  dot on the Family Fest tab during live + wrap).
+- Dates come from the **`fest_config` row for the current fest year** (via
+  `useFestContent`), with `FAMILY_FEST.startDate`/`.endDate` in `lib/data.ts` as
+  the no-backend/first-paint seed only.
 - The §0b full code merge is unchanged/deferred; this is the lighter-touch
   "feels like one app" layer that ships before the backend.
+
+### Fest years: the archive (Past Years) & starting fresh
+
+`fest_config` has been keyed on `fest_year` (its primary key) since migration
+0053 — one row per fest — but **nothing read it that way**: the content layer
+pinned a hardcoded `const FEST_YEAR = 2026`, so the app could only ever hold one
+fest and a finished one had nowhere to go. Its schedule, dinners, menus and crew
+assignments just sat on the hub going stale, and the only way to plan a new year
+would have been to overwrite them. That's now data, not code — **no migration
+was needed for any of this**.
+
+- **[`lib/festYears.ts`](lib/festYears.ts)** is the new spine: `fetchFestYears()`
+  (every config row, newest first, degrading to the in-code seed year),
+  `currentFestYear(years)` = **the newest row**, and `pastFestYears(years, today)`
+  / `isPastFestYear(y)`.
+  - ⚠️ **Everything is derived from DATES, not an `is_archived` flag.** A flag
+    would be a second source of truth someone has to remember to flip — and
+    forgetting is precisely how the app came to advertise a finished fest as
+    live. The dates are already the season model's input and already editable in
+    the Planner.
+  - ⚠️ **`pastFestYears` INCLUDES the current year once it's concluded.** The
+    fest that just ended is the first thing anyone looks for in the archive; it
+    must not wait for next year's row to exist before being reachable. It uses
+    the same `WRAP_TAIL_DAYS` threshold as the `concluded` phase, so "that's a
+    wrap" on the hub and the year appearing in Past Years flip on the same day.
+- **[`lib/festContent.ts`](lib/festContent.ts) resolves the year instead of
+  hardcoding it.** `fetchFestContent()` calls `fetchFestYears()`, takes the
+  newest, and caches it in module scope (`resolvedFestYear`) for the write paths
+  — and that single query **carries the config row**, so naming the year costs
+  nothing: it replaced the old `fest_config`-by-year lookup rather than adding a
+  round-trip. `useFestContent`'s Realtime subscription re-runs it on any
+  `fest_config` change, so an open Planner starts writing to a newly-created year
+  within a tick.
+  - **`fetchFestContentForYear(year)`** / **`useFestYearContent(year)`** read one
+    specific year for the archive. ⚠️ Deliberately **no seed fallback and no
+    call-outs**: the hub backfills an empty table with the in-code 2026 seed so
+    it's never blank, but an archive doing that would **fabricate history** —
+    displaying 2026's week as some other year's. Its cache key is per-year
+    (`festContent.<year>`) so browsing the archive can't clobber the live
+    bundle, and its empty value is `null`, not the seed.
+- **Past Years** — [`/family-fest/past`](app/family-fest/past/page.tsx) →
+  [`FestPastYears`](components/FestPastYears.tsx). One screen, two views, switched
+  by a **`?year=` param read client-side** (the `/drop?box=` · `/house?house=`
+  idiom — no dynamic segment to prerender, and `/family-fest/past?year=2026` is a
+  shareable link). A junk `?year=abc` reads as "no year" → the index, never a
+  detail page for `NaN`; a `?year=` pointing at a fest that **hasn't happened**
+  bounces to the hub rather than rendering the live week as history.
+  - The week itself is [`FestWeek`](components/FestWeek.tsx) with the new
+    **`readOnly`** prop: no edit affordances **for anyone, including an admin**
+    (the Planner's sheets write to the CURRENT year, so they'd silently edit the
+    wrong fest), `uid` nulled so a chef doesn't get an Edit button on a dinner
+    from a finished fest, and **no sign-up cards** (nothing left to sign up for).
+    ⚠️ **Tournament brackets are deliberately KEPT**, read-only — who won the
+    musky tournament is exactly the history worth archiving. It also skips the
+    `can_edit_fest()` + drafts fetches entirely.
+  - Each year links its own photo album via **`festAlbumBoxId(year)`**
+    ([`lib/data.ts`](lib/data.ts)) — the year is a real segment of the
+    well-known Drop Box id (`0000fe57-<year>-…`), so an archive links the right
+    album with no extra column and no lookup table. An unseeded year degrades to
+    "folder isn't available", so linking one early is harmless.
+- **Starting fresh** — [`StartNextFestYear`](components/StartNextFestYear.tsx)
+  (fest editors, shown on the hub only once the current fest is concluded) →
+  **`startFestYear()`**.
+  - ⚠️⚠️ **This CREATES a row; it is not `saveConfig` with new dates.**
+    `saveConfig` upserts the *current* year, so moving 2026's dates to next
+    summer — the intuitive way to "start next year" — would **drag the finished
+    2026 fest forward with them**: its Past Years entry would describe a week
+    that never happened, and the hub would count down to it all over again. The
+    Planner's date editor now carries a notice saying exactly this whenever the
+    fest it's editing is concluded.
+  - Creating the row is all it takes to hand the hub over, since the current year
+    is resolved as the newest row. It **refuses to overwrite** a year that
+    already exists.
+  - ⚠️⚠️ **THE DATES ARE ENTERED BY HAND AND START EMPTY. Do not add a computed
+    default.** The Family Fest week is **different every year and the family
+    decides it by POLL** — it is not derivable from the last one (not "+1 year",
+    not "the same week 52 weeks on"; a first cut shipped the 52-week version and
+    it was wrong). These dates drive the countdown, every phase of the season,
+    the day pickers and RSVP, so a plausible-looking placeholder nobody
+    remembered to change would have the whole app confidently counting down to
+    the wrong week — the same class of bug as the finished fest that kept
+    announcing itself as live. The Create button stays disabled until real dates
+    are in, and the **year is derived from the start date** so the two can't
+    disagree. Dates stay editable afterwards in the Planner's Details editor,
+    which is the right place for "the poll moved it" (that editor warns only when
+    the fest it's editing is already **concluded** — see above).
+  - The **poll itself is not modeled here.** The app already has date-polling
+    (family-scope `meetings` with date-range slots, and `/polls`); this screen's
+    job starts once a week has been chosen.
+  - The opt-in template copy carries each event's identity + logistics (title,
+    emoji, time, location, description, bring, lead + crew) with days shifted
+    onto the new window, plus dinners/dues/payees. ⚠️ It deliberately does **not**
+    copy sign-up config or tournament flags — those are per-year live state whose
+    slots, rosters and reminder times are keyed to specific dates. A copy failure
+    is reported but **never rolls the year back**: the year existing is the part
+    that matters, and an empty new fest is a fine place to start.
+- 📱 **iOS is not updated** — the native app mirrors `festSeason.ts` and reads
+  `fest_config` with its own hardcoded year, so it will keep treating the newest
+  fest as the only one and has no Past Years. Shared schema, no backend change
+  needed; see [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
 
 ## Family Fest dues calculator
 
@@ -4059,7 +4200,13 @@ CommitteeJoin, CommitteeEmailMembers, and the `Admin*` caches.
     Translucent layers stack LIGHT; `bg-black/NN` is OK only as a modal scrim.
 - **Cross-nav** — the **Family Fest** bottom tab → `/family-fest` overview, then
   the in-section [`FamilyFestNav`](components/FamilyFestNav.tsx) sub-nav switches
-  between Dinners / Pay (photos live only on the Feed tab). There's no
+  between Dinners / Pay / **Past Years** (photos live only on the Feed tab). The
+  pill set is **season-aware**: once the current fest is `concluded` it drops to
+  **Overview + Past Years**, because a menu for a dinner served three weeks ago
+  and a dues calculator for a fest nobody can still attend are exactly the stale
+  surfaces that made the section read as though it hadn't noticed the fest was
+  over. Both return the moment a new year's dates exist — derived, never toggled
+  by hand (each route still works if linked directly). There's no
   "Schedule" pill — the Overview already renders the full week via `FestWeek`,
   so a separate Schedule tab was just showing that same accordion a second
   time; the standalone `/family-fest/schedule` route is still there for any

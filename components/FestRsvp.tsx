@@ -47,8 +47,10 @@ export function FestRsvp() {
   // Once the week has actually started there's nothing left to RSVP for —
   // FestStatus's "Happening today"/wrap takeover already covers you. Keeping
   // this card around post-start would just be a stale "are you coming?" nag
-  // during/after the thing you're already at.
-  if (season?.isLive || season?.isWrap) return null;
+  // during/after the thing you're already at. `isConcluded` is the same point
+  // carried past the wrap tail: "You're in for Family Fest ✅ · you're here all
+  // week" was still on the hub weeks after the fest ended.
+  if (season?.isLive || season?.isWrap || season?.isConcluded) return null;
 
   const m = mine[event.id] ?? null;
   const myStatus = m ? effectiveStatus(m.status, m.days) : null;

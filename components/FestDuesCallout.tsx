@@ -1,7 +1,6 @@
 "use client";
 
-import { useFestSeason } from "@/lib/useFestSeason";
-import { FAMILY_FEST } from "@/lib/data";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
 import { useFestContent } from "@/lib/useFestContent";
 import { duesSummary } from "@/lib/festContent";
 import { RowLink } from "@/components/RowLink";
@@ -13,7 +12,7 @@ import { RowLink } from "@/components/RowLink";
  * resort home and heraldic wine inside the Family Fest section automatically.
  */
 export function FestDuesCallout() {
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const season = useCurrentFestSeason();
   const { dues } = useFestContent();
   if (!season?.isPlanning) return null;
 
