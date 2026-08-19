@@ -30,6 +30,7 @@ const TYPES: { value: PushType; label: string; desc: string; adminOnly?: boolean
   { value: "house_request_submitted", label: "New requests to decide", desc: "When your house asks to buy something, suggests an idea, or wants paying back — House Admins get these, on by default" },
   { value: "house_request_decision", label: "My requests", desc: "When your own request is approved, turned down, ordered, or paid — on by default" },
   { value: "house_request_handled", label: "What the other House Admins did", desc: "When another House Admin approves, changes, or orders something — on by default" },
+  { value: "house_request_reminder", label: "Order it in time", desc: "When people are heading up to your house soon and something approved still isn't ordered — on by default" },
   { value: "meeting_proposed", label: "New meeting to schedule", desc: "When a meeting is proposed in a committee or house you're in" },
   { value: "meeting_scheduled", label: "Meeting set", desc: "When a proposed meeting is locked to a time" },
   { value: "chat_poll_created", label: "New quick poll", desc: "When someone starts a poll in a committee or house chat you're in" },

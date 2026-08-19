@@ -7,6 +7,9 @@ import { Sheet } from "@/components/Sheet";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { eventDays, effectiveStatus, EMPTY_SUMMARY, upcomingEvents, isOngoing } from "@/lib/events";
 import { isStayActive, isStayPast, stayLabel, stayHeadCount } from "@/lib/houseCalendar";
+import { fetchHouseMembers, impliedStays, type HouseMember, type ImpliedStay } from "@/lib/housePresence";
+import { useCachedResource } from "@/lib/swrCache";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { formatDateRange, relativeDays } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { PrivateName } from "@/components/Guard";
@@ -101,6 +104,29 @@ export function HouseCalendar({
   const pastStays = today ? stays.filter((s) => isStayPast(s, today)).reverse() : [];
   const upcomingResort = today ? upcomingEvents(events.events, today) : [];
 
+  // ⚠️ "Who's staying" is not just `house_stays`. A member of this house who's
+  // RSVP'd going to a resort event will be AT the house for it, whether or not
+  // they ever typed a stay — so they belong in the list (see lib/housePresence).
+  // House-scoped cache key; membership is RLS-gated and wiped on signOut.
+  const { data: members } = useCachedResource<HouseMember[]>(
+    isSupabaseConfigured ? `houseMembers.${houseId}` : null,
+    [],
+    () => fetchHouseMembers(houseId),
+    { persist: "local" },
+  );
+  // Built from each event's `summary.going` rather than a raw attendance list —
+  // `useEvents` doesn't expose the raw rows, and `going` is already rolled up by
+  // `effectiveStatus`, so a Maybe can't leak in on the way through. The rows keep
+  // their `days` map, so the per-day narrowing still works.
+  const goingRows = useMemo(
+    () => Object.values(events.summaries).flatMap((s) => s.going),
+    [events.summaries],
+  );
+  const implied = useMemo(
+    () => (today ? impliedStays({ events: events.events, attendance: goingRows, members, stays, today }) : []),
+    [events.events, goingRows, members, stays, today],
+  );
+
   return (
     <div className="space-y-5">
       {/* ── Month grid ─────────────────────────────────────────────────────── */}
@@ -193,7 +219,7 @@ export function HouseCalendar({
         <h3 className="px-0.5 text-sm font-bold">🏡 Who&rsquo;s staying</h3>
         {loading ? (
           <SkeletonList />
-        ) : upcomingStays.length === 0 ? (
+        ) : upcomingStays.length === 0 && implied.length === 0 ? (
           <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border">
             <p className="text-sm text-foreground/60">No stays on the calendar yet.</p>
             <p className="mt-1 text-xs text-faint">
@@ -201,9 +227,23 @@ export function HouseCalendar({
             </p>
           </div>
         ) : (
-          upcomingStays.map((s) => (
-            <StayRow key={s.id} stay={s} today={today} onOpen={() => setOpenStayId(s.id)} />
-          ))
+          <>
+            {upcomingStays.map((s) => (
+              <StayRow key={s.id} stay={s} today={today} onOpen={() => setOpenStayId(s.id)} />
+            ))}
+            {/* Derived from an RSVP, never typed by anyone — so it looks different,
+                says why it's here, and taps through to the EVENT rather than
+                pretending to be an editable stay. */}
+            {implied.map((i) => (
+              <ImpliedStayRow key={i.id} implied={i} today={today} onOpen={() => setOpenEventId(i.eventId)} />
+            ))}
+            {implied.length > 0 && (
+              <p className="px-0.5 pt-0.5 text-[11px] text-faint">
+                Anyone from {houseName} going to a resort event is counted as staying — even if they&rsquo;re tenting or
+                in a cabin. Adding a real stay replaces the RSVP row with your actual dates.
+              </p>
+            )}
+          </>
         )}
 
         {pastStays.length > 0 && (
@@ -292,6 +332,61 @@ export function HouseCalendar({
 }
 
 /** One stay in the agenda: label, dates, who's coming, head count, an "on now" tag. */
+/**
+ * A stay DERIVED from an event RSVP (lib/housePresence) — "Cass is going to the
+ * Fall Work Weekend, so Cass will be at the house."
+ *
+ * ⚠️ Deliberately looks like a cousin of `StayRow`, not a twin: a dashed ring and
+ * an "RSVP" chip, because it is a reasonable inference and not something the
+ * person actually typed. It taps through to the EVENT — there is no stay row to
+ * open, and offering Edit/Delete on a derived row would be a lie. The moment they
+ * add a real stay, `impliedStays` drops this and the real one takes over.
+ */
+function ImpliedStayRow({
+  implied,
+  today,
+  onOpen,
+}: {
+  implied: ImpliedStay;
+  today: string | null;
+  onOpen: () => void;
+}) {
+  const active = today ? implied.startDate <= today && implied.endDate >= today : false;
+  const when = today ? relativeDays(today, implied.startDate) : null;
+  return (
+    <button
+      onClick={onOpen}
+      className="press flex w-full items-center gap-3 rounded-2xl bg-card p-3 text-left ring-1 ring-dashed ring-border transition-shadow hover:shadow-sm"
+    >
+      <Avatar name={implied.name} url={implied.avatarUrl} size={40} />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2 truncate text-sm font-semibold">
+          <PrivateName name={implied.name} />
+          {active ? (
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+              On now
+            </span>
+          ) : (
+            <span className="shrink-0 rounded-full bg-accent/12 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent">
+              RSVP
+            </span>
+          )}
+        </p>
+        <p className="truncate text-xs text-foreground/60">
+          {formatDateRange(implied.startDate, implied.endDate)}
+          {when && !active && <span className="text-faint"> · {when}</span>}
+        </p>
+        {/* Why this row exists, named — otherwise it reads as a stay somebody
+            forgot they added. */}
+        <p className="truncate text-xs text-muted">Going to {implied.eventTitle}</p>
+      </div>
+      <span className="shrink-0 text-lg leading-none text-foreground/30" aria-hidden>
+        ›
+      </span>
+    </button>
+  );
+}
+
 function StayRow({
   stay,
   today,

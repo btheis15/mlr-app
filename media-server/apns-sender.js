@@ -344,6 +344,8 @@ async function start() {
     "house_request_submitted", "house_request_decision",
     // Another House Admin acted (0198) — same gating as web.
     "house_request_handled",
+    // The order-in-time-for-arrival reminder (0206) — same gating as web.
+    "house_request_reminder",
     // Admin test notification (migration 0156) — override push, like help_urgent.
     "admin_test",
     // The "🔔 Activity tab" broadcast channel (send_broadcast_notification) —
