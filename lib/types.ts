@@ -74,7 +74,8 @@ export type PushType =
   | "signup_reminder"
   | "house_request_submitted"
   | "house_request_decision"
-  | "house_request_handled";
+  | "house_request_handled"
+  | "house_request_reminder";
 
 /** Every push category, on. Set when a member accepts the first-run push prompt
  *  (the backfill from migration 0034). New signups start with push OFF ('{}')
@@ -119,6 +120,12 @@ export const DEFAULT_PUSH_TYPES: PushType[] = [
   // Another House Admin acted (migration 0198) — so two admins working the same
   // queue don't double-order an item or each assume the other handled it.
   "house_request_handled",
+  // "People will be at the house soon and nothing's been ordered" (migration
+  // 0206) — ON by default. It fires at most once per occasion, only to House
+  // Admins, and only when there is genuinely something approved that nobody has
+  // ordered, so it can't become background noise. Existing push-on members are
+  // backfilled in 0206, the 0159/0161/0163 pattern.
+  "house_request_reminder",
 ];
 
 /** A kind of in-app notification shown in the Notifications tab (migration
@@ -158,6 +165,7 @@ export type NotifType =
   | "house_request_submitted"
   | "house_request_decision"
   | "house_request_handled"
+  | "house_request_reminder"
   | "broadcast"
   | "admin_test";
 
@@ -200,6 +208,7 @@ export const DEFAULT_NOTIF_TYPES: NotifPrefType[] = [
   "house_request_submitted",
   "house_request_decision",
   "house_request_handled",
+  "house_request_reminder",
 ];
 
 /** One row in a member's Notifications feed. The `title`/`body` are denormalized

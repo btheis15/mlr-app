@@ -607,6 +607,51 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
   and resolve the viewer's own house, or a `?house=<slug>`
   deep-link (admins can view any) via `useResolvedHouse` +
   [`useHouseCalendar`](lib/hooks.ts); client seam [`lib/houseCalendar.ts`](lib/houseCalendar.ts).
+  - ⚠️ **"Who's staying" is NOT just `house_stays` — an event RSVP counts too**
+    ([`lib/housePresence.ts`](lib/housePresence.ts)). **A square is a rectangle:** if
+    you're in the house and you're `going` to a resort-wide event, you'll be at the
+    house for it — whether you end up tenting or in one of the cabins — so you belong
+    in the list. It does **not** run the other way: a stay implies nothing about any
+    event, and every derivation is event → presence. The calendar was showing "No
+    stays on the calendar yet" for MJT House while three of its members were RSVP'd
+    to the Fall Work Weekend. Four rules keep the derived rows honest: a **real stay
+    always wins** (no duplicate row for someone who stated actual dates, which are
+    often wider than the event); **per-day RSVPs narrow the window** (a Mon–Wed
+    attendee isn't shown all week); **only `going`** counts (a Maybe is not a stay);
+    and **finished events are skipped**. ⚠️ An `ImpliedStay` is deliberately **not** a
+    `HouseStay` — it's derived at read time, never persisted, has no row to edit or
+    delete, and `ImpliedStayRow` renders it with a dashed ring + "RSVP" chip that taps
+    through to the **event**. Persisting these would mean inventing rows nobody typed,
+    which then need reconciling forever.
+  - ⚠️ `ResortEvent.endDate` is **null on a single-day event**, so it can never be
+    compared or passed along raw — a bare `endDate < today` treats every one-day event
+    as ongoing forever. Always `endDate ?? startDate`.
+- **"Order it in time" reminder** (migration
+  [`0206`](supabase/migrations/0206_house_order_reminders.sql)) — an approved purchase
+  just sits, because ordering it has no deadline. But there is one: **the next time
+  anybody is actually at the house to take delivery.** So once a day, for each house
+  with approved purchase requests nobody marked ordered, if somebody will be there
+  within 7 days, every House Admin of that house gets one `house_request_reminder`
+  (in-app + push). The `/house/requests` board carries the same nudge as a card
+  ([`HouseDeliveryNudge`](components/HouseDeliveryNudge.tsx)) at a **wider 45-day**
+  horizon — a push interrupts someone so it fires close in, while a passive card only
+  appears when there's already overdue work and ordering something that has to *ship*
+  needs more than a week's warning.
+  - ⚠️ **It offers the other explanation too** — "already bought it? mark it ordered so
+    nobody buys it twice." The thing may well have been ordered and simply never
+    marked, and nagging an admin about a job they already did is how a reminder gets
+    muted.
+  - ⚠️ Runs on **pg_cron, not the mini** (like `run_scheduled_broadcasts` 0097 /
+    `run_signup_reminders` 0140): the mini is often asleep, and a reminder that only
+    fires when a laptop happens to be awake isn't one. The mini only relays the push.
+  - ⚠️ **Purchases only** — an approved reimbursement needs *paying* (no delivery to
+    time) and an approved idea has nothing to buy. A dedup ledger
+    (`house_order_reminders_sent`, keyed house + occasion start) means one reminder per
+    trip, not one per day for a week; a later trip gets its own.
+  - ⚠️ **Known limit: Family Fest is synthesized in client code, not an `events` row**,
+    so SQL can't see it and it won't trigger a reminder. Every admin-created event
+    (work weekends, holidays) is a real row and works. Left as-is rather than mirroring
+    the fest dates into SQL and creating a second source of truth.
 - **House lists** — shared lists for a house: the grocery run, a cabin close-up
   checklist, what to pack, "stuff to fix". Deliberately **ONE flexible shape** —
   a list is a title (+ emoji handle + optional note) and items that can each be

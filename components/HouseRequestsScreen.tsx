@@ -25,6 +25,7 @@ import { Avatar } from "@/components/Avatar";
 import { HouseRequestCard, ProgressActions, ReviewActions } from "@/components/HouseRequestCard";
 import { HouseRequestSheet } from "@/components/HouseRequestSheet";
 import { HouseRequestComposer } from "@/components/HouseRequestComposer";
+import { HouseDeliveryNudge } from "@/components/HouseDeliveryNudge";
 import { useIdentity } from "@/components/IdentityProvider";
 
 /**
@@ -172,6 +173,11 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
           himself" is that nothing on screen ever said otherwise. Three lines,
           each naming whose money and who shops. */}
       <KindLegend />
+
+      {/* "People are coming and nobody's ordered this yet." Reviewers only — it's
+          a call to action for whoever actually places the orders, and a member
+          can't act on it. Self-hides unless both halves are true. */}
+      {canReview && <HouseDeliveryNudge houseId={houseId} houseName={houseName} requests={requests} />}
 
       {/* The at-a-glance numbers — what a MEMBER cares about: is anything waiting,
           and has anything been approved that nobody has actually done. The second

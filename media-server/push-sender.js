@@ -326,6 +326,9 @@ async function start() {
     "house_request_submitted", "house_request_decision",
     // Another House Admin acted (0198) — keeps co-admins from double-handling.
     "house_request_handled",
+    // "People are at the house soon and this still isn't ordered" (0206) — fired
+    // by a daily pg_cron tick, at most once per occasion, only to House Admins.
+    "house_request_reminder",
     // A new post on the Main Feed: the feed already fans a `new_post` row out to
     // every other member; relay it to a phone push, gated on push_types — ON by
     // default (in DEFAULT_PUSH_TYPES, existing push-on members backfilled in
