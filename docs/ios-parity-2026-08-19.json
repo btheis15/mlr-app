@@ -1,0 +1,897 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "meta": {
+    "title": "iOS parity — 2026-08-19 addendum",
+    "purpose": "What the web app gained after the 2026-08 parity round, plus the places that round is now WRONG. Read alongside ios-parity-2026-08.json, not instead of it.",
+    "web_source": "btheis15/mlr-app @ origin/main",
+    "ios_target": "btheis15/mlr-app-ios",
+    "standing_spec": {
+      "prose": "docs/ios-parity-2026-08.md",
+      "json": "docs/ios-parity-2026-08.json",
+      "areas": "docs/ios-parity-2026-08/",
+      "checklist": "docs/ios-parity-2026-08-DELTA.md",
+      "covers_through": {
+        "pr": 539,
+        "migration": "0184"
+      }
+    },
+    "delta_scope": {
+      "prs": "#540–#579 (40 merged)",
+      "migrations": "0185–0209 (25)"
+    },
+    "prose": "docs/ios-parity-2026-08-19.md",
+    "product_direction": "Unchanged: iOS is the flagship, parity is the floor.",
+    "needs_sql_run_first": [
+      "0209_event_hosts.sql — event hosts (WS-N1) cannot work until this is applied"
+    ],
+    "conventions": "Same as the standing round: each web lib/*.ts seam maps to a Swift Services/*Service.swift; RPCs use an Encodable param struct + .rpc(). ios_targets are NOT proposed here — follow the standing round's per-area docs.",
+    "caveats": [
+      "Generated from the web repo (migrations + CLAUDE.md + the PR list), not from the iOS checkout — iosStatus is inferred from what CLAUDE.md records about the native app.",
+      "Every RPC and column named here was read out of the migration files, but ALWAYS re-grep supabase/migrations/ before wiring a parameter name: Supabase keys RPC args by NAME."
+    ]
+  },
+  "how_to_use": {
+    "read_first": [
+      "docs/ios-parity-2026-08-19.md — the prose for this addendum",
+      "The three CORRECTIONS at its top — they stop you building bugs the web already fixed",
+      "Then the ONE area doc you're building, from the standing round"
+    ],
+    "blockers_still_apply": "The 2026-08 round's 5 true blockers (how_to_use.true_blockers in its JSON — signed media reads first) come BEFORE anything here. Nothing in this addendum matters if photos 403.",
+    "suggested_order": [
+      "corrections (C1/C2)",
+      "WS-N2 house requests",
+      "WS-N1 event hosts (after 0209 is run)",
+      "WS-N4 family fest",
+      "WS-N3 event email",
+      "WS-N5/N6/N7 audits"
+    ],
+    "priority_field_warning": "There is deliberately no `priority` field in this addendum — in the standing round agents read 'blocking' as 'foundational' and marked 24 items blocking, including screens iOS already had. Use suggested_order.",
+    "status_values": {
+      "missing": "iOS doesn't have it",
+      "has-it-audit-depth": "iOS has a version and the web one grew",
+      "wrong-in-spec": "the standing spec describes this incorrectly — read the correction before building"
+    }
+  },
+  "no_ios_work": {
+    "reason": "Server-side or documentation only — read and move on.",
+    "items": [
+      {
+        "pr": 563,
+        "what": "Search indexer stopped polling; reconciles on realtime change and on search. Mini-side only."
+      },
+      {
+        "migration": "0204",
+        "what": "Never email the App Store reviewer account. Server-side."
+      },
+      {
+        "prs": "#540–#543",
+        "what": "The parity docs themselves."
+      }
+    ],
+    "mini_restart_required": "The event-email and house-request emails need a mini git pull + restart (Admin → Media server) before anything goes out."
+  },
+  "workstreams": [
+    {
+      "id": "WS-N1",
+      "title": "Event hosts",
+      "status": "new",
+      "needs_sql": "0209",
+      "extends": "WS09"
+    },
+    {
+      "id": "WS-N2",
+      "title": "House requests + House Admins",
+      "status": "new",
+      "extends": null
+    },
+    {
+      "id": "WS-N3",
+      "title": "Email everyone about an event",
+      "status": "new",
+      "extends": "WS09"
+    },
+    {
+      "id": "WS-N4",
+      "title": "Family Fest: Past Years + starting a new year",
+      "status": "new-behaviour",
+      "supersedes": "WS13 (partly)"
+    },
+    {
+      "id": "WS-N5",
+      "title": "Work items: custom urgency + recurrence",
+      "status": "audit"
+    },
+    {
+      "id": "WS-N6",
+      "title": "Events: member-created + work-item linking",
+      "status": "audit",
+      "extends": "WS09"
+    },
+    {
+      "id": "WS-N7",
+      "title": "House calendar: who's actually staying",
+      "status": "audit",
+      "extends": "WS06"
+    }
+  ],
+  "summary": {
+    "features_enumerated": 29,
+    "by_ios_status": {
+      "wrong-in-spec": 3,
+      "missing": 21,
+      "has-it-audit-depth": 5
+    },
+    "by_workstream": {
+      "WS-N4": 5,
+      "WS-N1": 4,
+      "WS-N2": 10,
+      "WS-N3": 3,
+      "WS-N5": 2,
+      "WS-N6": 3,
+      "WS-N7": 2
+    },
+    "by_effort": {
+      "quarter": 4,
+      "half": 19,
+      "large": 1,
+      "medium": 5
+    },
+    "gotchas_captured": 132,
+    "workstreams": 7
+  },
+  "features": [
+    {
+      "id": "correction-fest-five-phases",
+      "name": "Family Fest season has FIVE phases",
+      "whatItDoes": "A finished fest must say so instead of rendering a countdown to its own past start date, which clamps to zero and reads 'Family Fest is on'.",
+      "iosStatus": "wrong-in-spec",
+      "effort": "quarter",
+      "workstream": "WS-N4",
+      "tables": [],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "lib/festSeason.ts"
+      ],
+      "gotchas": [
+        "off-season and concluded are BOTH quiet but are NOT the same phase — off-season means the window is still AHEAD, concluded means it is behind us. Collapsing them is the original bug.",
+        "isTakeover must be spelled out as isPlanning||isLive||isWrap, NOT phase !== 'off-season' — the negation counts a finished fest as a takeover.",
+        "Empty/malformed dates must be guarded to off-season explicitly: every comparison against NaN is false, so they otherwise fall through and report a fest with no dates as concluded.",
+        "Supersedes part of docs/ios-parity-2026-08/13-family-fest.md."
+      ]
+    },
+    {
+      "id": "correction-fest-config-many-rows",
+      "name": "fest_config is read as MANY rows",
+      "whatItDoes": "The current fest is the NEWEST fest_config row, not a compiled-in year — which is what makes an archive and an in-app new year possible.",
+      "iosStatus": "wrong-in-spec",
+      "effort": "half",
+      "workstream": "WS-N4",
+      "tables": [
+        "public.fest_config"
+      ],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "lib/festYears.ts",
+        "lib/festContent.ts"
+      ],
+      "gotchas": [
+        "iOS currently mirrors the web's old hardcoded FEST_YEAR = 2026.",
+        "No new table, column or migration — purely how the rows are read.",
+        "The fest week is decided by a family POLL every year. Never default or compute it from the previous year."
+      ]
+    },
+    {
+      "id": "correction-can-manage-event",
+      "name": "can_manage_event is no longer 'admin OR creator'",
+      "whatItDoes": "Any screen deciding whether to show Edit/Delete/add-attendee on an event must not hardcode the old predicate.",
+      "iosStatus": "wrong-in-spec",
+      "effort": "quarter",
+      "workstream": "WS-N1",
+      "tables": [],
+      "rpcs": [
+        "can_manage_event",
+        "can_delete_event"
+      ],
+      "migrations": [
+        "0209"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "Supersedes the permission model in docs/ios-parity-2026-08/09-events-and-cabins.md."
+      ]
+    },
+    {
+      "id": "event-hosts-show",
+      "name": "Show who's hosting an event",
+      "whatItDoes": "Chips on the event sheet naming the people and/or committees running it; a committee chip taps through to the committee.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N1",
+      "tables": [
+        "public.event_hosts"
+      ],
+      "rpcs": [
+        "event_hosts_for"
+      ],
+      "migrations": [
+        "0209"
+      ],
+      "webFiles": [
+        "components/EventSheet.tsx",
+        "lib/eventHosts.ts"
+      ],
+      "gotchas": [
+        "Do NOT re-implement the permission rule client-side: it needs the viewer's committee memberships, which of those they lead, AND whether each committee has any leads. Ask the DB (the event_message_preview doctrine, 0192).",
+        "can_delete_event is a SEPARATE, narrower function — same rule minus the 'any member' fallback. Deleting destroys every RSVP. Do not reuse can_manage for Delete.",
+        "event_hosts.event_id is TEXT with no FK (matching event_attendance) so synthesized events like 'family-fest-2026' can carry hosts. Do not type it as uuid.",
+        "Read RLS is members-only — a host row names a person (0081 doctrine). A guest gets an empty list; render no host line.",
+        "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
+        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit."
+      ]
+    },
+    {
+      "id": "event-hosts-permissions",
+      "name": "Host-aware Edit/Delete/add-attendee gating",
+      "whatItDoes": "Resolves per event, server-side, whether the viewer may change it and whether they may delete it — one round-trip for a whole calendar.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N1",
+      "tables": [],
+      "rpcs": [
+        "my_event_permissions"
+      ],
+      "migrations": [
+        "0209"
+      ],
+      "webFiles": [
+        "lib/eventHosts.ts",
+        "app/events/page.tsx"
+      ],
+      "gotchas": [
+        "Do NOT re-implement the permission rule client-side: it needs the viewer's committee memberships, which of those they lead, AND whether each committee has any leads. Ask the DB (the event_message_preview doctrine, 0192).",
+        "can_delete_event is a SEPARATE, narrower function — same rule minus the 'any member' fallback. Deleting destroys every RSVP. Do not reuse can_manage for Delete.",
+        "event_hosts.event_id is TEXT with no FK (matching event_attendance) so synthesized events like 'family-fest-2026' can carry hosts. Do not type it as uuid.",
+        "Read RLS is members-only — a host row names a person (0081 doctrine). A guest gets an empty list; render no host line.",
+        "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
+        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit."
+      ]
+    },
+    {
+      "id": "event-hosts-edit",
+      "name": "Add or remove a host",
+      "whatItDoes": "Name a person or a whole committee as host, or remove one — which re-opens the event to every member if it was the last.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N1",
+      "tables": [],
+      "rpcs": [
+        "add_event_host",
+        "remove_event_host"
+      ],
+      "migrations": [
+        "0209"
+      ],
+      "webFiles": [
+        "components/EventHostEditor.tsx"
+      ],
+      "gotchas": [
+        "Do NOT re-implement the permission rule client-side: it needs the viewer's committee memberships, which of those they lead, AND whether each committee has any leads. Ask the DB (the event_message_preview doctrine, 0192).",
+        "can_delete_event is a SEPARATE, narrower function — same rule minus the 'any member' fallback. Deleting destroys every RSVP. Do not reuse can_manage for Delete.",
+        "event_hosts.event_id is TEXT with no FK (matching event_attendance) so synthesized events like 'family-fest-2026' can carry hosts. Do not type it as uuid.",
+        "Read RLS is members-only — a host row names a person (0081 doctrine). A guest gets an empty list; render no host line.",
+        "Anyone may ALWAYS RSVP themselves — set_event_attendance is untouched. Hosts govern acting on OTHER people and changing the event.",
+        "Pre-migration both RPCs 404 (PGRST202). Degrade to the OLD rule (admin OR creator), NOT to 'nothing is manageable', or admins lose Edit.",
+        "Removal re-checks permission BEFORE deleting, since removing the last host WIDENS access.",
+        "Committee options must be filtered to real uuids — the web's committee fetch falls back to a seed whose id is the SLUG."
+      ]
+    },
+    {
+      "id": "house-requests-board",
+      "name": "The house requests board",
+      "whatItDoes": "Every 'should we?' ask for a house, grouped by status, with a permanent legend explaining the three kinds.",
+      "iosStatus": "missing",
+      "effort": "large",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [],
+      "migrations": [
+        "0195",
+        "0200",
+        "0202",
+        "0207",
+        "0208"
+      ],
+      "webFiles": [
+        "components/HouseRequestsScreen.tsx",
+        "components/HouseRequestCard.tsx",
+        "lib/houseRequests.ts"
+      ],
+      "gotchas": [
+        "App admins have NO authority here (0202): only that house's House Admins may decide, and only the author + that house's members may see the board.",
+        "The read policy compares house_id DIRECTLY rather than calling is_house_member(), which grants app admins a blanket pass and would silently re-open cross-house reads.",
+        "Use a COLUMN-GROUP LADDER on the select: an unknown column fails the whole select with 42703 and renders an empty board, which then reads as 'migration missing'.",
+        "numeric comes back from PostgREST as a STRING — coerce it or every cost sum is string concatenation.",
+        "Never name only the paperwork: migration 0205 exists because 'Purchase Request' told House Admins nothing about whose money or who orders. Show the per-kind 'deal' line everywhere a kind appears.",
+        "There is NO default kind — picking one is its own step and the form does not exist until chosen."
+      ]
+    },
+    {
+      "id": "house-requests-submit",
+      "name": "Submitting an idea, a purchase request, or a reimbursement",
+      "whatItDoes": "Three deliberately distinct kinds; a reimbursement requires an amount and warns if the requester has no payment method set.",
+      "iosStatus": "missing",
+      "effort": "medium",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [
+        "create_house_request"
+      ],
+      "migrations": [
+        "0195",
+        "0200",
+        "0205"
+      ],
+      "webFiles": [
+        "components/HouseRequestComposer.tsx"
+      ],
+      "gotchas": [
+        "App admins have NO authority here (0202): only that house's House Admins may decide, and only the author + that house's members may see the board.",
+        "The read policy compares house_id DIRECTLY rather than calling is_house_member(), which grants app admins a blanket pass and would silently re-open cross-house reads.",
+        "Use a COLUMN-GROUP LADDER on the select: an unknown column fails the whole select with 42703 and renders an empty board, which then reads as 'migration missing'.",
+        "numeric comes back from PostgREST as a STRING — coerce it or every cost sum is string concatenation.",
+        "Never name only the paperwork: migration 0205 exists because 'Purchase Request' told House Admins nothing about whose money or who orders. Show the per-kind 'deal' line everywhere a kind appears.",
+        "There is NO default kind — picking one is its own step and the form does not exist until chosen.",
+        "create_house_request is 8 args — 0200 DROPPED the 7-arg overload; two overloads differing only by a trailing default is the 0115 cabin bug."
+      ]
+    },
+    {
+      "id": "house-requests-review",
+      "name": "Approve / deny / modify with a note",
+      "whatItDoes": "A House Admin decides, optionally with a note that travels on every channel; a reviewer's EDIT notifies the requester.",
+      "iosStatus": "missing",
+      "effort": "medium",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [
+        "review_house_request",
+        "update_house_request",
+        "can_review_house_request"
+      ],
+      "migrations": [
+        "0195",
+        "0198",
+        "0202"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "App admins have NO authority here (0202): only that house's House Admins may decide, and only the author + that house's members may see the board.",
+        "The read policy compares house_id DIRECTLY rather than calling is_house_member(), which grants app admins a blanket pass and would silently re-open cross-house reads.",
+        "Use a COLUMN-GROUP LADDER on the select: an unknown column fails the whole select with 42703 and renders an empty board, which then reads as 'migration missing'.",
+        "numeric comes back from PostgREST as a STRING — coerce it or every cost sum is string concatenation.",
+        "Never name only the paperwork: migration 0205 exists because 'Purchase Request' told House Admins nothing about whose money or who orders. Show the per-kind 'deal' line everywhere a kind appears.",
+        "There is NO default kind — picking one is its own step and the form does not exist until chosen.",
+        "can_review_house_request() is the seam for the future LEDO Trust tier — widen its null branch, don't add a parallel check."
+      ]
+    },
+    {
+      "id": "house-requests-progress",
+      "name": "Record what happened",
+      "whatItDoes": "Marks a purchase ordered, or a reimbursement paid.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [
+        "set_house_request_progress"
+      ],
+      "migrations": [
+        "0195",
+        "0203",
+        "0205"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "App admins have NO authority here (0202): only that house's House Admins may decide, and only the author + that house's members may see the board.",
+        "The read policy compares house_id DIRECTLY rather than calling is_house_member(), which grants app admins a blanket pass and would silently re-open cross-house reads.",
+        "Use a COLUMN-GROUP LADDER on the select: an unknown column fails the whole select with 42703 and renders an empty board, which then reads as 'migration missing'.",
+        "numeric comes back from PostgREST as a STRING — coerce it or every cost sum is string concatenation.",
+        "Never name only the paperwork: migration 0205 exists because 'Purchase Request' told House Admins nothing about whose money or who orders. Show the per-kind 'deal' line everywhere a kind appears.",
+        "There is NO default kind — picking one is its own step and the form does not exist until chosen.",
+        "approved is NOT terminal — 'approved but nobody bought it' is the failure this feature exists to make visible.",
+        "An IDEA ends at approved and has no third step at all (0205 refuses ordered/received for kind='idea').",
+        "ordered IS terminal — there is deliberately no 'it arrived' step.",
+        "A reimbursement skips 'ordered' outright."
+      ]
+    },
+    {
+      "id": "house-requests-convert",
+      "name": "'They told me to just grab it' — convert a purchase to a reimbursement",
+      "whatItDoes": "Keeps the title, reason, links, photos, discussion and approval; asks only for the total and receipt.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [
+        "convert_request_to_reimbursement"
+      ],
+      "migrations": [
+        "0207"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "App admins have NO authority here (0202): only that house's House Admins may decide, and only the author + that house's members may see the board.",
+        "The read policy compares house_id DIRECTLY rather than calling is_house_member(), which grants app admins a blanket pass and would silently re-open cross-house reads.",
+        "Use a COLUMN-GROUP LADDER on the select: an unknown column fails the whole select with 42703 and renders an empty board, which then reads as 'migration missing'.",
+        "numeric comes back from PostgREST as a STRING — coerce it or every cost sum is string concatenation.",
+        "Never name only the paperwork: migration 0205 exists because 'Purchase Request' told House Admins nothing about whose money or who orders. Show the per-kind 'deal' line everywhere a kind appears.",
+        "There is NO default kind — picking one is its own step and the form does not exist until chosen.",
+        "REQUESTER-ONLY, and that's correctness not preference: a reimbursement pays created_by, so anyone else converting would route the money to whoever ASKED rather than whoever PAID.",
+        "The approval survives; re-approval is demanded only when the amount exceeds the approved estimate by more than the grace ($25).",
+        "quantity is CLEARED on conversion — on a receipt the total already covers however many."
+      ]
+    },
+    {
+      "id": "house-admins",
+      "name": "House Admins",
+      "whatItDoes": "A leadership tier for a house, so it can run its own money decisions without an app admin.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.profiles"
+      ],
+      "rpcs": [
+        "set_house_admin",
+        "is_house_admin"
+      ],
+      "migrations": [
+        "0194"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "Only an app admin who is THEMSELVES in that house may appoint one — not any app admin, and not a House Admin promoting peers.",
+        "profiles.house_admin is in no client update grant; the RPC is the only write path.",
+        "Changing houses CLEARS the flag, or someone reassigned keeps approver rights over their new house.",
+        "is_house_admin is strict — no app-admin override. Use can_review_house_request for permission checks."
+      ]
+    },
+    {
+      "id": "house-requests-notifications",
+      "name": "Four notification kinds",
+      "whatItDoes": "Submitted (to House Admins), decision (to the requester), handled (to the OTHER approvers), and the order-in-time reminder.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.notifications"
+      ],
+      "rpcs": [],
+      "migrations": [
+        "0195",
+        "0198",
+        "0199",
+        "0206"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "A house-scoped request notifies that house's House Admins and NOBODY else — no app-admin fallback (0199 fixed one vacuum request paging all 7 app admins).",
+        "All four kinds need adding to the iOS pushable set.",
+        "EVERY send must name its recipients in the UI first — the composer shows the resolved list, read from the SAME predicate the server fan-out uses."
+      ]
+    },
+    {
+      "id": "house-requests-test-only",
+      "name": "'Just test it — only notify me'",
+      "whatItDoes": "Runs a real request through the whole pipeline while notifying only its author and staying hidden from the house.",
+      "iosStatus": "missing",
+      "effort": "quarter",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [],
+      "migrations": [
+        "0200"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "The client must REFUSE to fall back pre-0200 when the flag is set — silently dropping a 'notify just me' would page the whole house."
+      ]
+    },
+    {
+      "id": "house-requests-delete",
+      "name": "Delete, and the 7-day tombstone",
+      "whatItDoes": "Removing a request leaves a tombstone for 7 days instead of vanishing.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_requests",
+        "public.house_request_media",
+        "public.profiles"
+      ],
+      "rpcs": [],
+      "migrations": [
+        "0201",
+        "0202",
+        "0203",
+        "0208"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "A still-PENDING request is deliberately NOT deletable (unless it's a test): a denial leaves a note and a name, a deletion just makes the ask evaporate.",
+        "Approved-but-unordered is also not deletable — that's the state the feature exists to keep visible.",
+        "Mirror the SQL gate client-side so the button only appears where the RPC would succeed."
+      ]
+    },
+    {
+      "id": "house-order-nudge",
+      "name": "Order-in-time nudge",
+      "whatItDoes": "A card on the board when there are approved-but-unordered purchases and somebody will be at the house soon.",
+      "iosStatus": "missing",
+      "effort": "quarter",
+      "workstream": "WS-N2",
+      "tables": [
+        "public.house_order_reminders_sent"
+      ],
+      "rpcs": [],
+      "migrations": [
+        "0206"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "Purchases only — a reimbursement needs paying, an idea has nothing to buy.",
+        "Runs on pg_cron, not the mini. The mini only relays the push.",
+        "It offers the other explanation too ('already bought it? mark it ordered') — nagging an admin about a job they already did is how a reminder gets muted.",
+        "Known limit: Family Fest is synthesized in client code, not an events row, so SQL can't see it and it won't trigger a reminder."
+      ]
+    },
+    {
+      "id": "event-email-preview",
+      "name": "Preview the event email before sending",
+      "whatItDoes": "Shows the REAL rendered email with a pager across every version that will go out, each labelled with how many people it reaches.",
+      "iosStatus": "missing",
+      "effort": "medium",
+      "workstream": "WS-N3",
+      "tables": [
+        "public.event_messages"
+      ],
+      "rpcs": [
+        "event_message_preview"
+      ],
+      "migrations": [
+        "0190",
+        "0192",
+        "0193"
+      ],
+      "webFiles": [
+        "components/EventMessageSheet.tsx",
+        "media-server/event-email-template.js"
+      ],
+      "gotchas": [
+        "ONE SEND PER AUDIENCE, not one email: a house-scoped work item is visible only to that house, so recipients come back pre-sorted into buckets (one per house with items, plus 'general'). A person lands in exactly one.",
+        "The house copy SAYS it's the house copy; the general copy stays completely silent that a hidden list exists.",
+        "event_attendance now has THREE FKs to profiles (user_id, sponsor_user_id, added_by) — any embed MUST name the FK explicitly or PostgREST returns PGRST201 instead of data.",
+        "No link to the app anywhere, by decision: a bare link opens the browser, which on iOS is a separate signed-out session.",
+        "The sender is NAMED and CC'd on every send, with replyTo pointing at them.",
+        "Completed work items are excluded outright from the email.",
+        "The preview is a DRY RUN of the same SQL the real send uses, returning per-bucket counts and NO addresses. Never assemble it client-side: a house-scoped item is RLS-invisible to a non-member, so the client would render a different email than the one that sends."
+      ]
+    },
+    {
+      "id": "event-email-send",
+      "name": "Send the event email",
+      "whatItDoes": "Delivers the event's details plus exactly what's assigned to it.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N3",
+      "tables": [
+        "public.event_messages"
+      ],
+      "rpcs": [
+        "send_event_message",
+        "event_message_email"
+      ],
+      "migrations": [
+        "0190",
+        "0191",
+        "0197",
+        "0204"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "ONE SEND PER AUDIENCE, not one email: a house-scoped work item is visible only to that house, so recipients come back pre-sorted into buckets (one per house with items, plus 'general'). A person lands in exactly one.",
+        "The house copy SAYS it's the house copy; the general copy stays completely silent that a hidden list exists.",
+        "event_attendance now has THREE FKs to profiles (user_id, sponsor_user_id, added_by) — any embed MUST name the FK explicitly or PostgREST returns PGRST201 instead of data.",
+        "No link to the app anywhere, by decision: a bare link opens the browser, which on iOS is a separate signed-out session.",
+        "The sender is NAMED and CC'd on every send, with replyTo pointing at them.",
+        "Completed work items are excluded outright from the email.",
+        "set_house_request_progress-style claim columns: sent_buckets records each bucket as it succeeds so a retry doesn't re-send.",
+        "Needs a mini git pull + restart before anything actually goes out."
+      ]
+    },
+    {
+      "id": "event-attendee-manual-add",
+      "name": "Manually add someone to an event's RSVP list",
+      "whatItDoes": "Three separate entry points on purpose: an app member, a family_roster person with no account, or a typed outside guest.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N3",
+      "tables": [
+        "public.event_attendance",
+        "public.family_roster"
+      ],
+      "rpcs": [
+        "add_event_family_member",
+        "add_event_guest"
+      ],
+      "migrations": [
+        "0196",
+        "0197"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "ONE SEND PER AUDIENCE, not one email: a house-scoped work item is visible only to that house, so recipients come back pre-sorted into buckets (one per house with items, plus 'general'). A person lands in exactly one.",
+        "The house copy SAYS it's the house copy; the general copy stays completely silent that a hidden list exists.",
+        "event_attendance now has THREE FKs to profiles (user_id, sponsor_user_id, added_by) — any embed MUST name the FK explicitly or PostgREST returns PGRST201 instead of data.",
+        "No link to the app anywhere, by decision: a bare link opens the browser, which on iOS is a separate signed-out session.",
+        "The sender is NAMED and CC'd on every send, with replyTo pointing at them.",
+        "Completed work items are excluded outright from the email.",
+        "A guest's SPONSOR is required — picked from a dropdown, never typed — so an outside guest is always traceable.",
+        "A guest's email is optional and scoped to THIS one event only.",
+        "Collapsing the two entry points into one 'type a name' box is the confusion this feature exists to fix.",
+        "⚠️ It is TWO RPCs, not one: add_event_family_member (a member OR a family_roster person) and add_event_guest (a typed outside guest, sponsor required). They are deliberately separate entry points — collapsing them into one 'type a name' box is the confusion 0196 exists to fix."
+      ]
+    },
+    {
+      "id": "fest-concluded-state",
+      "name": "The concluded fest state",
+      "whatItDoes": "The hub says thank you and links the archive; the RSVP card and the finished week step aside; the sub-nav drops to Overview + Past Years.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N4",
+      "tables": [
+        "public.fest_config"
+      ],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "components/FestStatus.tsx",
+        "components/FamilyFestSpotlight.tsx"
+      ],
+      "gotchas": [
+        "Read correction C1 first."
+      ]
+    },
+    {
+      "id": "fest-past-years",
+      "name": "Past Years — the archive of finished fests",
+      "whatItDoes": "A list of finished fests, each opening its whole week read-only: schedule, dinners, menus, leads.",
+      "iosStatus": "missing",
+      "effort": "medium",
+      "workstream": "WS-N4",
+      "tables": [
+        "public.fest_config",
+        "public.fest_schedule_items",
+        "public.fest_dinners"
+      ],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "components/FestPastYears.tsx",
+        "app/family-fest/past/page.tsx"
+      ],
+      "gotchas": [
+        "NO edit affordances for ANYONE including admins — the editor writes to the CURRENT year, so its sheets would edit the wrong fest.",
+        "NO sign-up cards — there's nothing left to sign up for.",
+        "KEEP tournament brackets, read-only: who won the musky tournament is the history worth archiving.",
+        "No seed fallback: backfilling an empty year with the in-code seed would FABRICATE history.",
+        "A year appears here purely from its dates, on the same WRAP_TAIL_DAYS threshold as the concluded phase."
+      ]
+    },
+    {
+      "id": "fest-start-next-year",
+      "name": "Start planning next year",
+      "whatItDoes": "Creates a new fest year and optionally copies last year's plan across as a starting point.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N4",
+      "tables": [
+        "public.fest_config"
+      ],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [],
+      "gotchas": [
+        "INSERT a new row; NEVER edit the current one's dates — that drags the finished fest forward so its archive describes a week that never happened.",
+        "Dates are typed in BY HAND and start EMPTY: the week is decided by a family poll and cannot be derived from last year.",
+        "The template copy deliberately omits sign-up config and tournament flags — per-year live state keyed to specific dates."
+      ]
+    },
+    {
+      "id": "work-item-custom-urgency",
+      "name": "A fifth work-item urgency: custom",
+      "whatItDoes": "Free-text timing wording plus a picked colour, for something more specific than the fixed tiers.",
+      "iosStatus": "has-it-audit-depth",
+      "effort": "half",
+      "workstream": "WS-N5",
+      "tables": [
+        "public.work_items"
+      ],
+      "rpcs": [
+        "create_work_item",
+        "update_work_item"
+      ],
+      "migrations": [
+        "0185"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "ALWAYS resolve through urgencyMeta(item), never by indexing the fixed table — a custom item has no entry there.",
+        "urgencyRank takes the whole item so custom can rank between This year and Next year."
+      ]
+    },
+    {
+      "id": "work-item-recurring",
+      "name": "Recurring work items",
+      "whatItDoes": "A task due every N years reappears as a fresh open item instead of vanishing when checked off.",
+      "iosStatus": "has-it-audit-depth",
+      "effort": "half",
+      "workstream": "WS-N5",
+      "tables": [
+        "public.work_items"
+      ],
+      "rpcs": [
+        "mark_work_item_done"
+      ],
+      "migrations": [
+        "0186"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "The next cycle is stamped surface_on = Jan 1 of the year it's next due, not the exact anniversary.",
+        "Rows with a FUTURE surface_on must be filtered OUT of the list — they exist immediately so the recurrence is never lost.",
+        "Deliberately NO notification on the auto-created copy (suppressed via a session GUC)."
+      ]
+    },
+    {
+      "id": "member-created-events",
+      "name": "Any member can create an event",
+      "whatItDoes": "Was admin-only end to end.",
+      "iosStatus": "has-it-audit-depth",
+      "effort": "half",
+      "workstream": "WS-N6",
+      "tables": [
+        "public.events"
+      ],
+      "rpcs": [
+        "create_event",
+        "update_event",
+        "delete_event"
+      ],
+      "migrations": [
+        "0187"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "Editing/deleting is admin OR the event's creator — and since 0209, hosts. See WS-N1.",
+        "A non-admin creator must NOT see the Reminders section; scheduled reminders ride the admin-only broadcast queue."
+      ]
+    },
+    {
+      "id": "event-work-item-picker",
+      "name": "Pick an event's work items from the existing checklist",
+      "whatItDoes": "Multi-select over existing open items, each showing its urgency and scope, with a create-new escape hatch.",
+      "iosStatus": "missing",
+      "effort": "medium",
+      "workstream": "WS-N6",
+      "tables": [
+        "public.event_work_items",
+        "public.work_items"
+      ],
+      "rpcs": [
+        "add_work_item_to_event",
+        "remove_work_item_from_event"
+      ],
+      "migrations": [
+        "0188"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "Unlinking never deletes the item itself.",
+        "⚠️ add_work_item_to_event is declared in 0050 WITHOUT a schema prefix (`create or replace function add_work_item_to_event`), unlike almost every other RPC in this codebase. It resolves to public via search_path, but a grep for 'function public.add_work_item_to_event' finds nothing — don't conclude it doesn't exist."
+      ]
+    },
+    {
+      "id": "event-work-items-by-scope",
+      "name": "Group an event's work items by scope",
+      "whatItDoes": "Around the Resort first, then one group per house — with a locked count line for a house you're not in.",
+      "iosStatus": "missing",
+      "effort": "half",
+      "workstream": "WS-N6",
+      "tables": [
+        "public.work_items",
+        "public.houses"
+      ],
+      "rpcs": [
+        "event_work_item_house_counts"
+      ],
+      "migrations": [
+        "0189"
+      ],
+      "webFiles": [],
+      "gotchas": [
+        "A house-scoped item is RLS-invisible to a non-member, so a plain read silently drops it — the count RPC is the only way to show it exists at all.",
+        "That RPC is SECURITY DEFINER and therefore gated on is_approved_member(). ANY new SECURITY DEFINER read needs the same check.",
+        "Removing an item must refetch the house COUNTS too, not just the items."
+      ]
+    },
+    {
+      "id": "house-presence-three-kinds",
+      "name": "'In the house' is three kinds of person",
+      "whatItDoes": "A housemate with an account, someone assigned to the house who isn't on the app yet, and a guest sponsored by a housemate.",
+      "iosStatus": "has-it-audit-depth",
+      "effort": "half",
+      "workstream": "WS-N7",
+      "tables": [
+        "public.event_attendance",
+        "public.family_roster",
+        "public.house_stays"
+      ],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "lib/housePresence.ts"
+      ],
+      "gotchas": [
+        "The web derivation used to open `if (!row.userId) continue`, silently dropping the roster and guest cases.",
+        "'A real stay always wins' must be guarded on userId — house_stays.created_by is a uuid, so no real stay can belong to a roster person or guest, and matching a null suppresses all of them at once.",
+        "Key a derived row on the ATTENDANCE ROW's id, not the user id, or two guests at one event collapse into one person.",
+        "fetchHouseRosterMembers returns only UNLINKED roster slots — a claimed one is already covered by profiles.house_id and would list the person twice."
+      ]
+    },
+    {
+      "id": "house-presence-one-derivation",
+      "name": "One derivation for 'who's here on day X'",
+      "whatItDoes": "The calendar's day detail and the who's-staying list must agree.",
+      "iosStatus": "has-it-audit-depth",
+      "effort": "half",
+      "workstream": "WS-N7",
+      "tables": [],
+      "rpcs": [],
+      "migrations": [],
+      "webFiles": [
+        "lib/housePresence.ts",
+        "components/HouseCalendar.tsx"
+      ],
+      "gotchas": [
+        "The web's day popover read house_stays only and said 'Staying (0)' while the list below it showed five people for the same dates. Do not derive it twice.",
+        "The heading count is PEOPLE, not rows: a stay's guest_names count and nobody is double-counted."
+      ]
+    }
+  ]
+}
