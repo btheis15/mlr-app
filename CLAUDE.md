@@ -692,17 +692,69 @@ house funds decided and ordered them" — built because ideas kept dying in conv
 ("we need to stop just only coming up with ideas and actually do it"). Any member of a
 house submits one of three kinds; a House Admin decides, then records what happened.
 
-- **💡 Idea** — "we should have European-style dressers someday." No link or cost
-  required; deliberately the lowest-friction kind, since the friction IS the problem.
-  **🛒 Purchase Request** — link + estimate + quantity + why. **🧾 Request Reimbursement**
-  — "I already bought it", amount required (the RPC rejects one without it), optional
-  receipt photo, and the composer warns you up front if your profile has no payment
-  method, since otherwise nobody knows where to send the money.
-- ⚠️ **The status ladder:** `pending → approved → ordered` for a purchase or an idea, and
+- **💡 Idea** — "could we clear the trees behind the house so we can see the lake?"
+  **No cost field at all** and no link required; deliberately the lowest-friction kind,
+  since the friction IS the problem. **🛒 Purchase request** — link + estimate + quantity
+  + why. **🧾 Reimbursement** — "I already bought it", amount required (the RPC rejects
+  one without it), optional receipt photo, and the composer warns you up front if your
+  profile has no payment method, since otherwise nobody knows where to send the money.
+- ⚠️⚠️ **INCIDENT: A PURCHASE REQUEST WAS READ AS "HE'S BUYING IT HIMSELF", SO NOBODY
+  ORDERED IT (fixed by migration
+  [`0205`](supabase/migrations/0205_house_request_kind_clarity.sql) + a UI pass).** Brian
+  filed one for MJT House; the House Admins got "New purchase request for MJT House —
+  Brian: <thing>" and assumed the sender was buying it. **Root cause: every surface named
+  the PAPERWORK, never the DEAL.** "Purchase Request" is a form name — it says nothing
+  about whose money is spent or who places the order — and the three kinds were three
+  identically-sized tiles differing only by a noun and an emoji, on a board where the kind
+  was conveyed by nothing but a small colored icon. Two structural causes made it worse:
+  - **The composer opened with Purchase Request PRE-SELECTED**, so it was entirely
+    possible to fill the form in and send it having never read the three options or made a
+    choice at all. **There is now NO default kind** — picking one is its own step, the form
+    does not exist until you've chosen, and the choice can't be skipped. A default here
+    isn't a convenience; it's a decision made on the member's behalf about who spends
+    whose money.
+  - **Nothing stated the follow-through.** `KIND_META` (lib/houseRequests.ts) now carries
+    per kind: `ask` (first-person chooser headline), **`deal`** (⚠️ the load-bearing
+    sentence — whose money, who orders), `money` (badge), `youDo`, `adminDoes`, plus color
+    tokens. **Every surface that shows a kind must show `deal`**: the chooser rows, the
+    composer's FIXED header (so it stays on screen while the form is filled in), the board
+    card, the detail sheet, the reviewer panel ("If you approve: …"), the email's Type row,
+    and the notification body. A permanent, non-dismissible three-line **legend** sits on
+    the board — not a first-run tip, since this board is read a few times a year and a
+    legend dismissed in March helps nobody in August.
+  - ⚠️ **`label` must stay a plain third-person NOUN.** Making it the punchy requester-voice
+    phrase ("Pay me back") reads beautifully on a card and then produces *"Lee paid Brian's
+    pay me back"* in the co-admin email — which `node scripts/preview-house-request-email.js`
+    duly rendered. `ask` is where the first-person voice belongs. Likewise `deal`/`money`
+    are phrased **neutrally** (no "you"/"your"): most views of a request are by somebody
+    other than its author, so "You're owed" is wrong on a House Admin's screen. The
+    composer adds its own second-person callout per kind, where the emphasis belongs.
+- ⚠️ **The status ladder:** `pending → approved → ordered` for a purchase, and
   `pending → approved → received` ("Paid") for a reimbursement, which skips `ordered`
   outright (the RPC refuses it). **`approved` is NOT terminal** — "approved but nobody
   bought it" is the actual failure mode, so it's a first-class visible state rather than
-  something indistinguishable from done.
+  something indistinguishable from done, and it has its own board section ("Said yes — but
+  nobody's done it yet").
+  - ⚠️ **AN IDEA ENDS AT `approved` — it has no third step at all** (0205 makes
+    `set_house_request_progress` refuse `ordered`/`received` for `kind = 'idea'`). Nothing
+    is ever bought or paid for an idea, so agreeing to it IS the end: it reads "The house
+    is up for it", `isSettled`/`requestGroup` count it as done, `ProgressActions` renders
+    nothing, and the timeline stops at two steps. Previously an agreed idea said "Approved
+    — not ordered yet" and offered "Mark ordered" forever, inventing a chore nobody owed
+    and parking a permanent fake nag on the board. Its real next step is the sheet's
+    **"🛒 Turn this into a purchase request"** — a NEW row seeded from the idea (the
+    composer's `prefill` prop, the one legitimate exception to "no default kind", since a
+    person deliberately chose it). The idea stays on the board as the record of the
+    conversation. Open to any house member, not just reviewers.
+  - ⚠️ `summarize()` splits **`notOrdered` (purchases only)** from **`unpaid`
+    (reimbursements)** — an unpaid reimbursement means somebody in the family is
+    personally out of pocket, which reads very differently from an unordered purchase, and
+    an approved *idea* belongs in neither. Lumping all three under "approved, not bought
+    yet" is what turned an agreed idea into a permanent chore.
+  - ⚠️ **`canDeleteRequest()` spells its statuses out and must NOT call `isSettled()`.**
+    They used to be the same predicate; now `isSettled` counts an approved idea as done
+    (for the Open/Done filter) while the server still refuses to delete any `approved` row
+    (0203) — sharing it would paint a Delete button the RPC answers with an error.
   - ⚠️ **`ordered` IS terminal, and there is deliberately no "it arrived" step.** A thing
     that's been ordered obviously turns up, and a second box for a House Admin to come back
     and tick later is exactly how a board fills with stale rows nobody closes. So the
@@ -713,6 +765,10 @@ house submits one of three kinds; a House Admin decides, then records what happe
     becomes deletable), and `statusLabel`'s non-reimbursement "Got it" wording is kept only
     so any pre-existing row still reads sensibly. The DB still *allows* `received` for a
     purchase — nothing creates it — so restoring the step would need no migration.
+  - ⚠️ **Every wording change here is presentation-only — no row was migrated or
+    deleted.** An existing pending/approved request keeps its kind, status, amounts and
+    history untouched and simply re-renders in the clearer form (an already-approved idea,
+    for instance, stops reading as an unfinished errand without anything being written).
 - ⚠️ **NOT work items, and never merged with them.** [`work_items`](lib/workItems.ts) stays
   the more prominent list of things that NEED doing (urgency tiers, recurrence, event
   linking). This is the separate "should we?" board. Neither creates the other, there is

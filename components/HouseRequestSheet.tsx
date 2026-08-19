@@ -6,6 +6,7 @@ import {
   canDeleteRequest,
   deleteHouseRequest,
   fetchPayMethods,
+  nextStep,
   payPrefillFor,
   requestCost,
   statusChip,
@@ -44,18 +45,27 @@ export function HouseRequestSheet({
   onClose,
   onChanged,
   onEdit,
+  onPromote,
 }: {
   request: HouseRequest;
   canReview: boolean;
   onClose: () => void;
   onChanged: () => void;
   onEdit: () => void;
+  /**
+   * "The house agreed — now actually buy it": opens a NEW purchase request seeded
+   * from this idea. This is the answer to "so what happens to an idea everyone
+   * likes?", and it's what keeps 💡 genuinely distinct from 🛒 rather than a
+   * softer way of asking for the same thing.
+   */
+  onPromote?: () => void;
 }) {
   const { closing, close } = useSheetDismiss(onClose);
   const { previewAsId } = useIdentity();
   const [busy, setBusy] = useState(false);
   const meta = KIND_META[request.kind];
   const cost = requestCost(request);
+  const next = nextStep(request);
   // "View as" is strictly read-only — never write as the previewed member.
   const canAct = canReview && !previewAsId;
   const canWithdraw = request.mine && request.status === "pending" && !previewAsId;
@@ -125,14 +135,24 @@ export function HouseRequestSheet({
       : request.status === "withdrawn"
         ? [{ label: "Withdrawn", at: request.reviewedAt, done: true }]
         : [
-            { label: "Approved", at: request.reviewedAt, done: request.reviewedAt !== null && request.status !== "pending" },
-            // ⚠️ A purchase/idea ENDS at Ordered — no "Here" step. Something
-            // that's been ordered obviously turns up, and a second box for a
-            // House Admin to tick later is just a row nobody ever closes.
-            // A reimbursement ends at Paid, which is the moment that matters.
-            ...(request.kind === "reimbursement"
-              ? [{ label: "Paid", at: request.receivedAt, done: request.receivedAt !== null }]
-              : [{ label: "Ordered", at: request.orderedAt, done: request.orderedAt !== null }]),
+            {
+              // An idea isn't "approved" like a spend is — it's agreed to.
+              label: request.kind === "idea" ? "The house is up for it" : "Approved",
+              at: request.reviewedAt,
+              done: request.reviewedAt !== null && request.status !== "pending",
+            },
+            // ⚠️ A purchase ENDS at Ordered — no "Here" step. Something that's
+            // been ordered obviously turns up, and a second box for a House Admin
+            // to tick later is just a row nobody ever closes. A reimbursement ends
+            // at Paid, which is the moment that matters. An IDEA has no third step
+            // at all — nothing gets bought, so agreeing to it is the end of the
+            // line, and a permanently-empty "Ordered" circle made a finished idea
+            // look like an unfinished errand.
+            ...(request.kind === "idea"
+              ? []
+              : request.kind === "reimbursement"
+                ? [{ label: "Paid", at: request.receivedAt, done: request.receivedAt !== null }]
+                : [{ label: "Ordered", at: request.orderedAt, done: request.orderedAt !== null }]),
           ]),
   ];
 
@@ -155,11 +175,31 @@ export function HouseRequestSheet({
             {request.title}
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            {meta.label} from {request.createdByName} · {formatDate(request.createdAt)}
+            <span className={`font-semibold ${meta.text}`}>{meta.label}</span> from {request.createdByName} ·{" "}
+            {formatDate(request.createdAt)}
           </p>
         </div>
       }
     >
+      {/* ⚠️ The deal, restated on the one screen where somebody decides. Whoever
+          opens this — the requester checking on it, or the House Admin about to
+          act — needs "whose money, and who does the buying" without inferring it
+          from a chip color. `nextStep` names who currently holds the ball. */}
+      <div className={`space-y-1.5 rounded-2xl border-l-4 bg-card p-4 ring-1 ring-border ${meta.edge}`}>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.chip}`}>
+            {meta.money}
+          </span>
+        </div>
+        <p className="text-xs leading-relaxed text-foreground/80">{meta.deal}</p>
+        {next && (
+          <p className="text-xs font-semibold text-foreground/70">
+            <span aria-hidden>→ </span>
+            {next}
+          </p>
+        )}
+      </div>
+
       {(cost !== null || request.quantity) && (
         <div className="flex items-baseline gap-2 rounded-2xl bg-card p-4 ring-1 ring-border">
           <span className="text-2xl font-bold tabular-nums">{formatMoney(cost)}</span>
@@ -282,6 +322,26 @@ export function HouseRequestSheet({
       )}
 
       <DecisionNote request={request} />
+
+      {/* The idea's payoff. Open to ANY member of the house (not just reviewers) —
+          noticing that an agreed idea is ready to actually buy isn't an admin
+          job, and the new request goes through the normal approval anyway. The
+          idea itself stays on the board as the record of the conversation. */}
+      {onPromote && request.kind === "idea" && request.status === "approved" && !previewAsId && (
+        <div className="space-y-1.5 rounded-2xl bg-lake/10 p-3">
+          <p className="text-xs leading-relaxed text-foreground/80">
+            The house is up for this. Ready to actually buy something for it? Send it on as a purchase request so a
+            House Admin can order it.
+          </p>
+          <button
+            type="button"
+            onClick={onPromote}
+            className="press w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
+          >
+            🛒 Turn this into a purchase request
+          </button>
+        </div>
+      )}
 
       {request.orderNote?.trim() && (
         <div className="space-y-1.5">

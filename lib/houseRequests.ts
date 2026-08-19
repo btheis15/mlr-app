@@ -85,11 +85,173 @@ export interface HouseRequest {
 
 // ── Presentation helpers (pure — shared by the board, sheet and admin queue) ──
 
-export const KIND_META: Record<HouseRequestKind, { emoji: string; label: string; tile: string }> = {
-  idea: { emoji: "💡", label: "Idea", tile: "bg-sun/12" },
-  purchase: { emoji: "🛒", label: "Purchase Request", tile: "bg-lake/12" },
-  reimbursement: { emoji: "🧾", label: "Request Reimbursement", tile: "bg-accent/12" },
+/**
+ * What a kind IS, in the only terms that matter: **whose money, and who does the
+ * buying.**
+ *
+ * ⚠️⚠️ THIS IS THE FIX FOR THE FEATURE'S ONE REAL USABILITY FAILURE. Brian filed
+ * a "Purchase Request" and the House Admins read it as *"he's buying this
+ * himself"* — so nobody ordered anything. Nothing on any screen contradicted
+ * them, because every label named the PAPERWORK ("Purchase Request", "Request
+ * Reimbursement") instead of the DEAL ("the House Trust pays and a House Admin
+ * places the order"). Three tiles that differ only by a noun and an emoji cannot
+ * teach anyone the difference.
+ *
+ * So: every kind now carries the deal as a sentence, and **every surface that
+ * shows a kind shows that sentence** — the chooser, the composer banner, the
+ * board card, the detail sheet. If you add a surface, show `deal` on it.
+ *
+ * The old labels are deliberately gone. "Purchase Request" is a form name;
+ * "The house should buy this" is the ask.
+ */
+export interface HouseRequestKindMeta {
+  emoji: string;
+  /**
+   * A plain third-person NOUN — what the row is, for chips, history, the detail
+   * header and email subjects.
+   *
+   * ⚠️ Keep this a noun that survives a possessive. It's tempting to make it the
+   * punchy requester-voice phrase instead ("Pay me back"), and that reads well on
+   * a card right up until the co-admin email says *"Lee paid Brian's pay me
+   * back"* — which the email preview duly produced. The first-person ask lives in
+   * `ask` (chooser only); this one has to work in someone else's sentence.
+   */
+  label: string;
+  /** The ask in the REQUESTER's own voice — the chooser tile's headline only. */
+  ask: string;
+  /**
+   * ⚠️ The load-bearing sentence: whose money, and who places the order.
+   *
+   * ⚠️ Phrased NEUTRALLY (no "you"/"your"), because it renders both to the person
+   * writing the request and to everyone else reading it later. The composer adds
+   * its own second-person version of the same point per kind, where the emphasis
+   * belongs.
+   */
+  deal: string;
+  /**
+   * Two or three words naming whose money this is. Card badge.
+   *
+   * ⚠️ Must read correctly to a THIRD PARTY, not just the requester — most views
+   * of a request are by somebody else. "You're owed" is wrong on a House Admin's
+   * screen looking at Cass's receipt.
+   */
+  money: string;
+  /** What the requester is on the hook for after sending. Often "nothing". */
+  youDo: string;
+  /** What a House Admin actually does once they approve it. */
+  adminDoes: string;
+  /** Icon tile background. */
+  tile: string;
+  /** Left edge on a board card, so the three read apart at a glance. */
+  edge: string;
+  /** The kind's own text color. */
+  text: string;
+  /** The whose-money badge. */
+  chip: string;
+}
+
+export const KIND_META: Record<HouseRequestKind, HouseRequestKindMeta> = {
+  idea: {
+    emoji: "💡",
+    label: "Idea",
+    ask: "Just an idea",
+    deal: "Nobody buys anything — just a thought for the house to kick around.",
+    money: "No money",
+    youDo: "Write it down — that's the whole job.",
+    adminDoes: "Says whether the house likes it. If it becomes a real thing to buy, that's a separate purchase request.",
+    tile: "bg-sun/12",
+    edge: "border-l-sun",
+    text: "text-sun",
+    chip: "bg-sun/15 text-sun",
+  },
+  purchase: {
+    emoji: "🛒",
+    label: "Purchase request",
+    ask: "The house should buy this",
+    // The sentence the whole incident turned on. Keep "not you" in it.
+    deal: "House Trust money — a House Admin places the order, not the person asking.",
+    money: "House Trust pays",
+    youDo: "Nothing — sit tight. If you'd rather buy it yourself, send a “Pay me back” instead.",
+    adminDoes: "Orders it with House Trust funds, then marks it ordered here.",
+    tile: "bg-lake/12",
+    edge: "border-l-lake",
+    text: "text-lake",
+    chip: "bg-lake/15 text-lake",
+  },
+  reimbursement: {
+    emoji: "🧾",
+    label: "Reimbursement",
+    ask: "I already paid — pay me back",
+    deal: "Already paid for out of pocket — the House Trust pays it back.",
+    money: "Owed back",
+    youDo: "Attach the receipt so nobody has to come asking for it.",
+    adminDoes: "Approves it and sends you the money.",
+    tile: "bg-accent/12",
+    edge: "border-l-accent",
+    text: "text-accent",
+    chip: "bg-accent/15 text-accent",
+  },
 };
+
+/** The three kinds in the order the chooser offers them — cheapest ask first. */
+export const KIND_ORDER: HouseRequestKind[] = ["idea", "purchase", "reimbursement"];
+
+/**
+ * ⚠️ Only a REIMBURSEMENT and a PURCHASE involve money. An idea deliberately has
+ * no cost field anywhere — a price box on a "wouldn't it be nice if" is exactly
+ * the friction that stops ideas being written down, and a number on one makes it
+ * look like a proposal somebody has to decide about.
+ */
+export function hasMoney(kind: HouseRequestKind): boolean {
+  return kind !== "idea";
+}
+
+/**
+ * The approve/deny verbs, per kind. "Approve" is right for money and wrong for a
+ * thought — you don't *approve* an idea, you say whether the house is up for it.
+ * Naming the follow-through in the approve verb ("I'll order it") is also the
+ * last place to tell a House Admin the ball is theirs.
+ */
+export function decideLabels(kind: HouseRequestKind): { approve: string; deny: string } {
+  switch (kind) {
+    case "idea":
+      return { approve: "Yes — the house likes it", deny: "Not now" };
+    case "purchase":
+      return { approve: "Approve — I'll order it", deny: "Turn it down" };
+    case "reimbursement":
+      return { approve: "Approve — pay them back", deny: "Turn it down" };
+  }
+}
+
+/**
+ * "So what happens next, and who does it?" — null once nothing is owed by
+ * anyone. Deliberately names the ACTOR every time: the failure this feature
+ * exists to prevent is everyone assuming somebody else has it.
+ */
+export function nextStep(r: Pick<HouseRequest, "status" | "kind">): string | null {
+  if (r.status === "pending") {
+    switch (r.kind) {
+      case "idea":
+        return "A House Admin says yes or no";
+      case "purchase":
+        return "A House Admin decides, then orders it";
+      case "reimbursement":
+        return "A House Admin decides, then pays you back";
+    }
+  }
+  if (r.status === "approved") {
+    switch (r.kind) {
+      // An agreed idea is finished — there's nothing to order.
+      case "idea":
+        return null;
+      case "purchase":
+        return "A House Admin still has to order it";
+      case "reimbursement":
+        return "Nobody has sent the money yet";
+    }
+  }
+  return null;
+}
 
 /**
  * The status label a HUMAN should read, which depends on the kind: nothing gets
@@ -101,7 +263,12 @@ export function statusLabel(r: Pick<HouseRequest, "status" | "kind">): string {
     case "pending":
       return "Waiting on a House Admin";
     case "approved":
-      return r.kind === "reimbursement" ? "Approved — not paid yet" : "Approved — not ordered yet";
+      // ⚠️ Per kind, because "approved" means three different things. An IDEA is
+      // FINISHED here — the house said yes and there is nothing to buy, so
+      // labelling it "not ordered yet" invented a chore nobody owed and parked a
+      // permanent nag on the board.
+      if (r.kind === "idea") return "The house is up for it";
+      return r.kind === "reimbursement" ? "Approved — not paid yet" : "Approved — nobody's ordered it yet";
     case "ordered":
       // Terminal for a purchase/idea — there's no "arrived" step to wait on.
       return "Ordered";
@@ -144,7 +311,9 @@ export type HouseRequestGroup = "waiting" | "toDo" | "moving" | "done";
 
 export function requestGroup(r: HouseRequest): HouseRequestGroup {
   if (r.status === "pending") return "waiting";
-  if (r.status === "approved") return "toDo";
+  // An approved IDEA is done — nothing is owed, so it must not sit in the
+  // "somebody still has to buy this" group forever (see statusLabel).
+  if (r.status === "approved") return r.kind === "idea" ? "done" : "toDo";
   if (r.status === "ordered") return "moving";
   return "done";
 }
@@ -159,6 +328,11 @@ export function requestGroup(r: HouseRequest): HouseRequestGroup {
  * REIMBURSEMENT, where it means **Paid** and is genuinely the moment that matters.
  */
 export function isSettled(r: HouseRequest): boolean {
+  // An approved IDEA is settled too — the house said yes and there's nothing to
+  // buy. ⚠️ This is PRESENTATION only (the Open/Done filter). Do NOT reuse it as
+  // the delete gate: the server still refuses to delete an `approved` row of any
+  // kind (0203), so `canDeleteRequest` mirrors that SQL directly instead.
+  if (r.status === "approved") return r.kind === "idea";
   return (
     r.status === "ordered" || r.status === "received" || r.status === "denied" || r.status === "withdrawn"
   );
@@ -174,8 +348,17 @@ export interface HouseRequestSummary {
   waiting: number;
   /** Total estimated cost of everything still pending. */
   waitingCost: number;
-  /** Approved but not yet ordered/received — the "we never do it" gap. */
+  /**
+   * Approved PURCHASES nobody has ordered — the "we never actually do it" gap.
+   * ⚠️ Purchases only. An approved idea has nothing to order, and an approved
+   * reimbursement needs *paying*, not buying — lumping all three under "approved,
+   * not bought yet" is how an agreed idea became a permanent fake chore.
+   */
   notOrdered: number;
+  /** Approved reimbursements nobody has paid — somebody is out of pocket. */
+  unpaid: number;
+  /** What those unpaid reimbursements come to. */
+  unpaidCost: number;
   /** Money on approved/ordered/received requests decided this calendar year. */
   approvedThisYear: number;
 }
@@ -184,6 +367,8 @@ export function summarize(requests: HouseRequest[], year = new Date().getFullYea
   let waiting = 0;
   let waitingCost = 0;
   let notOrdered = 0;
+  let unpaid = 0;
+  let unpaidCost = 0;
   let approvedThisYear = 0;
   for (const r of requests) {
     if (r.status === "pending") {
@@ -191,7 +376,13 @@ export function summarize(requests: HouseRequest[], year = new Date().getFullYea
       waitingCost += r.estCost ?? 0;
       continue;
     }
-    if (r.status === "approved") notOrdered += 1;
+    if (r.status === "approved") {
+      if (r.kind === "purchase") notOrdered += 1;
+      if (r.kind === "reimbursement") {
+        unpaid += 1;
+        unpaidCost += requestCost(r) ?? 0;
+      }
+    }
     const decided = r.reviewedAt ?? r.createdAt;
     if (
       (r.status === "approved" || r.status === "ordered" || r.status === "received") &&
@@ -200,7 +391,7 @@ export function summarize(requests: HouseRequest[], year = new Date().getFullYea
       approvedThisYear += requestCost(r) ?? 0;
     }
   }
-  return { waiting, waitingCost, notOrdered, approvedThisYear };
+  return { waiting, waitingCost, notOrdered, unpaid, unpaidCost, approvedThisYear };
 }
 
 /** "3 days" / "today" — how long a pending request has been sitting. */
@@ -577,10 +768,21 @@ export function deleteHouseRequest(id: string): Promise<Res> {
   return rpc("delete_house_request", { p_id: id });
 }
 
-/** Client-side twin of 0201's gate — keep the two in step. Anything settled (which
- *  now includes an ordered purchase, see isSettled) or any test row. */
+/**
+ * Client-side twin of **0203's** gate — keep the two in step, and spell the
+ * statuses out rather than calling `isSettled()`. They used to be the same
+ * function, but `isSettled` now counts an approved IDEA as done for the
+ * Open/Done filter, and the server still refuses to delete any `approved` row —
+ * so sharing it would paint a Delete button the RPC answers with an error.
+ */
 export function canDeleteRequest(r: HouseRequest): boolean {
-  return r.testOnly || isSettled(r);
+  return (
+    r.testOnly ||
+    r.status === "ordered" ||
+    r.status === "received" ||
+    r.status === "denied" ||
+    r.status === "withdrawn"
+  );
 }
 
 export async function addHouseRequestMedia(
