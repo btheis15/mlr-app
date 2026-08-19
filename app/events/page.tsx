@@ -17,6 +17,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useEvents, usePrivateActivities } from "@/lib/hooks";
 import { EMPTY_SUMMARY, effectiveStatus, pastEvents, upcomingEvents } from "@/lib/events";
 import { fetchCanOrganize } from "@/lib/meetings";
+import { useEventHosting } from "@/lib/eventHosts";
 import type { AttendanceStatus, ResortEvent } from "@/lib/types";
 
 // The full resort calendar: every upcoming gathering with a Going/Maybe/Can't-make
@@ -91,9 +92,19 @@ export default function EventsPage() {
     const m = mine[e.id];
     return m ? effectiveStatus(m.status, m.days) : null;
   };
-  // Any signed-in member can create an event (0187) — editing/deleting it, and
-  // assigning work items to it, is admin OR that event's own creator.
-  const canManageEvent = (e: ResortEvent) => isAdmin || (!!userId && e.createdBy === userId);
+  // Who may change an event and RSVP other people to it. Any signed-in member
+  // can CREATE one (0187); management used to be "admin OR its creator", and is
+  // now host-aware (0209): no hosts ⇒ any member, person hosts ⇒ those people, a
+  // committee host ⇒ its leads (or any member of it, if it has no leads), always
+  // plus an admin and the creator.
+  //
+  // ⚠️ Resolved BY THE DATABASE (`my_event_permissions`) rather than recomputed
+  // here — see lib/eventHosts.ts. `oldRule` is the pre-0209 predicate, used as
+  // the pre-migration fallback so an unmigrated database keeps exactly today's
+  // behaviour instead of hiding Edit from the admins and creators who have it.
+  const oldRule = (e: { createdBy?: string | null }) => isAdmin || (!!userId && e.createdBy === userId);
+  const { hosts, permFor, reload: reloadHosting } = useEventHosting(events, oldRule);
+  const canManageEvent = (e: ResortEvent) => permFor(e.id).canManage;
 
   const allUpcoming = today ? upcomingEvents(events, today) : [];
   // Events you've said you can't make tuck into their own collapsible group below
@@ -265,6 +276,8 @@ export default function EventsPage() {
           onSetStatus={(s, days) => setStatus(openEvent.id, s, days)}
           onClose={() => setOpenId(null)}
           canManage={canManageEvent(openEvent)}
+          canDelete={permFor(openEvent.id).canDelete}
+          hosts={hosts.get(openEvent.id) ?? []}
           onEdit={
             canManageEvent(openEvent) && openEvent.persisted
               ? () => {
@@ -273,7 +286,7 @@ export default function EventsPage() {
                 }
               : undefined
           }
-          onChanged={reload}
+          onChanged={() => { reload(); reloadHosting(); }}
         />
       )}
 

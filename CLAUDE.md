@@ -1368,7 +1368,11 @@ was needed for any of this**.
 - 📱 **iOS is not updated** — the native app mirrors `festSeason.ts` and reads
   `fest_config` with its own hardcoded year, so it will keep treating the newest
   fest as the only one and has no Past Years. Shared schema, no backend change
-  needed; see [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+  needed. ⚠️ **Do not port the fest section from
+  [`docs/ios-parity-2026-08/13-family-fest.md`](docs/ios-parity-2026-08/13-family-fest.md)
+  without reading this section first** — that doc predates this change and
+  describes the four-phase season and the one-fest-at-a-time content layer, so
+  building to it would reproduce the "finished fest says it's live" bug.
 
 ## Family Fest dues calculator
 
@@ -2726,6 +2730,79 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   - ⚠️ **Needs a mini `git pull` + restart** (Admin → Media server) like all
     mailer changes — until then rows queue in `event_messages` and go out on the
     next restart via the 3-minute sweep.
+### Event hosts — who's running it, and therefore who can change it (migration 0209)
+
+Since 0187 any member can create an event, but MANAGING one (edit, delete, assign
+work items, email everyone, RSVP other people) was "an app admin OR its creator".
+Too narrow for how the family actually works: a Work Weekend belongs to the
+**Resort Maintenance committee**, not to whoever typed it in first — and if that
+person is away, nobody else can add the cousin who phoned to say she's coming. An
+event now carries zero or more **hosts**, each either a **person** or a whole
+**committee**.
+
+- **The rule** (`can_manage_event`, recreated host-aware): **no hosts → any
+  signed-in member** · **person host(s) → those people** · **committee host, and
+  that committee HAS leads → its LEADS only** · **committee host with no leads →
+  any member of it** — always plus an app admin and the event's creator. The
+  creator is kept deliberately: otherwise naming a committee host would be a
+  one-way door locking the author out of their own event.
+- ⚠️ **RSVPing YOURSELF is never gated by any of this.** `set_event_attendance`
+  (0035) is untouched. Hosts govern acting on OTHER people (`add_event_attendee`,
+  0196) and changing the event.
+- ⚠️⚠️ **THIS LOOSENED PERMISSIONS ON EVERY EXISTING EVENT.** Nothing had hosts
+  when it shipped, so the "no hosts → any member" branch applied to all of them
+  immediately: an event only its creator could edit became editable by any member.
+  That is the requested behaviour and it matches the member-createable doctrine
+  (0187) — but it changed existing rows, not just new ones. **Setting a host is
+  what narrows it again.**
+- ⚠️ **`can_delete_event` is a SEPARATE, narrower function** — the same rule minus
+  the open fallback. Deleting an event destroys every RSVP on it and can't be
+  undone; "any member, because nobody set a host" is fine for editing a location,
+  not for erasing Labor Day weekend and 30 people's answers. A hostless event
+  stays creator-and-admin-only to delete, exactly as before.
+- ⚠️⚠️ **The four write RPCs that INLINE the old rule had to be recreated, or the
+  feature would have half-worked silently.** 0190 added `can_manage_event()` for
+  new callers and deliberately did NOT rewire `update_event` / `delete_event` /
+  `sync_event_work_items` / `remove_work_item_from_event`, which each carry their
+  own copy of "admin OR creator". Widening only the helper would have let a host
+  email about an event and add attendees but **not edit it**. Each body was copied
+  **verbatim from its current production definition** (0187 / 0188) with only the
+  permission block swapped — the 0160 rule.
+- ⚠️ **`event_id` is TEXT with no FK**, matching `event_attendance` (0035): Family
+  Fest and the holiday weekends are synthesized in client code with string ids
+  (`family-fest-2026`), and a uuid FK would make exactly the events the family
+  cares most about the only ones that can't have a host. The price is manual
+  cleanup — `delete_event` now clears `event_hosts` alongside `event_attendance`.
+- ⚠️ **The client does NOT re-implement the rule.** Resolving it needs the
+  viewer's committee memberships, which they lead, AND whether each committee has
+  leads at all — three reads and a second copy of a four-branch predicate that
+  would drift on the first change to either side. `my_event_permissions(ids[])`
+  returns `{can_manage, can_delete}` per event in **one round-trip** for a whole
+  calendar, running the same functions the write RPCs enforce (the
+  `event_message_preview` doctrine, 0192). `event_hosts_for(ids[])` likewise
+  returns hosts with names/emoji already joined.
+  - **Pre-migration the seam degrades to the OLD rule**, not to "nothing is
+    manageable" — otherwise an unmigrated database would strip Edit from the
+    admins and creators who legitimately have it.
+  - `useEventHosting(events, fallback)` ([`lib/eventHosts.ts`](lib/eventHosts.ts))
+    is shared by every surface that opens an `EventSheet` with management
+    affordances (`/events`, Home's `UpcomingEvents`) so they can't disagree about
+    who may edit what.
+- **Read RLS is members-only**, not public like `events` itself — a host row names
+  a PERSON, so it follows the 0081 lockdown. A guest sees no host line rather than
+  a partial one. Writes go only through `add_event_host` / `remove_event_host`
+  (both gated on `can_manage_event`); ⚠️ removal re-checks it *before* deleting,
+  since removing the last host WIDENS the event back to everybody.
+- **UI:** hosts render as chips in [`EventSheet`](components/EventSheet.tsx) (a
+  committee chip links to its page); [`EventHostEditor`](components/EventHostEditor.tsx)
+  is the add/remove editor, shown to managers on real DB events.
+  ⚠️ It lives in the SHEET, not `EventComposer`: a brand-new event has no id to
+  attach a host row to, which would mean staging hosts and flushing them after the
+  first save (the `flushPendingSlots` dance) for no real gain. Create, then hand
+  it over. ⚠️ Committee options are filtered to real uuids — `fetchCommittees()`
+  falls back to a seed whose `id` is the SLUG, which would fail the uuid cast.
+- 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
+
 - **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
   Google-Calendar ICS feed (see Backend seams); an in-app Activity notification
@@ -3948,7 +4025,9 @@ not a forwarded link. Server half:
   iOS devices across 2 members (Brian, Annette) and the native app has no
   `/media-token` support — enforcement 403s every photo in it. Promote to `on` only
   after iOS ships the token, verified via `report` mode's WOULD-BLOCK log. Full iOS
-  handoff spec: [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+  handoff spec: [`docs/ios-parity-2026-08/`](docs/ios-parity-2026-08/) (media server +
+  signed reads are §15) — **`docs/IOS_PARITY.md` does not exist**; that filename was
+  referenced here for a while and led nowhere.
 - **A cookie would be simpler and was DECLINED (2026-08-10).** Same-origin it isn't —
   app on `vercel.app`, media on `duckdns.org` are different *sites*, so the cookie
   would be third-party and Safari/iOS blocks it. Making it work needs a real domain
