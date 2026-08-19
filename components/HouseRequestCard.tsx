@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import {
   KIND_META,
   ageLabel,
+  decideLabels,
   fetchHouseAdmins,
+  nextStep,
   requestCost,
   reviewHouseRequest,
   setHouseRequestProgress,
@@ -79,12 +81,16 @@ export function HouseRequestCard({
 }) {
   const meta = KIND_META[request.kind];
   const cost = requestCost(request);
+  const next = nextStep(request);
   return (
     <button
       type="button"
       id={`request-${request.id}`}
       onClick={onOpen}
-      className="press flex w-full items-start gap-3 rounded-2xl bg-card p-4 text-left ring-1 ring-border transition-shadow hover:shadow-sm"
+      // ⚠️ The colored left edge + the kind line below are what make three
+      // requests on one board read as three DIFFERENT things. A small emoji tile
+      // alone was the entire distinction before, and it wasn't one.
+      className={`press flex w-full items-start gap-3 rounded-2xl border-l-4 bg-card p-4 text-left ring-1 ring-border transition-shadow hover:shadow-sm ${meta.edge}`}
     >
       <span
         aria-hidden
@@ -97,6 +103,13 @@ export function HouseRequestCard({
           <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{request.title}</p>
           {cost !== null && <span className="shrink-0 text-sm font-semibold tabular-nums">{formatMoney(cost)}</span>}
         </div>
+        {/* What kind it is AND whose money — on every row, never inferred from a
+            color. An amount with no label reads as "somebody spent this". */}
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+          <span className={`font-semibold ${meta.text}`}>{meta.label}</span>
+          <span className="text-faint">·</span>
+          <span className="text-muted">{meta.money}</span>
+        </p>
         <p className="mt-0.5 truncate text-xs text-muted">
           {request.createdByName}
           {houseName ? ` · ${houseName}` : ""}
@@ -124,6 +137,14 @@ export function HouseRequestCard({
           )}
           {request.links.length > 0 && <span className="text-[11px] text-faint">🔗</span>}
         </div>
+        {/* "→ A House Admin still has to order it" — the ball, named, on the row.
+            The whole failure mode here is everyone assuming somebody else has it. */}
+        {next && (
+          <p className="mt-1 text-[11px] font-medium text-foreground/70">
+            <span aria-hidden>→ </span>
+            {next}
+          </p>
+        )}
       </div>
     </button>
   );
@@ -153,6 +174,8 @@ export function ReviewActions({
   const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const coAdmins = useCoAdmins(request);
+  const meta = KIND_META[request.kind];
+  const verbs = decideLabels(request.kind);
 
   const act = async (approve: boolean) => {
     setBusy(approve ? "approve" : "deny");
@@ -169,36 +192,44 @@ export function ReviewActions({
 
   return (
     <div className="space-y-2 rounded-2xl bg-background p-3 ring-1 ring-border">
+      {/* ⚠️ What approving actually COMMITS THIS ADMIN TO, before they tap it.
+          "Approve" on its own never said that ordering the thing was now their
+          job — which is precisely how an approved request sat unbought. */}
+      <p className="text-[11px] leading-relaxed text-muted">
+        <span className={`font-semibold ${meta.text}`}>{meta.money}.</span> If you approve: {meta.adminDoes}
+      </p>
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Add a note (optional) — they'll see this"
         className="w-full rounded-xl bg-card px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
       />
+      {/* Approve gets its own full-width row: the verb names the follow-through
+          ("Approve — I'll order it"), which doesn't fit three-to-a-row. */}
+      <button
+        type="button"
+        onClick={() => act(true)}
+        disabled={busy !== null}
+        className="press w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy === "approve" ? "…" : verbs.approve}
+      </button>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => act(true)}
-          disabled={busy !== null}
-          className="press flex-1 rounded-xl bg-primary py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {busy === "approve" ? "…" : "Approve"}
-        </button>
         <button
           type="button"
           onClick={onModify}
           disabled={busy !== null}
-          className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-primary ring-1 ring-primary/30 disabled:opacity-50"
+          className="press flex-1 rounded-xl bg-card px-3 py-2 text-sm font-semibold text-primary ring-1 ring-primary/30 disabled:opacity-50"
         >
-          Modify
+          Change it first
         </button>
         <button
           type="button"
           onClick={() => act(false)}
           disabled={busy !== null}
-          className="press rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
+          className="press flex-1 rounded-xl bg-card px-3 py-2 text-sm font-semibold text-accent ring-1 ring-accent/30 disabled:opacity-50"
         >
-          {busy === "deny" ? "…" : "Deny"}
+          {busy === "deny" ? "…" : verbs.deny}
         </button>
       </div>
       <label className="flex items-center gap-2 text-xs text-muted">
@@ -229,9 +260,14 @@ export function ProgressActions({ request, onDone }: { request: HouseRequest; on
   // ⚠️ ONE forward step, and only from `approved`. A purchase ends at Ordered and
   // a reimbursement ends at Paid — there is no follow-up box to tick, so once a
   // request has moved there's nothing left to render here at all.
+  //
+  // ⚠️ AN IDEA HAS NO FORWARD STEP. Nothing is bought and nothing is paid, so
+  // "Mark ordered" on an agreed idea was an action with no meaning that left the
+  // row looking unfinished forever. Agreeing to it IS the end (see statusLabel /
+  // requestGroup, which now treat an approved idea as done).
   const next: "ordered" | "received" | null =
-    request.status !== "approved" ? null : isReimbursement ? "received" : "ordered";
-  const label = next === "received" ? "Mark paid" : "Mark ordered";
+    request.status !== "approved" || request.kind === "idea" ? null : isReimbursement ? "received" : "ordered";
+  const label = next === "received" ? "Mark it paid" : "Mark it ordered";
 
   const go = async () => {
     if (!next) return;

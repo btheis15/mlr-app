@@ -115,13 +115,19 @@ function HouseHubBody({
   // has actually bought yet (the gap the feature exists to expose).
   const { requests, loading: requestsLoading } = useHouseRequests(houseId);
   const reqSummary = summarizeRequests(requests);
+  // ⚠️ "Approved, not bought" and "approved, not PAID" are separate chores now
+  // (summarize() splits them by kind) — an unpaid reimbursement means somebody in
+  // the family is personally out of pocket, which reads very differently from an
+  // unordered purchase and shouldn't be flattened into one count.
   const requestsSubtitle = requestsLoading
     ? "Loading…"
     : reqSummary.waiting > 0
-      ? `${reqSummary.waiting} waiting on a decision${reqSummary.notOrdered > 0 ? ` · ${reqSummary.notOrdered} approved, not bought` : ""}`
+      ? `${reqSummary.waiting} waiting on a decision${reqSummary.notOrdered > 0 ? ` · ${reqSummary.notOrdered} to order` : ""}${reqSummary.unpaid > 0 ? ` · ${reqSummary.unpaid} to pay out` : ""}`
       : reqSummary.notOrdered > 0
-        ? `${reqSummary.notOrdered} approved — nobody's bought ${reqSummary.notOrdered === 1 ? "it" : "them"} yet`
-        : "Ideas, things to buy, money to pay back.";
+        ? `${reqSummary.notOrdered} approved — nobody's ordered ${reqSummary.notOrdered === 1 ? "it" : "them"} yet`
+        : reqSummary.unpaid > 0
+          ? `${reqSummary.unpaid} approved — nobody's been paid back yet`
+          : "Ideas, things for the house to buy, money to pay back.";
 
   const calHref = `/house/calendar?house=${slug}`;
   const listsHref = `/house/lists?house=${slug}`;

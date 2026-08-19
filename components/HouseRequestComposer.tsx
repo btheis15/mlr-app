@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import type { EventLink } from "@/lib/types";
 import {
   KIND_META,
+  KIND_ORDER,
   addHouseRequestMedia,
   createHouseRequest,
   fetchHouseAdmins,
   fetchPayMethods,
+  hasMoney,
   updateHouseRequest,
   type HouseAdmin,
   type HouseRequest,
@@ -31,8 +33,10 @@ import { formatMoney, plural } from "@/lib/format";
  */
 const LINK_COPY: Record<HouseRequestKind, { heading: string; hint: string; urlPlaceholder: string; labelPlaceholder: string }> = {
   purchase: {
-    heading: "Where to buy it",
-    hint: "Paste the link to the exact thing you mean, so nobody has to go hunting for it.",
+    heading: "Where a House Admin should buy it",
+    // Names the reader of this field. The link isn't decoration on a purchase
+    // request — it's the instruction for whoever places the order.
+    hint: "Paste the link to the exact thing you mean. Whoever orders it shouldn't have to go hunting for the right one.",
     urlPlaceholder: "amazon.com/…",
     labelPlaceholder: "e.g. Amazon — 100 pack",
   },
@@ -51,11 +55,24 @@ const LINK_COPY: Record<HouseRequestKind, { heading: string; hint: string; urlPl
 };
 
 /**
- * Add or edit a house request (migration 0195). The KIND is chosen first, as
- * three tiles, and the rest of the form adapts to it — an idea asks for almost
- * nothing (which is the point: the friction is why ideas never get written
- * down), a purchase request wants the link and the estimate, and a
- * reimbursement wants the real amount plus a receipt.
+ * Add or edit a house request (migration 0195).
+ *
+ * ⚠️⚠️ **PICKING THE KIND IS ITS OWN STEP, AND THERE IS NO DEFAULT.** The form
+ * does not exist until you've chosen. This is the structural half of the fix
+ * described on `KIND_META`: the composer used to open with **Purchase Request
+ * pre-selected**, so it was entirely possible — easy, even — to fill the whole
+ * thing in and send it having never read the three tiles or made a choice at
+ * all. That is exactly what happened, and the House Admins on the other end got
+ * "New purchase request" for something they assumed the sender was buying
+ * himself. A default here isn't a convenience, it's a decision made on the
+ * member's behalf about who spends whose money.
+ *
+ * Step 1 is three full-width rows, each stating the deal and who does what. Step
+ * 2 is the form, headed by a **banner that keeps that deal on screen** while you
+ * fill it in, with a Change link back. The form then adapts: an idea asks for
+ * almost nothing and has **no cost field at all** (the friction is precisely why
+ * ideas never get written down), a purchase wants the link + estimate, and a
+ * reimbursement wants the real total plus a receipt.
  *
  * In edit mode the kind is FIXED. Changing it would silently invalidate the
  * fields already filled for the old kind (an idea has no amount, a
@@ -66,6 +83,7 @@ export function HouseRequestComposer({
   houseId,
   houseName,
   request,
+  prefill,
   canTest = false,
   onClose,
   onSaved,
@@ -74,6 +92,17 @@ export function HouseRequestComposer({
   houseName: string;
   /** Present = edit mode (creator while pending, or a reviewer any time). */
   request?: HouseRequest | null;
+  /**
+   * A brand-NEW request seeded from an existing one — today, "the house agreed to
+   * this idea, now actually buy it" (see `HouseRequestSheet`). Distinct from
+   * `request`, which EDITS a row: this creates a separate one, and the idea stays
+   * on the board as the record of the conversation.
+   *
+   * ⚠️ Seeding a kind here is the one legitimate exception to "no default kind" —
+   * the choice was made deliberately by the person tapping "Turn this into a
+   * purchase request", not by the form on their behalf. It's still changeable.
+   */
+  prefill?: { kind: HouseRequestKind; title: string; reason: string; links?: EventLink[] } | null;
   /** Show the "only notify me" testing switch — reviewers only (0200). */
   canTest?: boolean;
   onClose: () => void;
@@ -84,10 +113,12 @@ export function HouseRequestComposer({
   const { closing, close } = useSheetDismiss(onClose);
   const media = useMediaPicker();
 
-  const [kind, setKind] = useState<HouseRequestKind>(request?.kind ?? "purchase");
-  const [title, setTitle] = useState(request?.title ?? "");
-  const [reason, setReason] = useState(request?.reason ?? "");
-  const [links, setLinks] = useState<EditableLink[]>(toEditableLinks(request?.links));
+  // ⚠️ null = "hasn't chosen yet", and there is NO default (see the docblock).
+  // Editing pins it to what was actually asked for.
+  const [kind, setKind] = useState<HouseRequestKind | null>(request?.kind ?? prefill?.kind ?? null);
+  const [title, setTitle] = useState(request?.title ?? prefill?.title ?? "");
+  const [reason, setReason] = useState(request?.reason ?? prefill?.reason ?? "");
+  const [links, setLinks] = useState<EditableLink[]>(toEditableLinks(request?.links ?? prefill?.links));
   // Money is a TEXT field, not <input type="number">: the spinners are useless
   // on a phone and a number input silently yields NaN for "40." mid-typing.
   const [cost, setCost] = useState(request?.estCost != null ? String(request.estCost) : "");
@@ -161,20 +192,95 @@ export function HouseRequestComposer({
   const needsAmount = kind === "reimbursement";
   const canSubmit = title.trim().length > 0 && !pending && (!needsAmount || (parsedCost ?? 0) > 0);
 
-  const COPY: Record<HouseRequestKind, { titleLabel: string; titlePlaceholder: string; reasonLabel: string; reasonPlaceholder: string; costLabel: string }> = {
+  // ── Step 1: what IS this? ──────────────────────────────────────────────────
+  // No form, no footer, no send button — there is nothing to submit until the
+  // deal has been chosen. Same <Sheet> element in the same tree position as the
+  // form below, so picking a kind swaps the contents without re-animating.
+  if (kind === null) {
+    return (
+      <Sheet
+        closing={closing}
+        onDismiss={close}
+        labelledBy="house-request-title"
+        header={
+          <div className="pr-10">
+            <h2 id="house-request-title" className="text-lg font-bold">
+              What do you need?
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Three different things — pick the one that matches, and {houseName}&rsquo;s House Admins will know what
+              you&rsquo;re asking them to do.
+            </p>
+          </div>
+        }
+      >
+        <div className="space-y-2.5">
+          {KIND_ORDER.map((k) => {
+            const meta = KIND_META[k];
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`press flex w-full items-start gap-3 rounded-2xl border-l-4 bg-card p-4 text-left ring-1 ring-border transition-shadow hover:shadow-sm ${meta.edge}`}
+              >
+                <span
+                  aria-hidden
+                  className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl ${meta.tile}`}
+                >
+                  {meta.emoji}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-bold">{meta.ask}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.chip}`}>
+                      {meta.money}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-muted">{meta.deal}</span>
+                  {/* Who does what, spelled out on the tile itself — this is the
+                      part that was missing everywhere. */}
+                  <span className="mt-2 block space-y-0.5 text-[11px] text-faint">
+                    <span className="block">
+                      <span className="font-semibold text-foreground/70">You:</span> {meta.youDo}
+                    </span>
+                    <span className="block">
+                      <span className="font-semibold text-foreground/70">House Admin:</span> {meta.adminDoes}
+                    </span>
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="pb-1 text-xs text-faint">
+          Something <span className="font-semibold">broken</span>, or a job that needs doing? None of these — put it on
+          the{" "}
+          <Link href="/house" className="font-semibold text-primary underline">
+            to-do list
+          </Link>
+          .
+        </p>
+      </Sheet>
+    );
+  }
+
+  // ⚠️ No `costLabel` for an idea — there is no cost FIELD on an idea (see
+  // `hasMoney`), so carrying a label for one would be dead config that invites
+  // somebody to render it again.
+  const COPY: Record<HouseRequestKind, { titleLabel: string; titlePlaceholder: string; reasonLabel: string; reasonPlaceholder: string }> = {
     idea: {
       titleLabel: "What's the idea?",
-      titlePlaceholder: "European-style dressers for the bedrooms",
+      titlePlaceholder: "Clear the small trees behind the house so we can see the lake",
       reasonLabel: "Why would it be good?",
-      reasonPlaceholder: "Mom loved these — they'd fit the upstairs rooms and give everyone real drawer space.",
-      costLabel: "Rough cost, if you know it",
+      reasonPlaceholder: "You can barely see the water from the deck anymore — thinning it out would open the whole view back up.",
     },
     purchase: {
-      titleLabel: "What should we get?",
+      titleLabel: "What should the house buy?",
       titlePlaceholder: "Soft-close bumpers for the kitchen cabinets",
       reasonLabel: "Why do we need it?",
       reasonPlaceholder: "Half the cabinet doors stick — these are a few dollars and fix it for good.",
-      costLabel: "Estimated cost",
     },
     reimbursement: {
       titleLabel: "What did you buy?",
@@ -183,12 +289,13 @@ export function HouseRequestComposer({
       titlePlaceholder: "Deck stain, brushes and a drop cloth",
       reasonLabel: "What was it for?",
       reasonPlaceholder: "Picked these up for the work weekend so we didn't lose the day to a hardware run.",
-      // "How much was it?" reads as one item. A reimbursement is usually several,
-      // so ask for the total outright.
-      costLabel: "What's the total?",
     },
   };
   const copy = COPY[kind];
+  const meta = KIND_META[kind];
+  // "How much was it?" reads as one item; a reimbursement is usually a whole
+  // receipt, so ask for the total outright.
+  const costLabel = kind === "reimbursement" ? "What's the total?" : "Estimated cost";
 
   /** Upload the picked files and attach them. The request itself is already
    *  saved by the time this runs, so a failure here means "the request exists,
@@ -232,7 +339,10 @@ export function HouseRequestComposer({
       title: title.trim(),
       reason: reason.trim(),
       links: cleanLinks(links) as EventLink[],
-      estCost: parsedCost,
+      // ⚠️ Discard any amount typed before switching TO an idea — the field is
+      // gone from the form, so leaving the state in the payload would persist a
+      // cost the sender can no longer see or correct.
+      estCost: hasMoney(kind) ? parsedCost : null,
       quantity: kind === "purchase" ? parsedQty : null,
     };
 
@@ -284,12 +394,23 @@ export function HouseRequestComposer({
       labelledBy="house-request-title"
       header={
         <div className="pr-10">
-          <h2 id="house-request-title" className="text-lg font-bold">
-            {editing ? "Edit this request" : `Add a request`}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">
-            {editing ? "Fix the details — everyone in the house sees this." : `Goes to ${houseName}'s House Admins.`}
-          </p>
+          <div className="flex items-start gap-2.5">
+            <span
+              aria-hidden
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg ${meta.tile}`}
+            >
+              {meta.emoji}
+            </span>
+            <div className="min-w-0">
+              <h2 id="house-request-title" className="text-lg font-bold leading-tight">
+                {editing ? "Edit this request" : meta.ask}
+              </h2>
+              {/* ⚠️ The deal rides the FIXED (non-scrolling) header, so "who buys
+                  this" stays on screen the entire time the form is being filled
+                  in — not just for the moment it took to tap a tile. */}
+              <p className="mt-0.5 text-xs text-muted">{meta.deal}</p>
+            </div>
+          </div>
         </div>
       }
       footer={
@@ -326,45 +447,68 @@ export function HouseRequestComposer({
             disabled={!canSubmit}
             className="press w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {pending ? "Sending…" : editing ? "Save changes" : "Send it"}
+            {/* The verb states the ask one last time, on the button that does it —
+                "Send it" says nothing about what you're asking anyone to do. */}
+            {pending
+              ? "Sending…"
+              : editing
+                ? "Save changes"
+                : kind === "idea"
+                  ? "Write it down"
+                  : kind === "purchase"
+                    ? "Ask them to order it"
+                    : "Ask to be paid back"}
           </button>
         </div>
       }
     >
-      {/* Kind first — the form below adapts to it. Fixed while editing. */}
+      {/* What was chosen, and a way back out. The kind is FIXED while editing. */}
       {!editing && (
-        <div className="space-y-2">
-          <SectionLabel>What is this?</SectionLabel>
-          <div className="grid grid-cols-3 gap-2">
-            {(Object.keys(KIND_META) as HouseRequestKind[]).map((k) => {
-              const meta = KIND_META[k];
-              const active = kind === k;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setKind(k)}
-                  aria-pressed={active}
-                  className={`press flex flex-col items-center gap-1 rounded-2xl p-3 text-center ring-1 transition-colors ${
-                    active ? "bg-primary/10 ring-primary" : "bg-card ring-border"
-                  }`}
-                >
-                  <span aria-hidden className="text-2xl">
-                    {meta.emoji}
-                  </span>
-                  <span className={`text-[11px] font-semibold leading-tight ${active ? "text-primary" : "text-muted"}`}>
-                    {meta.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {kind === "idea" && (
-            <p className="text-xs text-muted">
-              No link or price needed — write it down now so it doesn&rsquo;t get lost.
-            </p>
-          )}
+        <div className="flex items-center gap-2 rounded-xl bg-background p-2.5 ring-1 ring-border">
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.chip}`}>
+            {meta.money}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted">{meta.label}</span>
+          <button
+            type="button"
+            onClick={() => setKind(null)}
+            className="press shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold text-primary underline"
+          >
+            Change
+          </button>
         </div>
+      )}
+
+      {/* ⚠️ The one thing a requester most needs told, stated in full and not as a
+          caption: on a purchase they are NOT the one shopping. Each kind also
+          offers the one-tap switch to its natural neighbour, since "I'll just buy
+          it myself" and "the house should buy it" is the exact confusion here. */}
+      {!editing && kind === "purchase" && (
+        <p className="rounded-xl bg-lake/10 p-3 text-xs leading-relaxed text-foreground/80">
+          🛒 <span className="font-semibold">You&rsquo;re not the one buying this.</span> You&rsquo;re asking the House
+          Admins to order it with House Trust money. Nothing is expected of you after you send it.{" "}
+          <button type="button" onClick={() => setKind("reimbursement")} className="font-semibold text-primary underline">
+            Already bought it yourself?
+          </button>
+        </p>
+      )}
+      {!editing && kind === "reimbursement" && (
+        <p className="rounded-xl bg-accent/10 p-3 text-xs leading-relaxed text-foreground/80">
+          🧾 <span className="font-semibold">This is for money you&rsquo;ve already spent.</span> A House Admin approves
+          it and sends your money back.{" "}
+          <button type="button" onClick={() => setKind("purchase")} className="font-semibold text-primary underline">
+            Haven&rsquo;t bought it yet?
+          </button>
+        </p>
+      )}
+      {!editing && kind === "idea" && (
+        <p className="rounded-xl bg-sun/10 p-3 text-xs leading-relaxed text-foreground/80">
+          💡 <span className="font-semibold">No price, no link, nothing to buy.</span> Just get it written down so it
+          doesn&rsquo;t die in conversation.{" "}
+          <button type="button" onClick={() => setKind("purchase")} className="font-semibold text-primary underline">
+            Know exactly what to buy?
+          </button>
+        </p>
       )}
 
       <div className="space-y-1.5">
@@ -388,40 +532,47 @@ export function HouseRequestComposer({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <SectionLabel>
-            {copy.costLabel}
-            {needsAmount ? " *" : ""}
-          </SectionLabel>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden>
-              $
-            </span>
-            <input
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-              inputMode="decimal"
-              placeholder="0"
-              aria-label={copy.costLabel}
-              className={`${FIELD} w-full pl-7`}
-            />
-          </div>
-        </div>
-        {kind === "purchase" && (
+      {/* ⚠️ AN IDEA HAS NO MONEY FIELDS AT ALL. Not an optional one, not a "rough
+          cost if you know it" — none. A price box turns "wouldn't it be nice if"
+          into a proposal somebody has to weigh, which is the friction that keeps
+          ideas out of the app in the first place. If a real number is known, that
+          ask is a purchase request. */}
+      {hasMoney(kind) && (
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <SectionLabel>How many?</SectionLabel>
-            <input
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              inputMode="numeric"
-              placeholder="1"
-              aria-label="How many"
-              className={`${FIELD} w-full`}
-            />
+            <SectionLabel>
+              {costLabel}
+              {needsAmount ? " *" : ""}
+            </SectionLabel>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden>
+                $
+              </span>
+              <input
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
+                inputMode="decimal"
+                placeholder="0"
+                aria-label={costLabel}
+                className={`${FIELD} w-full pl-7`}
+              />
+            </div>
           </div>
-        )}
-      </div>
+          {kind === "purchase" && (
+            <div className="space-y-1.5">
+              <SectionLabel>How many?</SectionLabel>
+              <input
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                inputMode="numeric"
+                placeholder="1"
+                aria-label="How many"
+                className={`${FIELD} w-full`}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {parsedCost !== null && parsedQty !== null && kind === "purchase" && parsedQty > 1 && (
         <p className="-mt-2 text-xs text-muted">

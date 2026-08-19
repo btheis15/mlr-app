@@ -30,12 +30,44 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+// ⚠️⚠️ MIRRORS `KIND_META` in lib/houseRequests.ts — keep the wording in step.
+// Each kind carries the DEAL ("whose money, who places the order") and the
+// recipient's actual JOB, because this email is where a House Admin first meets
+// a request and "Type: Purchase Request" told them nothing about who was
+// expected to buy it. That ambiguity is the reason a real request went unordered:
+// the admins read it as "he's buying this himself." Never reduce these back to a
+// bare noun.
 const KIND = {
-  purchase: { emoji: "🛒", label: "Purchase Request", costLabel: "Estimated" },
-  idea: { emoji: "💡", label: "Idea", costLabel: "Rough cost" },
+  purchase: {
+    emoji: "🛒",
+    label: "Purchase request",
+    costLabel: "Estimated",
+    deal: "House Trust money — a House Admin places the order, not the person asking.",
+    // What the recipient does. Second person, imperative, no hedging.
+    job: "They're asking you to buy this with House Trust funds.",
+    todo: "order it and mark it ordered",
+  },
+  idea: {
+    emoji: "💡",
+    label: "Idea",
+    costLabel: "Rough cost",
+    deal: "Nobody buys anything — just a thought for the house to kick around.",
+    job: "Nothing to buy here. They just want to know if the house is up for it.",
+    todo: "say whether the house likes it",
+  },
   // "Total" not "Amount", since a reimbursement is usually several things on one
   // receipt — matches the composer's "What's the total?".
-  reimbursement: { emoji: "🧾", label: "Reimbursement", costLabel: "Total spent" },
+  reimbursement: {
+    emoji: "🧾",
+    // ⚠️ A NOUN, not the requester-voice "Pay me back" — the co-admin email says
+    // "Lee paid Brian's <label>", and the preview script will show you exactly how
+    // badly a first-person phrase reads there.
+    label: "Reimbursement",
+    costLabel: "Total spent",
+    deal: "Already paid for out of pocket — the House Trust pays it back.",
+    job: "They already paid for this out of their own pocket and are asking to be paid back.",
+    todo: "approve it and send them the money",
+  },
 };
 
 function kindOf(kind) {
@@ -175,19 +207,32 @@ function buildHouseRequestEmail(d, opts = {}) {
   const detailRows =
     row("From", `<strong>${escapeHtml(d.requester_name || "A member")}</strong>`) +
     row("House", escapeHtml(houseName)) +
-    row("Type", `${k.emoji} ${escapeHtml(k.label)}`) +
+    // The deal rides the Type row itself, so the one line naming what kind of
+    // thing this is can't be read without also reading whose money it is.
+    row(
+      "Type",
+      `${k.emoji} <strong>${escapeHtml(k.label)}</strong><div style="margin-top:3px;font-size:12.5px;color:#6b7b73;line-height:1.5">${escapeHtml(
+        k.deal,
+      )}</div>`,
+    ) +
     (showCost ? row(k.costLabel, `<strong>${money(d.est_cost)}</strong>${qty ? ` <span style="color:#8b918d">· ×${qty}</span>` : ""}`) : "");
 
   // ── What to do next ────────────────────────────────────────────────────────
   // Always rendered, and deliberately link-free (see the module header). It
   // names the exact screen so nobody has to hunt: House → Requests.
+  // ⚠️ The headline is now the recipient's actual JOB, per kind — "You decide this
+  // one" is true of all three and so distinguishes none of them. On a purchase it
+  // has to say outright that the ordering falls to the reader, because the reader
+  // assuming otherwise is the failure this whole pass exists to fix.
   const actionBlock = `<table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 0"><tr><td style="padding:16px 18px;background:#f4f8f5;border:1px solid #dbe7df;border-radius:12px">
-<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">You decide this one.</p>
-<p style="margin:0;font-size:14px;color:#4a5a52;line-height:1.6">Open the <strong>MLR app</strong> and go to <strong>House &rsaquo; Requests</strong> to approve it, change it, or turn it down${
+<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#14241c;line-height:1.4">${escapeHtml(k.job)}</p>
+<p style="margin:0;font-size:14px;color:#4a5a52;line-height:1.6">Open the <strong>MLR app</strong> and go to <strong>House &rsaquo; Requests</strong> to ${escapeHtml(
+    k.todo,
+  )} — or change it, or turn it down${
     others > 0
-      ? ` — there ${others === 1 ? "is 1 other request" : `are ${others} other requests`} waiting there too`
+      ? `. There ${others === 1 ? "is 1 other request" : `are ${others} other requests`} waiting there too`
       : ""
-  }. You can also mark it ordered once it&rsquo;s bought, so everyone can see it actually got done.</p>
+  }.</p>
 </td></tr></table>`;
 
   const who = d.requester_name || "A member";
@@ -196,11 +241,19 @@ function buildHouseRequestEmail(d, opts = {}) {
   )}</strong></p>`;
   // The requester is the subject of the byline, not the resort — they're the
   // person an approver is actually answering.
-  const byline = `<p style="margin:0 0 18px;font-size:13px;color:#6b7b73;line-height:1.5"><strong style="color:#14241c">${escapeHtml(
-    who,
-  )}</strong> asked for this — a ${escapeHtml(k.label.toLowerCase())} for <strong style="color:#14241c">${escapeHtml(
-    houseName,
-  )}</strong>${d.requester_email ? " &middot; replies go straight to them" : ""}</p>`;
+  // Per kind, because the RELATIONSHIP differs: one is asking the house to spend,
+  // one is owed money back, one isn't about money at all. A single "asked for
+  // this" phrasing flattened all three into the same thing.
+  const strong = (s) => `<strong style="color:#14241c">${escapeHtml(s)}</strong>`;
+  const bylineText =
+    d.kind === "purchase"
+      ? `${strong(who)} is asking ${strong(houseName)} to buy this`
+      : d.kind === "reimbursement"
+        ? `${strong(who)} already paid for this — ${strong(houseName)} owes them`
+        : `${strong(who)} has an idea for ${strong(houseName)}`;
+  const byline = `<p style="margin:0 0 18px;font-size:13px;color:#6b7b73;line-height:1.5">${bylineText}${
+    d.requester_email ? " &middot; replies go straight to them" : ""
+  }</p>`;
 
   const html = shell(
     title,
@@ -217,6 +270,7 @@ ${actionBlock}`,
   }`;
 
   const text = `${k.label.toUpperCase()} — ${d.title || ""}
+${k.deal}
 Asked for by: ${who}
 House: ${houseName}${showCost ? `\n${k.costLabel}: ${money(d.est_cost)}${qty ? ` x${qty}` : ""}` : ""}${
     d.reason && String(d.reason).trim()
@@ -231,10 +285,10 @@ House: ${houseName}${showCost ? `\n${k.costLabel}: ${money(d.est_cost)}${qty ? `
       : ""
   }
 
-YOU DECIDE THIS ONE.
-Open the MLR app and go to House > Requests to approve it, change it, or turn it down${
+${k.job.toUpperCase()}
+Open the MLR app and go to House > Requests to ${k.todo} — or change it, or turn it down${
     others > 0 ? ` (${others} other${others === 1 ? "" : "s"} waiting there too)` : ""
-  }. You can also mark it ordered once it's bought.
+  }.
 
 ${sentByText(who, "sent this request", opts.fromAddress, Boolean(d.requester_email))}
 

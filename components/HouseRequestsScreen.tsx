@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  KIND_META,
+  KIND_ORDER,
   fetchHouseAdmins,
   isSettled,
   requestGroup,
@@ -69,6 +71,35 @@ export function HouseRequestsScreen({ slug }: { slug?: string | null }) {
   );
 }
 
+/**
+ * What the three kinds mean, permanently on the board.
+ *
+ * ⚠️ Deliberately NOT a dismissible tip and NOT collapsed by default. The
+ * distinction is the thing people got wrong, this board is visited a handful of
+ * times a year, and a legend somebody dismissed in March is no help in August.
+ * It's three short lines — cheap enough to simply always be true.
+ */
+function KindLegend() {
+  return (
+    <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-border">
+      {KIND_ORDER.map((k) => {
+        const meta = KIND_META[k];
+        return (
+          <div key={k} className={`flex items-start gap-2.5 border-l-4 pl-2.5 ${meta.edge}`}>
+            <span aria-hidden className="text-base leading-tight">
+              {meta.emoji}
+            </span>
+            <p className="min-w-0 flex-1 text-xs leading-snug">
+              <span className={`font-bold ${meta.text}`}>{meta.label}</span>{" "}
+              <span className="text-muted">— {meta.deal}</span>
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type Filter = "open" | "done" | "mine" | "all";
 
 function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
@@ -78,6 +109,8 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<HouseRequest | null>(null);
   const [composing, setComposing] = useState(false);
+  // A NEW purchase request seeded from an agreed idea — never an edit of it.
+  const [promoting, setPromoting] = useState<HouseRequest | null>(null);
 
   const deepLinkId = useUrlParam("request");
   const flashId = useDeepLinkFlash("request-", deepLinkId, !loading);
@@ -114,7 +147,12 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
   // (migration 0202 removed the cross-house admin surface, which could only ever
   // have shown the viewer's own house anyway).
   const waiting = shown.filter((r) => requestGroup(r) === "waiting");
-  const rest = shown.filter((r) => requestGroup(r) !== "waiting");
+  // ⚠️ Approved-but-not-done gets its OWN section rather than being buried in
+  // "everything else". This is the exact gap the feature exists to expose — a
+  // request that was said yes to and then quietly never happened — and it was
+  // sitting in the same undifferentiated pile as finished history.
+  const toDo = shown.filter((r) => requestGroup(r) === "toDo");
+  const rest = shown.filter((r) => requestGroup(r) !== "waiting" && requestGroup(r) !== "toDo");
 
   return (
     <div className="space-y-5 pt-2">
@@ -123,12 +161,22 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">🧾 Requests</h1>
         <p className="text-sm text-muted">
-          Ideas, things to buy, and money to pay back for {houseName}. A House Admin decides.
+          Three different asks for {houseName} — an idea, something for the house to buy, or money back for something
+          you paid for. A House Admin decides, and does the buying.
         </p>
       </header>
 
-      {/* The at-a-glance numbers. Kept to what a MEMBER cares about: is anything
-          waiting, and is anything approved that nobody's bought yet. */}
+      {/* ⚠️ THE LEGEND IS PERMANENT, not a first-run tip. Somebody reads this
+          board a few times a year, so "they'll learn it once" is wrong — the
+          whole reason a purchase request was mistaken for "he's buying it
+          himself" is that nothing on screen ever said otherwise. Three lines,
+          each naming whose money and who shops. */}
+      <KindLegend />
+
+      {/* The at-a-glance numbers — what a MEMBER cares about: is anything waiting,
+          and has anything been approved that nobody has actually done. The second
+          tile splits by kind, because "order it" and "pay them" are different
+          chores that fall to different follow-through. */}
       {!loading && requests.length > 0 && (
         <div className="flex gap-3">
           <div className="flex-1 rounded-2xl bg-card p-3 ring-1 ring-border">
@@ -139,8 +187,14 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
             </p>
           </div>
           <div className="flex-1 rounded-2xl bg-card p-3 ring-1 ring-border">
-            <p className="text-lg font-bold tabular-nums">{summary.notOrdered}</p>
-            <p className="text-xs text-muted">approved, not bought yet</p>
+            <p className="text-lg font-bold tabular-nums">{summary.notOrdered + summary.unpaid}</p>
+            <p className="text-xs text-muted">
+              {summary.unpaid === 0
+                ? "approved, nobody's ordered it"
+                : summary.notOrdered === 0
+                  ? `approved, nobody's been paid · ${formatMoney(summary.unpaidCost)}`
+                  : `${summary.notOrdered} to order · ${summary.unpaid} to pay out`}
+            </p>
           </div>
         </div>
       )}
@@ -151,8 +205,8 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
         disabled={!!previewAsId}
         className="press w-full rounded-2xl bg-primary p-4 text-left text-white shadow-sm disabled:opacity-50"
       >
-        <p className="text-sm font-semibold">＋ Add a request</p>
-        <p className="mt-0.5 text-xs text-white/80">An idea, something to buy, or money to pay back</p>
+        <p className="text-sm font-semibold">＋ Ask for something</p>
+        <p className="mt-0.5 text-xs text-white/80">We&rsquo;ll ask which of the three it is first</p>
       </button>
 
       {loading ? (
@@ -209,10 +263,29 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
                 </section>
               )}
 
+              {toDo.length > 0 && (
+                <section className="space-y-2">
+                  <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">
+                    Said yes — but nobody&rsquo;s done it yet
+                  </h2>
+                  <div className="space-y-2">
+                    {toDo.map((r) => (
+                      <div
+                        key={r.id}
+                        className={`space-y-2 rounded-2xl ${flashId === r.id ? "ring-2 ring-primary" : ""}`}
+                      >
+                        <HouseRequestCard request={r} onOpen={() => setOpenId(r.id)} />
+                        {canReview && <ProgressActions request={r} onDone={reload} />}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {rest.length > 0 && (
                 <section className="space-y-2">
-                  {waiting.length > 0 && (
-                    <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Everything else</h2>
+                  {(waiting.length > 0 || toDo.length > 0) && (
+                    <h2 className="px-0.5 text-xs font-bold uppercase tracking-wide text-faint">Done &amp; history</h2>
                   )}
                   <div className="space-y-2">
                     {rest.map((r) => (
@@ -221,9 +294,6 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
                         className={`space-y-2 rounded-2xl ${flashId === r.id ? "ring-2 ring-primary" : ""}`}
                       >
                         <HouseRequestCard request={r} onOpen={() => setOpenId(r.id)} />
-                        {canReview && r.status === "approved" && (
-                          <ProgressActions request={r} onDone={reload} />
-                        )}
                       </div>
                     ))}
                   </div>
@@ -269,18 +339,35 @@ function Board({ houseId, houseName }: { houseId: string; houseName: string }) {
             setEditing(open);
             setOpenId(null);
           }}
+          onPromote={() => {
+            setPromoting(open);
+            setOpenId(null);
+          }}
         />
       )}
 
-      {(composing || editing) && (
+      {(composing || editing || promoting) && (
         <HouseRequestComposer
           houseId={houseId}
           houseName={houseName}
           request={editing}
+          prefill={
+            promoting
+              ? {
+                  kind: "purchase",
+                  title: promoting.title,
+                  // Carry the idea's own words across — retyping the reasoning is
+                  // exactly the friction that stops an agreed idea being acted on.
+                  reason: promoting.reason,
+                  links: promoting.links,
+                }
+              : null
+          }
           canTest={canReview}
           onClose={() => {
             setComposing(false);
             setEditing(null);
+            setPromoting(null);
           }}
           onSaved={reload}
         />
