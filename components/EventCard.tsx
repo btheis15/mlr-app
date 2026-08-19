@@ -2,7 +2,7 @@
 
 import type { AttendanceStatus, AttendanceSummary, EventKind, ResortEvent } from "@/lib/types";
 import { formatDateRange, relativeDays } from "@/lib/format";
-import { isOngoing } from "@/lib/events";
+import { isOngoing, type RsvpResult } from "@/lib/events";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { useGuest } from "@/components/Guard";
 
@@ -72,7 +72,7 @@ export function EventCard({
   /** Inline RSVP handler (full variants only). Omit to hide the control.
    *  Return (or resolve to) `false` on failure so `AttendanceControl` can show
    *  an inline retry message. */
-  onSetStatus?: (status: AttendanceStatus) => void | Promise<boolean>;
+  onSetStatus?: (status: AttendanceStatus) => void | Promise<RsvpResult>;
   variant?: "spotlight" | "card" | "compact";
 }) {
   const chip = KIND_CHIP[event.kind];

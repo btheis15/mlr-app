@@ -196,6 +196,21 @@ export function myGoingDays(mine: EventAttendance | null, days: string[]): Set<s
   return new Set(effectiveStatus(mine?.status ?? "not_going", mine?.days) === "going" ? days : []);
 }
 
+/**
+ * What a "save my RSVP" attempt reports back to the control that fired it:
+ *   `true`    — saved.
+ *   a string  — it FAILED, and this is the reason to put on screen.
+ *   `null`    — nothing was attempted and the UI has already said why (a guest
+ *               got the sign-in sheet; "View as" is read-only).
+ *
+ * ⚠️ The string case exists because of the Aug 2026 RSVP outage: every self-RSVP
+ * was failing server-side (42P10, see migration 0210) and the control showed a
+ * bare "Couldn't save — try again", which is indistinguishable from a flaky
+ * connection. Nobody could tell it was broken for EVERYONE, so it went unreported
+ * for two days until someone mentioned it in passing. Always carry the reason up.
+ */
+export type RsvpResult = true | string | null;
+
 /** Set/change my RSVP to an event. `days` is an optional per-day map for day-RSVP
  *  events. Returns an error message on failure. */
 export async function setAttendance(

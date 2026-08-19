@@ -15,6 +15,7 @@ import {
   fetchMyAttendance,
   setAttendance,
   summarize,
+  type RsvpResult,
 } from "@/lib/events";
 import { fetchHelpRequests } from "@/lib/helpRequests";
 import {
@@ -500,7 +501,9 @@ export interface UseEvents {
    *  caller can surface an inline retry message. A tap that lands while one is
    *  already in flight for the same event id rides along on that call's result
    *  instead of firing a second write. */
-  setStatus: (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => Promise<boolean>;
+  /** Save my RSVP. See `RsvpResult` — a string is a failure WITH its reason,
+   *  which the control puts on screen (migration 0210's lesson). */
+  setStatus: (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => Promise<RsvpResult>;
   reload: () => Promise<void>;
 }
 
@@ -599,7 +602,7 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
   // Per-event in-flight lock: a double-tap on the same control must not fire a
   // second `set_event_attendance` write that can settle out of order — a tap
   // that lands while one is already saving just awaits that call's result.
-  const pending = useRef<Record<string, Promise<boolean>>>({});
+  const pending = useRef<Record<string, Promise<RsvpResult>>>({});
 
   const reload = useCallback(async () => {
     try {
@@ -669,15 +672,18 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
   }, [rows, events, countShift]);
 
   const setStatus = useCallback(
-    (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null): Promise<boolean> => {
+    (eventId: string, status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null): Promise<RsvpResult> => {
       // Guests get the sign-in sheet; no backend ⇒ nothing to write; while
       // previewing as a member, writes are disabled (they'd act as the real admin).
-      if (!isSupabaseConfigured) return Promise.resolve(false);
+      // All three resolve `null`, not a failure: nothing was attempted, and the
+      // UI has already explained itself — a guest shouldn't get "couldn't save"
+      // stacked behind the sign-in sheet they were just handed.
+      if (!isSupabaseConfigured) return Promise.resolve(null);
       if (!user) {
         promptSignIn();
-        return Promise.resolve(false);
+        return Promise.resolve(null);
       }
-      if (previewAsId) return Promise.resolve(false);
+      if (previewAsId) return Promise.resolve(null);
       // Already saving this event — ride along on that write's result instead
       // of firing a second RPC that could settle in either order.
       const inFlight = pending.current[eventId];
@@ -707,7 +713,7 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
         setCountShift((c) => ({ ...c, [eventId]: { from: prevBucket, to: nextBucket } }));
       }
 
-      const run = (async (): Promise<boolean> => {
+      const run = (async (): Promise<RsvpResult> => {
         try {
           // Pass the title so the server can label the "X is going to <event>"
           // notification for seed events (no public.events row to look it up from).
@@ -728,7 +734,10 @@ export function useEvents(opts?: { realtime?: boolean }): UseEvents {
                 return rest;
               });
             }
-            return false;
+            // Carry the server's own words up to the control. A generic
+            // "try again" hides an app-wide outage inside what looks like one
+            // person's bad connection — see RsvpResult.
+            return error;
           }
           await reload();
           return true;
