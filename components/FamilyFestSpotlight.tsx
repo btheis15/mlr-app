@@ -191,8 +191,29 @@ export function FamilyFestSpotlight({
         <p className="mt-1 text-sm text-foreground/60">See the week &amp; who&rsquo;s coming →</p>
       </Link>
     );
+  } else if (season?.isConcluded) {
+    // Concluded — this year's fest is done. Says thank you and points at the
+    // archive, rather than the generic off-season "returns next summer", which
+    // read oddly two weeks after everyone got home from the actual fest.
+    card = (
+      <Link
+        href="/family-fest"
+        className="press block rounded-2xl bg-gradient-to-br from-campfire/15 via-sun/10 to-dusk/20 p-4 ring-1 ring-dusk/20"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-campfire">
+              🎆 {name} · that&rsquo;s a wrap
+            </p>
+            <p className="mt-1 text-sm font-semibold">Thank you for a great Family Fest</p>
+            <p className="mt-0.5 text-xs text-muted">See you next year — look back at Past Years →</p>
+          </div>
+          <span className="shrink-0 text-3xl">🏰</span>
+        </div>
+      </Link>
+    );
   } else {
-    // Off-season — the quiet banner.
+    // Off-season — the quiet banner (a fest with dates still far ahead).
     card = (
       <Link
         href="/family-fest"

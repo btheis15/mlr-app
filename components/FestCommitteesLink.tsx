@@ -1,7 +1,6 @@
 "use client";
 
-import { useFestSeason } from "@/lib/useFestSeason";
-import { FAMILY_FEST } from "@/lib/data";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
 import { RowLink } from "@/components/RowLink";
 
 /**
@@ -11,7 +10,7 @@ import { RowLink } from "@/components/RowLink";
  * Committees tab (off the Home page). Hidden outside the week.
  */
 export function FestCommitteesLink() {
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const season = useCurrentFestSeason();
   if (!season?.isLive) return null;
 
   return (

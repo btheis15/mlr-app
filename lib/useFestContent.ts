@@ -13,7 +13,17 @@ import { useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useDebouncedCallback } from "@/lib/hooks";
 import { useCachedResource } from "@/lib/swrCache";
-import { fetchFestContent, SEED_CONTENT, type FestContent } from "@/lib/festContent";
+import {
+  fetchFestContent,
+  fetchFestContentForYear,
+  SEED_CONTENT,
+  type FestContent,
+} from "@/lib/festContent";
+import { fetchFestYears, SEED_FEST_YEAR, type FestYear } from "@/lib/festYears";
+
+/** Seed for `useFestYears` — a stable module constant, NOT a fresh array per
+ *  render, since `useCachedResource` holds it in a ref and compares identity. */
+const SEED_YEARS: FestYear[] = [SEED_FEST_YEAR];
 
 const FEST_TABLES = [
   "fest_config",
@@ -74,4 +84,46 @@ export function useFestContent(opts?: { realtime?: boolean }): UseFestContent {
   }, [reload, realtime, scheduleRefetch]);
 
   return { ...content, loading, reload };
+}
+
+/**
+ * One PAST year's content, for the Past Years archive
+ * (/family-fest/past/[year]). Deliberately NOT the same hook as
+ * `useFestContent`:
+ *
+ *  - It's keyed per year (`festContent.<year>`), so browsing 2026's archive
+ *    can't overwrite the current fest's cached bundle — or be overwritten by it.
+ *  - Its empty value is `null`, not the seed. The hub must never render blank,
+ *    but an archive must never render CONTENT IT DOESN'T HAVE: seeding a past
+ *    year with the in-code 2026 schedule would fabricate history. `null` means
+ *    "nothing loaded yet or no such year", which the page reports honestly.
+ *  - No Realtime. A finished fest doesn't change; the persisted snapshot means
+ *    a revisit paints instantly and offline.
+ */
+export function useFestYearContent(year: number | null): {
+  content: FestContent | null;
+  loading: boolean;
+} {
+  const { data, loading } = useCachedResource<FestContent | null>(
+    year == null ? null : `festContent.${year}`,
+    null,
+    () => (year == null ? Promise.resolve(null) : fetchFestContentForYear(year)),
+    { persist: "local" },
+  );
+  return { content: data, loading };
+}
+
+/**
+ * Every fest year on record (newest first) — what the Past Years index lists
+ * and what the sub-nav uses to decide whether there's an archive to link to.
+ * Seeded with the in-code year so the first paint matches the server render.
+ */
+export function useFestYears(): { years: FestYear[]; loading: boolean } {
+  const { data, loading } = useCachedResource<FestYear[]>(
+    "festYears",
+    SEED_YEARS,
+    fetchFestYears,
+    { persist: "local" },
+  );
+  return { years: data, loading };
 }

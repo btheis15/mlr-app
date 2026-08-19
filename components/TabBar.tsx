@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FAMILY_FEST } from "@/lib/data";
-import { useFestSeason } from "@/lib/useFestSeason";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
 import { useUnreadNotifications } from "@/lib/hooks";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
@@ -28,7 +27,7 @@ export function TabBar() {
   const pathname = usePathname();
   // During the event week, mark the Family Fest tab "live" so the takeover is
   // discoverable from anywhere in the resort app.
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const season = useCurrentFestSeason();
   // Unread (unseen, unexpired) notification count → red badge on the bell.
   const unread = useUnreadNotifications();
 

@@ -10,7 +10,19 @@
  * build-time `new Date()` would freeze the phase at deploy time.
  */
 
-export type FestPhase = "off-season" | "planning" | "live" | "wrap";
+/**
+ * The five phases a fest year moves through. Note that "off-season" and
+ * "concluded" are BOTH quiet, but they are not the same thing and must not be
+ * collapsed back together: "off-season" means the fest window is still ahead
+ * (too far out to start the planning takeover), while "concluded" means the
+ * window is behind us and the photo-posting tail has closed. They used to share
+ * one phase, and the result was the hub rendering a countdown to a date in the
+ * past — which `Countdown` clamps to zero and reads as "🎉 Family Fest is on —
+ * welcome Up North!", so a finished fest advertised itself as live indefinitely.
+ * Splitting them lets a finished year say so (and slide into Past Years) while
+ * a year with future dates still gets its countdown.
+ */
+export type FestPhase = "off-season" | "planning" | "live" | "wrap" | "concluded";
 
 /** How early the partial "planning" takeover begins (rally volunteers + show
  *  what's being planned), in days before the start. */
@@ -27,6 +39,9 @@ export interface FestSeason {
   isPlanning: boolean;
   /** phase === "wrap" — full takeover lingers for 2 weeks after, to post photos. */
   isWrap: boolean;
+  /** phase === "concluded" — this year's fest is history. The hub says thank
+   *  you and the week itself moves to Past Years (/family-fest/past). */
+  isConcluded: boolean;
   /** Any non-quiet phase (planning | live | wrap) — the fest is prominent. */
   isTakeover: boolean;
   /** Whole days from today until the start (0 once it has started). */
@@ -78,17 +93,26 @@ export function getFestSeason(
   const totalDays = Math.round((end - start) / MS_PER_DAY) + 1;
 
   let phase: FestPhase;
-  if (today < start) {
+  // Empty/malformed dates parse to NaN, and every comparison against NaN is
+  // false — which would fall through to the final `else` and report a fest that
+  // has no dates at all as "concluded". Callers that render before their dates
+  // resolve (FestRsvp passes "" until its event loads) documented this as
+  // degrading to the quiet, claim-nothing "off-season", so keep that contract
+  // explicit now that the else-branch means something specific.
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    phase = "off-season";
+  } else if (today < start) {
     phase = daysToStart <= PLANNING_LEAD_DAYS ? "planning" : "off-season";
   } else if (today <= end) {
     phase = "live";
   } else {
-    phase = daysAfterEnd <= WRAP_TAIL_DAYS ? "wrap" : "off-season";
+    phase = daysAfterEnd <= WRAP_TAIL_DAYS ? "wrap" : "concluded";
   }
 
   const isLive = phase === "live";
   const isPlanning = phase === "planning";
   const isWrap = phase === "wrap";
+  const isConcluded = phase === "concluded";
   const dayNumber = isLive ? Math.round((today - start) / MS_PER_DAY) + 1 : null;
   const daysUntilStart = Math.max(0, daysToStart);
   const daysSinceEnd = Math.max(0, daysAfterEnd);
@@ -98,7 +122,12 @@ export function getFestSeason(
     isLive,
     isPlanning,
     isWrap,
-    isTakeover: phase !== "off-season",
+    isConcluded,
+    // Spelled out as the three loud phases rather than `phase !== "off-season"`:
+    // now that "concluded" is its own phase, the old negation would have started
+    // counting a finished fest as a takeover (hiding it from Upcoming Events,
+    // etc.). A concluded fest is quiet, exactly like the off-season.
+    isTakeover: isPlanning || isLive || isWrap,
     daysUntilStart,
     isSoon: isPlanning && daysUntilStart <= 7,
     dayNumber,

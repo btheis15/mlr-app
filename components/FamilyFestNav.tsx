@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGroup, motion } from "framer-motion";
+import { useFestContent } from "@/lib/useFestContent";
+import { useFestSeason } from "@/lib/useFestSeason";
 
 /**
  * The Family Fest section's in-section sub-nav: parchment pill links to each
  * fest surface, sticky at the top of the content so it's always one tap to hop
- * between Overview / Dinners / Pay. (Photos deliberately live only on the Feed
- * tab — no fest photos page.) There's deliberately no "Schedule" pill — the
+ * between Overview / Dinners / Pay / Past Years. (Photos deliberately live only
+ * on the Feed tab — no fest photos page.) The pill set is SEASON-AWARE — see
+ * CONCLUDED_LINKS below. There's deliberately no "Schedule" pill — the
  * Overview page already renders the full week via FestWeek, so a separate
  * Schedule tab was showing the exact same accordion a second time; the
  * standalone `/family-fest/schedule` index + `schedule/[id]` detail routes are
@@ -29,7 +32,22 @@ const LINKS = [
   { href: "/family-fest", label: "Overview" },
   { href: "/family-fest/dinners", label: "Dinners" },
   { href: "/family-fest/pay", label: "Pay" },
+  { href: "/family-fest/past", label: "Past Years" },
 ] as const;
+
+/**
+ * Once the current fest is CONCLUDED, the nav drops to Overview + Past Years.
+ * Dinners and Pay are both about a week that's coming: a menu for a dinner that
+ * was served three weeks ago, and a dues calculator for a fest nobody can still
+ * attend, are exactly the kind of stale surface that made the section feel like
+ * it hadn't noticed the fest was over. Both come straight back the moment a new
+ * year's dates exist — the whole nav is derived from the season, not toggled by
+ * hand. (Each route still works if typed/linked directly; the nav just stops
+ * pointing at them.)
+ */
+const CONCLUDED_LINKS = LINKS.filter(
+  (l) => l.href === "/family-fest" || l.href === "/family-fest/past",
+);
 
 /** Editor surfaces that keep their own full-window chrome — no pill nav. */
 const HIDDEN_PREFIXES = ["/family-fest/planner", "/family-fest/master"];
@@ -41,7 +59,15 @@ function isActive(pathname: string, href: string): boolean {
 
 export function FamilyFestNav() {
   const pathname = usePathname() ?? "/family-fest";
+  // Rides the shared `festContent` SWR cache — the hub/dinners/pay pages all
+  // read the same key, so this is a deduped read, not an extra fetch per nav.
+  const { config } = useFestContent();
+  const season = useFestSeason(config.startDate, config.endDate);
   if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
+
+  // `season` is null until mounted (SSR-safe): show the full set, matching the
+  // server render, and let the concluded set swap in a tick later.
+  const links = season?.isConcluded ? CONCLUDED_LINKS : LINKS;
 
   return (
     <nav
@@ -53,7 +79,7 @@ export function FamilyFestNav() {
     >
       <LayoutGroup id="ff-nav">
         <div className="flex gap-1.5 overflow-x-auto px-4 py-2">
-          {LINKS.map((l) => {
+          {links.map((l) => {
             const active = isActive(pathname, l.href);
             return (
               <Link

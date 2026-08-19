@@ -177,9 +177,21 @@ export const FAMILY_FEST = {
  * Supabase with this exact id (see the seed SQL / migration note); until it's
  * seeded, `/drop?box=<id>` just shows "folder isn't available", so the CTAs
  * degrade gracefully. `0000fe57` = "fest", `2026` = the year.
+ *
+ * The YEAR is a real, live segment of the id — which is what lets the Past
+ * Years archive (/family-fest/past) link each year at its own album with no
+ * extra column and no lookup table: `festAlbumBoxId(2027)` is the id to seed
+ * next year's box with. A year whose box hasn't been seeded degrades to the
+ * same "folder isn't available", so linking one early is harmless.
  */
-export const FEST_ALBUM_BOX_ID = "0000fe57-2026-4000-8000-000000000001";
-export const FEST_ALBUM_HREF = `/drop?box=${FEST_ALBUM_BOX_ID}`;
+export function festAlbumBoxId(year: number): string {
+  return `0000fe57-${year}-4000-8000-000000000001`;
+}
+export function festAlbumHref(year: number): string {
+  return `/drop?box=${festAlbumBoxId(year)}`;
+}
+export const FEST_ALBUM_BOX_ID = festAlbumBoxId(2026);
+export const FEST_ALBUM_HREF = festAlbumHref(2026);
 
 /**
  * Seed resort events that live in CODE rather than the database: Family Fest

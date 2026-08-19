@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { FAMILY_FEST } from "@/lib/data";
 import { useDemoDate } from "@/lib/DemoDateProvider";
-import { useFestSeason } from "@/lib/useFestSeason";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
 import { useEvents } from "@/lib/hooks";
 import { EMPTY_SUMMARY, effectiveStatus, upcomingEvents } from "@/lib/events";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -22,7 +21,7 @@ import type { AttendanceStatus, ResortEvent } from "@/lib/types";
  */
 export function UpcomingEvents() {
   const { today } = useDemoDate();
-  const ffSeason = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const ffSeason = useCurrentFestSeason();
   const { isAdmin, userId } = useIdentity();
   // ⚠️ `reload` is needed even though Home deliberately runs WITHOUT realtime:
   // the event sheet's add/remove-attendee actions have no other way to refresh

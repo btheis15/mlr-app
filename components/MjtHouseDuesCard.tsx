@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { FAMILY_FEST } from "@/lib/data";
-import { useFestSeason } from "@/lib/useFestSeason";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
+import { useFestContent } from "@/lib/useFestContent";
 import { CallTextButtons } from "@/components/CallTextButtons";
 import { Protected } from "@/components/Guard";
 import { supabase } from "@/lib/supabase";
@@ -14,7 +14,6 @@ const BETH_PHONE = "8472872608";
 const BETH_EMAIL = "bethbirkholz@hotmail.com";
 /** How long the reminder lingers after Family Fest ends, in days. */
 const TAIL_DAYS = 7;
-const FEST_YEAR = Number(FAMILY_FEST.startDate.slice(0, 4));
 
 /**
  * MJT House's own Family Fest food/household dues — separate from the
@@ -23,10 +22,16 @@ const FEST_YEAR = Number(FAMILY_FEST.startDate.slice(0, 4));
  * House hub, and only from now through a week after Family Fest ends. A
  * member can mark themself paid (profiles.mjt_dues_paid_year, migration 0086)
  * so it stops prompting them — it comes back next year since the stored
- * year won't match FEST_YEAR then.
+ * year won't match the current fest year then.
+ *
+ * Both the season and the year come from the LIVE fest config, not the in-code
+ * seed: a new fest year can be created in-app now, and a card that asks about
+ * dues for a hardcoded year would keep chasing last year's money.
  */
 export function MjtHouseDuesCard({ slug }: { slug: string }) {
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const season = useCurrentFestSeason();
+  const { config } = useFestContent();
+  const festYear = Number(config.startDate.slice(0, 4));
   const { userId } = useIdentity();
   const [busy, setBusy] = useState(false);
 
@@ -35,13 +40,13 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
   // "you're paid" card doesn't blink absent-then-present every time you land on
   // the House Hub. The fetch still revalidates behind the seed.
   const { data: paid, mutate } = useCachedResource<boolean | null>(
-    slug === "mjt-house" && userId ? `mjtDues.${userId}.${FEST_YEAR}` : null,
+    slug === "mjt-house" && userId ? `mjtDues.${userId}.${festYear}` : null,
     null,
     async () => {
       const sb = supabase;
       if (!sb || !userId) return false;
       const { data } = await sb.from("profiles").select("mjt_dues_paid_year").eq("id", userId).maybeSingle();
-      return (data?.mjt_dues_paid_year as number | null) === FEST_YEAR;
+      return (data?.mjt_dues_paid_year as number | null) === festYear;
     },
     { persist: "local" },
   );
@@ -56,7 +61,7 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
       const sb = supabase;
       if (sb && userId) {
         await sb.from("profiles").update({ mjt_dues_paid_year: year }).eq("id", userId);
-        mutate(year === FEST_YEAR);
+        mutate(year === festYear);
       }
       setBusy(false);
     })();
@@ -66,7 +71,7 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
       <section className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <p className="text-sm text-foreground/70">
           <span className="mr-1" aria-hidden>✅</span>
-          MJT House dues — you&rsquo;re marked as paid for {FEST_YEAR}.
+          MJT House dues — you&rsquo;re marked as paid for {festYear}.
         </p>
         <button
           type="button"
@@ -113,7 +118,7 @@ export function MjtHouseDuesCard({ slug }: { slug: string }) {
       </Link>
       <button
         type="button"
-        onClick={() => setPaidYear(FEST_YEAR)}
+        onClick={() => setPaidYear(festYear)}
         disabled={busy}
         className="press w-full text-center text-xs font-medium text-primary underline underline-offset-2 disabled:opacity-50"
       >

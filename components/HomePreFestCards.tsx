@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useFestSeason } from "@/lib/useFestSeason";
-import { FAMILY_FEST } from "@/lib/data";
+import { useCurrentFestSeason } from "@/lib/useFestSeason";
 
 /**
  * Resort cards on the home. Committees and Request a Cabin Stay stay available
@@ -22,7 +21,7 @@ interface CardProps {
 }
 
 export function HomePreFestCards() {
-  const season = useFestSeason(FAMILY_FEST.startDate, FAMILY_FEST.endDate);
+  const season = useCurrentFestSeason();
   if (!season) return null;
 
   const cards: CardProps[] = [
