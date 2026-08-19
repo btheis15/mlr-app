@@ -596,9 +596,17 @@ function RosterGroup({
             >
               <Avatar name={p.name} url={p.avatarUrl} size={20} />
               <PrivateName name={p.name} className="text-xs font-medium" />
-              {!p.userId && (
+              {/* ⚠️ ONLY a real guest gets a tag. A rostered family member with no
+                  app account used to be chipped "family", which reads as a
+                  distinction between family and… the rest of the family — on a
+                  list where everyone is family. Whether somebody has signed up
+                  yet is an app-account detail that means nothing on an RSVP
+                  roster, so it simply isn't shown. "Guest" stays because it
+                  carries real meaning: someone from outside the family, brought
+                  up by a member. */}
+              {!p.userId && !p.rosterId && (
                 <span className="rounded-full bg-background px-1.5 py-0.5 text-[9px] font-medium text-muted ring-1 ring-border">
-                  {p.rosterId ? "family" : "guest"}
+                  Guest
                 </span>
               )}
               {!p.confirmed && <span className="text-[10px] text-muted">(hasn&rsquo;t confirmed)</span>}
