@@ -34,6 +34,23 @@ export interface HouseMember {
 }
 
 /**
+ * Somebody assigned to this house who has NO app account yet — a
+ * `family_roster` slot with `house_id` set and nothing linked to it (0123).
+ *
+ * ⚠️ These people are first-class housemates, not a footnote. They can't RSVP
+ * themselves (no account), but an admin or the event's host can add them to an
+ * event's list (`add_event_attendee`, 0196 → `event_attendance.roster_id`), and
+ * when that happens they are just as much "staying at the house" as anyone with
+ * a login. Leaving them out is what made the MJT House calendar undercount:
+ * Billy is assigned to the house and coming up, and the calendar didn't know he
+ * existed because the derivation only looked at `profiles`.
+ */
+export interface HouseRosterMember {
+  rosterId: string;
+  name: string;
+}
+
+/**
  * Everyone whose profile says they're in this house.
  *
  * Reads `profiles` directly — members-readable, and `house_id` is what the whole
@@ -61,6 +78,31 @@ export async function fetchHouseMembers(houseId: string | null): Promise<HouseMe
 }
 
 /**
+ * The house's account-less people (0123). Only rows with nothing linked: once a
+ * roster slot claims an account, that person is covered by `fetchHouseMembers`
+ * via `profiles.house_id`, and returning them here too would list them twice.
+ *
+ * Empty on any failure — same reasoning as `fetchHouseMembers`: a presence list
+ * that can't resolve membership must show nothing rather than guess.
+ */
+export async function fetchHouseRosterMembers(houseId: string | null): Promise<HouseRosterMember[]> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb || !houseId) return [];
+  try {
+    const { data, error } = await sb
+      .from("family_roster")
+      .select("id, name, linked_user_id")
+      .eq("house_id", houseId);
+    if (error) return [];
+    return ((data ?? []) as { id: string; name: string | null; linked_user_id: string | null }[])
+      .filter((r) => !r.linked_user_id)
+      .map((r) => ({ rosterId: r.id, name: r.name?.trim() || "Family" }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * A stay nobody typed: "<name> is going to <event>, so they'll be at the house."
  *
  * Deliberately NOT a `HouseStay`. It has no row in `house_stays`, so it can't be
@@ -71,7 +113,8 @@ export async function fetchHouseMembers(houseId: string | null): Promise<HouseMe
 export interface ImpliedStay {
   /** Stable synthetic key. Not a database id — never send it to an RPC. */
   id: string;
-  userId: string;
+  /** Null for an account-less housemate or a sponsored guest — neither has one. */
+  userId: string | null;
   name: string;
   avatarUrl: string | null;
   /** The days they're actually expected, already narrowed by any per-day RSVP. */
@@ -79,6 +122,20 @@ export interface ImpliedStay {
   endDate: string;
   eventId: string;
   eventTitle: string;
+  /**
+   * How this person is attached to the house, which is what the row's label has
+   * to say — three genuinely different situations that all mean "they'll be
+   * here", and flattening them into one would make the list unreadable:
+   *
+   *  • `member`  — in the house, has an account, RSVP'd themselves.
+   *  • `roster`  — assigned to the house but has no account yet (Billy). Added
+   *                to the event by an admin or a host.
+   *  • `guest`   — not family, but sponsored by someone in this house, so
+   *                they're staying here too. `sponsorName` says who.
+   */
+  via: "member" | "roster" | "guest";
+  /** For `guest` — the housemate vouching for them ("guest of Beth"). */
+  sponsorName: string | null;
 }
 
 /** Do two inclusive ISO date ranges touch at all? (String compare is safe.) */
@@ -112,14 +169,19 @@ export function impliedStays(args: {
   /** Every attendance row (`useEvents().rows`) — filtered to this house here. */
   attendance: EventAttendance[];
   members: HouseMember[];
+  /** Account-less people assigned to this house (0123) — see the interface. */
+  rosterMembers?: HouseRosterMember[];
   stays: HouseStay[];
   /** ISO today, from `useDemoDate()`. */
   today: string;
 }): ImpliedStay[] {
-  const { events, attendance, members, stays, today } = args;
-  if (!today || members.length === 0) return [];
+  const { events, attendance, members, rosterMembers = [], stays, today } = args;
+  if (!today) return [];
+  // A house with neither kind of member can't place anybody.
+  if (members.length === 0 && rosterMembers.length === 0) return [];
 
   const byId = new Map(members.map((m) => [m.id, m]));
+  const byRosterId = new Map(rosterMembers.map((m) => [m.rosterId, m]));
   const out: ImpliedStay[] = [];
 
   for (const event of events) {
@@ -133,10 +195,43 @@ export function impliedStays(args: {
 
     for (const row of attendance) {
       if (row.eventId !== event.id) continue;
-      // A guest/roster entry with no account isn't a house member we can place.
-      if (!row.userId) continue;
-      const member = byId.get(row.userId);
-      if (!member) continue;
+
+      // ── Which of the three kinds of person is this row, and are they OURS? ──
+      // This used to be `if (!row.userId) continue` — "no account, can't place
+      // them" — which silently dropped two whole categories of people who are
+      // just as much at the house: an account-less housemate added by a host
+      // (0196's roster_id), and an outside guest sponsored by a housemate.
+      let via: ImpliedStay["via"] | null = null;
+      let name = "";
+      let avatarUrl: string | null = null;
+      let sponsorName: string | null = null;
+
+      if (row.userId) {
+        const member = byId.get(row.userId);
+        if (member) {
+          via = "member";
+          name = member.name;
+          avatarUrl = member.avatarUrl;
+        }
+      } else if (row.rosterId) {
+        const rosterMember = byRosterId.get(row.rosterId);
+        if (rosterMember) {
+          via = "roster";
+          name = rosterMember.name;
+        }
+      } else if (row.guestName?.trim() && row.sponsorUserId) {
+        // A guest belongs to whoever vouched for them (0196 requires a sponsor
+        // precisely so an outside guest is always traceable). If that sponsor is
+        // in this house, the guest is staying in this house too.
+        const sponsor = byId.get(row.sponsorUserId);
+        if (sponsor) {
+          via = "guest";
+          name = row.guestName.trim();
+          sponsorName = sponsor.name;
+        }
+      }
+      if (!via) continue; // nothing ties this row to this house
+
       // Rule 3.
       if (effectiveStatus(row.status, row.days) !== "going") continue;
 
@@ -146,21 +241,29 @@ export function impliedStays(args: {
       const startDate = mine[0];
       const endDate = mine[mine.length - 1];
 
-      // Rule 1 — they've already told us their real dates.
-      const covered = stays.some(
-        (s) => s.createdBy === row.userId && overlaps(s.startDate, s.endDate, startDate, endDate),
-      );
+      // Rule 1 — they've already told us their real dates. ⚠️ Only applies to a
+      // row with an ACCOUNT: `house_stays.created_by` is a uuid, so there is no
+      // real stay that could belong to a roster person or a guest, and matching
+      // `createdBy === undefined` would suppress every one of them at once.
+      const covered =
+        Boolean(row.userId) &&
+        stays.some((s) => s.createdBy === row.userId && overlaps(s.startDate, s.endDate, startDate, endDate));
       if (covered) continue;
 
       out.push({
-        id: `event:${event.id}:${row.userId}`,
-        userId: row.userId,
-        name: member.name,
-        avatarUrl: member.avatarUrl,
+        // ⚠️ Keyed on the attendance row's own id, not the user id — a guest row
+        // has no user id, and two guests at one event would otherwise collide on
+        // `event:<id>:undefined` and silently render as one person.
+        id: `event:${event.id}:${row.id}`,
+        userId: row.userId ?? null,
+        name,
+        avatarUrl,
         startDate,
         endDate,
         eventId: event.id,
         eventTitle: event.title,
+        via,
+        sponsorName,
       });
     }
   }
@@ -231,4 +334,95 @@ export function nextPresence(args: {
     eventTitle: group.find((i) => i.eventTitle)?.eventTitle ?? null,
     daysUntil: Math.max(0, daysBetween(today, first.startDate)),
   };
+}
+
+/**
+ * Everyone expected at the house on ONE day — real stays and implied ones
+ * together.
+ *
+ * ⚠️⚠️ THIS EXISTS BECAUSE THE DAY POPOVER AND THE LIST BELOW IT DISAGREED. The
+ * House Calendar's day detail counted only `house_stays`, so tapping Sep 25 said
+ * **"STAYING (0) · Nobody's marked a stay for this day yet"** while "Who's
+ * staying", three inches lower on the same screen, listed five people for Sep
+ * 25–27. Both were reading the same data; only one of them knew that an RSVP to
+ * a resort event counts as being at the house.
+ *
+ * So neither surface derives it any more — they both call this. If a third
+ * surface ever needs "who's here on day X", it calls this too rather than
+ * re-deriving and becoming the next one to disagree.
+ */
+export interface DayOccupant {
+  /** Stable per-row key. */
+  key: string;
+  name: string;
+  avatarUrl: string | null;
+  /** Null for a real stay; set when the row came from an event RSVP. */
+  eventTitle: string | null;
+  /** Real `house_stays` row vs. derived — the UI marks them differently. */
+  kind: "stay" | "implied";
+  /** For a derived row: how they're attached to the house. */
+  via: ImpliedStay["via"] | null;
+  sponsorName: string | null;
+  /** Extra names riding on a real stay (`house_stays.guest_names`). */
+  guestNames: string[];
+}
+
+export function occupantsOnDay(args: {
+  day: string;
+  stays: HouseStay[];
+  implied: ImpliedStay[];
+}): DayOccupant[] {
+  const { day, stays, implied } = args;
+  if (!day) return [];
+
+  const out: DayOccupant[] = [
+    ...stays
+      .filter((s) => s.startDate <= day && s.endDate >= day)
+      .map((s) => ({
+        key: `stay:${s.id}`,
+        name: s.authorName,
+        avatarUrl: s.authorAvatarUrl,
+        eventTitle: null,
+        kind: "stay" as const,
+        via: null,
+        sponsorName: null,
+        guestNames: s.guestNames ?? [],
+      })),
+    ...implied
+      .filter((i) => i.startDate <= day && i.endDate >= day)
+      .map((i) => ({
+        key: i.id,
+        name: i.name,
+        avatarUrl: i.avatarUrl,
+        eventTitle: i.eventTitle,
+        kind: "implied" as const,
+        via: i.via,
+        sponsorName: i.sponsorName,
+        guestNames: [],
+      })),
+  ];
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * How many people are expected at the house across everything upcoming — the
+ * number on the "Who's staying" heading.
+ *
+ * ⚠️ Counts PEOPLE, not rows: a real stay's `guest_names` are extra people
+ * sleeping there, so they're included, and one person appearing in both a stay
+ * and an implied row (which Rule 1 mostly prevents, but not across differently
+ * -dated events) is counted once. "Who's staying (5)" has to match what someone
+ * gets if they count the names on screen.
+ */
+export function stayingCount(args: { stays: HouseStay[]; implied: ImpliedStay[] }): number {
+  const { stays, implied } = args;
+  const names = new Set<string>();
+  for (const s of stays) {
+    names.add(`p:${s.createdBy || s.authorName}`);
+    for (const g of s.guestNames ?? []) if (g.trim()) names.add(`g:${g.trim().toLowerCase()}`);
+  }
+  for (const i of implied) {
+    names.add(i.userId ? `p:${i.userId}` : `g:${i.name.trim().toLowerCase()}`);
+  }
+  return names.size;
 }

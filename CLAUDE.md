@@ -625,6 +625,41 @@ mirror of `is_committee_member` but simpler (a house is one room, no areas).
     delete, and `ImpliedStayRow` renders it with a dashed ring + "RSVP" chip that taps
     through to the **event**. Persisting these would mean inventing rows nobody typed,
     which then need reconciling forever.
+  - ⚠️ **"In the house" is THREE kinds of person, not one** — the derivation used to
+    start `if (!row.userId) continue` ("no account, can't place them"), which silently
+    dropped two whole categories who are just as much at the house. An `ImpliedStay`
+    now carries `via`:
+    - **`member`** — `profiles.house_id`, has an account, RSVP'd themselves.
+    - **`roster`** — assigned to the house but **not on the app yet**
+      (`family_roster.house_id` with no `linked_user_id`, 0123). They can't RSVP, but a
+      host can add them to an event (`event_attendance.roster_id`, 0196) — Billy is
+      assigned to MJT House and coming up, and the calendar didn't know he existed.
+      `fetchHouseRosterMembers()` deliberately returns only UNLINKED slots: a claimed
+      one is already covered by `profiles.house_id` and would list the person twice.
+    - **`guest`** — not family at all, but `event_attendance.sponsor_user_id` (0196
+      requires a sponsor so an outside guest is always traceable) points at a member of
+      this house, so they're staying here too. Rendered "Guest of {sponsor}".
+    ⚠️ Two knock-on fixes this forced: the "a real stay always wins" rule is now guarded
+    on `row.userId` (`house_stays.created_by` is a uuid, so no real stay can belong to a
+    roster person or guest — matching `createdBy === undefined` would have suppressed
+    every one of them at once), and the synthetic id keys on the **attendance row's id**,
+    not the user id (two guests at one event would otherwise collide on
+    `event:<id>:undefined` and render as one person).
+  - ⚠️⚠️ **THE DAY POPOVER AND THE LIST BELOW IT DISAGREED.** `DaySheet` counted only
+    `house_stays`, so tapping Sep 25 said **"Staying (0) · Nobody's marked a stay for
+    this day yet"** while "Who's staying", three inches lower on the same screen, listed
+    five people for Sep 25–27. Both read the same data; only one knew an RSVP counts.
+    **Neither derives it any more** — both call `occupantsOnDay()`, and a third surface
+    that needs "who's here on day X" must call it too rather than become the next one to
+    disagree. The heading carries a `stayingCount()` — **people, not rows**, so a stay's
+    `guest_names` count and nobody is double-counted.
+  - ⚠️ [`HouseDeliveryNudge`](components/HouseDeliveryNudge.tsx) shares this derivation
+    and gets the roster people too: it asks "will anybody be there to take delivery?",
+    and somebody without an app account can sign for a package just fine — omitting them
+    would skip the reminder for a trip that IS happening.
+  - ⚠️ **Don't interleave `{houseName}` with prose in JSX here.** The footnote rendered
+    as "Anyone from MJT House**go**ing to a resort event" once a formatter wrapped the
+    line between the expression and the next word; it's built as one template string now.
   - ⚠️ `ResortEvent.endDate` is **null on a single-day event**, so it can never be
     compared or passed along raw — a bare `endDate < today` treats every one-day event
     as ongoing forever. Always `endDate ?? startDate`.
