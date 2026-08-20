@@ -3019,6 +3019,137 @@ event now carries zero or more **hosts**, each either a **person** or a whole
   falls back to a seed whose `id` is the SLUG, which would fail the uuid cast.
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
 
+### Event chats — a room for the people going (migration 0216)
+
+The Family Feed is where you post what everyone should see. Most talk about a
+Work Weekend or a holiday weekend concerns only the dozen people who'll be
+there, so it either bombards everyone's notifications or never happens. An event
+now gets **its own chat**, created the moment the event is, listed in a dedicated
+**Events** section of the Feed directly under the Family Feed — with a
+deliberately **different border** (`ring-2 ring-accent/45`), so the nudge to use
+it is visual, not a paragraph nobody reads.
+
+- **Membership is resolved LIVE, never snapshotted** (`is_event_chat_member`):
+  RSVP'd **going or maybe** (per Brian — a Maybe is often exactly the person who
+  needs the detail that would settle it), the event's **creator**, or a named
+  **host** (person, or committee via 0209's leads-else-members rule). Somebody
+  who RSVPs three weeks later simply appears in the room and can read the
+  **whole history** from their first visit; someone who switches to "Can't make
+  it" drops out.
+- ⚠️⚠️ **THERE IS NO APP-ADMIN OVERRIDE — the app's first genuinely admin-blind
+  room, and that is the feature.** Per Brian: "you'd only ever see the event if
+  you RSVPed that you were going, even for App Admins." This **differs from every
+  other chat**: `is_committee_member` (0057) and `is_house_member` (0064) both
+  return true for any `is_admin` profile. Do **not** "fix" the inconsistency by
+  adding the usual `or is_admin` — it silently deletes the feature.
+- ⚠️ **How moderation survives without that override**: an admin can read a
+  message **only while it is held** (`status <> 'visible'`), so they see the item
+  they must rule on and never the conversation around it. A member sees the
+  room's visible messages; an author always sees their own. Chosen over a fully
+  blind room, which would strand held messages nobody could ever approve.
+- ⚠️ **Hosts are only ever EXPLICIT rows.** `can_manage_event` (0209) has a
+  "no hosts named ⇒ any signed-in member may run it" fallback — fine for editing
+  a location, catastrophic for room access, since it would put the entire family
+  in every hostless event's chat. So the predicate is written from scratch rather
+  than delegating to it, and it deliberately avoids `is_committee_member` (admin
+  bypass) in favour of a direct `committee_roster` join.
+- ⚠️ **Family with no app account can't be in a chat, even when marked going.** A
+  manual add (0196) is a member (`user_id`), a rostered person with no account
+  (`roster_id`), or an outside **guest** (`guest_name`). Only the first has
+  anything to authenticate as; the other two keep getting the event **emails**
+  (0190/0197), which is why that path exists. A roster person is picked up
+  automatically the moment their account links, since membership reads
+  `event_attendance.user_id` live. **Guests are excluded permanently, by design.**
+- **Archiving is DERIVED, not swept.** A chat is read-only once its event ended
+  more than **7 days** ago (the window for last-minute details), computed at read
+  time — no cron, and no second column that can disagree with the first, which is
+  exactly the failure mode 0215 had to fix. Archived rooms fold into the existing
+  collapsed **"🗄️ Archived chats"** line at the foot of the Feed, alongside
+  archived committee/role chats (0112) — one list, since "old chats I can still
+  read" is a single idea to the reader. Read-only is enforced in the **insert
+  policy**, not just the UI.
+- **Admins can reopen one for 1 or 7 days** (`set_event_chat_reopened`) — the
+  override expires by going stale too. ⚠️ It lives at **Admin → Event chats**
+  (`/admin/event-chats`, [`AdminEventChats`](components/AdminEventChats.tsx)) and
+  NOT in the Feed, because an admin who wasn't going never sees an event chat in
+  their own Feed — there'd be nothing to tap. ⚠️ **Reopening grants no read
+  access**; the screen says so, since "unarchive" naturally reads as "open it to
+  me". `admin_archived_event_chats()` is SECURITY DEFINER for the same reason and
+  returns **metadata only, never content**.
+- **Only events going forward get rooms**, per Brian. An `after insert` trigger on
+  `events` creates the row (⚠️ **a trigger, not an edit to `create_event`** — the
+  0160 rule: recreating a big function to add one INSERT is how that incident
+  happened; a trigger also catches every path that ever creates an event). An
+  `after delete` trigger cleans up, since `event_id` is TEXT with no FK and
+  nothing cascades. The backfill seeds only events that haven't finished yet.
+  - ⚠️ **The two code-seeded events get nothing, and today that needs no special
+    case**: `family-fest-2026` (ended 2026-08-01) and `up-north-4th-2026` (ended
+    2026-07-05) are both already past, and neither has an `events` row at all
+    (`RESORT_EVENTS`, `persisted: false`), so no trigger can fire and no SQL can
+    read their dates. **This returns the moment Family Fest 2027's dates land in
+    `lib/data.ts`** — a future seeded event needs either a chat created lazily on
+    first open, or a deliberate decision to leave the fest to its committee rooms
+    (it already has six).
+- ⚠️ **"View as" shows the chat NAMES, never the contents.** Per Brian: View As is
+  to cross-check a member's UI/UX, not to read their conversations. `my_event_chats()`
+  keys on `auth.uid()` — during a preview it would return the **admin's own**
+  rooms — and it carries `last_text`/`last_author`, which IS content. So preview
+  mode uses **`preview_event_chats(p_user)`**: admin-gated, returning the room's
+  identity, unread badge and mute state and **no last message, author or media**.
+  Do not "improve" it with a preview line. The tap-through lands on a lock panel;
+  RLS would deny the messages anyway, but a silently empty thread reads as a bug
+  rather than a boundary.
+  - ⚠️ It needs `_is_committee_lead_as` / `_is_committee_member_as` — parameterized
+    twins of predicates that key on `auth.uid()` (still the calling admin inside a
+    definer function). Two details in 0177's body are easy to get wrong and were
+    both gotten wrong on a first pass: the committee-level **`committee_roster.is_lead`
+    boolean** counts as lead too, and the role suffix pattern is `'% · Lead'`
+    **with a space before the separator**. Keep them in step with 0177.
+  - ⚠️ Committee/house rows still show a last-message preview in View As, and
+    admins can read those rooms directly by design (the 0057/0064 bypass) — so
+    suppressing it there would be cosmetic only. Left alone deliberately; raise
+    it with Brian rather than half-fixing it.
+- **The room** is [`EventChat`](components/EventChat.tsx) — deliberately **leaner
+  than CommitteeChat/HouseChat rather than a third near-copy** (they're ~1,200
+  lines each): text, photos/videos/files, replies, tapback reactions, @mentions,
+  optimistic send, realtime. **No** chat polls, meeting bar, stickers or GIF
+  search — an event room is a short-lived logistics thread, and a third clone is a
+  maintenance liability. Lift them in if anyone asks.
+  - ⚠️ The roster/@mention query embeds `profiles!event_attendance_user_id_fkey`
+    **by name**: `event_attendance` has THREE FKs to `profiles` (0196), and an
+    unnamed embed returns PGRST201 rather than data, so the roster silently comes
+    back empty.
+  - ⚠️ The attach button is a plain button beside a plain always-mounted
+    `<input type="file">` — never behind a popup. See the installed-iOS-PWA
+    incident under **Quick polls in chat**.
+  - It DOES carry `thumbnail_url` through on insert, which committee/house chat
+    still doesn't (noted as a gap under **Content safeguards**), and its media
+    table includes `'file'` + `file_name` from the start rather than needing
+    0074's after-the-fact widening.
+- **Client seam** [`lib/eventChats.ts`](lib/eventChats.ts) — degrades to empty on
+  a missing table/function so the Feed still renders pre-migration.
+  `my_event_chats()` resolves the whole Events section in **one round-trip**
+  (previews, unread, mute), and being the same predicate the policies use it
+  cannot drift from what the member can open (the `event_message_preview`
+  doctrine, 0192). ⚠️ `count(*)` arrives from PostgREST as a **string** — coerce
+  it, or the unread badge concatenates instead of adding.
+- ⚠️ **Event chats count in the Feed's "no house & no committee → Family Feed"
+  fallthrough.** Plenty of family are in no committee and no house but do come to
+  the work weekends; without this they'd be dropped into the bare Family Feed,
+  hiding their Events section (and the Family Feed's own mute bell, 0214).
+- ⚠️ **NOT `event_messages`** — that table is the "email everyone about this
+  event" blasts (0190). Two very different things; the names are kept far apart
+  on purpose.
+- ⚠️ **Automatic moderation is NOT wired yet** — the `status` column and the
+  admin-can-read-held RLS are in place, but `moderate_content_text` (0160),
+  `hold_content_on_media_verdict` (0162), `moderation_queue` and
+  `set_content_status` (0128) don't know about `event_chat_messages`. So a
+  blocklisted word or a flagged photo in an event chat is **not** held today.
+  Wiring it is a pure function-extension follow-up with no schema change — but
+  all four must be recreated **from their current production bodies** (the 0160
+  rule), and doing 2 without 3 would strand held messages nobody can release.
+- 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
+
 - **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders
   (reuse `_notify` / `notif_types` / the mini push-sender, like cabin notifs); the
   Google-Calendar ICS feed (see Backend seams); an in-app Activity notification
