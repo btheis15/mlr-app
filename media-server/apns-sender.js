@@ -354,6 +354,18 @@ async function start() {
     // PushType of its own.
     "broadcast",
   ]);
+  // Family Feed mute (migration 0214) — mirrors push-sender.js's feedMuted
+  // exactly, including the fail-open on a pre-migration table.
+  const feedMuted = async (uid) => {
+    const { data } = await sb
+      .from("feed_mutes")
+      .select("user_id")
+      .eq("user_id", uid)
+      .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`)
+      .maybeSingle();
+    return Boolean(data);
+  };
+
   const handleFeed = async (n) => {
     if (!n || !n.id || !n.recipient_id || !PUSHABLE.has(n.type)) return;
     if (!once(`notif:${n.id}`)) return;
@@ -366,6 +378,8 @@ async function start() {
     // No dedicated `broadcast` PushType — reuse 'alerts' (see push-sender.js).
     else if (n.type === "broadcast") { if (!pushTypes.includes("alerts")) return; }
     else if (!pushTypes.includes(n.type)) return;
+    // Silences the push only; the Activity row stays (see push-sender.js).
+    if (n.type === "new_post" && (await feedMuted(n.recipient_id))) return;
     const payload = {
       title: n.title || "Muskellunge Lake Resort",
       body: n.body ? String(n.body).slice(0, 180) : "",

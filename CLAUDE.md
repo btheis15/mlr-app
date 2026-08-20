@@ -4094,6 +4094,70 @@ either, so a member had no way to see or opt OUT of these two specifically
 rows (mirroring `NotifPrefs.tsx`'s existing wording). Every `PushType` now has
 an exactly-matching `PushToggle` row — verified by diffing the `PushType` union
 against `TYPES`' `value`s; keep them in sync when adding a new push category.
+
+### Muting the Family Feed, and the timed-mute bug (migrations 0214 / 0215)
+
+The pinned **Family Feed** row in the Feed tab now carries **the same bell** as
+every committee/house chat below it, with the same 1/3/7-day/permanent choices
+([`FeedView`](components/FeedView.tsx), `FEED_KEY`).
+
+- **Why a table** (`feed_mutes`, migration
+  [`0214`](supabase/migrations/0214_feed_mute.sql)): muting the feed already
+  existed, but only as two array-membership prefs on `profiles` —
+  `notif_types ∋ 'new_post'` (Activity tab) and `push_types ∋ 'new_post'`
+  (phone) — **neither of which can express an expiry**, which is the whole point
+  of the bell. `set_feed_mute(p_muted, p_muted_until)` mirrors `set_house_mute`.
+- ⚠️ **Two controls, and they compose as AND.** The bell means "don't buzz me
+  about new posts (maybe just for a while)"; the Profile → Notifications toggle
+  means "do I ever want this category at all". **The bell never rewrites the
+  settings row** behind the member's back.
+- ⚠️ **Muting silences the PUSH ONLY — the `new_post` Activity row still
+  lands** (product decision: "stop interrupting me" is not "hide things from
+  me"). Both mini senders gate on it (`feedMuted()` in
+  [`push-sender.js`](media-server/push-sender.js) /
+  [`apns-sender.js`](media-server/apns-sender.js)), **fail-open** on a
+  pre-migration table — swallowing every new-post push would be the worse
+  failure. Needs a mini restart like all sender changes.
+- ⚠️ **A member in no house and no committee never sees this list** (FeedView
+  drops them straight into the Family Feed), so for them the bell is unreachable
+  and Profile → Notifications is still the only control. Pre-existing behavior,
+  not introduced here.
+- **Named `feed_mutes`, not `feed_reads`** — the committee/house tables are
+  `*_reads` because they track `last_read_at` and only later grew mute columns;
+  the Family Feed row has no unread state, so a `*_reads` name would promise a
+  column that isn't there.
+- ⚠️ **New table ⇒ attach 0213's `require_approved_member_trg` by hand.** That
+  migration's DO block only looped over the tables existing at the time.
+
+⚠️⚠️ **BUG FOUND AND FIXED: "Mute for 1 day" muted FOREVER — every timed mute
+anyone ever set was still in effect** (migration
+[`0215`](supabase/migrations/0215_fix_timed_mutes_never_expire.sql)). 0155's own
+header states the intended rule — muted when `muted` is true **OR** `muted_until`
+is still in the future, so "a timer just auto-clears itself by going stale, no
+cron needed" — and **every reader implements it faithfully** (FeedView's
+`(read.muted) || timedActive`; both senders' `.or('muted.eq.true,muted_until.gt.<now>')`).
+The **writers** broke it: `set_area_mute`/`set_house_mute` stored `muted = p_muted`,
+and the only caller always passes `true` (it passes the duration *separately* as
+`p_muted_until`) — so a timed mute set **both** columns, the `muted = true` arm of
+every OR matched unconditionally, and the timestamp beside it never got a chance
+to go stale. The expiry half of the feature had never once fired.
+- **Invisible by construction:** the UI still rendered "Muted until \<date\>"
+  (derived from `muted_until`), so the app actively promised an expiry it would
+  sail past.
+- **Fix:** let each column mean what 0155 said — `muted` = permanent,
+  `muted_until` = the timer, **never both** (`p_muted and p_muted_until is null`).
+  **No reader changed**, since they were all already correct. Both bodies were
+  recreated from 0155 (verified as their current definitions — the 0160 rule),
+  and existing both-set rows are handed back to their timers by a backfill that
+  can only ever *un*-stick a mute.
+- **Left alone:** 0063's older 3-arg `set_area_mute(uuid, text, boolean)` overload
+  — no duration param, so `muted = p_muted` is already right there, and iOS may
+  still call that signature. (It is also one of the seven stale overloads flagged
+  in the 0210 audit note above.)
+- ⚠️ **Takeaway: when a feature's readers all agree and the behavior is still
+  wrong, check the writer.** Three independent readers implementing the documented
+  rule correctly is exactly what made this survive so long.
+
 **Independent of push** (it
 works even if the mini is down; the chat firehose stays out — only chat
 @mentions land here). Pieces: the [`/notifications`](app/notifications/page.tsx)
