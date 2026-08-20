@@ -13,6 +13,7 @@ import {
   isOngoing,
   myGoingDays,
   removeEventAttendanceEntry,
+  type RsvpResult,
 } from "@/lib/events";
 import {
   fetchEventWorkItems,
@@ -74,7 +75,7 @@ export function EventSheet({
   /** Write the viewer's RSVP (parent handles guest sign-in / optimistic update).
    *  Return (or resolve to) `false` on failure so `AttendanceControl` can show
    *  an inline retry message. */
-  onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void | Promise<boolean>;
+  onSetStatus: (status: AttendanceStatus, days?: Record<string, AttendanceStatus> | null) => void | Promise<RsvpResult>;
   onClose: () => void;
   canManage?: boolean;
   /** Whether the viewer may DELETE (migration 0209) — deliberately narrower than

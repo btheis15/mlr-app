@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AttendanceStatus } from "@/lib/types";
+import type { RsvpResult } from "@/lib/events";
 import { Celebration } from "@/components/Celebration";
 import { haptic } from "@/lib/haptics";
 
@@ -30,9 +31,11 @@ export function AttendanceControl({
   className = "",
 }: {
   value: AttendanceStatus | null;
-  /** Write the RSVP. Return (or resolve to) `false` on failure and this
-   *  control shows an inline retry message; anything else counts as success. */
-  onChange: (status: AttendanceStatus) => void | boolean | Promise<void | boolean>;
+  /** Write the RSVP. Resolve to a STRING to fail with that reason on screen,
+   *  `false` to fail without one, `null` when nothing was attempted and the UI
+   *  already said why (guest → sign-in sheet, "View as"); anything else counts
+   *  as success. See `RsvpResult`. */
+  onChange: (status: AttendanceStatus) => void | boolean | RsvpResult | Promise<void | boolean | RsvpResult>;
   size?: "sm" | "md";
   disabled?: boolean;
   /** Drop the "Maybe" option (Family Fest planning is Going / Can't make only). */
@@ -58,8 +61,18 @@ export function AttendanceControl({
     const wasGoing = value === "going";
     try {
       const ok = await onChange(status);
-      if (ok === false) {
-        setError("Couldn't save — try again.");
+      if (ok === false || typeof ok === "string") {
+        // Show the server's own reason when there is one. A bare "try again"
+        // reads as a flaky connection, which is exactly how an app-wide RSVP
+        // outage stayed unreported for two days (see migration 0210) — the
+        // wording below is ugly on purpose: it's what gets screenshotted.
+        setError(
+          typeof ok === "string"
+            ? `Couldn't save — try again. If it keeps failing, show someone this: ${ok}`
+            : "Couldn't save — try again.",
+        );
+      } else if (ok === null) {
+        // Nothing was attempted (guest/preview) — the app has already responded.
       } else if (status === "going" && !wasGoing) {
         haptic("success");
         setCelebrate(true);

@@ -1,0 +1,46 @@
+-- 0211_is_house_member_anon_execute.sql
+-- Found while verifying 0210 against the live Postgres error log: alongside the
+-- 47 RSVP failures, a SECOND live error was firing for signed-out visitors —
+--
+--   42501  permission denied for function is_house_member
+--
+-- 16 times in 24h, on the query PostgREST builds for the Home to-do list
+-- (`work_items` + its `work_item_media` / `work_item_comments` embeds).
+--
+-- ── Why ──────────────────────────────────────────────────────────────────────
+-- `is_house_member(uuid)` (0064) was granted EXECUTE to `authenticated` and
+-- `service_role`, never to `anon` — but it is named in the read policy of
+-- `work_items` (0066/0183) and of its two child tables, which anon still holds
+-- SELECT on. RLS *evaluates* the policy expression before it can filter, so an
+-- anonymous read doesn't come back empty, it comes back as a hard error and
+-- fails the whole request.
+--
+-- ⚠️ It was invisible for the same reason the RSVP bug was: `fetchWorkItems()`
+-- swallows the error and returns `[]`, which is exactly what a guest is
+-- supposed to see since 0183 locked work items to approved members. So the
+-- screen looked right while every guest's Home quietly burned a failing
+-- round-trip. Only the server-side log showed it.
+--
+-- ── The fix, and why it leaks nothing ────────────────────────────────────────
+-- For an anonymous caller `auth.uid()` is null, so BOTH arms of the function
+-- (`profiles.id = auth.uid() and house_id = hid`, and the is_admin arm) match
+-- no row: it is constant-FALSE for anon. It cannot be used as an existence
+-- oracle for a house id, and it returns no data of its own. Granting EXECUTE
+-- only turns "error" into the "false" the policy already assumes — visibility
+-- is unchanged, and `work_items`' own `is_approved_member()` conjunct still
+-- keeps every row away from a guest.
+--
+-- This mirrors `can_access_committee_area` and `is_approved_member`, which are
+-- already granted to anon for exactly this reason.
+--
+-- ⚠️ AUDIT: this is one instance of a wider class. Seven other policy
+-- predicates are reachable-but-not-executable for anon the same way —
+-- `can_edit_fest`, `is_cabin_approver`, `is_committee_lead`,
+-- `is_committee_member`, `is_private_activity_member`,
+-- `_can_manage_schedule_signups`, and `is_house_admin`. None of them is firing
+-- today (nothing anonymous queries those tables), so they are deliberately NOT
+-- swept here — each needs its own "is it constant-false for anon?" check, which
+-- is the whole safety argument above. Fix one when it starts erroring, not in
+-- bulk.
+
+grant execute on function public.is_house_member(uuid) to anon;

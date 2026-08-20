@@ -484,6 +484,33 @@ house is a *narrower* group layered on top, never a replacement. Assignment is
 `is_house_member(hid)` (admin OR `profiles.house_id = hid`), a `SECURITY DEFINER`
 mirror of `is_committee_member` but simpler (a house is one room, no areas).
 
+⚠️ **A policy predicate must be EXECUTABLE by every role that can reach the
+table, or the read ERRORS instead of coming back empty** (migration
+[`0211`](supabase/migrations/0211_is_house_member_anon_execute.sql)).
+`is_house_member` was granted to `authenticated`/`service_role` but never
+`anon`, while `work_items` — which names it in its read policy (0066/0183) —
+still allows anon SELECT. RLS has to *evaluate* the expression before it can
+filter, so every signed-out visitor's Home to-do list request died with
+`42501 permission denied for function is_house_member` (16×/day in the
+Postgres log). **It hid exactly the way the 0210 RSVP bug did:**
+`fetchWorkItems()` swallows the error and returns `[]`, which is precisely what
+a guest is supposed to see since 0183 — so the screen looked correct while the
+request failed. Granting anon EXECUTE leaks nothing: with `auth.uid()` null
+both arms match no row, so the function is **constant-false for anon** — it
+can't even act as an existence oracle — and `work_items`' own
+`is_approved_member()` conjunct still keeps every row away from a guest
+(verified: anon reads 0 rows cleanly, a member still sees all of theirs).
+⚠️ **Seven other predicates are reachable-but-not-executable for anon the same
+way** (`can_edit_fest`, `is_cabin_approver`, `is_committee_lead`,
+`is_committee_member`, `is_private_activity_member`,
+`_can_manage_schedule_signups`, `is_house_admin`) — none firing today because
+nothing anonymous queries those tables. Deliberately **not** swept in bulk:
+each needs its own "is it constant-false for anon?" check, which is the entire
+safety argument. **Takeaway: when adding a function to a policy on an
+anon-readable table, grant it to anon too — and check the Postgres error log,
+not just the screen, since a swallowed error looks identical to a correct
+empty state.**
+
 - **House chat** — a private, full-parity room per house (media/reactions/
   @mentions/replies/24h edit+soft-delete/unread), mirroring committee chat.
   Tables + RLS gated on `is_house_member` in migration
@@ -2626,6 +2653,72 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
 - **Attendance** keys on a **stable string event id** (the DB uuid, or a seed
   slug like `family-fest-2026`) — *not* a FK — so synthesized events carry RSVPs
   just like DB ones. `delete_event()` cleans up their rows by id.
+- ⚠️⚠️ **INCIDENT: NOBODY COULD RSVP FOR THEMSELVES for ~2 days — every "Going /
+  Maybe / Can't make" tap answered "Couldn't save — try again", for every member,
+  on every event (fixed by
+  [`0210`](supabase/migrations/0210_fix_rsvp_conflict_target.sql)).** A member
+  worked around it by opening **"Add a person" and adding himself**, which
+  succeeded — that asymmetry is the whole clue and it points straight at the
+  broken line. **Root cause:** [`0196`](supabase/migrations/0196_event_attendance_manual_add.sql)
+  replaced `event_attendance`'s composite PK with a surrogate `id` + **PARTIAL**
+  unique indexes (`… (event_id, user_id) where user_id is not null`), and
+  Postgres will only infer a partial index as an `ON CONFLICT` arbiter when the
+  statement **repeats its predicate**. A bare `on conflict (event_id, user_id)`
+  therefore raises `42P10 there is no unique or exclusion constraint matching the
+  ON CONFLICT specification`. 0196 knew this and fixed the conflict target — **on
+  the wrong copy of the function.**
+  - ⚠️ **There were TWO `set_event_attendance` overloads, and each client used a
+    different one.** 0035 created the 3-arg version; [`0036`](supabase/migrations/0036_event_rsvp_notifications.sql)
+    replaced it with a 4-arg (`…, p_title`) one that also fans out the "X is going
+    to <event>" notification, and **explicitly DROPPED the 3-arg** "so PostgREST
+    resolves the new overload unambiguously". [`0122`](supabase/migrations/0122_family_meetings_to_events.sql)
+    then did `create or replace` on the **3-arg signature** to add
+    `confirmed = true` — silently resurrecting the overload 0036 had removed, with
+    a body that has no notification fan-out. 0196 then "recreated from 0122's
+    current production body", i.e. the 3-arg one. The **web** app always sends 4
+    args (it passes `p_title` so a seed event like Family Fest can be named in the
+    notification) → it hit 0036's still-broken body; the fixed copy was reachable
+    only from **iOS**, which sends 3.
+  - ⚠️ **iOS was broken too, by a DIFFERENT error — which is why the two reports
+    were never connected.** With both overloads live and `p_title` defaulted, a
+    3-argument call matches **both**, and Postgres refuses it: `42725 function
+    public.set_event_attendance(…) is not unique`. **Never re-add an overload of
+    this function** — add a defaulted parameter to the one signature instead (the
+    0115 cabin / 0200 house-request rule). 0210 keeps only the 4-arg body; a
+    3-argument call resolves to it through `p_title`'s default.
+  - ⚠️ **Two silent side effects of the same split**, both fixed by folding
+    everything into the one canonical body: 0122's `confirmed = true` on re-RSVP
+    **never applied to a web RSVP at all** (it only ever landed in the 3-arg copy),
+    so "hasn't confirmed" could stick to somebody who HAD re-tapped their answer;
+    and **iOS RSVPs never fanned out an `event_rsvp` notification.**
+  - ⚠️ **`finalize_meeting_as_event()` carried the identical broken arbiter** when
+    copying date-poll votes into `event_attendance`, so "turn the winning slot into
+    a real Event" had been failing the same way since 0196. Fixed in 0210 too —
+    when a partial index replaces a PK, **grep every `on conflict` against that
+    table**, not just the obvious one.
+  - ⚠️ **The UI made an app-wide outage look like one person's bad connection.**
+    `useEvents.setStatus` returned a bare `false` on failure and
+    [`AttendanceControl`](components/AttendanceControl.tsx) printed "Couldn't save —
+    try again", discarding the server's actual message — indistinguishable from
+    flaky wifi, so nobody reported it for two days. The seam now returns
+    **`RsvpResult`** ([`lib/events.ts`](lib/events.ts)) — `true` saved · **a string
+    = failed, and that string is the reason shown on screen** · `null` = nothing was
+    attempted and the UI already said why (guest → sign-in sheet, "View as"; these
+    used to render a spurious "couldn't save" behind the sign-in sheet). **Carry the
+    reason up** on any new write surface; the wording is deliberately ugly because
+    it's what gets screenshotted.
+  - ⚠️ **Audit finding, NOT yet fixed: seven more functions still carry a stale
+    shorter overload** left behind when a parameter was added — `create_event` /
+    `update_event` (pre-`p_start_time`), `create_meeting` /
+    `create_scheduled_meeting`, `request_help`, `send_broadcast_notification`
+    (pre-0096 event targeting), `set_area_mute`. In every case the old signature
+    is a strict prefix of the new one, so a caller that omits the newer params
+    either resolves **silently to the stale body** (the 0115 cabin bug) or gets
+    42725/PGRST203 (this one). They're latent today because the web client always
+    sends the full parameter set — but `lib/broadcast.ts`'s deliberate
+    pre-migration fallback calls the SHORT form of `send_broadcast_notification`,
+    so that one is live-reachable. Check `pg_proc` for duplicate `proname`s before
+    blaming anything else when an RPC behaves like an older version of itself.
 - **Per-day drill-down:** multi-day events with `day_rsvp` (Family Fest) get an
   optional Sun–Sat picker; the `days` JSON map rolls up to the overall status —
   going at least one day reads as **Going** (`effectiveStatus()`).
