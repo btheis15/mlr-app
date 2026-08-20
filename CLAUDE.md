@@ -2730,6 +2730,35 @@ upsert RPC, widened by [`0187`](supabase/migrations/0187_member_created_events.s
   [`EventSheet`](components/EventSheet.tsx) /
   [`EventComposer`](components/EventComposer.tsx) reuse the existing sheet motion,
   Guard privacy wall (`PrivateName` masks guest names), and theme tokens.
+- ⚠️ **RSVPing is members-only, and the SIGNED-OUT STATE LIVES IN
+  `AttendanceControl` ITSELF — not at each mount site.** A visitor used to get
+  the three live-looking Going / Maybe / Can't-make buttons; tapping one opened
+  the sign-in sheet, so the control advertised an action it could never
+  complete. It now renders a single **"🔒 Sign in to RSVP"** button instead.
+  Keeping that branch inside the control means every RSVP surface — Home's
+  spotlight, the calendar list, the sheet, `FestRsvp`, and anything added
+  later — is covered by construction, with no call site able to forget it.
+  ⚠️ `useGuest()` deliberately counts an **unverified** member as a guest, but
+  they must NOT be offered a sign-in sheet (they're already signed in — it
+  would loop), so that case gets its own "once an admin verifies you" line,
+  matching what the database already shows them (0183). `verified` defaults
+  **true** in `IdentityProvider`, so a returning member never flashes the
+  signed-out state on a cold open.
+- ⚠️ **The UI is the courtesy; the GRANT is the gate.** Every event write RPC is
+  revoked from `anon` — `set_event_attendance`, `add_event_family_member`,
+  `add_event_guest` (so a signed-out visitor cannot add *other people*, which
+  is the affordance Eric's workaround used), `add_event_host`,
+  `create_`/`update_`/`delete_event`, `remove_event_attendance_entry`,
+  `sync_event_work_items`. `event_attendance` additionally has **zero write
+  policies** under RLS, so a direct table write from anon is denied too
+  (verified: insert rejected, a blanket `update … where true` touched 0 rows).
+  Migration [`0212`](supabase/migrations/0212_revoke_anon_add_work_item_to_event.sql)
+  closed the one inconsistency — `add_work_item_to_event` (0050) still carried
+  the default PUBLIC grant. It was never exploitable (its body raises
+  `auth required` on a null `auth.uid()`), but it was the only event write
+  relying on an in-body check rather than the grant boundary. **When adding an
+  event write RPC, revoke it from `anon` explicitly** — the default grant is
+  PUBLIC, so forgetting is silent.
 - **📣 Email everyone about an event** (migration
   [`0190`](supabase/migrations/0190_event_message_email.sql)) — a clean,
   professional email carrying the event's details **plus exactly what's assigned
