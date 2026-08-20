@@ -708,7 +708,7 @@ async function start() {
       .subscribe((status) => {
         console.log("[push] realtime:", status);
         if (status === "SUBSCRIBED") {
-          console.log("[push] listening (committee + house chat + alerts + feed notifications + verified new members + cabin requests)");
+          console.log("[push] listening (committee + house + event chat + alerts + feed notifications + verified new members + cabin requests)");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           if (!reconnecting) {
             reconnecting = true;

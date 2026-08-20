@@ -3200,14 +3200,35 @@ it is visual, not a paragraph nobody reads.
   guarded on `active === "list"` so it can't yank someone out of a room they
   opened themselves); `bootEventId` also holds the loading gate so the list
   doesn't flash on the way in.
-- ⚠️ **Automatic moderation is NOT wired yet** — the `status` column and the
-  admin-can-read-held RLS are in place, but `moderate_content_text` (0160),
-  `hold_content_on_media_verdict` (0162), `moderation_queue` and
-  `set_content_status` (0128) don't know about `event_chat_messages`. So a
-  blocklisted word or a flagged photo in an event chat is **not** held today.
-  Wiring it is a pure function-extension follow-up with no schema change — but
-  all four must be recreated **from their current production bodies** (the 0160
-  rule), and doing 2 without 3 would strand held messages nobody can release.
+- **Moderation is wired** (migration
+  [`0218`](supabase/migrations/0218_event_chat_moderation.sql)), closing the gap
+  0216 shipped with — the `status` column and the admin-can-read-held RLS existed,
+  but nothing ever SET that status and no admin surface could act on it.
+  Entity type is **`'event_chat_message'`**.
+  - ⚠️ **All FIVE functions were recreated from their CURRENT production bodies**
+    — `moderate_content_text` (from 0160), `hold_chat_message_on_flagged_media`
+    (0128), `hold_content_on_media_verdict` (0162), `moderation_queue` (0128),
+    `set_content_status` (0128) — with the event-chat branch as the only change,
+    verified by diffing each body against its source: **additions only, zero
+    removed lines**. That is the 0160 rule, and worth repeating mechanically next
+    time, since a recreate from the wrong copy is undetectable by Postgres.
+  - ⚠️ **Holds and the queue had to ship together.** A held message drops out of
+    the room; without the queue arm and the `set_content_status` branch it could
+    never be approved or removed again, and an admin acting on one would have hit
+    "Unknown content type".
+  - ⚠️ Without the `moderate_content_text` branch, its `else` fallback would have
+    filed these under `'comment'`, pointing the audit trail at `post_comments`
+    rows that don't exist — silent corruption rather than a loud failure.
+  - **How it coexists with an admin-blind room:** RLS admits an admin to a message
+    only while `status <> 'visible'`, and `moderation_queue()` is SECURITY DEFINER
+    so it reads the held text regardless. The queue row is labelled with the
+    event's title — an admin learns which room it came from without being able to
+    open that room. Net effect: they see the item they must rule on, never the
+    conversation around it.
+  - ⚠️ **`report_content` still accepts posts/comments only**, so the chat arms of
+    the queue filter on `status = 'pending'` and never a report count. Members
+    cannot report a chat message — pre-existing for committee/house chat too, and
+    its own change if wanted.
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
 
 - **Not in v1 (clean follow-ups):** new-event notifications + pre-event reminders

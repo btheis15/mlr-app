@@ -8,7 +8,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { useBusyAction } from "@/lib/hooks";
 import { plural } from "@/lib/format";
 
-type ModEntity = "post" | "comment" | "committee_message" | "house_message";
+type ModEntity = "post" | "comment" | "committee_message" | "house_message" | "event_chat_message";
 
 // Friendly label for the entity chip (raw values like "committee_message" read
 // badly uppercased). Chat rows carry their room in the body (see moderation_queue).
@@ -17,6 +17,10 @@ const ENTITY_LABEL: Record<ModEntity, string> = {
   comment: "comment",
   committee_message: "committee chat",
   house_message: "house chat",
+  // Event chats have no app-admin override (0216) — an admin can read a message
+  // ONLY while it's held, which is exactly what this queue shows. So this row is
+  // the one and only place an admin sees event-chat content.
+  event_chat_message: "event chat",
 };
 
 interface QueueRow {
