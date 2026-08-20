@@ -27,6 +27,13 @@ export interface EventChatSummary {
   endDate: string | null;
   /** Read-only: the event ended more than 7 days ago (unless an admin reopened it). */
   archived: boolean;
+  /**
+   * May this viewer actually post? RSVP'd going or maybe — and that is the ONLY
+   * arm (migration 0217). A creator or committee host who hasn't answered yet
+   * still SEES and can READ the room (so an organizer can watch their own
+   * event's thread before deciding), but has to RSVP before saying anything.
+   */
+  canPost: boolean;
   /** Last visible message, already composed as "Name: text" for the row. */
   last?: string;
   lastAt?: string;
@@ -74,6 +81,7 @@ export async function fetchMyEventChats(): Promise<EventChatSummary[]> {
   type Row = {
     event_id: string; title: string | null; emoji: string | null;
     start_date: string | null; end_date: string | null; archived: boolean;
+    can_post: boolean;
     last_text: string | null; last_at: string | null; last_author: string | null;
     last_media: string | null; unread: number | string; muted: boolean;
     muted_until: string | null;
@@ -93,6 +101,7 @@ export async function fetchMyEventChats(): Promise<EventChatSummary[]> {
         startDate: r.start_date,
         endDate: r.end_date,
         archived: Boolean(r.archived),
+        canPost: Boolean(r.can_post),
         last: r.last_at ? who + body : undefined,
         lastAt: r.last_at ?? undefined,
         // `count(*)` comes back from PostgREST as a string — coerce, or the
@@ -134,7 +143,7 @@ export async function fetchEventChatsForPreview(userId: string): Promise<EventCh
   type Row = {
     event_id: string; title: string | null; emoji: string | null;
     start_date: string | null; end_date: string | null; archived: boolean;
-    unread: number | string; muted: boolean; muted_until: string | null;
+    can_post: boolean; unread: number | string; muted: boolean; muted_until: string | null;
   };
   return ((data ?? []) as Row[])
     .filter((r) => r.title)
@@ -145,6 +154,7 @@ export async function fetchEventChatsForPreview(userId: string): Promise<EventCh
       startDate: r.start_date,
       endDate: r.end_date,
       archived: Boolean(r.archived),
+      canPost: Boolean(r.can_post),
       last: undefined, // withheld on purpose — see above
       lastAt: undefined,
       unread: Number(r.unread ?? 0),

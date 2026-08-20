@@ -272,6 +272,89 @@ async function start() {
     if (sent) console.log(`[push] house chat ${house.slug}: notified ${sent}`);
   };
 
+  // Every new EVENT chat message → a phone push, on the same push_types 'chat'
+  // category as committee/house chat, so "chat push on" covers every room a
+  // member is in.
+  //
+  // ⚠️⚠️ RECIPIENTS ARE RSVP'd PEOPLE ONLY — going or maybe, per Brian:
+  // "people should NOT get notifications about the chat, even if they're in a
+  // committee that's hosting, if they haven't RSVPed." So this deliberately
+  // does NOT use the room's READ predicate (is_event_chat_member, 0216), which
+  // also admits the event's creator and its hosts so an organizer can watch the
+  // thread before deciding. Reading it uninvited is fine; being buzzed about it
+  // is not. This mirrors can_post_in_event_chat (0217) — keep the two in step.
+  //
+  // ⚠️ A guest (guest_name) or account-less roster person has a null user_id and
+  // falls out for free; they're reached by the event EMAIL instead (0190/0197).
+  const handleEventChatMessage = async (mid) => {
+    if (!once(`ecm:${mid}`)) return;
+    // Let any @mentions for this message land (inserted right after).
+    await new Promise((r) => setTimeout(r, 500));
+
+    const { data: msg } = await sb
+      .from("event_chat_messages")
+      .select("id, event_id, author_id, text, status, deleted_at")
+      .eq("id", mid)
+      .maybeSingle();
+    if (!msg || msg.deleted_at) return;
+    // Held by moderation ⇒ it isn't visible in the room, so it must not push.
+    if (msg.status && msg.status !== "visible") return;
+
+    const [eventRes, mediaRes, goingRes, muteRes] = await Promise.all([
+      sb.from("events").select("id, title, emoji").eq("id", msg.event_id).maybeSingle(),
+      sb.from("event_chat_message_media").select("media_type").eq("message_id", mid),
+      sb.from("event_attendance").select("user_id").eq("event_id", msg.event_id)
+        .in("status", ["going", "maybe"]).not("user_id", "is", null),
+      sb.from("event_chat_reads").select("user_id").eq("event_id", msg.event_id)
+        .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`),
+    ]);
+    const ev = eventRes.data;
+    if (!ev) return;
+
+    const muted = new Set(((muteRes && muteRes.data) || []).map((m) => m.user_id));
+    const recipients = Array.from(new Set(((goingRes && goingRes.data) || []).map((r) => r.user_id)))
+      .filter((id) => id && id !== msg.author_id && !muted.has(id));
+
+    const authorEligible = SELF_NOTIFY_IDS.has(msg.author_id);
+    if (!recipients.length && !authorEligible) return;
+
+    const ids = Array.from(new Set([...recipients, msg.author_id]));
+    const { data: profs } = await sb
+      .from("profiles")
+      .select("id, display_name, push_types, push_self_notify")
+      .in("id", ids);
+    const typesById = new Map();
+    const selfNotify = new Map();
+    let authorName = "Someone";
+    for (const p of profs || []) {
+      typesById.set(p.id, p.push_types || []);
+      selfNotify.set(p.id, Boolean(p.push_self_notify));
+      if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
+    }
+
+    const body = msg.text && msg.text.trim()
+      ? `${authorName}: ${msg.text.trim().slice(0, 140)}`
+      : `${authorName} sent ${mediaLabel((mediaRes.data || [])[0])}`;
+    const payload = {
+      title: `${ev.emoji ? ev.emoji + " " : ""}${ev.title}`,
+      body,
+      icon: ICON,
+      badge: ICON,
+      tag: `event-${msg.event_id}`,
+      // The Feed is the ONLY safe way to open a room — the standalone chat
+      // routes fail in an installed PWA (see CLAUDE.md).
+      url: `${APP_URL}/posts?event=${msg.event_id}&m=${msg.id}`,
+    };
+
+    const targets = recipients.slice();
+    if (authorEligible && selfNotify.get(msg.author_id)) targets.push(msg.author_id);
+    let sent = 0;
+    for (const uid of targets) {
+      if ((typesById.get(uid) || []).includes("chat")) { await sendToUser(uid, payload); sent++; }
+    }
+    if (sent) console.log(`[push] event chat ${msg.event_id}: notified ${sent}`);
+  };
+
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
     const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending").eq("id", alertId).maybeSingle();
@@ -601,6 +684,9 @@ async function start() {
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" }, (e) =>
         handleHouseMessage(e.new.id).catch((err) => console.error("[push] house msg error:", err && err.message)),
+      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_chat_messages" }, (e) =>
+        handleEventChatMessage(e.new.id).catch((err) => console.error("[push] event chat msg error:", err && err.message)),
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" }, (e) =>
         handleAlert(e.new.id).catch((err) => console.error("[push] alert error:", err && err.message)),
