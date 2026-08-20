@@ -1120,11 +1120,21 @@ export function FeedView() {
               asks for Going only — per Brian, no reason to advertise the Maybe
               route at the point of asking someone to commit. Labels match
               AttendanceControl's exactly: Going / Maybe / Can't make. */}
+          {/* ⚠️ Every text run is an explicit {"…"} STRING EXPRESSION, not JSX
+              text. Interleaving bold spans with bare prose here silently ate the
+              space after each </span> and rendered "Maybeand you’re in the
+              chat" — the same class of bug as the "MJT Housegoing to a resort
+              event" footnote (see the House-calendar warning above). JSX trims
+              whitespace around text nodes; a string expression it cannot touch.
+              Don’t "tidy" these back into plain JSX text. */}
           <p className="px-1 text-[11px] text-faint">
-            RSVP <span className="font-semibold">Going</span> or{" "}
-            <span className="font-semibold">Maybe</span> and you&apos;re in the chat — you can read
-            everything said before you joined. Switch to{" "}
-            <span className="font-semibold">Can&apos;t make</span> and you&apos;re removed.
+            {"RSVP "}
+            <span className="font-semibold">Going</span>
+            {" or "}
+            <span className="font-semibold">Maybe</span>
+            {" and you’re in the chat — you can read everything said before you joined. Switch to "}
+            <span className="font-semibold">Can’t make</span>
+            {" and you’re removed."}
           </p>
         </div>
       )}

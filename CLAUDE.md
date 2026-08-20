@@ -3156,6 +3156,17 @@ it is visual, not a paragraph nobody reads.
     either locks organizers out of their own event's room or lets them post
     without RSVPing. `my_event_chats()`/`preview_event_chats()` both return
     `can_post` so the client never re-derives the rule.
+  - ⚠️⚠️ **The Events footnote is built from explicit `{"…"}` STRING EXPRESSIONS,
+    not JSX text — don't "tidy" it back.** Interleaving bold `<span>`s with bare
+    prose silently ate the space after each `</span>` and shipped
+    "RSVP Going or **Maybe**and you're in the chat" / "Switch to **Can't
+    make**and you're removed" to the live app. JSX trims whitespace around text
+    nodes; a string expression it cannot touch. **This is the third time this
+    exact bug has landed in this repo** (see the "MJT House**go**ing to a resort
+    event" note under **Houses**, whose recorded fix was likewise "build it as
+    one string") — the same treatment is applied to `AdminEventChats`' "It does
+    **not** let you read it" line. Grep `'</span> [a-z]'` before shipping any new
+    emphasis-inside-a-sentence.
   - **The prompt in a room you can't post in yet asks for GOING only**, even
     though Maybe also works — per Brian, no reason to advertise the Maybe route
     at the moment you're asking someone to commit. ⚠️ The **Feed footnote under

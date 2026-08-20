@@ -56,9 +56,12 @@ export function AdminEventChats() {
           An event chat becomes read-only 7 days after the event ends. Reopening lets the
           people who were in it post again for a day or a week, then it closes itself.
         </p>
+        {/* Same explicit-string treatment as FeedView’s Events footnote — a bold
+            span interleaved with JSX text loses the space after </span>. */}
         <p className="mt-1.5">
-          It does <span className="font-semibold">not</span> let you read it. Event chats are
-          only visible to the people who were going — that includes admins.
+          {"It does "}
+          <span className="font-semibold">not</span>
+          {" let you read it. Event chats are only visible to the people who were going — that includes admins."}
         </p>
       </div>
 
