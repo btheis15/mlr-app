@@ -531,7 +531,7 @@ async function start() {
       .subscribe((status) => {
         console.log("[apns] realtime:", status);
         if (status === "SUBSCRIBED") {
-          console.log("[apns] listening (committee + house chat + alerts + feed notifications + verified new members)");
+          console.log("[apns] listening (committee + house + event chat + alerts + feed notifications + verified new members)");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           if (!reconnecting) {
             reconnecting = true;
