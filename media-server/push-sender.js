@@ -407,6 +407,21 @@ async function start() {
     // instead of a banner.
     "broadcast",
   ]);
+  // Has this member muted the Family Feed (migration 0214)? Same rule as the
+  // committee/house room mutes above — a permanent `muted`, or a timer that
+  // hasn't run out yet. A missing table pre-migration errors out with null
+  // data, which reads as "not muted" (fail open: the mute is a courtesy, and
+  // silently swallowing every new-post push would be the worse failure).
+  const feedMuted = async (uid) => {
+    const { data } = await sb
+      .from("feed_mutes")
+      .select("user_id")
+      .eq("user_id", uid)
+      .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`)
+      .maybeSingle();
+    return Boolean(data);
+  };
+
   const handleFeedNotification = async (n) => {
     if (!n || !n.id || !n.recipient_id) return;
     if (!PUSHABLE_FEED_TYPES.has(n.type)) return;
@@ -431,6 +446,10 @@ async function start() {
     } else if (!pushTypes.includes(n.type)) {
       return;
     }
+    // The Family Feed's own bell in the Feed list. Deliberately silences ONLY
+    // the push — the `new_post` Activity row is already written and stays
+    // readable, per the "mute = don't interrupt me, not hide from me" decision.
+    if (n.type === "new_post" && (await feedMuted(n.recipient_id))) return;
 
     const payload = {
       title: n.title || "Muskellunge Lake Resort",

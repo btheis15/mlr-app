@@ -38,7 +38,11 @@ import { useRouter } from "next/navigation";
  * "Meals"). Each section is one card with inset dividers between its rows. Tap a
  * row to open that chat. If you're in no house or committee, the tab drops
  * straight into the Family Feed. Each row shows a last-message preview + unread
- * badge + a mute toggle (0063).
+ * badge + a mute toggle (0063) — including the pinned Family Feed row itself
+ * (migration 0214), whose bell silences new-post pushes without hiding the
+ * Activity-tab rows. ⚠️ A member in no house and no committee is dropped
+ * straight into the Family Feed and never sees this list, so for them the bell
+ * is unreachable and Profile → Notifications stays the only control.
  */
 /** The reserved area value for a committee's private Leads chat (migration
  *  0172). Not a real role — messages just carry area = "Leads", and
@@ -72,9 +76,18 @@ interface Summary {
   /** Set only for a timed mute (null/undefined = permanent or not muted). */
   mutedUntil?: string | null;
 }
-/** What the mute-duration sheet is currently muting — a committee channel or
- *  the house chat, so one sheet + one set_*_mute call site covers both. */
-type MuteTarget = { kind: "committee"; committeeId: string; area: string | null } | { kind: "house"; houseId: string };
+/** The Family Feed's key in `summaries`. Not a real channel (it has no room to
+ *  read or unread count) — it exists so the pinned Family Feed row can carry a
+ *  mute bell through the same `summaries`/`bellTapped`/`applyMute` path as every
+ *  other row, rather than growing a parallel set of state just for it. */
+const FEED_KEY = "feed";
+/** What the mute-duration sheet is currently muting — a committee channel, the
+ *  house chat, or the Family Feed, so one sheet + one set_*_mute call site covers
+ *  all three. */
+type MuteTarget =
+  | { kind: "committee"; committeeId: string; area: string | null }
+  | { kind: "house"; houseId: string }
+  | { kind: "feed" };
 /** "1 day" / "3 days" / "7 days" / "until I turn it back on" — a null hours
  *  means permanent (no muted_until, mirrors the old toggle behavior). */
 const MUTE_DURATIONS: { label: string; hours: number | null }[] = [
@@ -427,6 +440,25 @@ export function FeedView() {
             mutedUntil: timedActive ? read!.muted_until : null,
           };
         }
+        // Family Feed mute (migration 0214). The feed has no unread count or
+        // last-message preview in this list, so this is mute state ONLY — the
+        // row still shows its "Everyone" subtitle. A missing table pre-migration
+        // comes back as an error with null data, which reads as "not muted", so
+        // no explicit guard is needed.
+        {
+          const feedRes = await sb
+            .from("feed_mutes")
+            .select("muted, muted_until")
+            .eq("user_id", meId)
+            .maybeSingle();
+          const fm = feedRes.data as { muted: boolean | null; muted_until: string | null } | null;
+          const timedActive = Boolean(fm?.muted_until && new Date(fm.muted_until).getTime() > Date.now());
+          next[FEED_KEY] = {
+            unread: 0,
+            muted: (fm?.muted ?? false) || timedActive,
+            mutedUntil: timedActive ? fm!.muted_until : null,
+          };
+        }
         // Keep the cached snapshot's summaries current so a returning tab paints
         // the latest previews (only if a structural entry already exists — the
         // channels/houseChannel structural write below is what creates it).
@@ -737,7 +769,9 @@ export function FeedView() {
     if (!sb) return;
     const mutedUntil = muted && hours != null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
     setSummaries((s) => ({ ...s, [key]: { ...(s[key] ?? { unread: 0, muted: false }), muted, mutedUntil } }));
-    if (target.kind === "house") {
+    if (target.kind === "feed") {
+      await sb.rpc("set_feed_mute", { p_muted: muted, p_muted_until: mutedUntil });
+    } else if (target.kind === "house") {
       await sb.rpc("set_house_mute", { hid: target.houseId, p_muted: muted, p_muted_until: mutedUntil });
     } else {
       await sb.rpc("set_area_mute", { cid: target.committeeId, p_area: target.area, p_muted: muted, p_muted_until: mutedUntil });
@@ -945,9 +979,19 @@ export function FeedView() {
     <div className="space-y-5 pt-1">
       <h1 className="px-1 text-lg font-bold">Feed</h1>
 
-      {/* Family Feed — pinned on top, its own card. */}
+      {/* Family Feed — pinned on top, its own card. Carries the same bell as
+          every chat below it (migration 0214): muting it stops new posts buzzing
+          your phone, while they still land in the Activity tab. Its summary is
+          mute-state-only, so the row shows "Everyone" and no unread badge. */}
       <ChatCard>
-        <ConversationRow emoji="📰" title="Family Feed" subtitle="Everyone" summary={undefined} onOpen={() => setActive("posts")} />
+        <ConversationRow
+          emoji="📰"
+          title="Family Feed"
+          subtitle="Everyone"
+          summary={summaries[FEED_KEY]}
+          onOpen={() => setActive("posts")}
+          onToggleMute={() => bellTapped(FEED_KEY, { kind: "feed" })}
+        />
       </ChatCard>
 
       {houseChannel && (
@@ -1001,9 +1045,11 @@ export function FeedView() {
         <MuteDurationSheet
           onPick={(hours) => {
             const key =
-              muteTarget.kind === "house"
-                ? (houseChannel?.key ?? "")
-                : (channels.find((c) => c.committeeId === muteTarget.committeeId && (c.area ?? "") === (muteTarget.area ?? ""))?.key ?? "");
+              muteTarget.kind === "feed"
+                ? FEED_KEY
+                : muteTarget.kind === "house"
+                  ? (houseChannel?.key ?? "")
+                  : (channels.find((c) => c.committeeId === muteTarget.committeeId && (c.area ?? "") === (muteTarget.area ?? ""))?.key ?? "");
             if (key) void applyMute(key, muteTarget, true, hours);
             setMuteTarget(null);
           }}
