@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { POSTS } from "@/lib/data";
 
 // Run the chat viewport-pin BEFORE the browser paints, so the mobile height
@@ -13,6 +13,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useIdentity } from "@/components/IdentityProvider";
 import { PostsView } from "@/components/PostsView";
 import { CommitteeChat } from "@/components/CommitteeChat";
+import { EventChat } from "@/components/EventChat";
 import { HouseChat } from "@/components/HouseChat";
 import { ConversationSearch } from "@/components/ConversationSearch";
 import type { SearchResult } from "@/lib/search";
@@ -25,6 +26,12 @@ import type { ChatPollScope } from "@/lib/chatPolls";
 import { fetchCommitteeRecipients, fetchHouseRecipients, type RecipientResult } from "@/lib/emailBlast";
 import { useSheetDismiss, useUrlParam } from "@/lib/hooks";
 import { readPersisted, writePersisted } from "@/lib/swrCache";
+import {
+  fetchEventChatsForPreview,
+  fetchMyEventChats,
+  setEventChatMute,
+  type EventChatSummary,
+} from "@/lib/eventChats";
 import { useRouter } from "next/navigation";
 
 /**
@@ -87,7 +94,11 @@ const FEED_KEY = "feed";
 type MuteTarget =
   | { kind: "committee"; committeeId: string; area: string | null }
   | { kind: "house"; houseId: string }
-  | { kind: "feed" };
+  | { kind: "feed" }
+  | { kind: "event"; eventId: string };
+
+/** An event chat's key in `summaries` / `active`. */
+const eventKey = (eventId: string) => `event|${eventId}`;
 /** "1 day" / "3 days" / "7 days" / "until I turn it back on" — a null hours
  *  means permanent (no muted_until, mirrors the old toggle behavior). */
 const MUTE_DURATIONS: { label: string; hours: number | null }[] = [
@@ -131,6 +142,9 @@ interface FeedSnapshot {
   /** Read-only chats from committees/roles that were "deleted" (archived,
    *  migration 0112) — you were in them, so their history stays reachable. */
   archivedChannels?: Channel[];
+  /** Event chats (0216) — live ones render in their own "Events" section, and
+   *  the archived ones join the Archived line at the foot of the list. */
+  eventChats?: EventChatSummary[];
 }
 const feedCache = new Map<string, FeedSnapshot>();
 
@@ -143,6 +157,12 @@ export function FeedView() {
   const [houseChannel, setHouseChannel] = useState<HouseChannel | null>(cached?.houseChannel ?? null);
   const [active, setActive] = useState<string>("list"); // "list" | "posts" | channel.key | house key
   const [summaries, setSummaries] = useState<Record<string, Summary>>(cached?.summaries ?? {});
+  const [eventChats, setEventChats] = useState<EventChatSummary[]>(cached?.eventChats ?? []);
+  // A chat archives itself 7 days after its event ends (the server decides —
+  // `archived` is derived there, never a flag this client sets). Live ones get
+  // the prominent Events section; the rest fall to the collapsed archive line.
+  const liveEventChats = useMemo(() => eventChats.filter((e) => !e.archived), [eventChats]);
+  const archivedEventChats = useMemo(() => eventChats.filter((e) => e.archived), [eventChats]);
   const [showMembers, setShowMembers] = useState(false);
   const [members, setMembers] = useState<{ name: string; lead: boolean }[]>([]);
   // Meeting scheduling lives in the ⋯ menu (rare-but-important action, kept out
@@ -309,6 +329,7 @@ export function FeedView() {
         feedCache.set(cacheKey, snap);
         setChannels(snap.channels);
         setArchivedChannels(snap.archivedChannels ?? []);
+        setEventChats(snap.eventChats ?? []);
         setHouseChannel(snap.houseChannel);
         setSummaries(snap.summaries);
       }
@@ -459,11 +480,33 @@ export function FeedView() {
             mutedUntil: timedActive ? fm!.muted_until : null,
           };
         }
+        // Event chats (migration 0216) — one RPC returns every room the viewer
+        // is in, with previews, unread and mute state already resolved by the
+        // same predicate the RLS policies use.
+        //
+        // ⚠️ In "View as" this switches to the preview RPC, which returns the
+        // rooms WITHOUT any last-message text: an admin may confirm a member has
+        // the right chats, never read them. The bell/unread still render, since
+        // those describe that member's UI rather than what anyone said.
+        const evs = previewAsId
+          ? await fetchEventChatsForPreview(previewAsId)
+          : await fetchMyEventChats();
+        for (const e of evs) {
+          next[eventKey(e.eventId)] = {
+            last: e.last,
+            at: e.lastAt,
+            unread: e.unread,
+            muted: e.muted,
+            mutedUntil: e.mutedUntil,
+          };
+        }
+        if (!cancelled) setEventChats(evs);
+
         // Keep the cached snapshot's summaries current so a returning tab paints
         // the latest previews (only if a structural entry already exists — the
         // channels/houseChannel structural write below is what creates it).
         const prevSnap = feedCache.get(cacheKey);
-        if (prevSnap) saveSnap({ ...prevSnap, summaries: next });
+        if (prevSnap) saveSnap({ ...prevSnap, summaries: next, eventChats: evs });
         if (!cancelled) setSummaries(next);
       } finally {
         computingSummaries = false;
@@ -769,7 +812,9 @@ export function FeedView() {
     if (!sb) return;
     const mutedUntil = muted && hours != null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
     setSummaries((s) => ({ ...s, [key]: { ...(s[key] ?? { unread: 0, muted: false }), muted, mutedUntil } }));
-    if (target.kind === "feed") {
+    if (target.kind === "event") {
+      await setEventChatMute(target.eventId, muted, hours);
+    } else if (target.kind === "feed") {
       await sb.rpc("set_feed_mute", { p_muted: muted, p_muted_until: mutedUntil });
     } else if (target.kind === "house") {
       await sb.rpc("set_house_mute", { hid: target.houseId, p_muted: muted, p_muted_until: mutedUntil });
@@ -820,7 +865,17 @@ export function FeedView() {
 
   // No house and no committees → straight to the Family Feed, no list. (But if
   // you have archived chats to browse, keep the list so they stay reachable.)
-  if (channels.length === 0 && !houseChannel && archivedChannels.length === 0) {
+  //
+  // ⚠️ Event chats count here too (0216). Plenty of family are in no committee
+  // and no house but DO go to the work weekends — dropping them into the bare
+  // Family Feed would hide their Events section, and with it the only chat they
+  // have, plus the Family Feed's own mute bell.
+  if (
+    channels.length === 0 &&
+    !houseChannel &&
+    archivedChannels.length === 0 &&
+    eventChats.length === 0
+  ) {
     return (
       <div className="space-y-3 pt-1">
         <PostsView seed={POSTS} showHeading />
@@ -961,6 +1016,24 @@ export function FeedView() {
     );
   }
 
+  // An event chat opened from the list (migration 0216).
+  const activeEvent = eventChats.find((e) => eventKey(e.eventId) === active);
+  if (activeEvent) {
+    return (
+      <div className="space-y-3 pt-1">
+        <EventChat
+          key={activeEvent.eventId}
+          eventId={activeEvent.eventId}
+          title={activeEvent.title}
+          emoji={activeEvent.emoji}
+          archived={activeEvent.archived}
+          when={eventWhen(activeEvent)}
+          onBack={() => setActive("list")}
+        />
+      </div>
+    );
+  }
+
   // Family Feed opened from the list.
   if (active === "posts") {
     return (
@@ -993,6 +1066,34 @@ export function FeedView() {
           onToggleMute={() => bellTapped(FEED_KEY, { kind: "feed" })}
         />
       </ChatCard>
+
+      {/* Events (migration 0216) — right under the Family Feed, per Brian.
+          Deliberately given a DIFFERENT border to the other cards: the whole
+          point is to nudge people to talk about an event here, among the people
+          going, instead of putting logistics in front of everyone on the feed. */}
+      {liveEventChats.length > 0 && (
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted">Events</p>
+          <div className="overflow-hidden rounded-2xl bg-card ring-2 ring-accent/45">
+            {liveEventChats.map((e, i) => (
+              <div key={e.eventId}>
+                {i > 0 && <div className="ml-[68px] border-t border-border" aria-hidden />}
+                <ConversationRow
+                  emoji={e.emoji || "📅"}
+                  title={e.title}
+                  subtitle={eventWhen(e)}
+                  summary={summaries[eventKey(e.eventId)]}
+                  onOpen={() => setActive(eventKey(e.eventId))}
+                  onToggleMute={() => bellTapped(eventKey(e.eventId), { kind: "event", eventId: e.eventId })}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="px-1 text-[11px] text-faint">
+            Just the people going — anyone who RSVPs later joins and sees the whole thread.
+          </p>
+        </div>
+      )}
 
       {houseChannel && (
         <ChatSection label="Your house">
@@ -1030,7 +1131,13 @@ export function FeedView() {
           read-only view of a committee/role you were in that's since been
           "deleted" (archived, migration 0112). Kept out of the way; admins
           restore from Admin → Committees. */}
-      {archivedChannels.length > 0 && <ArchivedChatsLine channels={archivedChannels} onOpen={setActive} />}
+      {(archivedChannels.length > 0 || archivedEventChats.length > 0) && (
+        <ArchivedChatsLine
+          channels={archivedChannels}
+          eventChats={archivedEventChats}
+          onOpen={setActive}
+        />
+      )}
 
       {searchOpen && (
         <ConversationSearch
@@ -1045,7 +1152,9 @@ export function FeedView() {
         <MuteDurationSheet
           onPick={(hours) => {
             const key =
-              muteTarget.kind === "feed"
+              muteTarget.kind === "event"
+                ? eventKey(muteTarget.eventId)
+                : muteTarget.kind === "feed"
                 ? FEED_KEY
                 : muteTarget.kind === "house"
                   ? (houseChannel?.key ?? "")
@@ -1060,9 +1169,24 @@ export function FeedView() {
   );
 }
 
-/** Collapsible "Archived chats" disclosure at the foot of the Feed list. */
-function ArchivedChatsLine({ channels, onOpen }: { channels: Channel[]; onOpen: (key: string) => void }) {
+/**
+ * Collapsible "Archived chats" disclosure at the foot of the Feed list —
+ * collapsed by default so finished things stay out of the way. Carries BOTH
+ * archived committee/role chats (0112) and event chats whose event ended more
+ * than 7 days ago (0216); they're one list on purpose, since "old chats I can
+ * still read" is a single idea to the reader.
+ */
+function ArchivedChatsLine({
+  channels,
+  eventChats,
+  onOpen,
+}: {
+  channels: Channel[];
+  eventChats: EventChatSummary[];
+  onOpen: (key: string) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const total = channels.length + eventChats.length;
   return (
     <div className="pt-1">
       <button
@@ -1070,7 +1194,7 @@ function ArchivedChatsLine({ channels, onOpen }: { channels: Channel[]; onOpen: 
         onClick={() => setOpen((o) => !o)}
         className="press flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-foreground/40"
       >
-        🗄️ Archived chats ({channels.length})
+        🗄️ Archived chats ({total})
         <span className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>›</span>
       </button>
       {open && (
@@ -1087,10 +1211,42 @@ function ArchivedChatsLine({ channels, onOpen }: { channels: Channel[]; onOpen: 
               />
             </div>
           ))}
+          {eventChats.map((e, i) => (
+            <div key={e.eventId}>
+              {(i > 0 || channels.length > 0) && <div className="ml-[68px] border-t border-border" aria-hidden />}
+              <ConversationRow
+                emoji="🗄️"
+                title={e.title}
+                subtitle={eventWhen(e)}
+                summary={undefined}
+                onOpen={() => onOpen(eventKey(e.eventId))}
+              />
+            </div>
+          ))}
         </ChatCard>
       )}
     </div>
   );
+}
+
+/** "Sat, Aug 30" / "Aug 30 – Sep 1" — the row's subtitle, and what an event
+ *  chat shows instead of a last-message preview in "View as". */
+function eventWhen(e: Pick<EventChatSummary, "startDate" | "endDate">): string {
+  if (!e.startDate) return "Event";
+  const start = formatEventDay(e.startDate);
+  // ⚠️ endDate is NULL on a single-day event — never compare or print it raw
+  // (the trap called out for ResortEvent.endDate in CLAUDE.md).
+  if (!e.endDate || e.endDate === e.startDate) return start;
+  return `${start} – ${formatEventDay(e.endDate)}`;
+}
+
+/** ⚠️ Never hand a bare YYYY-MM-DD to `new Date()` — it parses as UTC midnight
+ *  and renders as the PREVIOUS day in Central. That bug labelled every fest
+ *  sign-up slot a day early (migration 0168). Split the parts by hand. */
+function formatEventDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 /**
