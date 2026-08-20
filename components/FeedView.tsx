@@ -264,6 +264,13 @@ export function FeedView() {
     const c = params.get("c");
     return c ? `${c}|${params.get("area") ?? ""}` : null;
   });
+  // Same again for an event-chat deep link (?event=<id>) — the target of every
+  // event-chat push and @mention notification (0216/0217). ⚠️ Notifications point
+  // at the FEED, never a standalone chat route, since those fail outright in an
+  // installed PWA (see CLAUDE.md).
+  const [bootEventId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("event") : null
+  );
   const [loaded, setLoaded] = useState(false);
 
   // A ?post=<id> deep-link (Activity notification for a Main Feed post, an
@@ -353,8 +360,24 @@ export function FeedView() {
     if (bootChannelKey && snap?.channels?.some((c) => c.key === bootChannelKey)) {
       setActive(bootChannelKey);
     }
+    // Same fast path for an event chat, off the cached snapshot.
+    if (bootEventId && snap?.eventChats?.some((e) => e.eventId === bootEventId)) {
+      setActive(eventKey(bootEventId));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, previewAsId]);
+
+  // Cold open of an event-chat deep link (?event=<id>) — a push or @mention
+  // tap on a device with no cached Feed snapshot. The snapshot fast path above
+  // can't fire (there's no snapshot), so open it as soon as the list lands.
+  // Guarded on `active === "list"` so it never yanks someone out of a room they
+  // navigated to themselves, and it only ever fires for a room actually in
+  // their list — a stale link just leaves them on the list.
+  useEffect(() => {
+    if (!bootEventId || active !== "list") return;
+    if (eventChats.some((e) => e.eventId === bootEventId)) setActive(eventKey(bootEventId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootEventId, eventChats]);
 
   // Load my channels (Main Feed is implicit) + their previews.
   useEffect(() => {
@@ -850,14 +873,16 @@ export function FeedView() {
   // Exception: the snapshot fast path above may have already opened the house
   // chat — then there's nothing to hide, so skip the gate and render it now.
   const fastPathOpen =
-    (houseChannel !== null && active === houseChannel.key) || (!!bootChannelKey && active === bootChannelKey);
+    (houseChannel !== null && active === houseChannel.key) ||
+    (!!bootChannelKey && active === bootChannelKey) ||
+    (!!bootEventId && active === eventKey(bootEventId));
   // Hold until the deep-linked room is actually OPEN, not merely until `loaded`.
   // `loaded` only means the channel fetch finished — `setActive` happens in the
   // same tick for a reachable room, but if the room ISN'T in the list (archived,
   // access revoked, a stale link) `active` stays "list", and gating on `active`
   // alone would spin forever. So: while a deep-link is pending, hide until
   // either it opens (fastPathOpen) or the fetch is done and we know it won't.
-  if ((bootHouseSlug || bootChannelKey) && !loaded && !fastPathOpen) {
+  if ((bootHouseSlug || bootChannelKey || bootEventId) && !loaded && !fastPathOpen) {
     return (
       <div className="flex h-[50dvh] items-center justify-center text-sm text-foreground/40">Loading…</div>
     );
@@ -1027,6 +1052,7 @@ export function FeedView() {
           title={activeEvent.title}
           emoji={activeEvent.emoji}
           archived={activeEvent.archived}
+          canPost={activeEvent.canPost}
           when={eventWhen(activeEvent)}
           onBack={() => setActive("list")}
         />
@@ -1089,8 +1115,16 @@ export function FeedView() {
               </div>
             ))}
           </div>
+          {/* ⚠️ This line states the FULL rule (Going or Maybe), unlike the
+              prompt inside a room you can't post in yet, which deliberately
+              asks for Going only — per Brian, no reason to advertise the Maybe
+              route at the point of asking someone to commit. Labels match
+              AttendanceControl's exactly: Going / Maybe / Can't make. */}
           <p className="px-1 text-[11px] text-faint">
-            Just the people going — anyone who RSVPs later joins and sees the whole thread.
+            RSVP <span className="font-semibold">Going</span> or{" "}
+            <span className="font-semibold">Maybe</span> and you&apos;re in the chat — you can read
+            everything said before you joined. Switch to{" "}
+            <span className="font-semibold">Can&apos;t make</span> and you&apos;re removed.
           </p>
         </div>
       )}

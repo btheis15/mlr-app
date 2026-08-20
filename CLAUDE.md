@@ -3140,6 +3140,55 @@ it is visual, not a paragraph nobody reads.
 - ⚠️ **NOT `event_messages`** — that table is the "email everyone about this
   event" blasts (0190). Two very different things; the names are kept far apart
   on purpose.
+- ⚠️⚠️ **SEEING a room and being IN it are two different things (migration
+  [`0217`](supabase/migrations/0217_event_chat_rsvp_to_post.sql)).** 0216 used
+  one predicate for both, so whoever created a Work Weekend could talk in its
+  room without ever saying whether they were coming. Now:
+  - **READ** — `is_event_chat_member` (all four arms, unchanged). An organizer
+    can watch their own event's thread before deciding; per Brian, "you can
+    still see it, I think that's fine."
+  - **WRITE** — `can_post_in_event_chat`: RSVP'd **going or maybe**, full stop.
+    No creator arm, no host arm, no admin arm. ⚠️ **Reactions are gated the
+    same way** — an emoji from someone who hasn't answered still reads to the
+    room as a participant. Media/mention inserts require `m.author_id =
+    auth.uid()` on the parent, so they inherit the gate for free.
+  - ⚠️ **Don't "simplify" these back into one predicate**: collapsing them
+    either locks organizers out of their own event's room or lets them post
+    without RSVPing. `my_event_chats()`/`preview_event_chats()` both return
+    `can_post` so the client never re-derives the rule.
+  - **The prompt in a room you can't post in yet asks for GOING only**, even
+    though Maybe also works — per Brian, no reason to advertise the Maybe route
+    at the moment you're asking someone to commit. ⚠️ The **Feed footnote under
+    the Events card states the full rule** (Going or Maybe gets you in, Can't
+    make removes you). Two different wordings on purpose; the labels match
+    `AttendanceControl`'s exactly.
+- ⚠️⚠️ **NOTIFICATIONS GO TO RSVP'd PEOPLE ONLY — not to a hosting committee.**
+  Per Brian: "people should NOT get notifications about the chat, even if
+  they're in a committee that's hosting, if they haven't RSVPed." So
+  `handleEventChatMessage` in **both** senders
+  ([`push-sender.js`](media-server/push-sender.js) /
+  [`apns-sender.js`](media-server/apns-sender.js)) resolves recipients from
+  `event_attendance` (going/maybe) and **must not** use the room's READ
+  predicate, which also admits creators and hosts. Reading a room uninvited is
+  fine; being buzzed about it is not. Gated on the existing `push_types` **'chat'**
+  category (so "chat push on" covers every room), minus the author, minus anyone
+  muted via `event_chat_reads`, and it **skips held messages** (`status <>
+  'visible'`) since those aren't visible in the room either. Keep all three —
+  `can_post_in_event_chat` and the two handlers — in step.
+  - ⚠️ **This is what makes the event-chat mute bell mean anything.** 0216
+    shipped the bell before any per-message push existed, so for a while it
+    muted nothing.
+  - ⚠️ Guests and account-less roster people have a null `user_id` and fall out
+    for free — they're reached by the event **email** (0190/0197) instead.
+  - ⚠️ Needs a mini `git pull` + restart, like every sender change.
+- **`/posts?event=<id>[&m=<msg>]` is the deep link** for both the push and the
+  @mention notification. ⚠️ It goes through the **Feed**, never a standalone
+  chat route — those fail outright in an installed PWA (see the warning under
+  **Conventions**). `FeedView` handles it on a warm open (from the cached
+  snapshot) *and* on a cold one (an effect that fires when the list lands,
+  guarded on `active === "list"` so it can't yank someone out of a room they
+  opened themselves); `bootEventId` also holds the loading gate so the list
+  doesn't flash on the way in.
 - ⚠️ **Automatic moderation is NOT wired yet** — the `status` column and the
   admin-can-read-held RLS are in place, but `moderate_content_text` (0160),
   `hold_content_on_media_verdict` (0162), `moderation_queue` and

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useIdentity } from "@/components/IdentityProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -76,6 +77,7 @@ export function EventChat({
   title,
   emoji,
   archived,
+  canPost,
   when,
   onBack,
 }: {
@@ -83,6 +85,9 @@ export function EventChat({
   title: string;
   emoji?: string | null;
   archived: boolean;
+  /** RSVP'd going or maybe. A creator/host who hasn't answered can read but not
+   *  post (0217) — the composer is replaced by the RSVP prompt below. */
+  canPost: boolean;
   when?: string | null;
   onBack: () => void;
 }) {
@@ -256,7 +261,13 @@ export function EventChat({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
-  const canSend = !archived && access === "member" && !previewAsId && (text.trim().length > 0 || pending.length > 0) && !sending;
+  const canSend =
+    !archived &&
+    canPost &&
+    access === "member" &&
+    !previewAsId &&
+    (text.trim().length > 0 || pending.length > 0) &&
+    !sending;
 
   const mentionIds = useMemo(() => {
     // Resolve "@Name" fragments against the roster — longest name first so
@@ -371,7 +382,9 @@ export function EventChat({
   };
 
   const react = async (messageId: string, emoji: string) => {
-    if (!uid || previewAsId || archived) return;
+    // A reaction reads to the room as a participant, so it needs the same RSVP
+    // as a message (0217 gates it in RLS too — this just avoids offering it).
+    if (!uid || previewAsId || archived || !canPost) return;
     setTrayFor(null);
     const msg = messages.find((m) => m.id === messageId);
     // One reaction per member per message (the PK), so "current" is whatever
@@ -496,7 +509,7 @@ export function EventChat({
                       <div
                         role="button"
                         tabIndex={0}
-                        onDoubleClick={() => !archived && setTrayFor(trayFor === m.id ? null : m.id)}
+                        onDoubleClick={() => !archived && canPost && setTrayFor(trayFor === m.id ? null : m.id)}
                         className={`rounded-2xl px-3 py-2 text-left text-sm ${mine ? "bg-primary text-white" : "bg-card"}`}
                       >
                         {parent && (
@@ -576,6 +589,24 @@ export function EventChat({
       {archived ? (
         <div className="rounded-2xl bg-card p-3 text-center text-xs text-muted">
           🗄️ This chat is archived — you can still read everything, but nobody can post.
+        </div>
+      ) : !canPost ? (
+        /* You can see and read this room (you created it, or you're a host) but
+           haven't said whether you're coming. ⚠️ Per Brian, this prompt asks for
+           GOING only — a Maybe also gets you in, but there's no reason to
+           advertise that here. */
+        <div className="rounded-2xl bg-primary/10 p-4 text-center">
+          <p className="text-sm font-semibold">Say you&apos;re going to join in</p>
+          <p className="mx-auto mt-1 max-w-xs text-xs text-muted">
+            You can read along because you&apos;re helping run this one. RSVP that you&apos;re
+            going and you can post here too.
+          </p>
+          <Link
+            href={`/events?open=${encodeURIComponent(eventId)}`}
+            className="press mt-3 inline-block rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white"
+          >
+            RSVP I&apos;m going →
+          </Link>
         </div>
       ) : (
         <div className="space-y-2 pb-2">

@@ -284,6 +284,56 @@ async function start() {
     if (sent) console.log(`[apns] house chat ${house.slug}: ${sent}`);
   };
 
+  // event chat — every new event-chat message (0216), gated on the SAME
+  // push_types 'chat' category as committee/house chat.
+  //
+  // ⚠️⚠️ RECIPIENTS ARE RSVP'd PEOPLE ONLY (going or maybe). Per Brian, nobody
+  // should be buzzed about an event chat they haven't RSVP'd to — not even a
+  // member of a committee that's HOSTING it. So this must NOT use the room's
+  // read predicate (is_event_chat_member, 0216), which also admits the creator
+  // and hosts so an organizer can watch the thread before deciding. Mirrors
+  // can_post_in_event_chat (0217) and push-sender.js — keep all three in step.
+  const handleEventChatMessage = async (mid) => {
+    if (!once(`ecm:${mid}`)) return;
+    await new Promise((r) => setTimeout(r, 500));
+    const { data: msg } = await sb.from("event_chat_messages")
+      .select("id, event_id, author_id, text, status, deleted_at").eq("id", mid).maybeSingle();
+    if (!msg || msg.deleted_at) return;
+    // Held by moderation ⇒ not visible in the room, so it must not push.
+    if (msg.status && msg.status !== "visible") return;
+    const { data: ev } = await sb.from("events").select("id, title, emoji").eq("id", msg.event_id).maybeSingle();
+    if (!ev) return;
+
+    const { data: going } = await sb.from("event_attendance")
+      .select("user_id").eq("event_id", msg.event_id)
+      .in("status", ["going", "maybe"]).not("user_id", "is", null);
+    const { data: muteRows } = await sb.from("event_chat_reads")
+      .select("user_id").eq("event_id", msg.event_id)
+      .or(`muted.eq.true,muted_until.gt.${new Date().toISOString()}`);
+    const muted = new Set((muteRows || []).map((m) => m.user_id));
+    const others = Array.from(new Set((going || []).map((r) => r.user_id)))
+      .filter((id) => id && id !== msg.author_id && !muted.has(id));
+    if (!others.length) return;
+
+    const { data: profs } = await sb.from("profiles")
+      .select("id, display_name, push_types").in("id", Array.from(new Set([...others, msg.author_id])));
+    const typesById = new Map();
+    let authorName = "Someone";
+    for (const p of profs || []) {
+      typesById.set(p.id, p.push_types || []);
+      if (p.id === msg.author_id) authorName = (p.display_name || "Someone").trim();
+    }
+
+    const body = msg.text && msg.text.trim() ? `${authorName}: ${msg.text.trim().slice(0, 140)}` : `${authorName} sent a message`;
+    const title = `${ev.emoji ? ev.emoji + " " : ""}${ev.title}`;
+    // ⚠️ The web fallback url must go through the FEED (?event=), never a
+    // standalone chat route — those fail outright in an installed PWA.
+    const payload = { title, body, url: `${APP_URL}/posts?event=${msg.event_id}&m=${msg.id}`, type: "chat", target_type: "event_chat_message", target_id: msg.id };
+    let sent = 0;
+    for (const uid of others) if ((typesById.get(uid) || []).includes("chat")) sent += await apns.sendToUser(sb, uid, payload);
+    if (sent) console.log(`[apns] event chat ${msg.event_id}: ${sent}`);
+  };
+
   // alerts — broadcast announcements (gated on push_types 'alerts')
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
@@ -470,6 +520,8 @@ async function start() {
         (e) => handleMessage(e.new.id).catch((err) => console.error("[apns] msg error:", err && err.message)))
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "house_messages" },
         (e) => handleHouseMessage(e.new.id).catch((err) => console.error("[apns] house msg error:", err && err.message)))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_chat_messages" },
+        (e) => handleEventChatMessage(e.new.id).catch((err) => console.error("[apns] event chat msg error:", err && err.message)))
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
         (e) => handleAlert(e.new.id).catch((err) => console.error("[apns] alert error:", err && err.message)))
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
