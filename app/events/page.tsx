@@ -12,6 +12,7 @@ import { MeetingComposer } from "@/components/MeetingComposer";
 import { PrivateActivityComposer } from "@/components/PrivateActivityComposer";
 import { PrivateActivitySheet } from "@/components/PrivateActivitySheet";
 import { useIdentity } from "@/components/IdentityProvider";
+import { useGuest } from "@/components/Guard";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useEvents, usePrivateActivities } from "@/lib/hooks";
@@ -31,6 +32,12 @@ type Composer = { mode: "new" } | { mode: "edit"; event: ResortEvent } | null;
 export default function EventsPage() {
   const { today } = useDemoDate();
   const { isAdmin, user, userId, promptSignIn } = useIdentity();
+  // ⚠️ Gate CREATE affordances on `signedIn`, never on `user` alone. An
+  // unverified signup has a `user` but cannot write anything (migration 0213),
+  // so offering them these buttons would hand them a raw server error. A true
+  // guest still gets the sign-in sheet; an unverified member gets neither the
+  // button nor a sign-in loop they've already completed.
+  const { signedIn, awaitingVerification } = useGuest();
   const { events, summaries, mine, loading, canRsvp, setStatus, reload } = useEvents({ realtime: true });
   const { activities, reload: reloadActivities } = usePrivateActivities();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -138,12 +145,14 @@ export default function EventsPage() {
 
       {isSupabaseConfigured && (
         <div className="flex gap-2">
-          <button
-            onClick={() => (user ? setComposer({ mode: "new" }) : promptSignIn())}
-            className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
-          >
-            + New event
-          </button>
+          {(signedIn || !awaitingVerification) && (
+            <button
+              onClick={() => (signedIn ? setComposer({ mode: "new" }) : promptSignIn())}
+              className="press flex-1 rounded-2xl bg-primary/10 py-3 text-sm font-semibold text-primary ring-1 ring-primary/20"
+            >
+              + New event
+            </button>
+          )}
           {isAdmin && canOrganizePoll && (
             <button
               onClick={() => setComposePoll(true)}
@@ -158,12 +167,14 @@ export default function EventsPage() {
       {/* Anyone can spin up a private activity — an invite-only game/get-together
           nobody else sees, with an optional tournament. */}
       {isSupabaseConfigured && (
-        <button
-          onClick={() => (user ? setCreatingActivity(true) : promptSignIn())}
-          className="press w-full rounded-2xl bg-accent/10 py-3 text-sm font-semibold text-accent ring-1 ring-accent/20"
-        >
-          🎉 Create an activity
-        </button>
+        (signedIn || !awaitingVerification) && (
+          <button
+            onClick={() => (signedIn ? setCreatingActivity(true) : promptSignIn())}
+            className="press w-full rounded-2xl bg-accent/10 py-3 text-sm font-semibold text-accent ring-1 ring-accent/20"
+          >
+            🎉 Create an activity
+          </button>
+        )
       )}
 
       {(liveActivities.length > 0 || archivedActivities.length > 0) && (

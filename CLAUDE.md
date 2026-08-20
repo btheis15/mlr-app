@@ -1183,6 +1183,65 @@ house submits one of three kinds; a House Admin decides, then records what happe
   they're the sign-in escape hatch itself, so they can't be gated behind the
   sign-in they exist to unblock (see the 0082 migration header).
 
+### An unverified account can do NOTHING (migration [`0213`](supabase/migrations/0213_unverified_members_cannot_write.sql))
+
+0181/0183 locked down what a self-signed-up, not-yet-approved account can
+**see**, but never what it can **do**. Every write RPC gated on "is there a
+session", not on approval — so a stranger who signed up with any email address
+could still RSVP, post to the family feed, create a poll or a work item,
+request a cabin. Their own screen looked empty (they can't read any of it
+back), but the rest of the family saw it. **The rule now: signed in is not
+enough — nothing is writable until an admin verifies you.**
+
+- ⚠️ **It is ONE TRIGGER, not 180 function edits.** 181 SECURITY DEFINER write
+  RPCs are callable by `authenticated` and exactly **one** checked approval.
+  Adding the check to each body would mean recreating 180 definitions — which
+  is precisely how the **0160 incident** happened (a "recreate" silently
+  dropped an unrelated earlier fix, and Postgres cannot detect it). A SECURITY
+  DEFINER function also bypasses RLS, so policies can't carry this either. A
+  `before insert or update or delete` trigger (`require_approved_member()`)
+  fires inside the RPC's own statement whatever function ran it, and
+  `auth.uid()` still resolves to the **calling** member there (the JWT is a
+  request GUC, unaffected by SECURITY DEFINER). **No function body was
+  touched.**
+- ⚠️ **The guard is `auth.uid() is not null and not is_approved_member()`** —
+  that null check is load-bearing. service_role / pg_cron / the mac mini have
+  no `auth.uid()`, so the mailer, both push senders and every cron sweep are
+  untouched; anonymous visitors are likewise unaffected (they're already
+  stopped by grants + RLS, 0212). It fires for exactly one caller: signed in,
+  not yet verified. `is_admin` counts as approved via `is_approved_member()`'s
+  own definition.
+- **Pre-registered family are AUTO-APPROVED on signup**
+  (`trg_auto_approve_preregistered`), so this adds no manual step for anyone an
+  admin already put on the family roster. It bites genuine strangers only. At
+  the time it shipped all 57 accounts were approved, so it changed nothing for
+  anyone who existed.
+- ⚠️ **The exemptions are each load-bearing — read the migration header before
+  trimming the list.** `profiles` (signup CREATES that row, and the person must
+  be able to fill in a name/phone or an admin has nothing to judge when
+  deciding whether to approve them); `committee_roster` / `family_roster` (the
+  roster-LINK triggers on `profiles`, 0056/0060/0123, write these **during
+  signup**, while the account is by definition still unapproved — gating them
+  breaks signup for anyone whose email matches a roster slot);
+  `fest_activities`/`fest_dinners`/`fest_schedule_items` (`sync_fest_lead_names`,
+  0113, rewrites the denormalized lead name when a member renames themselves);
+  `notifications` (a derived fan-out); the push/APNs subscription tables and
+  the `*_reads` receipts; plus the service-role ledgers, where `auth.uid()` is
+  null anyway.
+- ⚠️ **A new member-writable table does NOT inherit the guard** — the migration
+  attaches triggers to the tables that existed then. The audit query at the
+  foot of that file lists any table missing one; it should return only the
+  documented exemptions.
+- **Client side:** `useGuest()` already counts an unverified member as a guest,
+  so surfaces behind `SignInWall` (Posts, Polls, Drop Boxes, Pay) and anything
+  gating on `guest` were already correct. ⚠️ The gap was
+  [`app/events/page.tsx`](app/events/page.tsx), whose "+ New event" and
+  "🎉 Create an activity" buttons gated on the raw `user` — so an unverified
+  account was offered actions that now hard-fail server-side. **Gate a create
+  affordance on `signedIn`, never on `user` alone**, and hide it (rather than
+  calling `promptSignIn()`) when `awaitingVerification`: they're already signed
+  in, so a sign-in sheet is a loop.
+
 ## Admin dashboard
 
 `/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for
