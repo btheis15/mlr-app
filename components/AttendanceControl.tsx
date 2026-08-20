@@ -4,12 +4,26 @@ import { useState } from "react";
 import type { AttendanceStatus } from "@/lib/types";
 import type { RsvpResult } from "@/lib/events";
 import { Celebration } from "@/components/Celebration";
+import { useGuest } from "@/components/Guard";
 import { haptic } from "@/lib/haptics";
 
 // The Facebook-style RSVP: a segmented control (Going / Maybe / Can't make).
-// Presentational-ish — the parent decides what a tap does (write the RSVP, or
-// prompt sign-in for a guest); this component just owns the tap's in-flight +
-// failure UI so every RSVP surface (spotlight, list, sheet) gets it for free.
+// Presentational-ish — the parent decides what a tap does (write the RSVP);
+// this component just owns the tap's in-flight + failure UI so every RSVP
+// surface (spotlight, list, sheet) gets it for free.
+//
+// ⚠️ THE SIGNED-OUT STATE IS OWNED HERE, NOT BY THE PARENT. RSVPing is
+// members-only (the RPC is revoked from `anon` outright, and refuses a null
+// `auth.uid()` on top of that), so three live-looking buttons that can only
+// ever fail are the wrong thing to show a visitor — they say "sign in to
+// RSVP" instead. Keeping it in the control rather than at each mount site
+// means every RSVP surface, including any added later, is covered by
+// construction: there is no call site that can forget it.
+//
+// `useGuest()` deliberately counts an UNVERIFIED member as a guest (see
+// Guard.tsx), but they must NOT be offered a sign-in sheet — they're already
+// signed in and the sheet would be a loop. They get an honest "waiting on an
+// admin" note instead, matching what the database already shows them (0183).
 // The selected option fills with its solid color + white text; the rest stay
 // quiet on white. All solid, LIGHT-MODE-safe colors (never a dark translucent
 // surface tint — see globals.css transparency rule). `hideMaybe` drops the
@@ -44,6 +58,7 @@ export function AttendanceControl({
 }) {
   const pad = size === "sm" ? "py-1.5 text-xs" : "py-2.5 text-sm";
   const options = hideMaybe ? OPTIONS.filter((o) => o.value !== "maybe") : OPTIONS;
+  const { guest, awaitingVerification, promptSignIn } = useGuest();
   // One control instance ⇒ one event, so this local state is inherently
   // per-event: while a tap is saving, further taps are ignored (buttons
   // disabled) instead of firing a second write; a failed one shows inline
@@ -83,6 +98,28 @@ export function AttendanceControl({
       setSaving(false);
     }
   };
+
+  // Signed in but not yet verified by an admin: no sign-in sheet to offer, and
+  // nothing they RSVP to would be visible to them anyway.
+  if (awaitingVerification) {
+    return (
+      <p className={`px-0.5 text-xs text-faint ${className}`}>
+        You&rsquo;ll be able to RSVP once an admin verifies you.
+      </p>
+    );
+  }
+
+  if (guest) {
+    return (
+      <button
+        type="button"
+        onClick={promptSignIn}
+        className={`press w-full rounded-xl bg-card font-semibold text-foreground/70 ring-1 ring-border ${pad} ${className}`}
+      >
+        🔒 Sign in to RSVP
+      </button>
+    );
+  }
 
   return (
     <div className={className}>
