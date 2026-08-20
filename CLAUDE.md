@@ -484,6 +484,33 @@ house is a *narrower* group layered on top, never a replacement. Assignment is
 `is_house_member(hid)` (admin OR `profiles.house_id = hid`), a `SECURITY DEFINER`
 mirror of `is_committee_member` but simpler (a house is one room, no areas).
 
+⚠️ **A policy predicate must be EXECUTABLE by every role that can reach the
+table, or the read ERRORS instead of coming back empty** (migration
+[`0211`](supabase/migrations/0211_is_house_member_anon_execute.sql)).
+`is_house_member` was granted to `authenticated`/`service_role` but never
+`anon`, while `work_items` — which names it in its read policy (0066/0183) —
+still allows anon SELECT. RLS has to *evaluate* the expression before it can
+filter, so every signed-out visitor's Home to-do list request died with
+`42501 permission denied for function is_house_member` (16×/day in the
+Postgres log). **It hid exactly the way the 0210 RSVP bug did:**
+`fetchWorkItems()` swallows the error and returns `[]`, which is precisely what
+a guest is supposed to see since 0183 — so the screen looked correct while the
+request failed. Granting anon EXECUTE leaks nothing: with `auth.uid()` null
+both arms match no row, so the function is **constant-false for anon** — it
+can't even act as an existence oracle — and `work_items`' own
+`is_approved_member()` conjunct still keeps every row away from a guest
+(verified: anon reads 0 rows cleanly, a member still sees all of theirs).
+⚠️ **Seven other predicates are reachable-but-not-executable for anon the same
+way** (`can_edit_fest`, `is_cabin_approver`, `is_committee_lead`,
+`is_committee_member`, `is_private_activity_member`,
+`_can_manage_schedule_signups`, `is_house_admin`) — none firing today because
+nothing anonymous queries those tables. Deliberately **not** swept in bulk:
+each needs its own "is it constant-false for anon?" check, which is the entire
+safety argument. **Takeaway: when adding a function to a policy on an
+anon-readable table, grant it to anon too — and check the Postgres error log,
+not just the screen, since a swallowed error looks identical to a correct
+empty state.**
+
 - **House chat** — a private, full-parity room per house (media/reactions/
   @mentions/replies/24h edit+soft-delete/unread), mirroring committee chat.
   Tables + RLS gated on `is_house_member` in migration
