@@ -4,6 +4,12 @@
  * lib/types.ts) so pages and components agree on the model.
  */
 
+// The one import here, and type-only: a fest year's look is a rendering concern
+// that lives with the code that turns it into CSS (lib/festTheme.ts), and
+// re-declaring the shape here would be two definitions of one thing. Nothing in
+// festTheme.ts imports this module, so there's no cycle.
+import type { FestTheme } from "@/lib/festTheme";
+
 /** Lightweight summary of one Family Fest schedule highlight, mirrored from the
  *  standalone family-fest app for the embedded hub. */
 export interface FestHighlight {
@@ -658,11 +664,24 @@ export interface DuesTier {
 /** Editable Family Fest meta (name, tagline, date window) — the `fest_config`
  *  row, mirrored from the iOS `FestConfig`. Read-with-fallback to FAMILY_FEST. */
 export interface FestConfigContent {
+  /** Which fest this is — `fest_config.fest_year`, the row's primary key. Carried
+   *  on the config (rather than re-derived from `startDate`) because it's the
+   *  key every fest_* write is scoped by, and it's what names this year's
+   *  RSVP event (`family-fest-<year>`) and photo album. */
+  year: number;
   name: string;
   tagline: string;
   /** ISO date, YYYY-MM-DD. */
   startDate: string;
   endDate: string;
+  /** This year's theme/title line, e.g. "Ye Olde Family Feste". "" = none. */
+  theme: string;
+  /** This year's cover photo (migration 0219); null falls back to the app-wide
+   *  image, then the bundled art. */
+  coverUrl: string | null;
+  /** This year's palette / background / font (migration 0219). All-empty means
+   *  the built-in `.ff-section` parchment look. */
+  look: FestTheme;
 }
 
 /* ── Cabin stays (lodging requests) ──────────────────────────────────────────

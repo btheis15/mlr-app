@@ -11,7 +11,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay, dayTimeline } from "@/lib/schedule";
-import { FEST_ALBUM_HREF } from "@/lib/data";
+import { festAlbumHref } from "@/lib/data";
 import { eventDays } from "@/lib/events";
 import { firstName } from "@/lib/privacy";
 import { DinnerDetailsEditSheet } from "@/components/DinnerDetailsEditSheet";
@@ -75,6 +75,11 @@ export function FestStatus({
   onContentSaved?: () => void;
 }) {
   const season = useFestSeason(startDate, endDate);
+  // Which fest this is. Every year has its OWN photo album (a Drop Box keyed by
+  // year — festAlbumBoxId), so a "post your photos" link has to name the year;
+  // it used to be the frozen FEST_ALBUM_HREF, which would have sent 2027's
+  // wrap-up into 2026's folder.
+  const festYear = Number(endDate.slice(0, 4));
   const { today: t } = useDemoDate();
   const { user, userId } = useIdentity();
 
@@ -198,7 +203,7 @@ export function FestStatus({
         <p className="mt-1 text-sm text-foreground/60">
           Drop every photo &amp; video from the week into the shared Family Fest album — everyone can browse and download them.
         </p>
-        <Link href={FEST_ALBUM_HREF} className="press mt-2 inline-block text-sm font-semibold text-primary">
+        <Link href={festAlbumHref(festYear)} className="press mt-2 inline-block text-sm font-semibold text-primary">
           📸 Upload your photos to the Family Fest album →
         </Link>
       </div>
@@ -213,7 +218,7 @@ export function FestStatus({
     // says thank you instead, and points at the archive where the week now
     // lives. Editors get the one thing that's actually next: set next year's
     // dates, which flips this whole section back to a countdown on its own.
-    const year = Number(endDate.slice(0, 4));
+    const year = festYear;
     return (
       <div className="space-y-3">
         <div className="rounded-2xl bg-primary/10 p-4 text-center">
@@ -235,7 +240,7 @@ export function FestStatus({
           </span>
         </Link>
         <Link
-          href={FEST_ALBUM_HREF}
+          href={festAlbumHref(festYear)}
           className="press flex items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-sm font-semibold text-primary ring-1 ring-border"
         >
           <span>📸 Photos &amp; videos from the week</span>
@@ -245,7 +250,7 @@ export function FestStatus({
         </Link>
         {canEditAll && (
           <StartNextFestYear
-            current={{ name: festName, tagline: festTagline, startDate, endDate }}
+            current={{ name: festName, tagline: festTagline }}
             currentYear={year}
             onCreated={() => onContentSaved?.()}
           />

@@ -139,6 +139,14 @@ body {
     radial-gradient(120% 80% at 50% 0%, rgba(139, 46, 46, 0.05), transparent 55%),
     radial-gradient(125% 90% at 50% 100%, rgba(58, 42, 24, 0.11), transparent 55%),
     linear-gradient(180deg, #f7efdb 0%, #ece0c2 100%);
+  /* How that backdrop is laid out. Split out as variables (migration 0219) so a
+     fest year can swap the wash for an uploaded PHOTO (one full-bleed image) or
+     a repeating PATTERN without needing its own CSS rule — FestThemeScope sets
+     these inline per year. The defaults describe the parchment gradient above,
+     for which all three are no-ops. */
+  --ff-ambient-size: auto;
+  --ff-ambient-repeat: repeat;
+  --ff-ambient-position: center;
 }
 
 /* ── Family Fest section — Renaissance / parchment theme, SCOPED ──────────────
@@ -161,6 +169,9 @@ body {
      parchment, still light so the vellum cards pop. */
   background-color: var(--color-background);
   background-image: var(--ff-ambient-image);
+  background-size: var(--ff-ambient-size);
+  background-repeat: var(--ff-ambient-repeat);
+  background-position: var(--ff-ambient-position);
   color: var(--color-foreground);
 }
 
@@ -173,6 +184,9 @@ body {
 html[data-ff] {
   background-color: var(--ff-ambient-bg);
   background-image: var(--ff-ambient-image);
+  background-size: var(--ff-ambient-size);
+  background-repeat: var(--ff-ambient-repeat);
+  background-position: var(--ff-ambient-position);
 }
 
 /* ── Wide-gamut (Display-P3) upgrade — HDR pop on capable screens ─────────────

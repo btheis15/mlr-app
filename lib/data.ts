@@ -191,15 +191,26 @@ export function festAlbumHref(year: number): string {
   return `/drop?box=${festAlbumBoxId(year)}`;
 }
 export const FEST_ALBUM_BOX_ID = festAlbumBoxId(2026);
+/** ⚠️ The 2026 album, frozen. Kept only for the no-config fallback; anything
+ *  that knows which fest year it's rendering must call `festAlbumHref(year)`
+ *  instead, or a 2027 wrap-up would send everyone to 2026's photos. */
 export const FEST_ALBUM_HREF = festAlbumHref(2026);
 
+/** This year's Family Fest RSVP event id. The fest is synthesized from
+ *  `fest_config` rather than being an `events` row (see `festResortEvent` in
+ *  lib/events.ts), and the year in the id is what keeps each fest's attendance
+ *  its own — 2027's "are you coming?" must not read 2026's answers. */
+export function familyFestEventId(year: number): string {
+  return `family-fest-${year}`;
+}
+
 /**
- * Seed resort events that live in CODE rather than the database: Family Fest
- * (synthesized from the FAMILY_FEST window above so its dates have one source of
- * truth and stay tied to the season model) and the 4th of July weekend.
- * Admin-created events (Work Weekends, custom) come from Supabase and merge on
- * top of these in lib/events.ts (deduped by slug). `persisted: false` ⇒ not
- * editable in-app — Family Fest's dates change here; holiday dates are set here.
+ * Seed resort events that live in CODE rather than the database: the 4th of July
+ * weekend. (Family Fest used to be here too, pinned to 2026 — it's now
+ * synthesized per year from `fest_config`; see `festResortEvent` in
+ * lib/events.ts.) Admin-created events (Work Weekends, custom) come from
+ * Supabase and merge on top of these in lib/events.ts (deduped by slug).
+ * `persisted: false` ⇒ not editable in-app — holiday dates are set here.
  *
  * Family Fest stays the app's headline (its own season takeover on Home); the 4th
  * weekend is just the soonest event people RSVP to. Attendance works for both: it
@@ -207,20 +218,15 @@ export const FEST_ALBUM_HREF = festAlbumHref(2026);
  * exactly like a DB event.
  */
 export const RESORT_EVENTS: ResortEvent[] = [
-  {
-    id: "family-fest-2026",
-    slug: "family-fest-2026",
-    kind: "family_fest",
-    title: FAMILY_FEST.name,
-    emoji: "🎪",
-    location: FAMILY_FEST.location,
-    startDate: FAMILY_FEST.startDate,
-    endDate: FAMILY_FEST.endDate,
-    dayRsvp: true,
-    source: "admin",
-    persisted: false,
-    createdBy: null,
-  },
+  // ⚠️ Family Fest is NOT listed here any more. It used to be a single
+  // hardcoded `family-fest-2026` entry, which meant the fest's RSVP was pinned
+  // to one year forever: creating Family Fest 2027 in the Planner would move the
+  // hub, the countdown and the whole week onto the new dates while "Are you
+  // coming?" still collected answers against 2026's event and offered 2026's
+  // days to pick from. It's now synthesized PER YEAR from `fest_config`
+  // (`festResortEvent` in lib/events.ts), so each fest gets its own event id
+  // (`family-fest-<year>`) — a new year starts with a clean RSVP and the
+  // finished year keeps its own attendance in the archive.
   {
     id: "up-north-4th-2026",
     slug: "up-north-4th-2026",

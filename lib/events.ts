@@ -8,7 +8,8 @@
 // backend — the same shape as lib/cabins.ts.
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { RESORT_EVENTS } from "@/lib/data";
+import { RESORT_EVENTS, FAMILY_FEST, familyFestEventId } from "@/lib/data";
+import { fetchFestYears, type FestYear } from "@/lib/festYears";
 import { toISODate } from "@/lib/festSeason";
 import type {
   AttendanceStatus,
@@ -65,8 +66,38 @@ export function effectiveStatus(
   return "not_going";
 }
 
-/** All events (DB ∪ seed), merged by slug (a DB row wins over a seed one), sorted
- *  by start date. Seed-only when there's no backend. */
+/**
+ * One fest YEAR as an RSVP-able resort event.
+ *
+ * Family Fest is deliberately not an `events` row — its dates, name and week
+ * live in `fest_config`, and mirroring them into a second table would be two
+ * sources of truth for the app's headline event (the known limit this trades
+ * for: SQL-side jobs can't see the fest — see CLAUDE.md). What changed with the
+ * archive/start-fresh cycle is that there is now more than ONE of them: every
+ * `fest_config` row becomes its own event, so the year that just ended keeps its
+ * attendance and the year being planned starts with an empty RSVP.
+ */
+export function festResortEvent(y: FestYear): ResortEvent {
+  return {
+    id: familyFestEventId(y.year),
+    slug: familyFestEventId(y.year),
+    kind: "family_fest",
+    title: y.name,
+    emoji: "🎪",
+    location: FAMILY_FEST.location,
+    startDate: y.startDate,
+    endDate: y.endDate,
+    dayRsvp: true,
+    source: "admin",
+    persisted: false,
+    createdBy: null,
+  };
+}
+
+/** All events (DB ∪ every fest year ∪ seed), merged by slug (a DB row wins over
+ *  a synthesized/seed one), sorted by start date. Seed-only when there's no
+ *  backend — `fetchFestYears()` degrades to the in-code seed year, so the fest
+ *  is still on the calendar offline. */
 export async function fetchEvents(): Promise<ResortEvent[]> {
   const sb = supabase;
   let dbEvents: ResortEvent[] = [];
@@ -81,10 +112,12 @@ export async function fetchEvents(): Promise<ResortEvent[]> {
       dbEvents = []; // missing table / bad config ⇒ fall back to the seed
     }
   }
-  // Seed events the DB already covers (same slug) drop out — the DB row wins.
+  const festEvents = (await fetchFestYears()).map(festResortEvent);
+  // Seed/synthesized events the DB already covers (same slug) drop out — the DB
+  // row wins.
   const dbSlugs = new Set(dbEvents.map((e) => e.slug).filter(Boolean));
-  const seed = RESORT_EVENTS.filter((e) => !e.slug || !dbSlugs.has(e.slug));
-  return [...dbEvents, ...seed].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const synthesized = [...festEvents, ...RESORT_EVENTS].filter((e) => !e.slug || !dbSlugs.has(e.slug));
+  return [...dbEvents, ...synthesized].sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 
 /** Upcoming events (ongoing or future), soonest first; optionally capped. */

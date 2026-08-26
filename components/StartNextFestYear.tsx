@@ -7,6 +7,11 @@ import { formatDateLong } from "@/lib/format";
 import { startFestYear } from "@/lib/festContent";
 import type { FestConfigContent } from "@/lib/types";
 
+/** Only the identity this sheet carries forward. Deliberately NOT the whole
+ *  FestConfigContent: the new year gets its own theme, cover and palette (see
+ *  startFestYear), and accepting them here would invite copying them over. */
+type CurrentFestIdentity = Pick<FestConfigContent, "name" | "tagline">;
+
 /**
  * "Start planning next year" — the other half of the archive cycle.
  *
@@ -27,7 +32,7 @@ export function StartNextFestYear({
   currentYear,
   onCreated,
 }: {
-  current: FestConfigContent;
+  current: CurrentFestIdentity;
   currentYear: number;
   /** Re-fetch fest content so the hub swaps to the new year immediately. */
   onCreated: () => void;
@@ -63,7 +68,7 @@ function StartNextFestYearSheet({
   onClose,
   onCreated,
 }: {
-  current: FestConfigContent;
+  current: CurrentFestIdentity;
   currentYear: number;
   onClose: () => void;
   onCreated: () => void;

@@ -10,15 +10,22 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { AttendanceControl } from "@/components/AttendanceControl";
 import { EventSheet } from "@/components/EventSheet";
 import { useGuest } from "@/components/Guard";
+import { familyFestEventId } from "@/lib/data";
 
 // The Family Fest RSVP, surfaced near the top of the Family Fest hub: tap Going or
 // Can't make (no Maybe for fest planning), see how many are here each day, and tap
 // through to pick your days / see who's coming (the shared EventSheet). Scoped to
 // the synthesized Family Fest event so it's the same attendance shown on Home and
 // /events. Renders nothing until mounted/loaded.
-const FEST_EVENT_ID = "family-fest-2026";
-
-export function FestRsvp() {
+//
+// ⚠️ Takes the fest YEAR from the caller rather than pinning an id. This was a
+// hardcoded `family-fest-2026`, which meant the moment a 2027 fest was created
+// the hub counted down to next summer while this card still collected RSVPs
+// against the 2026 event — offering 2026's days to pick from, and showing people
+// as already "going" because they'd answered for last year. Each fest year is
+// now its own synthesized event (`festResortEvent`, lib/events.ts).
+export function FestRsvp({ year }: { year: number }) {
+  const FEST_EVENT_ID = familyFestEventId(year);
   const { today } = useDemoDate();
   const { isAdmin } = useIdentity();
   const { events, summaries, mine, loading, setStatus } = useEvents();

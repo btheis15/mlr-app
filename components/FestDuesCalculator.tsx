@@ -26,7 +26,11 @@ export function FestDuesCalculator({
   onChange,
 }: {
   dues: DuesTier[];
-  config: FestConfigContent;
+  /** Just the fest WINDOW — this only needs the day count for its per-day
+   *  stepper, and taking the whole FestConfigContent stopped the MJT House
+   *  screen (which passes the in-code FAMILY_FEST constant, not a config row)
+   *  from being able to call it. */
+  config: Pick<FestConfigContent, "startDate" | "endDate">;
   /** Heading above the tier list — override for a non-Family-Fest dues screen (e.g. a house's own dues). */
   title?: string;
   /** Prefix for the auto-built note handed to `onChange` (and so the Venmo note) — defaults to "Family Fest". */

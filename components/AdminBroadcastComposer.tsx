@@ -11,7 +11,7 @@ import { ScheduleSendPicker } from "@/components/ScheduleSendPicker";
 import { scheduleBroadcast } from "@/lib/scheduledBroadcasts";
 import { fetchFestContent } from "@/lib/festContent";
 import { fetchDropBoxes, type DropBox } from "@/lib/dropBoxes";
-import { activityReminderDefaults, FAMILY_FEST_EVENT_ID } from "@/lib/activityNotify";
+import { activityReminderDefaults, familyFestTargetEventId } from "@/lib/activityNotify";
 import type { ScheduleEvent } from "@/lib/types";
 
 /** How long the banner stays up before it auto-hides (people can still
@@ -107,7 +107,12 @@ export function AdminBroadcastComposer() {
     setBody(d.body);
     setFeedUrl(d.url);
     setSendToFeed(true); // so tapping the Activity entry opens the activity
-    setEventTarget({ eventId: FAMILY_FEST_EVENT_ID, excludeNotAttending: true });
+    // The fest event is per-year now (`family-fest-<year>`), so the target is
+    // resolved rather than constant — otherwise picking a 2027 activity would
+    // filter the send against 2026's RSVPs.
+    void familyFestTargetEventId().then((eventId) =>
+      setEventTarget({ eventId, excludeNotAttending: true }),
+    );
   };
 
   const { pending: sending, status, show, run } = useSaveStatus();

@@ -12,12 +12,27 @@
 // announcements insert both check is_admin), so callers gate the UI to admins.
 
 import { postAnnouncement, sendActivityNotification } from "@/lib/broadcast";
+import { familyFestEventId } from "@/lib/data";
+import { fetchFestYears, currentFestYear } from "@/lib/festYears";
 import { formatTime, formatDate } from "@/lib/format";
 import type { ScheduleEvent } from "@/lib/types";
 
-/** The stable event id all Family Fest tab content targets (a seed slug, not a
- *  DB row — see RESORT_EVENTS in lib/data.ts / CLAUDE.md "Resort events"). */
-export const FAMILY_FEST_EVENT_ID = "family-fest-2026";
+/**
+ * The event id all Family Fest tab content targets — a synthesized slug, not a
+ * DB row (see `festResortEvent` in lib/events.ts / CLAUDE.md "Resort events").
+ *
+ * ⚠️ Resolved from the CURRENT fest year, not a constant. It was pinned to
+ * `family-fest-2026`, which would have quietly broken exclude-not-attending the
+ * moment a 2027 fest existed: a notification about a 2027 activity would have
+ * been filtered against 2026's RSVPs, so anyone who couldn't make LAST year's
+ * fest would silently stop hearing about this one. Falls back to the current
+ * year's slug if the config can't be read, which is the same audience the app
+ * shows on screen.
+ */
+export async function familyFestTargetEventId(): Promise<string> {
+  const years = await fetchFestYears();
+  return familyFestEventId(currentFestYear(years).year);
+}
 
 export interface ActivityNotifyChannels {
   /** Top-of-app banner (also pushes to phones with alert pushes on). */
@@ -42,7 +57,7 @@ export interface SendActivityNotifyInput {
 
 /**
  * Send a Family-Fest-targeted notification across the chosen channels. Targets
- * `family-fest-2026` with exclude-not-attending on, so it reaches everyone except
+ * this year's fest event with exclude-not-attending on, so it reaches everyone except
  * people who said they're not coming. Returns the first error, if any.
  */
 export async function sendActivityNotify(input: SendActivityNotifyInput): Promise<{ error?: string }> {
@@ -53,6 +68,7 @@ export async function sendActivityNotify(input: SendActivityNotifyInput): Promis
   }
   const url = input.scheduleItemId ? `/family-fest/schedule/${input.scheduleItemId}` : "/family-fest";
   const errors: string[] = [];
+  const eventId = await familyFestTargetEventId();
 
   // Activity-tab entry (also the in-app feed row).
   if (input.channels.activity) {
@@ -61,7 +77,7 @@ export async function sendActivityNotify(input: SendActivityNotifyInput): Promis
       body: input.body ?? null,
       url,
       audience: "everyone",
-      eventId: FAMILY_FEST_EVENT_ID,
+      eventId,
       excludeNotAttending: true,
     });
     if (error) errors.push(error);
@@ -77,7 +93,7 @@ export async function sendActivityNotify(input: SendActivityNotifyInput): Promis
       notifyEmail: input.channels.email,
       emailAudience: "all",
       expiryHours: input.expiryHours ?? 3,
-      eventId: FAMILY_FEST_EVENT_ID,
+      eventId,
       excludeNotAttending: true,
     });
     if (error) errors.push(error);

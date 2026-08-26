@@ -19,6 +19,7 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { FAMILY_FEST } from "@/lib/data";
 import { WRAP_TAIL_DAYS, toISODate } from "@/lib/festSeason";
+import type { FestTheme, FestBgStyle, FestBgImageMode, FestFont } from "@/lib/festTheme";
 
 /** One fest year — the `fest_config` row, in app-facing shape. */
 export interface FestYear {
@@ -27,6 +28,14 @@ export interface FestYear {
   tagline: string;
   startDate: string;
   endDate: string;
+  /** This year's theme/title line, e.g. "Ye Olde Family Feste" (0219). "" = none. */
+  theme: string;
+  /** This year's cover photo. Null ⇒ the app-wide `fest_cover`, then the
+   *  bundled art (see FestCover) — so a year without one is never blank. */
+  coverUrl: string | null;
+  /** This year's palette / background / font overrides (0219). Every field
+   *  optional; all-null renders the built-in `.ff-section` parchment look. */
+  look: FestTheme;
 }
 
 /** The in-code seed year, used when there's no backend / the table is empty —
@@ -38,6 +47,9 @@ export const SEED_FEST_YEAR: FestYear = {
   tagline: FAMILY_FEST.tagline,
   startDate: FAMILY_FEST.startDate,
   endDate: FAMILY_FEST.endDate,
+  theme: FAMILY_FEST.theme,
+  coverUrl: null,
+  look: {},
 };
 
 interface ConfigYearRow {
@@ -46,34 +58,90 @@ interface ConfigYearRow {
   tagline: string | null;
   start_date: string;
   end_date: string;
+  theme?: string | null;
+  cover_url?: string | null;
+  theme_primary?: string | null;
+  theme_accent?: string | null;
+  theme_background?: string | null;
+  theme_card?: string | null;
+  theme_border?: string | null;
+  theme_ink?: string | null;
+  theme_bg_style?: string | null;
+  theme_bg_image_url?: string | null;
+  theme_bg_image_mode?: string | null;
+  theme_bg_image_opacity?: number | null;
+  theme_font?: string | null;
 }
+
+/** The columns that existed before migration 0219 — the narrow retry below. */
+const BASE_COLUMNS = "fest_year, name, tagline, start_date, end_date";
+/** …plus the per-year identity + look added by 0219. */
+const LOOK_COLUMNS =
+  "theme, cover_url, theme_primary, theme_accent, theme_background, theme_card, theme_border, theme_ink, theme_bg_style, theme_bg_image_url, theme_bg_image_mode, theme_bg_image_opacity, theme_font";
 
 /**
  * Every fest year on record, NEWEST FIRST. Falls back to the in-code seed on
  * error / no backend / empty table (never returns an empty array, so callers
  * always have a fest to name).
+ *
+ * ⚠️ The 0219 look columns are fetched with a NARROW RETRY, not a bare
+ * try/catch. Selecting a column that doesn't exist yet is an error for the whole
+ * query, and this function's error path returns the in-code seed — so on a
+ * pre-0219 database a single wide select would have quietly replaced the real
+ * fest_config rows with the hardcoded 2026 seed everywhere (hub, Planner,
+ * archive), which is far worse than losing the theme colours. Same
+ * degrade-per-migration contract the rest of the app follows.
  */
 export async function fetchFestYears(): Promise<FestYear[]> {
   const sb = supabase;
   if (!isSupabaseConfigured || !sb) return [SEED_FEST_YEAR];
+  const read = (columns: string) =>
+    sb.from("fest_config").select(columns).order("fest_year", { ascending: false });
   try {
-    const { data, error } = await sb
-      .from("fest_config")
-      .select("fest_year, name, tagline, start_date, end_date")
-      .order("fest_year", { ascending: false });
+    let { data, error } = await read(`${BASE_COLUMNS}, ${LOOK_COLUMNS}`);
+    if (error) ({ data, error } = await read(BASE_COLUMNS));
     if (error) return [SEED_FEST_YEAR];
-    const rows = (data ?? []) as ConfigYearRow[];
+    const rows = (data ?? []) as unknown as ConfigYearRow[];
     if (rows.length === 0) return [SEED_FEST_YEAR];
-    return rows.map((r) => ({
-      year: r.fest_year,
-      name: r.name,
-      tagline: r.tagline ?? "",
-      startDate: r.start_date,
-      endDate: r.end_date,
-    }));
+    return rows.map(mapYear);
   } catch {
     return [SEED_FEST_YEAR];
   }
+}
+
+/** Narrow a free-text DB value to one of a closed set (null otherwise), so a
+ *  hand-edited row can't hand an unknown mode to the renderer. */
+function oneOf<T extends string>(v: string | null | undefined, allowed: readonly T[]): T | null {
+  return v && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+const BG_STYLES = ["default", "flat", "image"] as const satisfies readonly FestBgStyle[];
+const BG_MODES = ["cover", "tile"] as const satisfies readonly FestBgImageMode[];
+const FONTS = ["cinzel", "playfair", "sans"] as const satisfies readonly FestFont[];
+
+function mapYear(r: ConfigYearRow): FestYear {
+  return {
+    year: r.fest_year,
+    name: r.name,
+    tagline: r.tagline ?? "",
+    startDate: r.start_date,
+    endDate: r.end_date,
+    theme: r.theme ?? "",
+    coverUrl: r.cover_url?.trim() ? r.cover_url.trim() : null,
+    look: {
+      primary: r.theme_primary ?? null,
+      accent: r.theme_accent ?? null,
+      background: r.theme_background ?? null,
+      card: r.theme_card ?? null,
+      border: r.theme_border ?? null,
+      ink: r.theme_ink ?? null,
+      bgStyle: oneOf(r.theme_bg_style, BG_STYLES),
+      bgImageUrl: r.theme_bg_image_url ?? null,
+      bgImageMode: oneOf(r.theme_bg_image_mode, BG_MODES),
+      bgImageOpacity: typeof r.theme_bg_image_opacity === "number" ? r.theme_bg_image_opacity : null,
+      font: oneOf(r.theme_font, FONTS),
+    },
+  };
 }
 
 /**
