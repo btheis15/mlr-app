@@ -43,11 +43,6 @@ export function FestSetupChecklist({
   concluded,
 }: {
   config: FestConfigContent;
-  /** ⚠️ Must be counted WITHIN this year's window by the caller. The content
-   *  layer backfills an empty current year with the in-code 2026 seed so the hub
-   *  is never blank, so a raw `schedule.length` is non-zero for a fest that has
-   *  no plan at all — and this card would tick "build the daily plan" for a week
-   *  with nothing in it. */
   scheduleCount: number;
   dinnerCount: number;
   duesSet: boolean;

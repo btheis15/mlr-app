@@ -417,7 +417,12 @@ export async function fetchFestContent(): Promise<FestContent> {
     const current = newestFestYear(await fetchFestYears());
     resolvedFestYear = current.year;
     festYearResolved = true;
-    return await fetchYearContent(current, { seed: true });
+    return await fetchYearContent(current, {
+      callouts: true,
+      // ⚠️ Only the SEED YEAR may be backfilled from the in-code seed. See
+      // fetchYearContent.
+      seedEmpty: current.year === SEED_FEST_YEAR.year,
+    });
   } catch {
     return SEED_CONTENT;
   }
@@ -446,17 +451,36 @@ export async function fetchFestContentForYear(year: number): Promise<FestContent
   try {
     const match = (await fetchFestYears()).find((y) => y.year === year);
     if (!match) return null;
-    return await fetchYearContent(match, { seed: false });
+    return await fetchYearContent(match, { callouts: false, seedEmpty: false });
   } catch {
     return null;
   }
 }
 
-/** The shared read for one fest year. `seed` selects the hub's
- *  never-show-a-blank-page behaviour vs. the archive's show-what-happened. */
+/**
+ * The shared read for one fest year.
+ *
+ * The two flags used to be one (`seed`), which conflated two unrelated things
+ * and produced a real bug once there was more than one fest on record:
+ *
+ *  - `callouts` — whether to load `home_callouts`. Those aren't year-scoped and
+ *    are a live "act on this now" surface, so only the current year wants them.
+ *  - `seedEmpty` — whether an EMPTY table should be backfilled from the in-code
+ *    seed in lib/data.ts. ⚠️ That seed is not generic filler: it *is* the 2026
+ *    week, with 2026 dates. Backfilling any current year with it meant a
+ *    brand-new fest with no schedule of its own rendered 2026's — "Ye Olde
+ *    Family Faire", "Gene Pool Concert", under day cards reading July 26–30 —
+ *    on the 2027 hub, and deleting them in the Planner only made them come
+ *    back, because they were never rows. Same for its dues, payees and anytime
+ *    activities. So the backfill is now scoped to the SEED YEAR itself, which is
+ *    the only year the seed honestly describes; for anyone else, empty is empty.
+ *
+ * This is the mirror of the guard `fetchFestContentForYear` already had: an
+ * archive must not fabricate history, and a new year must not inherit it.
+ */
 async function fetchYearContent(
   y: FestYear,
-  { seed }: { seed: boolean },
+  { callouts: wantCallouts, seedEmpty }: { callouts: boolean; seedEmpty: boolean },
 ): Promise<FestContent> {
   const sb = supabase;
   if (!sb) return SEED_CONTENT;
@@ -485,7 +509,7 @@ async function fetchYearContent(
       .select("id, title, emoji, blurb, details, location, lead_user_id, lead_name, lead_phone, crew_user_ids, signup_enabled, signup_capacity, signup_slot_minutes, signup_start_time, signup_end_time, signup_mode, signup_instructions, signup_fields, signup_reminder_minutes, signup_reminder_email")
       .eq("fest_year", year)
       .order("position"),
-    seed
+    wantCallouts
       ? sb.from("home_callouts").select(CALLOUT_COLUMNS).order("position")
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -510,17 +534,18 @@ async function fetchYearContent(
       coverUrl: y.coverUrl,
       look: y.look,
     },
-    // Empty table ⇒ keep the seed so the page is never blank (current year only).
-    schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : seed ? SCHEDULE : [],
-    dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : seed ? DINNERS : [],
-    payees: payeeRows.length ? payeeRows.map(mapPayee) : seed ? PAYEES : [],
-    activities: activityRows.length ? activityRows.map(mapActivity) : seed ? THINGS_TO_DO : [],
-    dues: duesRows.length ? duesRows.map(mapDues) : seed ? FALLBACK_DUES : [],
+    // Empty table ⇒ keep the in-code seed, but ONLY for the year that seed
+    // actually describes (see seedEmpty above). Any other year renders empty.
+    schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : seedEmpty ? SCHEDULE : [],
+    dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : seedEmpty ? DINNERS : [],
+    payees: payeeRows.length ? payeeRows.map(mapPayee) : seedEmpty ? PAYEES : [],
+    activities: activityRows.length ? activityRows.map(mapActivity) : seedEmpty ? THINGS_TO_DO : [],
+    dues: duesRows.length ? duesRows.map(mapDues) : seedEmpty ? FALLBACK_DUES : [],
     // Call-outs degrade on ERROR only (pre-0083 the table doesn't exist —
     // show the in-code t-shirt seed so Home is unchanged). An EMPTY table is
     // a real state ("no call-outs"): the seed must not resurrect a card an
     // editor deliberately deleted.
-    callouts: !seed ? [] : callouts.error ? FALLBACK_CALLOUTS : calloutRows.map(mapCallout),
+    callouts: !wantCallouts ? [] : callouts.error ? FALLBACK_CALLOUTS : calloutRows.map(mapCallout),
   };
 }
 
@@ -1353,6 +1378,25 @@ export async function startFestYear(
         .eq("fest_year", from)
         .order("position"),
     ]);
+
+    // ⚠️ Check the READ errors, not just the inserts. `select()` returning an
+    // error leaves `.data` null, which mapped to an empty payload and then hit
+    // the `payload.length === 0 ⇒ continue` skip below — so a table whose read
+    // failed was silently left uncopied and the sheet still reported success,
+    // just with a smaller count. A copy that half-happened has to say so.
+    for (const [label, res] of [
+      ["the schedule", schedule],
+      ["the dinners", dinners],
+      ["the dues", dues],
+      ["the payees", payees],
+    ] as const) {
+      if (res.error) {
+        return {
+          error: `Family Fest ${i.year} was created, but ${label} couldn't be read from ${from}: ${res.error.message}`,
+          copied: 0,
+        };
+      }
+    }
 
     const source = (await fetchFestYears()).find((y) => y.year === from);
     // Shift by the gap between the two START dates, so a week moved to a

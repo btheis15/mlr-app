@@ -1424,6 +1424,28 @@ was needed for any of this**.
   round-trip. `useFestContent`'s Realtime subscription re-runs it on any
   `fest_config` change, so an open Planner starts writing to a newly-created year
   within a tick.
+  - ⚠️⚠️ **The in-code seed backfills ONLY the seed year** (`seedEmpty` in
+    `fetchYearContent`). `fetchYearContent`'s two flags were originally one
+    (`seed`), which conflated "load `home_callouts`" with "backfill an empty table
+    from lib/data.ts" — and the second is not generic filler, it *is* the 2026
+    week with 2026 dates. So a brand-new fest with no schedule of its own rendered
+    2026's on its hub ("Ye Olde Family Faire", "Gene Pool Concert", under day
+    cards reading July 26–30 while the fest ran in August 2027), and deleting
+    them in the Planner only brought them back, because they were never rows.
+    Same for its dues tiers, payees and anytime activities — a new year showed
+    last year's collector as its own. This is the mirror of the guard the archive
+    path already had: **an archive must not fabricate history, and a new year
+    must not inherit it.**
+    - ⚠️ Do NOT "fix" a stray out-of-window row by clamping a render to
+      `[startDate, endDate]`. **2026 has real events on July 23–25, three days
+      before its posted start** (setup days), and a window clamp would hide them.
+      Rows belong to the `fest_year` column they carry, not to the posted window.
+    - Consequence: an unplanned year now renders honest empty states —
+      [`FestWeek`](components/FestWeek.tsx) ("The week isn't planned yet" + an
+      editor-only "Add the first event"),
+      [`FestDuesCalculator`](components/FestDuesCalculator.tsx) and
+      [`PayView`](components/PayView.tsx). Those states were previously
+      unreachable on the hub.
   - **`fetchFestContentForYear(year)`** / **`useFestYearContent(year)`** read one
     specific year for the archive. ⚠️ Deliberately **no seed fallback and no
     call-outs**: the hub backfills an empty table with the in-code 2026 seed so
@@ -1486,7 +1508,11 @@ was needed for any of this**.
     copy sign-up config or tournament flags — those are per-year live state whose
     slots, rosters and reminder times are keyed to specific dates. A copy failure
     is reported but **never rolls the year back**: the year existing is the part
-    that matters, and an empty new fest is a fine place to start.
+    that matters, and an empty new fest is a fine place to start. ⚠️ The copy
+    checks the **read** errors too, not just the inserts — a `select()` error
+    leaves `.data` null, which hit the "empty payload ⇒ skip this table" branch,
+    so a table whose read failed was silently left uncopied while the sheet still
+    reported success with a smaller count.
 ### A fest year's own identity & look (migration [`0219`](supabase/migrations/0219_fest_year_look.sql))
 
 The archive cycle above made the fest's *content* per-year. Its **identity** was
