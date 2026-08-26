@@ -16,6 +16,7 @@ import {
   type FestYear,
 } from "@/lib/festYears";
 import { toISODate } from "@/lib/festSeason";
+import { hexOrNull, type FestTheme } from "@/lib/festTheme";
 import type {
   ScheduleEvent,
   Dinner,
@@ -61,10 +62,16 @@ async function activeFestYear(): Promise<number> {
 // ── Fallbacks (the in-code seed; identical to the DB seed in migration 0053) ──
 
 export const FALLBACK_CONFIG: FestConfigContent = {
+  year: Number(FAMILY_FEST.startDate.slice(0, 4)),
   name: FAMILY_FEST.name,
   tagline: FAMILY_FEST.tagline,
   startDate: FAMILY_FEST.startDate,
   endDate: FAMILY_FEST.endDate,
+  theme: FAMILY_FEST.theme,
+  coverUrl: null,
+  // Empty ⇒ the built-in `.ff-section` look, which is exactly what a
+  // no-backend/first-paint render should show. See lib/festTheme.ts.
+  look: {},
 };
 
 /** Seed dues tiers — all amounts TBD until set in the Planner. */
@@ -493,7 +500,16 @@ async function fetchYearContent(
   return {
     // The config comes from the years list we already loaded, not a second
     // fest_config read.
-    config: { name: y.name, tagline: y.tagline, startDate: y.startDate, endDate: y.endDate },
+    config: {
+      year: y.year,
+      name: y.name,
+      tagline: y.tagline,
+      startDate: y.startDate,
+      endDate: y.endDate,
+      theme: y.theme,
+      coverUrl: y.coverUrl,
+      look: y.look,
+    },
     // Empty table ⇒ keep the seed so the page is never blank (current year only).
     schedule: scheduleRows.length ? scheduleRows.map(mapSchedule) : seed ? SCHEDULE : [],
     dinners: dinnerRows.length ? dinnerRows.map(mapDinner) : seed ? DINNERS : [],
@@ -930,6 +946,8 @@ export interface ConfigInput {
   tagline: string | null;
   startDate: string;
   endDate: string;
+  /** This year's theme/title line (migration 0219). Null clears it. */
+  theme: string | null;
 }
 /** Save the CURRENT fest year's config. Keyed by fest_year (upsert), so there's
  *  exactly one row per fest — editing dates here reshapes that year's week, it
@@ -944,11 +962,68 @@ export async function saveConfig(i: ConfigInput): Promise<{ error?: string }> {
       tagline: i.tagline,
       start_date: i.startDate,
       end_date: i.endDate,
+      theme: i.theme,
       updated_at: new Date().toISOString(),
       updated_by: await currentUid(),
     },
     { onConflict: "fest_year" },
   );
+  return error ? { error: error.message } : {};
+}
+
+/**
+ * Save the CURRENT fest year's LOOK — palette, background, font (migration
+ * 0219).
+ *
+ * An UPDATE, not an upsert: the row always exists by the time anyone is picking
+ * colours for it (it's created by `startFestYear`, or seeded), and an upsert
+ * that missed would invent a fest_config row with no name and no dates — which
+ * `currentFestYear()` would then hand the hub as the newest year.
+ *
+ * ⚠️ Writes NULL for anything unset rather than omitting the key, so "reset to
+ * the built-in look" is expressible. Null is the meaningful value here (see
+ * lib/festTheme.ts): it's what keeps the stylesheet as the single source of
+ * truth for the default, so a year using the default look genuinely has no
+ * colours of its own to go stale.
+ */
+export async function saveFestLook(look: FestTheme): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("fest_config")
+    .update({
+      theme_primary: hexOrNull(look.primary),
+      theme_accent: hexOrNull(look.accent),
+      theme_background: hexOrNull(look.background),
+      theme_card: hexOrNull(look.card),
+      theme_border: hexOrNull(look.border),
+      theme_ink: hexOrNull(look.ink),
+      theme_bg_style: look.bgStyle ?? null,
+      theme_bg_image_url: look.bgImageUrl?.trim() || null,
+      theme_bg_image_mode: look.bgImageMode ?? null,
+      theme_bg_image_opacity: typeof look.bgImageOpacity === "number" ? look.bgImageOpacity : null,
+      theme_font: look.font ?? null,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    })
+    .eq("fest_year", await activeFestYear());
+  return error ? { error: error.message } : {};
+}
+
+/** Set (or clear, with null) the CURRENT year's cover photo. Per-year since
+ *  0219 — it used to be the single app-wide `app_images.fest_cover`, so a new
+ *  poster silently replaced the one the previous year's archive showed. */
+export async function saveFestCover(url: string | null): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb
+    .from("fest_config")
+    .update({
+      cover_url: url?.trim() || null,
+      updated_at: new Date().toISOString(),
+      updated_by: await currentUid(),
+    })
+    .eq("fest_year", await activeFestYear());
   return error ? { error: error.message } : {};
 }
 
@@ -1226,12 +1301,21 @@ export async function startFestYear(
   const existing = (await fetchFestYears()).some((y) => y.year === i.year);
   if (existing) return { error: `Family Fest ${i.year} already exists.` };
 
+  // The new year deliberately starts with NO theme line, NO cover and NO
+  // palette of its own (migration 0219). A null look renders the built-in
+  // `.ff-section` parchment — the 2026 look — so the year is never ugly while
+  // it's being planned, and whatever it becomes is a decision someone makes in
+  // the Planner rather than last year's identity inherited by accident. Copying
+  // "Ye Olde Family Feste" forward is the one thing that would be actively
+  // wrong: the theme is the part of a fest that is *supposed* to change.
   const { error: cfgError } = await sb.from("fest_config").insert({
     fest_year: i.year,
     name: i.name,
     tagline: i.tagline,
     start_date: i.startDate,
     end_date: i.endDate,
+    theme: null,
+    cover_url: null,
     ...stamp,
   });
   if (cfgError) return { error: cfgError.message };

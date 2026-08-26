@@ -712,8 +712,9 @@ empty state.**
     time) and an approved idea has nothing to buy. A dedup ledger
     (`house_order_reminders_sent`, keyed house + occasion start) means one reminder per
     trip, not one per day for a week; a later trip gets its own.
-  - ⚠️ **Known limit: Family Fest is synthesized in client code, not an `events` row**,
-    so SQL can't see it and it won't trigger a reminder. Every admin-created event
+  - ⚠️ **Known limit: Family Fest is synthesized in client code, not an `events` row**
+    (one per fest year since 0219 — `festResortEvent`), so SQL can't see it and it
+    won't trigger a reminder. Every admin-created event
     (work weekends, holidays) is a real row and works. Left as-is rather than mirroring
     the fest dates into SQL and creating a second source of truth.
 - **House lists** — shared lists for a house: the grocery run, a cabin close-up
@@ -1486,6 +1487,83 @@ was needed for any of this**.
     slots, rosters and reminder times are keyed to specific dates. A copy failure
     is reported but **never rolls the year back**: the year existing is the part
     that matters, and an empty new fest is a fine place to start.
+### A fest year's own identity & look (migration [`0219`](supabase/migrations/0219_fest_year_look.sql))
+
+The archive cycle above made the fest's *content* per-year. Its **identity** was
+still in code and in app-wide singletons, which meant a new year inherited the
+last one's face:
+
+| Was | Now |
+| --- | --- |
+| `FAMILY_FEST.theme` in [`lib/data.ts`](lib/data.ts) — a hardcoded `"Ye Olde Family Feste"` | `fest_config.theme`, edited in the Planner's **Details** |
+| `app_images.fest_cover` — ONE app-wide key | `fest_config.cover_url` per year, edited in the Planner's **Look** |
+| `.ff-section` in [`app/globals.css`](app/globals.css) — parchment + heraldry, CSS only | `fest_config.theme_*` per year (palette, background, font), edited in **Look** |
+| `family-fest-2026` — one hardcoded RSVP event | `festResortEvent(year)` per fest year (`family-fest-<year>`) |
+
+- ⚠️⚠️ **NULL MEANS "USE THE BUILT-IN LOOK", and 0219 deliberately does not
+  backfill the current hexes.** `.ff-section` stays the default — the 2026
+  parchment — and a year overrides only what it chose. Writing the defaults into
+  2026's row would have (a) frozen it onto sRGB literals, since an inline custom
+  property beats the `@supports (color: display-p3)` rules that upgrade them, and
+  (b) made "the default look" two sources of truth. A brand-new year therefore
+  looks exactly like 2026 until someone picks something.
+- **[`lib/festTheme.ts`](lib/festTheme.ts)** turns a year's look into inline CSS
+  custom properties (`festThemeStyle`) — the SAME variables Tailwind's utilities
+  read, which is why one object repaints the whole section. It also owns the
+  presets, `hexOrNull`/`cssUrlOrNull` (these strings go into a `style` attribute
+  — the DB has a matching CHECK, and both halves exist on purpose), and
+  `contrastWarnings()`.
+  - ⚠️ **`hasChosenLook` ≠ `hasCustomLook`.** The "Parchment & Heraldry" preset
+    is stored as nulls + `bgStyle: 'default'`, so by `hasCustomLook` it's
+    indistinguishable from never having opened the editor. The set-up checklist
+    uses `hasChosenLook` (any field written) or its row could never tick and the
+    card would become permanent furniture on the hub.
+- **[`FestThemeScope`](components/FestThemeScope.tsx)** applies a look, and it
+  **nests**: [`FestSectionTheme`](components/FestSectionTheme.tsx) wraps the whole
+  `/family-fest/*` subtree in the CURRENT year's look, and an archived year's page
+  re-wraps its own content in ITS look (inline styles on a descendant win). That's
+  what lets 2026 keep looking like 2026 after 2027 repaints the hub — no
+  route-level special casing. `canvas` also drives `<html>`'s ambient background
+  (which a wrapper element can't reach) for the current year only.
+- **[`FestLookEditor`](components/FestLookEditor.tsx)** is the in-app editor:
+  cover photo, presets, six colour wells, background (soft wash / flat / uploaded
+  photo or tile + strength), heading font, and a **live preview built from the
+  real components**. Contrast is **warned, never clamped** — the family picks the
+  look; the editor just says when a pair can't be read (the editor's own screen at
+  full brightness is the best case, which is how an unreadable year would ship).
+  - Each colour row has an explicit **Default** checkbox because
+    `<input type="color">` has no empty state — without it, opening the screen and
+    touching nothing would still look like six deliberate choices.
+- **[`FestSetupChecklist`](components/FestSetupChecklist.tsx)** (fest editors, on
+  the hub) is the discoverability half: a brand-new year's hub is just a
+  countdown, so nothing said what was still blank. Every row is a real gap derived
+  from the year's own data, links to `/family-fest/master?section=<key>`, and the
+  card **removes itself** once nothing is missing (and never shows on a concluded
+  fest — starting the next year is `StartNextFestYear`'s job).
+  - ⚠️ Its schedule/dinner counts must be taken **within the fest window**. An
+    empty current year falls back to the in-code 2026 seed so the hub is never
+    blank; those days sit outside a new year's dates and render as nothing, so a
+    raw `.length` would tick "build the daily plan" for a week showing no plan.
+- ⚠️ **The RSVP event is per year now** (`festResortEvent` in
+  [`lib/events.ts`](lib/events.ts), synthesized from every `fest_config` row —
+  Family Fest is still not an `events` row). It was pinned to `family-fest-2026`,
+  so creating a 2027 fest would have moved the hub, countdown and week onto the
+  new dates while "Are you coming?" still collected answers against 2026 —
+  offering 2026's days to pick, and showing people as already going because they
+  answered last year. Same fix for `festAlbumHref(year)` (each year has its own
+  Drop Box) and `familyFestTargetEventId()` in
+  [`lib/activityNotify.ts`](lib/activityNotify.ts) (a pinned id would have
+  filtered a 2027 notification against 2026's RSVPs, silently cutting out anyone
+  who couldn't make *last* year).
+- ⚠️ `fetchFestYears()` reads the 0219 columns with a **narrow retry**, not a bare
+  try/catch: selecting a column that doesn't exist errors the whole query, and
+  this function's error path returns the in-code seed — so one wide select would
+  have replaced the real `fest_config` rows with the hardcoded 2026 seed
+  everywhere on a pre-0219 database.
+- The Planner's **Images** section is now labelled *app-wide* and `fest_cover`
+  reads as the **fallback** behind every year — it's still what iOS reads and what
+  a year with no cover of its own falls back to.
+
 - 📱 **iOS is not updated** — the native app mirrors `festSeason.ts` and reads
   `fest_config` with its own hardcoded year, so it will keep treating the newest
   fest as the only one and has no Past Years. Shared schema, no backend change

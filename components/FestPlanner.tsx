@@ -17,6 +17,7 @@ import { BackLink } from "@/components/BackLink";
 import { ModalPortal } from "@/components/ModalPortal";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { LinksEditor, toEditableLinks, cleanLinks } from "@/components/LinksEditor";
+import { FestLookEditor } from "@/components/FestLookEditor";
 import { useSheetDismiss, useSaveStatus } from "@/lib/hooks";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { useIdentity } from "@/components/IdentityProvider";
@@ -68,16 +69,29 @@ import {
 import type { SignupField } from "@/lib/types";
 import { mediaSrc } from "@/lib/mediaToken";
 
-type Section = "schedule" | "dinners" | "dues" | "payees" | "details" | "images";
+type Section = "schedule" | "dinners" | "dues" | "payees" | "details" | "look" | "images";
 
 const SECTIONS: { key: Section; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
   { key: "dinners", label: "Dinners", icon: "🍽️" },
   { key: "dues", label: "Dues", icon: "💵" },
   { key: "payees", label: "Payees", icon: "💸" },
+  { key: "look", label: "Look", icon: "🎨" },
   { key: "images", label: "Images", icon: "🖼️" },
   { key: "details", label: "Details", icon: "⚙️" },
 ];
+
+const SECTION_KEYS = new Set<string>(SECTIONS.map((s) => s.key));
+
+/** A `?section=` deep link, validated — the set-up checklist on the hub links
+ *  straight to the section that fixes each gap, so "add the cover photo" is one
+ *  tap from knowing you need one. Junk falls through to the default section
+ *  rather than rendering nothing. */
+function sectionFromUrl(): Section | null {
+  if (typeof window === "undefined") return null;
+  const v = new URLSearchParams(window.location.search).get("section");
+  return v && SECTION_KEYS.has(v) ? (v as Section) : null;
+}
 
 /** The fest's ISO days, derived from the config window (DST/TZ-safe). */
 function festDays(startDate: string, endDate: string): string[] {
@@ -104,6 +118,24 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   // True while consuming an iOS → web session hand-off (tokens in the URL hash),
   // so we wait for the silent sign-in instead of flashing the sign-in prompt.
   const [handoff, setHandoff] = useState(false);
+
+  // Land on the section the caller asked for (the hub's set-up checklist links
+  // per gap). On the master page every section is already on screen, so the same
+  // param scrolls to its heading instead of switching tabs.
+  useEffect(() => {
+    const target = sectionFromUrl();
+    if (!target) return;
+    if (variant === "tabs") {
+      setSection(target);
+      return;
+    }
+    // The master page renders every editor at once, so wait a tick for the
+    // headings to exist before scrolling to one.
+    const id = window.setTimeout(() => {
+      document.getElementById(`fest-section-${target}`)?.scrollIntoView({ block: "start" });
+    }, 150);
+    return () => window.clearTimeout(id);
+  }, [variant]);
 
   // Silent session hand-off from the iOS app: it opens this page with the
   // member's Supabase tokens in the URL fragment so there's no second sign-in.
@@ -211,22 +243,25 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
   if (variant === "page") {
     return (
       <Frame variant="page">
-        <PageSection icon="⚙️" title="Details">
+        <PageSection id="fest-section-details" icon="⚙️" title="Details">
           <DetailsEditor config={config} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="📅" title="Schedule & events">
+        <PageSection id="fest-section-look" icon="🎨" title="Look — cover, colours & background">
+          <FestLookEditor config={config} onChanged={reloadDrafts} />
+        </PageSection>
+        <PageSection id="fest-section-schedule" icon="📅" title="Schedule & events">
           <ScheduleEditor items={schedule} days={days} members={members} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="🍽️" title="Dinners">
+        <PageSection id="fest-section-dinners" icon="🍽️" title="Dinners">
           <DinnerEditor items={dinners} days={days} members={members} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="💵" title="Dues">
+        <PageSection id="fest-section-dues" icon="💵" title="Dues">
           <DuesEditor items={dues} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="💸" title="Who to pay">
+        <PageSection id="fest-section-payees" icon="💸" title="Who to pay">
           <PayeeEditor items={payees} onChanged={reloadDrafts} />
         </PageSection>
-        <PageSection icon="🖼️" title="Images">
+        <PageSection id="fest-section-images" icon="🖼️" title="App-wide images">
           <ImagesEditor />
         </PageSection>
       </Frame>
@@ -262,6 +297,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       )}
       {section === "dues" && <DuesEditor items={dues} onChanged={reloadDrafts} />}
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
+      {section === "look" && <FestLookEditor config={config} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
       {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
     </Frame>
@@ -317,9 +353,20 @@ function Frame({ children, variant = "tabs" }: { children: React.ReactNode; vari
 }
 
 /** A titled block in the master/page editor. */
-function PageSection({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+function PageSection({
+  id,
+  icon,
+  title,
+  children,
+}: {
+  /** Anchor for `?section=` deep links from the hub's set-up checklist. */
+  id?: string;
+  icon: string;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="space-y-4">
+    <section id={id} className="scroll-mt-20 space-y-4">
       <h2 className="text-lg font-bold tracking-tight">
         <span className="mr-2" aria-hidden>{icon}</span>
         {title}
@@ -2159,15 +2206,27 @@ function ImagesEditor() {
     void reload();
   }, [reload]);
 
+  // ⚠️ `fest_cover` is the APP-WIDE Family Fest image, not this year's cover.
+  // Migration 0219 moved the fest's own cover onto `fest_config.cover_url`
+  // (edited in the Look section) because a single global key meant uploading
+  // next year's poster silently replaced the one the finished year's archive
+  // page shows. This key stays as the fallback behind every year — it's what
+  // iOS reads, and what a year with no cover of its own falls back to.
   const items = [
     { key: "home_logo", title: "Home logo", note: "Shown at the top of the Home screen.", wide: false },
-    { key: "fest_cover", title: "Family Fest cover", note: "The banner across the Family Fest page.", wide: true },
+    {
+      key: "fest_cover",
+      title: "Family Fest fallback cover",
+      note: "Used by any fest year that hasn't set its own cover photo. This year's cover lives in Look.",
+      wide: true,
+    },
   ];
 
   return (
     <div className="space-y-4">
       <p className="px-0.5 text-xs text-foreground/55">
-        Replace a default image everywhere — web and iOS update together. Reset goes back to the built-in art.
+        App-wide images — web and iOS update together, and they are NOT per fest year. Reset goes
+        back to the built-in art.
       </p>
       {items.map((it) => (
         <ImageRow
@@ -2279,12 +2338,13 @@ function DetailsEditor({
   config,
   onChanged,
 }: {
-  config: { name: string; tagline: string; startDate: string; endDate: string };
+  config: { name: string; tagline: string; theme: string; startDate: string; endDate: string };
   onChanged: () => void;
 }) {
   const save = useSaveStatus();
   const [name, setName] = useState(config.name);
   const [tagline, setTagline] = useState(config.tagline);
+  const [theme, setTheme] = useState(config.theme);
   const [startDate, setStartDate] = useState(config.startDate);
   const [endDate, setEndDate] = useState(config.endDate);
   // The SAVED window, not the in-progress form values — otherwise typing a
@@ -2296,15 +2356,22 @@ function DetailsEditor({
   useEffect(() => {
     setName(config.name);
     setTagline(config.tagline);
+    setTheme(config.theme);
     setStartDate(config.startDate);
     setEndDate(config.endDate);
-  }, [config.name, config.tagline, config.startDate, config.endDate]);
+  }, [config.name, config.tagline, config.theme, config.startDate, config.endDate]);
 
   const validRange = endDate >= startDate;
   const canSave = name.trim().length > 0 && startDate.length > 0 && endDate.length > 0 && validRange && !save.pending;
   const submit = () =>
     save.run(async () => {
-      const { error } = await saveConfig({ name: name.trim(), tagline: orNull(tagline), startDate, endDate });
+      const { error } = await saveConfig({
+        name: name.trim(),
+        tagline: orNull(tagline),
+        theme: orNull(theme),
+        startDate,
+        endDate,
+      });
       if (error) return error;
       onChanged();
       return "Saved.";
@@ -2314,6 +2381,22 @@ function DetailsEditor({
     <div className="space-y-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <Field label="Fest name"><input value={name} onChange={(e) => setName(e.target.value)} className={`${FIELD} w-full`} /></Field>
       <Field label="Tagline"><input value={tagline} onChange={(e) => setTagline(e.target.value)} className={`${FIELD} w-full`} /></Field>
+      {/* This year's THEME (migration 0219). It used to be a hardcoded constant
+          in lib/data.ts, so a new fest year advertised the previous year's theme
+          until someone shipped a build — the one part of a fest's identity that
+          is guaranteed to change every year was the one part that wasn't
+          editable. Blank is fine: the hub then shows just the dates. */}
+      <Field label="This year's theme">
+        <input
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          placeholder="e.g. Ye Olde Family Feste"
+          className={`${FIELD} w-full`}
+        />
+      </Field>
+      <p className="-mt-1 text-xs text-foreground/50">
+        Shown in small caps under the fest name. Leave it blank until the family picks one.
+      </p>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Start"><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${FIELD} w-full`} /></Field>
         <Field label="End"><input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} className={`${FIELD} w-full`} /></Field>

@@ -6,7 +6,7 @@ import { useFestSeason } from "@/lib/useFestSeason";
 import { useDemoDate } from "@/lib/DemoDateProvider";
 import { formatDateRange, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay } from "@/lib/schedule";
-import { FEST_ALBUM_HREF } from "@/lib/data";
+import { festAlbumHref } from "@/lib/data";
 import { Protected } from "@/components/Guard";
 import { useIdentity } from "@/components/IdentityProvider";
 import { fetchCommitteeId, fetchJoinState } from "@/lib/roles";
@@ -54,6 +54,10 @@ export function FamilyFestSpotlight({
   dinners: Dinner[];
 }) {
   const season = useFestSeason(startDate, endDate);
+  // Each fest year has its own photo album (a Drop Box keyed by year), so the
+  // wrap-up nudge names THIS year's — a frozen link would have kept sending new
+  // photos into 2026's folder.
+  const albumHref = festAlbumHref(Number(endDate.slice(0, 4)));
   const { today } = useDemoDate();
   const { user, userId } = useIdentity();
   // Members get no CTA; the shared, persisted snapshot means no CTA flash for
@@ -154,7 +158,7 @@ export function FamilyFestSpotlight({
     // Wrap — nudge photos for two weeks, into the shared Family Fest album.
     card = (
       <Link
-        href={FEST_ALBUM_HREF}
+        href={albumHref}
         className="press block rounded-2xl bg-gradient-to-br from-campfire/20 via-sun/15 to-dusk/25 p-4 ring-1 ring-dusk/30 shadow-sm"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-campfire">

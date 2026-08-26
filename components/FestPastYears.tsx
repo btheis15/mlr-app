@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { BackLink } from "@/components/BackLink";
 import { FestWeek } from "@/components/FestWeek";
+import { FestCover } from "@/components/FestCover";
+import { FestThemeScope } from "@/components/FestThemeScope";
 import { SkeletonList } from "@/components/Skeleton";
 import { festAlbumHref } from "@/lib/data";
 import { formatDateLong } from "@/lib/format";
@@ -71,7 +73,12 @@ export function FestPastYears({ year }: { year: number | null }) {
                   <p className="text-xs text-muted">
                     {formatDateLong(y.startDate)} – {formatDateLong(y.endDate)}
                   </p>
-                  {y.tagline && <p className="mt-0.5 truncate text-xs text-faint">{y.tagline}</p>}
+                  {/* The year's THEME identifies it better than its tagline —
+                      "Ye Olde Family Feste" is what people remember 2026 by.
+                      Falls back to the tagline for a year that had no theme. */}
+                  {(y.theme || y.tagline) && (
+                    <p className="mt-0.5 truncate text-xs text-faint">{y.theme || y.tagline}</p>
+                  )}
                 </div>
                 <span aria-hidden className="shrink-0 text-foreground/40">
                   ›
@@ -123,12 +130,27 @@ function PastYearDetail({
           </Link>
         </div>
       ) : (
-        <>
-          <header className="space-y-1 text-center">
+        // ⚠️ Wrapped in the ARCHIVED year's own look, not the live one's
+        // (migration 0219). The fest layout paints the section in the CURRENT
+        // year's palette; re-applying this year's inline over the top is what
+        // makes an archive an actual record — open 2026 after 2027 has picked
+        // new colours and a new cover and you still see the fest as it was.
+        // Inline custom properties on a descendant beat the layout's, so this
+        // needs no route-level special casing.
+        <FestThemeScope look={meta.look} className="space-y-4">
+          <header className="space-y-2 text-center">
+            {/* This year's own cover, not the app-wide one — the reason
+                cover_url moved onto fest_config in 0219. */}
+            <FestCover alt={`${meta.name} cover`} coverUrl={meta.coverUrl} />
             <p className="font-display text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
               ⚜ In the archives ⚜
             </p>
             <h1 className="text-xl font-bold tracking-tight">{meta.name}</h1>
+            {meta.theme && (
+              <p className="font-display text-[11px] font-semibold uppercase tracking-[0.15em] text-primary">
+                {meta.theme}
+              </p>
+            )}
             <p className="text-sm text-muted">
               {formatDateLong(meta.startDate)} – {formatDateLong(meta.endDate)}
             </p>
@@ -161,7 +183,7 @@ function PastYearDetail({
               readOnly
             />
           )}
-        </>
+        </FestThemeScope>
       )}
     </div>
   );
