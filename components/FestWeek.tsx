@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { formatDateLong, formatTime, formatEventTime } from "@/lib/format";
 import { eventsForDay, dinnerForDay, dayTimeline } from "@/lib/schedule";
@@ -149,6 +150,30 @@ export function FestWeek({
         <h2 className="text-sm font-semibold text-primary">
           The whole week
         </h2>
+      )}
+
+      {/* A year with no plan of its own says so. It used to be impossible to see
+          this state on the hub, because an empty current year was backfilled
+          from the in-code 2026 seed — so a brand-new fest showed 2026's week
+          (July day cards and all) instead of an honest blank. That's fixed in
+          the content layer (`seedEmpty`, lib/festContent.ts), which makes this
+          the state a fresh year actually lands in. Not shown in the archive: a
+          finished year with no schedule already has its own copy. */}
+      {days.length === 0 && anytimeEvents.length === 0 && !readOnly && (
+        <div className="rounded-2xl bg-card p-4 text-center ring-1 ring-border">
+          <p className="text-sm font-semibold">The week isn&rsquo;t planned yet</p>
+          <p className="mt-1 text-xs text-foreground/60">
+            Nothing has been added for {formatDateLong(startDate)} – {formatDateLong(endDate)} yet.
+          </p>
+          {canEditAll && (
+            <Link
+              href="/family-fest/master?section=schedule"
+              className="press mt-2 inline-block text-sm font-semibold text-primary"
+            >
+              Add the first event →
+            </Link>
+          )}
+        </div>
       )}
 
       <div className="space-y-3">

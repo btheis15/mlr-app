@@ -13,11 +13,6 @@ import { useFestContent } from "@/lib/useFestContent";
 import { useFestSeason } from "@/lib/useFestSeason";
 import { formatDateLong } from "@/lib/format";
 
-/** Is this ISO day inside the fest week? (See the set-up checklist below.) */
-function inWindow(day: string, config: { startDate: string; endDate: string }): boolean {
-  return day >= config.startDate && day <= config.endDate;
-}
-
 /**
  * Family Fest — one integrated view. The focal point up top is what's happening
  * *today* (events + dinner in full, via FestStatus); below is the look-ahead
@@ -67,13 +62,15 @@ export default function FamilyFestPage() {
       {canEdit && (
         <FestSetupChecklist
           config={config}
-          // Counted WITHIN this year's window, not `schedule.length`. An empty
-          // current year falls back to the in-code 2026 seed (so the hub is
-          // never blank), whose days sit outside a new year's dates and render
-          // as nothing — a raw length would tick "build the daily plan" for a
-          // week that shows no plan at all.
-          scheduleCount={schedule.filter((e) => inWindow(e.day, config)).length}
-          dinnerCount={dinners.filter((d) => inWindow(d.day, config)).length}
+          // A plain count is the honest one. It briefly wasn't: an empty
+          // current year used to be backfilled with the in-code 2026 seed, so
+          // every new year counted as already having a plan. That's fixed at the
+          // source (`seedEmpty` in lib/festContent.ts) rather than by filtering
+          // here — a window filter would have quietly ignored the legitimate
+          // events a fest schedules BEFORE its posted start (2026 has setup days
+          // on July 23–25, three days ahead of its start date).
+          scheduleCount={schedule.length}
+          dinnerCount={dinners.length}
           duesSet={dues.some((d) => d.amount != null)}
           payeeCount={payees.length}
           concluded={Boolean(season?.isConcluded)}

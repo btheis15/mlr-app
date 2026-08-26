@@ -67,11 +67,21 @@ export function PayView({
         </p>
       </section>
 
-      <ul className="space-y-3">
-        {payees.map((p) => (
-          <PayeeCard key={p.id} payee={p} amount={amount} note={note} />
-        ))}
-      </ul>
+      {payees.length === 0 ? (
+        /* No payee on record for this fest year. Reachable since the in-code
+           seed payee stopped standing in for every year (`seedEmpty`,
+           lib/festContent.ts) — a new fest showing last year's collector as its
+           own would send money to the wrong person. */
+        <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted ring-1 ring-border">
+          Nobody is set up to collect yet — check back once the committee names who to pay.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {payees.map((p) => (
+            <PayeeCard key={p.id} payee={p} amount={amount} note={note} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

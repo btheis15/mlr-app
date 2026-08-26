@@ -88,9 +88,21 @@ export function FestDuesCalculator({
       <p className="text-center text-xs font-semibold uppercase tracking-wide text-primary">
         {title}
       </p>
-      <p className="mt-1 text-center text-[11px] text-foreground/50">
-        Use +/- for how many you&rsquo;re paying for — the total fills in below.
-      </p>
+      {dues.length > 0 ? (
+        <p className="mt-1 text-center text-[11px] text-foreground/50">
+          Use +/- for how many you&rsquo;re paying for — the total fills in below.
+        </p>
+      ) : (
+        /* A fest year that hasn't set its dues yet. This state was previously
+           unreachable on the hub, because an empty current year was backfilled
+           from the in-code seed tiers — so a brand-new fest advertised the seed's
+           "Adult / Kid / Per day / Without food" list as though it had been
+           decided. Fixed at the source (`seedEmpty`, lib/festContent.ts), which
+           makes saying so honestly this component's job. */
+        <p className="mt-1 text-center text-[11px] text-foreground/50">
+          Dues for this year haven&rsquo;t been set yet.
+        </p>
+      )}
 
       {flatTiers.length > 0 && (
         <ul className="mt-3 divide-y divide-border/60">
