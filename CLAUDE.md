@@ -1498,7 +1498,8 @@ was needed for any of this**.
     are in, and the **year is derived from the start date** so the two can't
     disagree. Dates stay editable afterwards in the Planner's Details editor,
     which is the right place for "the poll moved it" (that editor warns only when
-    the fest it's editing is already **concluded** — see above).
+    the fest it's editing is already **concluded** — see above), and **moving the
+    window now carries the planned week with it** — see below.
   - The **poll itself is not modeled here.** The app already has date-polling
     (family-scope `meetings` with date-range slots, and `/polls`); this screen's
     job starts once a week has been chosen.
@@ -1513,6 +1514,80 @@ was needed for any of this**.
     leaves `.data` null, which hit the "empty payload ⇒ skip this table" branch,
     so a table whose read failed was silently left uncopied while the sheet still
     reported success with a smaller count.
+
+### Moving the fest window carries the week (migration [`0220`](supabase/migrations/0220_shift_fest_year_dates.sql))
+
+`fest_config.start_date`/`end_date` is the single source of truth for *when* a
+fest is — the countdown, every season phase, the day pickers and RSVP all derive
+from it. But the week's own rows carry **absolute dates**, and
+[`saveConfig`](lib/festContent.ts) used to be a bare `fest_config` upsert, so
+moving the window left every one of them behind:
+
+| Carries an absolute date | Where |
+|---|---|
+| `fest_dinners.day` | the whole Dinners tab + `FestWeek` day cards |
+| `fest_schedule_items.day` | the Overview/Schedule accordion |
+| `fest_schedule_slots.day` · `fest_activity_slots.day` | custom sign-up slots (0136 / 0138), nullable ISO **text** |
+| `event_attendance.days` **keys** | day-by-day RSVP on `family-fest-<year>` |
+
+⚠️ **The family picks the week by POLL, so moving it is the NORMAL case.** When
+2027 slid from Aug 1–7 to Jul 25–31, all seven dinners stayed on the old week —
+the Dinners tab listed "Sunday Dinner · Sunday, August 1" under a fest starting
+July 25. The quiet half was the RSVP: [`FestRsvp`](components/FestRsvp.tsx)
+filters your going-days against the *current* window, so a non-empty `days` map
+of out-of-window keys reads as **"going, present zero days"** — worse than never
+having picked. (Both were repaired in place; 2026 was left alone.)
+
+- ⚠️⚠️ **The config write and the shift are ONE transaction**, which is why this
+  goes through the `save_fest_config` RPC instead of writing the table. Two
+  client calls have no safe ordering: config-then-shift can leave the window
+  moved and the week stranded, and the retry then computes a delta of **zero**
+  and never repairs it — the failure becomes permanent and looks exactly like the
+  bug it replaced. Shift-then-config fails the other way.
+- ⚠️⚠️ **It is a rigid translation — NOTHING is clamped to the new window.** Rows
+  belong to the `fest_year` column they carry, not to the posted window (2026 has
+  real setup-day events three days *before* its start), so a uniform delta is the
+  only move that preserves the shape of the week. This is the same reason the
+  render path must not clamp either — see the warning above.
+- **Only the START date feeds the delta.** Lengthening or shortening the week
+  moves nothing, which is correct: the days already planned haven't gone
+  anywhere. A rename or a new theme likewise shifts nothing.
+- Malformed values are **guarded, not dropped** — a slot `day` or RSVP key that
+  isn't ISO is passed through untouched rather than aborting the move (the cast
+  would raise and take the legitimate rows with it) or being deleted (an RSVP key
+  is someone's answer).
+- The Planner reports the bulk edit rather than a bare "Saved." — *"The week
+  moved 7 days earlier — 8 entries moved with it."* Pre-0220 databases degrade to
+  the old behaviour (config saved, nothing shifted), the same per-migration
+  contract as the rest of this layer.
+- **Repairing a year that ALREADY drifted** — the automatic shift only fires when
+  the start date *changes*, so it prevents drift without fixing a fest that
+  drifted before 0220 existed. ⚠️ And that state is **unreachable from the
+  Planner**: [`ScheduleEditor`/`DinnerEditor`](components/FestPlanner.tsx) map
+  over the config window's days and drop every row outside it, so a stranded
+  dinner isn't listed and can't be opened — while the day-RSVP maps have no admin
+  UI at any time. "Just fix it row by row" is not available for the rows that
+  need it, which left hand-written SQL as the only repair.
+  [`WeekShifter`](components/FestPlanner.tsx) in the Planner's Details editor
+  closes that: it shows the span of everything planned, warns when **all** of it
+  falls outside the window (not when a day or two does — setup days legitimately
+  do), and moves the lot by a delta the organizer picks. Seam
+  [`shiftFestWeek()`](lib/festContent.ts) → the `shift_fest_year_dates` RPC.
+  - ⚠️ The date input defaults to the window start **only when the week is
+    stranded**. On a healthy fest that same default is a plausible-looking wrong
+    answer — 2026's earliest planned day is a setup event three days before the
+    start, so prefilling would arm a `+3` shift behind an enabled button and
+    flatten the very offsets this preserves. Otherwise it defaults to where the
+    week already is, making the delta 0 and the button disabled until someone
+    actually picks a date.
+  - ⚠️ It is `SECURITY DEFINER` for a reason beyond convenience: RLS lets a member
+    write only their **own** attendance row, so no organizer — admin or not — can
+    repair someone else's stranded day-RSVP through the normal table policies.
+- This is distinct from [`startFestYear`](lib/festContent.ts)'s template copy,
+  which shifts days while **inserting a new year** and *does* clamp to the new
+  end (a shorter week). Editing a window moves rows that already belong to that
+  year; the copy creates rows that don't exist yet.
+
 ### A fest year's own identity & look (migration [`0219`](supabase/migrations/0219_fest_year_look.sql))
 
 The archive cycle above made the fest's *content* per-year. Its **identity** was

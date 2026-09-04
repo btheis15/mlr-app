@@ -10,7 +10,7 @@
 // moved to Admin → Alerts & Notifications (AdminCallouts), since a call-out
 // isn't necessarily fest-specific.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { BackLink } from "@/components/BackLink";
@@ -24,7 +24,7 @@ import { useIdentity } from "@/components/IdentityProvider";
 import { ChangeNotifyEditor, emptyChangeNotify, type ChangeNotifyState } from "@/components/ChangeNotifyEditor";
 import { sendActivityNotify, changeMessageDefault } from "@/lib/activityNotify";
 import { useFestContent } from "@/lib/useFestContent";
-import { formatDate, formatDateLong, formatTime, toTimeInputValue } from "@/lib/format";
+import { formatDate, formatDateLong, formatDateRange, formatTime, plural, toTimeInputValue } from "@/lib/format";
 import {
   fetchAppImages,
   siteImageSrc,
@@ -51,6 +51,7 @@ import {
   saveActivity,
   deleteActivity,
   saveConfig,
+  shiftFestWeek,
   type FestMemberOption,
   type ScheduleDraft,
   type DinnerDraft,
@@ -104,6 +105,20 @@ function festDays(startDate: string, endDate: string): string[] {
     d = nx.toISOString().slice(0, 10);
   }
   return out;
+}
+
+/** Whole days between two ISO dates (b − a), date-only and DST-safe. */
+function isoDaysBetween(a: string, b: string): number {
+  const from = new Date(`${a}T00:00:00`).getTime();
+  const to = new Date(`${b}T00:00:00`).getTime();
+  return Math.round((to - from) / 86_400_000);
+}
+
+/** Shift an ISO date by N days. */
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Trim a text field → null when empty (so updates blank the DB column). */
@@ -244,7 +259,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
     return (
       <Frame variant="page">
         <PageSection id="fest-section-details" icon="⚙️" title="Details">
-          <DetailsEditor config={config} onChanged={reloadDrafts} />
+          <DetailsEditor config={config} schedule={schedule} dinners={dinners} onChanged={reloadDrafts} />
         </PageSection>
         <PageSection id="fest-section-look" icon="🎨" title="Look — cover, colours & background">
           <FestLookEditor config={config} onChanged={reloadDrafts} />
@@ -299,7 +314,7 @@ export function FestPlanner({ variant = "tabs" }: { variant?: "tabs" | "page" })
       {section === "payees" && <PayeeEditor items={payees} onChanged={reloadDrafts} />}
       {section === "look" && <FestLookEditor config={config} onChanged={reloadDrafts} />}
       {section === "images" && <ImagesEditor />}
-      {section === "details" && <DetailsEditor config={config} onChanged={reloadDrafts} />}
+      {section === "details" && <DetailsEditor config={config} schedule={schedule} dinners={dinners} onChanged={reloadDrafts} />}
     </Frame>
   );
 }
@@ -2334,11 +2349,144 @@ function ImageRow({
 
 // ── Details (config) ──────────────────────────────────────────────────────────
 
+/**
+ * Move an ALREADY-PLANNED week onto different dates — the in-app repair for a
+ * fest whose window moved without it (migration 0220).
+ *
+ * `saveConfig` now carries the week whenever the start date changes, so drift
+ * can't start here any more. But a year that drifted BEFORE that shipped is
+ * stuck, and it is stuck somewhere nobody can reach: ScheduleEditor and
+ * DinnerEditor list `days.map(...)` over the CONFIG WINDOW and drop every row
+ * outside it, so a stranded dinner isn't shown in the Planner at all, and the
+ * day-by-day RSVP maps have no admin UI at any time. Fixing that by hand meant
+ * SQL. This is the same rigid shift, exposed.
+ *
+ * ⚠️ The organizer picks the target date; the app never proposes a delta of its
+ * own. Snapping the earliest planned day to the window start LOOKS like the
+ * obvious default and is wrong — 2026 deliberately has setup-day events three
+ * days before its start, and "snap" would flatten exactly the offsets the shift
+ * is careful to preserve. The date input just DEFAULTS to the window start
+ * (overwhelmingly the intended answer when a week has drifted) and shows the
+ * resulting delta before anything is written.
+ */
+function WeekShifter({
+  config,
+  schedule,
+  dinners,
+  onChanged,
+}: {
+  config: { startDate: string; endDate: string };
+  schedule: ScheduleDraft[];
+  dinners: DinnerDraft[];
+  onChanged: () => void;
+}) {
+  const save = useSaveStatus();
+  const [open, setOpen] = useState(false);
+
+  // Anytime events carry a placeholder day the app ignores (0139), so they say
+  // nothing about where the week sits — leave them out of the span entirely.
+  const plannedDays = useMemo(() => {
+    const all = [...schedule.filter((i) => !i.anytime).map((i) => i.day), ...dinners.map((d) => d.day)];
+    return [...new Set(all.filter(Boolean))].sort();
+  }, [schedule, dinners]);
+
+  const first = plannedDays[0] ?? "";
+  const last = plannedDays[plannedDays.length - 1] ?? "";
+
+  // "Stranded" means the whole week missed the window, not that a day or two
+  // sits outside it — setup days legitimately land before the start, and
+  // flagging those would train people to ignore this notice.
+  const outside = plannedDays.filter((d) => d < config.startDate || d > config.endDate);
+  const stranded = plannedDays.length > 0 && outside.length === plannedDays.length;
+
+  // ⚠️ Only a STRANDED week gets the window start as its default. On a healthy
+  // fest that same default is a plausible-looking wrong answer: 2026's earliest
+  // planned day is a setup event three days BEFORE the start, so prefilling the
+  // start would arm a +3 shift behind an enabled button and flatten exactly the
+  // offset this feature is careful to preserve. Defaulting to "where it already
+  // is" makes the delta 0, which disables the button until someone genuinely
+  // picks a date.
+  const defaultTarget = stranded ? config.startDate : first;
+  const [target, setTarget] = useState(defaultTarget);
+  useEffect(() => setTarget(defaultTarget), [defaultTarget]);
+
+  const delta = first && target ? isoDaysBetween(first, target) : 0;
+  const n = Math.abs(delta);
+
+  const apply = () =>
+    save.run(async () => {
+      const { error, moved } = await shiftFestWeek(delta);
+      if (error) return error;
+      onChanged();
+      setOpen(false);
+      return `Moved ${moved} ${plural(moved, "entry", "entries")} ${n} ${plural(n, "day")} ${
+        delta > 0 ? "later" : "earlier"
+      }.`;
+    });
+
+  if (plannedDays.length === 0) return null;
+
+  return (
+    <div className={`rounded-xl p-3 text-xs ${stranded ? "bg-accent/10 ring-1 ring-accent/20" : "bg-background"}`}>
+      {stranded ? (
+        <>
+          <p className="font-semibold text-accent">Nothing planned falls inside this week.</p>
+          <p className="mt-0.5 text-muted">
+            Everything is dated {formatDateRange(first, last)}, but the fest runs{" "}
+            {formatDateRange(config.startDate, config.endDate)}. Rows outside the week don&rsquo;t
+            show up in the Schedule and Dinners editors, so move them back onto it here.
+          </p>
+        </>
+      ) : (
+        <p className="text-muted">
+          Everything planned runs {formatDateRange(first, last)}.{" "}
+          <button type="button" onClick={() => setOpen((v) => !v)} className="font-semibold text-primary underline">
+            {open ? "Never mind" : "Move it all to different dates"}
+          </button>
+        </p>
+      )}
+
+      <Reveal open={open || stranded}>
+        <div className="mt-2 space-y-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-foreground/50">Move the first planned day to</span>
+            <input
+              type="date"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className={`${FIELD} w-full`}
+            />
+          </label>
+          <p className="text-muted">
+            {delta === 0
+              ? "That's where it already is — nothing would move."
+              : `Everything moves ${n} ${plural(n, "day")} ${delta > 0 ? "later" : "earlier"}, keeping the same
+                 weekday and the same gaps: dinners, events, sign-up slots and everyone's day-by-day RSVPs.`}
+          </p>
+          <button
+            type="button"
+            onClick={apply}
+            disabled={delta === 0 || save.pending}
+            className="press rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {save.pending ? "Moving…" : "Move the week"}
+          </button>
+          {save.status && <p className="text-muted">{save.status}</p>}
+        </div>
+      </Reveal>
+    </div>
+  );
+}
+
 function DetailsEditor({
   config,
+  schedule,
+  dinners,
   onChanged,
 }: {
   config: { name: string; tagline: string; theme: string; startDate: string; endDate: string };
+  schedule: ScheduleDraft[];
+  dinners: DinnerDraft[];
   onChanged: () => void;
 }) {
   const save = useSaveStatus();
@@ -2365,7 +2513,7 @@ function DetailsEditor({
   const canSave = name.trim().length > 0 && startDate.length > 0 && endDate.length > 0 && validRange && !save.pending;
   const submit = () =>
     save.run(async () => {
-      const { error } = await saveConfig({
+      const { error, shiftDays, moved } = await saveConfig({
         name: name.trim(),
         tagline: orNull(tagline),
         theme: orNull(theme),
@@ -2374,7 +2522,18 @@ function DetailsEditor({
       });
       if (error) return error;
       onChanged();
-      return "Saved.";
+      if (shiftDays === 0 || moved === 0) return "Saved.";
+      // Moving the window rewrites every dinner date, event date, sign-up slot
+      // and day-RSVP for this year (migration 0220). That's the behaviour people
+      // want — the week should follow the week — but it's a bulk edit, so say
+      // what it did rather than let a bare "Saved." undersell it. Shown longer
+      // than the default 3s, and returning void keeps this notice instead.
+      const n = Math.abs(shiftDays);
+      save.show(
+        `Saved. The week moved ${n} ${n === 1 ? "day" : "days"} ${shiftDays > 0 ? "later" : "earlier"} — ` +
+          `${moved} ${moved === 1 ? "entry" : "entries"} moved with it.`,
+        6000,
+      );
     });
 
   return (
@@ -2402,7 +2561,11 @@ function DetailsEditor({
         <Field label="End"><input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} className={`${FIELD} w-full`} /></Field>
       </div>
       {!validRange && <p className="text-xs text-accent">End date must be on or after the start.</p>}
-      <p className="text-xs text-foreground/50">Changing the dates reshapes the week — the day pickers and countdown follow these.</p>
+      <p className="text-xs text-foreground/50">
+        Changing the dates reshapes the week — the countdown and day pickers follow these, and
+        everything already planned (dinners, events, sign-up slots, people&rsquo;s day-by-day RSVPs)
+        moves with them, keeping the same weekday.
+      </p>
       {/* This form edits THIS fest year's row. Once that fest is over, moving
           its dates to next summer is the intuitive-but-wrong way to start a new
           year: it would drag the finished fest forward, so its Past Years entry
@@ -2418,6 +2581,7 @@ function DetailsEditor({
           </p>
         </div>
       )}
+      <WeekShifter config={config} schedule={schedule} dinners={dinners} onChanged={onChanged} />
       <SaveBar status={save.status} disabled={!canSave} pending={save.pending} onSave={submit} label="Save details" />
     </div>
   );

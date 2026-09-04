@@ -132,6 +132,22 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   [`0035_event_attendance.sql`](supabase/migrations/0035_event_attendance.sql)
   (run them in the Supabase SQL editor). See CLAUDE.md → **Resort events &
   attendance**.
+- **Moving the fest week** — the family picks the Family Fest week by poll, so
+  the dates change. Editing the window in the Planner's Details editor now
+  **carries the whole planned week with it**: every dinner, schedule event,
+  custom sign-up slot and per-day RSVP shifts by the same number of days,
+  keeping its weekday. It's one transaction via the `save_fest_config` RPC
+  (migration
+  [`0220_shift_fest_year_dates.sql`](supabase/migrations/0220_shift_fest_year_dates.sql)),
+  because a window that moved without its week leaves dinners stranded on dates
+  the day pickers no longer render — and a day-RSVP whose keys all fall outside
+  the window reads as "going, present zero days". Only the **start** date feeds
+  the shift, and nothing is clamped to the window (setup days deliberately sit
+  before the posted start). A year that drifted *before* this shipped is
+  repairable in-app too — the Details editor flags a week that's fallen entirely
+  outside its dates and moves it back in one tap, which matters because the
+  Schedule/Dinner editors hide out-of-window rows and per-day RSVPs have no admin
+  UI at all. See CLAUDE.md → **Moving the fest window carries the week**.
 - **Event sign-up slots** — a Family Fest schedule event **or an "Anytime all
   week" activity** can take limited sign-ups, either as even slots across a time
   range **or** an arbitrary list of specific times (each with its own day/length),

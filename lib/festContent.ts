@@ -974,26 +974,148 @@ export interface ConfigInput {
   /** This year's theme/title line (migration 0219). Null clears it. */
   theme: string | null;
 }
-/** Save the CURRENT fest year's config. Keyed by fest_year (upsert), so there's
- *  exactly one row per fest — editing dates here reshapes that year's week, it
- *  doesn't create a new one (see startFestYear for that). */
-export async function saveConfig(i: ConfigInput): Promise<{ error?: string }> {
+/** What `saveConfig` moved along with the window. All zero when the dates
+ *  didn't change (a rename, a new theme, a longer week). */
+export interface ConfigSaveResult {
+  error?: string;
+  /** Days the week moved: +/- , 0 when the start date didn't change. */
+  shiftDays: number;
+  /** Rows carried onto the new dates — dinners + events + slots + day-RSVPs. */
+  moved: number;
+}
+
+interface ShiftCounts {
+  shift_days?: number;
+  dinners?: number;
+  events?: number;
+  event_slots?: number;
+  activity_slots?: number;
+  rsvps?: number;
+}
+
+/**
+ * Save the CURRENT fest year's config — and CARRY THE PLANNED WEEK WITH IT.
+ *
+ * Keyed by fest_year (upsert), so there's exactly one row per fest: editing
+ * dates here reshapes that year's week, it doesn't create a new one (see
+ * `startFestYear` for that).
+ *
+ * ⚠️ The window is the single source of truth for WHEN the fest is, but the
+ * week's rows carry ABSOLUTE dates (`fest_dinners.day`,
+ * `fest_schedule_items.day`, the ISO `day` on both sign-up slot tables, and the
+ * date-keyed `days` map on the fest's day-RSVPs). This used to be a bare
+ * `fest_config` upsert, which moved the window and left every one of them
+ * behind — and since the family picks the week by POLL, moving it is the NORMAL
+ * case. When 2027 slid from Aug 1–7 to Jul 25–31, the Dinners tab went on
+ * listing "Sunday Dinner · Sunday, August 1" under a fest starting July 25, and
+ * one member's day picks kept keys no day in the window matched, which
+ * `FestRsvp` reads as "going, present zero days".
+ *
+ * ⚠️ So this goes through the `save_fest_config` RPC (migration 0220) rather
+ * than writing the table directly: the config write and the shift have to be
+ * ONE transaction. Two client calls have no safe ordering — config-then-shift
+ * can leave the window moved and the week stranded, and the retry then computes
+ * a delta of ZERO and never repairs it, making the failure permanent and
+ * identical to the bug this replaced.
+ *
+ * ⚠️ The shift is a RIGID TRANSLATION with NO CLAMPING, and only the START date
+ * feeds it. Rows belong to their `fest_year`, not to the posted window (2026 has
+ * real setup-day events three days BEFORE its start), so a uniform delta is the
+ * only move that preserves the shape of the week. Changing just the end date
+ * shifts nothing, which is correct — the planned days haven't gone anywhere.
+ *
+ * Pre-0220 databases degrade to the old behaviour (config saved, nothing
+ * shifted) rather than failing the save, the same per-migration contract the
+ * rest of this layer follows.
+ */
+export async function saveConfig(i: ConfigInput): Promise<ConfigSaveResult> {
   const sb = supabase;
-  if (!sb) return { error: "Not available." };
-  const { error } = await sb.from("fest_config").upsert(
-    {
-      fest_year: await activeFestYear(),
-      name: i.name,
-      tagline: i.tagline,
-      start_date: i.startDate,
-      end_date: i.endDate,
-      theme: i.theme,
-      updated_at: new Date().toISOString(),
-      updated_by: await currentUid(),
-    },
-    { onConflict: "fest_year" },
-  );
-  return error ? { error: error.message } : {};
+  if (!sb) return { error: "Not available.", shiftDays: 0, moved: 0 };
+  const year = await activeFestYear();
+
+  const { data, error } = await sb.rpc("save_fest_config", {
+    p_year: year,
+    p_name: i.name,
+    p_tagline: i.tagline,
+    p_theme: i.theme,
+    p_start: i.startDate,
+    p_end: i.endDate,
+  });
+
+  if (error) {
+    // 0220 not applied yet ⇒ fall back to the plain upsert. The dates still
+    // save; they just don't take the week with them, which is what the whole
+    // app did before this function existed.
+    if (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? "")) {
+      const { error: upsertError } = await sb.from("fest_config").upsert(
+        {
+          fest_year: year,
+          name: i.name,
+          tagline: i.tagline,
+          start_date: i.startDate,
+          end_date: i.endDate,
+          theme: i.theme,
+          updated_at: new Date().toISOString(),
+          updated_by: await currentUid(),
+        },
+        { onConflict: "fest_year" },
+      );
+      return upsertError
+        ? { error: upsertError.message, shiftDays: 0, moved: 0 }
+        : { shiftDays: 0, moved: 0 };
+    }
+    return { error: error.message, shiftDays: 0, moved: 0 };
+  }
+
+  const c = (data ?? {}) as ShiftCounts;
+  return {
+    shiftDays: c.shift_days ?? 0,
+    moved:
+      (c.dinners ?? 0) + (c.events ?? 0) + (c.event_slots ?? 0) + (c.activity_slots ?? 0) + (c.rsvps ?? 0),
+  };
+}
+
+/**
+ * Move the CURRENT fest year's whole planned week by N days — the MANUAL repair
+ * path for a year that is already stranded (migration 0220).
+ *
+ * `saveConfig` shifts only when the start date CHANGES, which prevents drift
+ * from here on but can't repair a year that already drifted — and every fest
+ * planned before 0220 could have. Without this the only fix is hand-written SQL:
+ *
+ * ⚠️ Stranded rows are UNREACHABLE from the Planner. `ScheduleEditor` and
+ * `DinnerEditor` map over the config window's days and drop anything outside it,
+ * so an out-of-window dinner isn't listed and can't be opened — and the day-RSVP
+ * maps have no admin UI at all, at any time. "Fix it one row at a time" is not
+ * actually available for the rows that need fixing.
+ *
+ * ⚠️ Takes an explicit delta rather than snapping everything into the window.
+ * Snapping would flatten the setup-day offsets that are deliberately outside it
+ * (2026 has real events three days before its start), which is the same mistake
+ * as clamping. The caller derives the delta from a date the organizer picks, so
+ * the app never guesses one.
+ */
+export async function shiftFestWeek(days: number): Promise<ConfigSaveResult> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available.", shiftDays: 0, moved: 0 };
+  if (!Number.isFinite(days) || days === 0) return { shiftDays: 0, moved: 0 };
+
+  const { data, error } = await sb.rpc("shift_fest_year_dates", {
+    p_year: await activeFestYear(),
+    p_days: Math.trunc(days),
+  });
+  if (error) {
+    if (error.code === "PGRST202" || /find the function|schema cache/i.test(error.message ?? "")) {
+      return { error: "Moving the week needs migration 0220. Apply it and try again.", shiftDays: 0, moved: 0 };
+    }
+    return { error: error.message, shiftDays: 0, moved: 0 };
+  }
+  const c = (data ?? {}) as ShiftCounts;
+  return {
+    shiftDays: c.shift_days ?? 0,
+    moved:
+      (c.dinners ?? 0) + (c.events ?? 0) + (c.event_slots ?? 0) + (c.activity_slots ?? 0) + (c.rsvps ?? 0),
+  };
 }
 
 /**
