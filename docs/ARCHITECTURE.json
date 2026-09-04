@@ -431,6 +431,7 @@
   "hardConstraints": [
     "LIGHT MODE ONLY forever. Never add a dark theme. Never use a dark translucent surface tint (bg-black/NN, bg-zinc-*/NN) as a card/panel bg (goes muddy grey) — bg-black/NN is OK only as a modal scrim.",
     "Never hard-code hex in components — add/edit a --color-* token in globals.css @theme.",
+    "Family Fest rows belong to their fest_year column, NOT to the posted window — 2026 has real setup-day events three days BEFORE its start_date. Never \"fix\" an out-of-window row by clamping a render or a shift into [start_date, end_date]. Moving a fest window shifts every dated row by a uniform delta (save_fest_config RPC, migration 0220) precisely because a rigid translation is the only move that preserves the week's shape.",
     "profiles.is_admin & house_id are NEVER client-writable (column GRANT + insert guard). No client admin allow-list.",
     "RLS is the real privacy gate, not the UI (migration 0081 lockdown). Any new sensitive field/table needs matching RLS. UI hiding is insufficient. chat_poll_votes (0149) and content_embeddings (0129) both go further — zero SELECT grant at all (deny-all), not just members-only.",
     "resort_config help-contact stays PUBLIC-read (it's the sign-in escape hatch). Don't lock it down.",
