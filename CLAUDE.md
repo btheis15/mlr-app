@@ -578,6 +578,16 @@ empty state.**
   is now its own collapsed-by-default expandable card on Home**
   ([`app/page.tsx`](app/page.tsx), no longer nested in "Around the resort"): the
   header shows a live summary (incl. a `🔴 N ASAP` count) and toggles the list open.
+- ⚠️ **Checking an item off was broken for EVERYONE until migration
+  [`0221`](supabase/migrations/0221_work_item_completed_by_columns.sql).** 0088
+  (adds `work_items.completed_by`/`completed_at`) never ran on production, yet
+  0186's `mark_work_item_done()` writes those columns — so every check-off raised
+  42703 and [`WorkChecklist`](components/WorkChecklist.tsx) silently un-ticked
+  the box (reported as "it won't let Zack check it off"). The permission rule was
+  always right: **any approved member checks off an MLR item, any house member a
+  house item** — not just the author/admin. 0221 just adds the columns; the card
+  now shows the server's reason when a check-off fails instead of reverting
+  silently, and a "View as" preview no longer attempts the write.
 - **Recurring items** (migration [`0186`](supabase/migrations/0186_work_item_recurring.sql)) —
   a task like "stain the deck" that's due every N years (1-15,
   `work_items.recur_every_years`, a +/- stepper in
