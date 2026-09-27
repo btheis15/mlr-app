@@ -66,6 +66,9 @@ export function WorkChecklist() {
   const [viewing, setViewing] = useState<WorkItem | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [checkingOff, setCheckingOff] = useState<string | null>(null);
+  // The server's reason when a check-off fails — shown on the card instead of
+  // silently un-ticking the box (which read as "it just won't let me").
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   // Mention candidates for the comment threads (all members; scoped per-item
   // below). Guests can't comment (and can't read profiles) — skip the fetch.
@@ -127,6 +130,8 @@ export function WorkChecklist() {
 
   const handleCheck = async (item: WorkItem) => {
     if (!signedIn) { promptSignIn(); return; }
+    if (previewAsId) return; // "View as" is read-only
+    setCheckError(null);
     setCheckingOff(item.id);
     const setStatus = (id: string, status: WorkItem["status"]) =>
       mutate((prev) => ({ ...prev, items: prev.items.map((i) => (i.id === id ? { ...i, status } : i)) }));
@@ -134,6 +139,7 @@ export function WorkChecklist() {
     const { error } = await markWorkItemDone(item.id);
     if (error) {
       setStatus(item.id, "open");
+      setCheckError(`Couldn't check off "${item.title}": ${error}`);
     }
     setCheckingOff(null);
   };
@@ -222,6 +228,12 @@ export function WorkChecklist() {
               {totalDone}/{totalOpen + totalDone}
             </span>
           </div>
+        )}
+
+        {!guest && cardOpen && checkError && (
+          <p role="alert" className="border-t border-border bg-accent/10 px-4 py-2.5 text-xs text-accent">
+            {checkError}
+          </p>
         )}
 
         {/* Sections — revealed when the card is expanded (members only). */}
