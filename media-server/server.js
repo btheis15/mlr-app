@@ -1816,6 +1816,14 @@ try {
   console.error("[thumb-backfill] not started:", e && e.message);
 }
 
+// Apple Intelligence wording check for posts, comments and every chat (0222) —
+// in context, replacing the old keyword blocklist. Isolated like the others.
+try {
+  require("./text-moderation-watcher").start().catch((e) => console.error("[text-mod] start failed:", e && e.message));
+} catch (e) {
+  console.error("[text-mod] not started:", e && e.message);
+}
+
 // Optional: keep the semantic-search index fresh (embeds new/edited posts + chat
 // via the on-device embed-service, into content_embeddings). No-op unless the
 // service-role key is set; tolerates embed-service being down or the 0129

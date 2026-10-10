@@ -36,16 +36,10 @@ interface QueueRow {
   created_at: string;
 }
 
-interface BlockRow {
-  id: string;
-  pattern: string;
-  note: string | null;
-}
-
 /**
  * Stale-while-revalidate cache for the moderation panel. `AdminModeration`
  * remounts every time Profile → Admin is reopened; without this the review queue
- * and blocklist reset to empty + `loading`, so the panel blanks out and pops back
+ * resets to empty + `loading`, so the panel blanks out and pops back
  * in on every visit. Holding the last result in memory lets a returning admin
  * paint instantly from cache while a background refetch keeps it current. It's an
  * admin-only global, so a single module-scope singleton (not keyed) is enough.
@@ -54,19 +48,20 @@ interface BlockRow {
  * cause a hydration mismatch (a cold load starts with a null cache, i.e. the
  * original empty + loading behavior). Mirrors `eventsCache` in `lib/hooks.ts`.
  */
-let adminModerationCache: { queue: QueueRow[]; block: BlockRow[]; rpcReady: boolean } | null = null;
+let adminModerationCache: { queue: QueueRow[]; rpcReady: boolean } | null = null;
 
 /**
  * Admin content review (migration 0040). Two parts:
- *   • the review QUEUE — every post/comment that was auto-held (blocked term or
- *     enough reports) or reported, with Approve / Remove;
- *   • the BLOCKLIST — admin-managed terms that auto-hold matching text.
+ *   • the review QUEUE — everything auto-held (Apple Intelligence, a photo/video
+ *     verdict, or enough reports) or reported, with Approve / Remove and the
+ *     reason it was held;
+ *   • a note that wording is judged in context — the keyword blocklist was
+ *     retired in 0222.
  * Shows a "run the migration" hint until `moderation_queue()` exists, like the
  * other admin panels.
  */
 export function AdminModeration() {
   const [queue, setQueue] = useState<QueueRow[]>(adminModerationCache?.queue ?? []);
-  const [block, setBlock] = useState<BlockRow[]>(adminModerationCache?.block ?? []);
   // Warm cache ⇒ paint immediately (no skeleton/blank); still refetch in the
   // background below so the cached view is brought up to date.
   const [loading, setLoading] = useState(!adminModerationCache);
@@ -74,7 +69,6 @@ export function AdminModeration() {
   // 0040" hint, so leaving it false on a warm remount would flash the migration
   // notice over the cached data until the background RPC resolves.
   const [rpcReady, setRpcReady] = useState(adminModerationCache?.rpcReady ?? false);
-  const [newTerm, setNewTerm] = useState("");
   const { busy, run } = useBusyAction();
 
   const load = async () => {
@@ -92,11 +86,8 @@ export function AdminModeration() {
     setRpcReady(true);
     const nextQueue = (q.data ?? []) as QueueRow[];
     setQueue(nextQueue);
-    const b = await sb.from("moderation_blocklist").select("id, pattern, note").order("pattern");
-    const nextBlock = (b.data ?? []) as BlockRow[];
-    setBlock(nextBlock);
     // Client-only write (inside an effect-driven fetch) — never during SSR/render.
-    adminModerationCache = { queue: nextQueue, block: nextBlock, rpcReady: true };
+    adminModerationCache = { queue: nextQueue, rpcReady: true };
     setLoading(false);
   };
 
@@ -118,30 +109,6 @@ export function AdminModeration() {
     setQueue((prev) => prev.filter((r) => r.entity_id !== row.entity_id));
   };
 
-  const addTerm = async () => {
-    const sb = supabase;
-    const pattern = newTerm.trim();
-    if (!sb || !pattern) return;
-    const { data, error } = await sb
-      .from("moderation_blocklist")
-      .insert({ pattern })
-      .select("id, pattern, note")
-      .single();
-    if (error) {
-      window.alert(error.message || "Couldn't add the term.");
-      return;
-    }
-    setBlock((prev) => [...prev, data as BlockRow].sort((a, b) => a.pattern.localeCompare(b.pattern)));
-    setNewTerm("");
-  };
-
-  const removeTerm = async (id: string) => {
-    const sb = supabase;
-    if (!sb) return;
-    await sb.from("moderation_blocklist").delete().eq("id", id);
-    setBlock((prev) => prev.filter((b) => b.id !== id));
-  };
-
   return (
     <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-primary/30">
       <div className="flex items-center gap-2">
@@ -156,7 +123,7 @@ export function AdminModeration() {
 
       {!rpcReady && !loading ? (
         <MigrationHint file="0040_content_moderation.sql">
-          To hold flagged posts for review and manage the blocklist,
+          To hold flagged posts for review,
         </MigrationHint>
       ) : loading ? (
         <SkeletonList count={2} />
@@ -212,41 +179,11 @@ export function AdminModeration() {
             </ul>
           )}
 
-          <div className="space-y-2 border-t border-border pt-3">
-            <p className="text-xs font-semibold text-foreground/70">Blocked words</p>
-            <p className="text-xs text-muted">
-              A post or comment containing one of these is automatically held for review. Matching is
-              case-insensitive. Nothing is shipped here by default — add what fits your family.
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={newTerm}
-                onChange={(e) => setNewTerm(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addTerm()}
-                placeholder="Add a word or phrase…"
-                className="flex-1 rounded-lg bg-background px-3 py-2 text-sm ring-1 ring-border outline-none focus:ring-2 focus:ring-primary"
-              />
-              <button
-                onClick={addTerm}
-                disabled={!newTerm.trim()}
-                className="press shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-            {block.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {block.map((b) => (
-                  <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-xs text-foreground/70 ring-1 ring-border">
-                    {b.pattern}
-                    <button onClick={() => removeTerm(b.id)} aria-label={`Remove ${b.pattern}`} className="press text-faint hover:text-accent">
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <p className="border-t border-border pt-3 text-xs text-muted">
+            Posts, comments and chat messages are read by Apple Intelligence on the media server, which
+            judges the wording in context — there&rsquo;s no list of banned words. Anything it holds lands here
+            with its reason, and members can still report things it missed.
+          </p>
         </>
       )}
     </div>

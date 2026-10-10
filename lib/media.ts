@@ -157,8 +157,8 @@ export interface UploadResult {
 
 // Ask the mini to AI-grade a caption/post's text for inappropriate language.
 // Returns true if the post should be HELD for admin review. FAIL-OPEN: any
-// error/unavailability returns false (the word-list gate + Flag-as-inappropriate
-// are the backstops). Backed by the media-server's POST /moderate/text.
+// error/unavailability returns false (the mini's text-moderation-watcher re-checks
+// it once the model is back, and members can still report it). Backed by the media-server's POST /moderate/text.
 export async function moderatePostText(text: string, token: string): Promise<boolean> {
   const t = (text || "").trim();
   if (!t) return false;

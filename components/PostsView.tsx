@@ -719,8 +719,8 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         setText(""); resetMedia(); setTagIds([]); setTagPickerOpen(false);
         setCustomWhen(false); setWhenValue(""); setComposerOpen(false); setAlsoAlbum(false);
         // `heldForText`/`p_held` only reflects OUR OWN client-side AI text
-        // pre-check — it says nothing about whether the server's blocklist
-        // trigger (moderate_content_text) separately auto-held the row. The
+        // pre-check — it says nothing about whether a server-side hold (a
+        // photo/video verdict trigger) separately auto-held the row. The
         // RPC/insert reports success either way (the trigger never throws),
         // so re-check the row's ACTUAL resulting status before claiming it's
         // visible — otherwise a silently-held post looks like a normal,
