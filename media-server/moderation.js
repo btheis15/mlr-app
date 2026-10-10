@@ -390,6 +390,14 @@ const TEXT_PROMPT =
   "Decide whether the user-submitted text below contains vulgar, profane, hateful, sexual, " +
   "threatening, or otherwise clearly inappropriate language for a family audience. " +
   "Ordinary friendly, neutral, or mildly negative text is NOT flagged. " +
+  // A post about dead mice on the sticky traps ("smell like the death and decay of
+  // 100 mice") was held for 5 hours as a false positive. This is a lake resort with a
+  // fishing/hunting heritage: matter-of-fact talk about pests, traps, dead animals,
+  // fish, hunting, illness, funerals or upkeep is normal and must pass.
+  "This is a rural lake resort with a fishing and hunting heritage: matter-of-fact talk about " +
+  "pests, mice, traps, dead or decaying animals, fishing, hunting, cleaning game, sickness, " +
+  "death, funerals, or repairs and chores is ordinary and is NOT flagged. " +
+  "Only flag a threat when it is aimed at a person. " +
   "Respond with ONLY a compact JSON object and nothing else: " +
   '{"flagged": true|false, "category": "profanity|hate|sexual|threat|other|none", "reason": "brief phrase"}.';
 
