@@ -4194,6 +4194,32 @@ the feed/room without being destroyed. **Live now (Tiers 0+1+2):**
     one) — a chat bubble's media is small/inline already, so this was lower
     priority than Feed/Drop Box; a clean follow-up.
 
+⚠️ **Wording is judged IN CONTEXT by Apple Intelligence — the keyword blocklist is
+RETIRED (migration [`0222`](supabase/migrations/0222_ai_text_moderation_no_blocklist.sql)).**
+A Feed post about dead mice on the sticky traps ("…the death and decay of 100 mice")
+was held for ~5h by the AI text screen, and Brian asked that nothing be blocked on
+keywords without context. So: `moderate_content_text()` no longer holds on a
+`moderation_blocklist` match (it keeps the length cap + the member status pin; the
+table and its ~400 rows are left in place, unread), and Admin → Content review no
+longer shows a "Blocked words" editor. Every post, comment and committee/house/event
+chat message is now read by
+[`media-server/text-moderation-watcher.js`](media-server/text-moderation-watcher.js)
+(realtime INSERT/UPDATE + a 10-min sweep of the last 48h) using the same
+`moderateText()` the post composer's pre-check uses — before this, comments and chat
+had ONLY the word list. Flagged → service-role `ai_hold_content()` holds it and logs
+the model's category + reason, which `moderation_queue()` now returns in `reasons`.
+- It is **post-moderation** for comments/chat, like photos: visible for the seconds
+  the check takes (no send latency). New Feed posts keep the blocking pre-check so a
+  flagged post never fans out its `new_post` notification.
+- ⚠️ `ai_text_checks` stores the hash of the text each item was judged on. That is
+  what stops an admin's **Approve** (an UPDATE) from being re-held on the next
+  realtime event — don't drop it. An edit changes the hash and is re-judged.
+- Fail-open: if the model is unreachable nothing is recorded and the sweep retries.
+  `TEXT_MODERATION=off` in the mini's `.env` disables just this watcher.
+- The model's instructions (`TEXT_PROMPT` in `moderation.js`) tell it this is a
+  fishing/hunting lake resort — pests, traps, dead animals, hunting, illness and
+  funerals are ordinary; threats count only when aimed at a person.
+
 **The full-screen photo viewer swipes between a group's photos**
 ([`Lightbox`](components/Lightbox.tsx)). Opening a photo used to be a
 dead-end — one photo, and you had to close and reopen to see the next one on
