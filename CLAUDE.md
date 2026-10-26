@@ -163,14 +163,19 @@ on live reflow — so scrolling or a card self-hiding after mount doesn't
 re-trigger it. Shrinks to the old `h-16` on short screens (SE).
 
 App-open splash: [`components/SplashIntro.tsx`](components/SplashIntro.tsx) pops
-the green logo center-screen, then **flies + zooms it into the header's
-`#app-logo` slot** (a measured FLIP translate/scale). The header logo is held
-hidden for the whole splash (`html[data-splash] #app-logo { opacity: 0 }` in
-[`app/globals.css`](app/globals.css), kept laid out so it stays measurable) and
-revealed the instant the fly lands — so the logo reads as *placed* into the
-header, not cross-faded against a second copy. `splash-wash` is the CSS-only
-self-clear fallback; reduce-motion skips straight to the app (attribute never
-set, header logo shows normally). The splash is also the app's **first-paint
+the green logo center-screen while a short **seasonal animation** plays over it
+([`SeasonalLogoFX`](components/SeasonalLogoFX.tsx), an SVG overlay in the logo's
+own 1340×896 coordinate space): **fall** leaves drift down and land, **winter**
+snow falls and caps the pines/cabin, **spring** flowers grow up from the bottom,
+**summer** a sun rises top-right. The season comes from
+[`lib/season.ts`](lib/season.ts) (meteorological, northern hemisphere, resolved
+client-side after mount; `?season=winter|spring|summer|fall` overrides it for
+previewing). Then the splash simply **fades away** — no fly into the header. The
+header's `#app-logo` carries the same scene as a **still snapshot**
+(`<SeasonalLogoFX animate={false} />`): the SVG's base styles are the final
+state and the animations only apply under `.fx-anim` (keyframes in
+[`app/globals.css`](app/globals.css)), so reduce-motion lands on the snapshot too.
+`splash-wash` is the CSS-only self-clear fallback. The splash is also the app's **first-paint
 mask**: it holds until `authReady` (the sign-in check settled) **plus, on a
 cold open, up to +700ms more** while any cold data loads land — fed by the
 readiness registry in [`lib/appReady.ts`](lib/appReady.ts), which

@@ -386,18 +386,64 @@ html[data-ff] {
 }
 @utility splash-wash { animation: mlr-splash-wash 6000ms var(--ease-ios) forwards; }
 
-/* While the splash owns the logo (SplashIntro sets data-splash on <html>), keep
-   the header's logo invisible so the flying splash logo doesn't blur against a
-   second copy. It stays laid out (opacity, not display:none) so the splash can
-   measure where to land; the attribute is removed the instant the fly lands, so
-   the header logo simply appears in place. */
-html[data-splash] #app-logo { opacity: 0; }
+/* Seasonal logo dressing (components/SeasonalLogoFX.tsx). The base styles are the
+   final "snapshot" state (what the header shows); the splash adds `.fx-anim` so the
+   same pieces animate INTO that state. Reduce-motion cancels every animation, so it
+   lands on the snapshot too. */
+@keyframes mlr-fx-leaf {
+  0%   { opacity: 0; transform: translate(var(--dx), -600px) rotate(-220deg); }
+  8%   { opacity: 1; }
+  40%  { transform: translate(calc(var(--dx) * -0.5), -330px) rotate(-60deg); }
+  70%  { transform: translate(calc(var(--dx) * 0.3), -110px) rotate(40deg); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(0); }
+}
+@keyframes mlr-fx-flake {
+  0%   { opacity: 0; transform: translate(var(--dx), -520px); }
+  10%  { opacity: 1; }
+  55%  { transform: translate(calc(var(--dx) * -0.5), -200px); }
+  100% { opacity: 1; transform: translate(0, 0); }
+}
+@keyframes mlr-fx-drift {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes mlr-fx-stem {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes mlr-fx-bloom {
+  0%   { transform: scale(0) rotate(-120deg); }
+  70%  { transform: scale(1.18) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes mlr-fx-sprout {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes mlr-fx-sun {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-100deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes mlr-fx-glow {
+  0%, 100% { opacity: 0.28; }
+  50%      { opacity: 0.5; }
+}
+.fx-stem { transform-box: fill-box; transform-origin: 50% 100%; }
+.fx-anim .fx-leaf  { animation: mlr-fx-leaf 1.9s cubic-bezier(0.45, 0.05, 0.4, 1) var(--d, 0s) both; }
+.fx-anim .fx-flake { animation: mlr-fx-flake 1.8s ease-out var(--d, 0s) both; }
+.fx-anim .fx-drift { animation: mlr-fx-drift 0.9s var(--ease-ios) 1.4s both; }
+.fx-anim .fx-stem  { animation: mlr-fx-stem 0.8s var(--ease-ios) var(--d, 0s) both; }
+.fx-anim .fx-sprout { animation: mlr-fx-sprout 0.4s ease-out calc(var(--d, 0s) + 0.5s) both; }
+.fx-anim .fx-bloom { animation: mlr-fx-bloom 0.7s var(--ease-spring) calc(var(--d, 0s) + 0.7s) both; }
+.fx-anim .fx-sun   { animation: mlr-fx-sun 1.3s var(--ease-ios) 0.1s both; }
+.fx-anim .fx-glow  { animation: mlr-fx-glow 1.6s ease-in-out 1.3s 2; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-anim * { animation: none !important; }
+}
 
 /* Brand logo — fixed at roughly 10–11% of the viewport height so it reads as a
    clear brand mark without dominating the screen. The plain 4rem is the fallback
-   for engines without dvh/clamp; 5.5rem caps it on very tall screens. The splash
-   measures this element's live rect, so the fly adapts to whatever height this
-   resolves to. */
+   for engines without dvh/clamp; 5.5rem caps it on very tall screens. */
 #app-logo {
   height: 4rem;
   height: clamp(4rem, 10.5dvh, 5.5rem);
