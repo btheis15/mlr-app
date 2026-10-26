@@ -2,35 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIdentity } from "@/components/IdentityProvider";
-import { whenAppLogoStable } from "@/lib/appLogoFit";
+import { SeasonalLogoFX } from "@/components/SeasonalLogoFX";
 import { onQuietOnce } from "@/lib/appReady";
 import { useIsBareRoute } from "@/lib/bareRoutes";
 
 // App-open splash. A near-white wash (the app's own background) so it blends
 // with the white screen the app naturally shows while loading — then the GREEN
-// cabin logo pops in centered, holds a beat, and then *flies* up into the
-// top-left app header, zooming down to the header logo's exact size and
-// position. The real header logo (#app-logo) is kept HIDDEN for the whole
-// splash (CSS: `html[data-splash] #app-logo { opacity: 0 }`) so there's no
-// second copy to blur against; the instant the fly lands, we drop the overlay
-// and the attribute together, so the logo appears to be *placed* into the
-// header — a clean hand-off, not a cross-fade.
+// cabin logo pops in centered while a short seasonal animation plays over it
+// (falling leaves in fall, snow in winter, flowers blooming in spring, a shining
+// sun in summer — see SeasonalLogoFX). Once it has held long enough for that to
+// play AND the app is ready, the whole splash simply fades away, revealing the
+// app underneath; the header logo (which carries the seasonal *snapshot* of the
+// same scene) is just sitting there on top.
 //
-// How the fly is exact (a FLIP transition): we measure the live header logo's
-// bounding rect at runtime and translate/scale the splash logo's center onto
-// it, so it lands pixel-perfect on any screen size. The hidden header logo is
-// opacity:0 (not display:none), so it's still laid out and measurable. Both
-// logos are the same image + aspect ratio and both are horizontally centered,
-// so a single translate+scale maps one onto the other.
-//
-// Robustness: reduce-motion users skip straight to the app (the attribute is
-// never set, so the header logo shows normally); tap-to-skip works at any
-// point; and if the header logo can't be found (unexpected), we just clear
-// rather than trap the app.
-const HOLD_MS = 1300; // center pop + min hold before the logo can fly
-const FLY_MS = 720; // fly + zoom into the header
+// Robustness: reduce-motion users get the still seasonal logo for a shorter hold
+// (no animation); tap-to-skip works at any point.
+const HOLD_MS = 2500; // pop + seasonal animation plays (SeasonalLogoFX ≈ 2.4s)
+const HOLD_REDUCED_MS = 1300; // reduce-motion: no animation to wait for
+const FADE_MS = 500; // splash fade-out
 // Safety cap: if the auth check is still pending this long (slow/offline
-// network), fly anyway rather than sit on the splash forever. Kept under the
+// network), fade anyway rather than sit on the splash forever. Kept under the
 // CSS `splash-wash` self-clear window so JS always finishes the hand-off first.
 const MAX_WAIT_MS = 4500;
 // After auth settles, the splash also waits (briefly, bounded) for the
@@ -40,48 +31,32 @@ const MAX_WAIT_MS = 4500;
 // every card seeds from its persisted cache, nothing registers, and this adds
 // ~0ms. MAX_WAIT_MS above remains the absolute ceiling either way.
 const EXTRA_QUIET_MS = 700;
-const SPLASH_ATTR = "data-splash"; // on <html> while the splash owns the logo
 
 export function SplashIntro() {
   // Hold the splash until the initial auth check has settled, so the app's first
   // visible paint is already the right member/guest view — no post-splash shift.
   const { authReady } = useIdentity();
   const bare = useIsBareRoute();
-  const [phase, setPhase] = useState<"intro" | "flying" | "done">("intro");
-  const logoRef = useRef<HTMLImageElement>(null);
-  const [flyTransform, setFlyTransform] = useState<string | undefined>();
-  // The two gates for starting the fly: the minimum hold has elapsed, and either
-  // auth resolved or the safety cap fired. `started` guards against re-entry from
-  // the effect re-running as those inputs settle.
+  const [phase, setPhase] = useState<"intro" | "fading" | "done">("intro");
+  // The two gates for fading: the minimum hold has elapsed, and either auth
+  // resolved or the safety cap fired. `started` guards against re-entry from the
+  // effect re-running as those inputs settle.
   const [held, setHeld] = useState(false);
   const [forced, setForced] = useState(false);
-  const reduceRef = useRef(false);
   const started = useRef(false);
 
-  // Clear the overlay AND reveal the header logo in the same beat, so the
-  // hand-off reads as "the logo was placed there" with no overlap/blur.
-  const finish = () => {
-    document.documentElement.removeAttribute(SPLASH_ATTR);
-    setPhase("done");
-  };
+  const finish = () => setPhase("done");
 
   useEffect(() => {
     // On a bare route (the master editor opened from iOS), skip the splash
     // entirely — no logo flash on the way into the editor.
     if (bare) return;
-    reduceRef.current = Boolean(
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
-    );
-    // Reduce-motion users skip the fly, but we still hold the plain logo screen
-    // until auth resolves (a hard cut, no animation) so they don't see the shift
-    // either. The header logo is only hidden when we're going to fly into it.
-    if (!reduceRef.current) document.documentElement.setAttribute(SPLASH_ATTR, "");
-    const tHold = setTimeout(() => setHeld(true), HOLD_MS);
+    const reduce = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+    const tHold = setTimeout(() => setHeld(true), reduce ? HOLD_REDUCED_MS : HOLD_MS);
     const tMax = setTimeout(() => setForced(true), MAX_WAIT_MS);
     return () => {
       clearTimeout(tHold);
       clearTimeout(tMax);
-      document.documentElement.removeAttribute(SPLASH_ATTR);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -89,26 +64,26 @@ export function SplashIntro() {
   // Start the exit once we've held a beat AND auth has settled (or the cap
   // hit). The normal path defers up to EXTRA_QUIET_MS more for cold data loads
   // (see above); the MAX_WAIT_MS `forced` path fires immediately regardless —
-  // it exists to guarantee the splash can never hang. `started` now means "the
-  // fly actually began" (not "a wait is scheduled"), so a forced fire while
-  // the quiet-wait is still pending cancels the wait and flies right away
-  // instead of getting swallowed by the re-entry guard.
+  // it exists to guarantee the splash can never hang. `started` means "the fade
+  // actually began", so a forced fire while the quiet-wait is still pending
+  // cancels the wait and fades right away.
   const quietCancel = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (started.current) return;
-    const fly = () => {
+    const fade = () => {
       if (started.current) return;
       started.current = true;
-      startFly();
+      setPhase("fading");
+      setTimeout(finish, FADE_MS + 60);
     };
     if (forced) {
       quietCancel.current?.();
       quietCancel.current = null;
-      fly();
+      fade();
       return;
     }
     if (held && authReady && !quietCancel.current) {
-      quietCancel.current = onQuietOnce(EXTRA_QUIET_MS, fly);
+      quietCancel.current = onQuietOnce(EXTRA_QUIET_MS, fade);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [held, authReady, forced]);
@@ -121,36 +96,6 @@ export function SplashIntro() {
     [],
   );
 
-  const startFly = () => {
-    const target = document.getElementById("app-logo");
-    const el = logoRef.current;
-    if (reduceRef.current || !target || !el) {
-      finish();
-      return;
-    }
-    // The header logo's final size/position depends on the (now-resolved) Home
-    // layout — guest vs member differ. WAIT until that fit has settled (we don't
-    // set it — AppHeader owns the size), then measure the fly target, so the
-    // splash logo lands at the exact size it settles to and never "snaps" after.
-    whenAppLogoStable(() => flyInto(target, el));
-  };
-
-  const flyInto = (target: HTMLElement, el: HTMLImageElement) => {
-    const from = el.getBoundingClientRect();
-    const to = target.getBoundingClientRect();
-    const scale = to.height / from.height;
-    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
-    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-    // Drop the centering "pop" animation (its fill would pin transform) and arm
-    // the transition first; apply the target transform on the next frames so the
-    // browser animates from the centered state instead of snapping.
-    setPhase("flying");
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => setFlyTransform(`translate(${dx}px, ${dy}px) scale(${scale})`)),
-    );
-    setTimeout(finish, FLY_MS + 60);
-  };
-
   if (bare || phase === "done") return null;
 
   return (
@@ -160,26 +105,21 @@ export function SplashIntro() {
       // `splash-wash` is the CSS-driven safety net: even if JS never runs, the
       // whole overlay animates to opacity:0 + pointer-events:none on its own, so
       // it can't trap the app. In the normal flow JS removes it well before then.
-      className="splash-wash fixed inset-0 z-[100] flex items-center justify-center px-8"
+      className="splash-wash fixed inset-0 z-[100]"
     >
-      {/* White wash behind the logo; fades out as the logo flies up, revealing
-          the app underneath. */}
+      {/* Everything fades together (on an inner layer: the wash animation owns the
+          outer one's opacity). */}
       <div
-        className="absolute inset-0 bg-background"
-        style={{ opacity: phase === "intro" ? 1 : 0, transition: `opacity ${FLY_MS}ms ease-out` }}
-      />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={logoRef}
-        src="/brand-logo-green.png"
-        alt=""
-        className={`relative h-44 w-auto max-w-[82%] ${phase === "intro" ? "splash-logo" : ""}`}
-        style={{
-          transform: flyTransform,
-          transition: phase === "flying" ? `transform ${FLY_MS}ms cubic-bezier(0.4, 0, 0.2, 1)` : undefined,
-          willChange: "transform",
-        }}
-      />
+        className="absolute inset-0 flex items-center justify-center bg-background px-8"
+        style={{ opacity: phase === "intro" ? 1 : 0, transition: `opacity ${FADE_MS}ms ease-out` }}
+      >
+        {/* The wrapper is exactly the logo's box, so the seasonal overlay lines up. */}
+        <div className="splash-logo relative h-44 max-w-[82%]" style={{ aspectRatio: "1340 / 896" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand-logo-green.png" alt="" className="block h-full w-full" />
+          <SeasonalLogoFX animate />
+        </div>
+      </div>
     </div>
   );
 }
