@@ -260,6 +260,8 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   // Which comment's emoji picker is open.
   const [commentPickerFor, setCommentPickerFor] = useState<string | null>(null);
+  // Which comment reaction chip is expanded to show who reacted.
+  const [commentReactorsFor, setCommentReactorsFor] = useState<{ commentId: string; emoji: string } | null>(null);
   // Which reaction chip is expanded to show who reacted ({postId, emoji}).
   const [reactorsFor, setReactorsFor] = useState<{ postId: string; emoji: string } | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
@@ -1367,17 +1369,29 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                         )}
                         {cSummary.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1 px-3">
-                            {cSummary.map(([emoji, count]) => (
-                              <button
-                                key={emoji}
-                                onClick={() => reactToComment(c.id, emoji)}
-                                className={`press rounded-full px-2 py-0.5 text-[11px] ring-1 ${cMine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"}`}
-                                aria-label={`${emoji} ${count}, tap to react`}
-                              >
-                                {emoji} {count}
-                              </button>
-                            ))}
+                            {cSummary.map(([emoji, count]) => {
+                              const open = commentReactorsFor?.commentId === c.id && commentReactorsFor.emoji === emoji;
+                              return (
+                                <button
+                                  key={emoji}
+                                  onClick={() => setCommentReactorsFor(open ? null : { commentId: c.id, emoji })}
+                                  className={`press rounded-full px-2 py-0.5 text-[11px] ring-1 ${cMine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
+                                  aria-label={`See who reacted ${emoji}`}
+                                >
+                                  {emoji} {count}
+                                </button>
+                              );
+                            })}
                           </div>
+                        )}
+                        {commentReactorsFor?.commentId === c.id && (
+                          <p className="mt-1 px-3 text-[11px] text-muted">
+                            <span className="mr-1">{commentReactorsFor.emoji}</span>
+                            {(dbCommentReactions[c.id] ?? [])
+                              .filter((r) => r.emoji === commentReactorsFor.emoji)
+                              .map((r) => nameById(r.user_id))
+                              .join(", ")}
+                          </p>
                         )}
                       </div>
                     </div>
