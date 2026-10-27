@@ -96,6 +96,11 @@ interface ReactionRow {
   user_id: string;
   emoji: string;
 }
+interface CommentReactionRow {
+  comment_id: string;
+  user_id: string;
+  emoji: string;
+}
 interface TagRow {
   post_id: string;
   tagged_user_id: string;
@@ -193,6 +198,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
   uidRef.current = uid;
   const [dbPosts, setDbPosts] = useState<FeedPost[]>([]);
   const [dbComments, setDbComments] = useState<Record<string, CommentItem[]>>({});
+  const [dbCommentReactions, setDbCommentReactions] = useState<Record<string, CommentReactionRow[]>>({});
   const [dbReactions, setDbReactions] = useState<Record<string, ReactionRow[]>>({});
   const [members, setMembers] = useState<Member[]>([]);
   const [feedLoaded, setFeedLoaded] = useState(false);
@@ -252,6 +258,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     for (const f of doneUploads.current.keys()) if (!keep.has(f)) doneUploads.current.delete(f);
   }, [files]);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Which comment's emoji picker is open.
+  const [commentPickerFor, setCommentPickerFor] = useState<string | null>(null);
+  // Which comment reaction chip is expanded to show who reacted.
+  const [commentReactorsFor, setCommentReactorsFor] = useState<{ commentId: string; emoji: string } | null>(null);
   // Which reaction chip is expanded to show who reacted ({postId, emoji}).
   const [reactorsFor, setReactorsFor] = useState<{ postId: string; emoji: string } | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
@@ -326,6 +336,9 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       // feed simply renders comments with no media — same degrade as elsewhere.
       sb.from("post_comment_media").select("comment_id, storage_path, thumbnail_url, media_type, position").order("position", { ascending: true }),
       sb.from("profiles").select("id, display_name, full_name, avatar_url"),
+      // Comment reactions (0223). Pre-migration this errors and resolves with
+      // `{ data: null }`, so comments simply show no reactions.
+      sb.from("comment_reactions").select("comment_id, user_id, emoji"),
     ]);
     // Prefer the timeline anchor (occurred_at). If the migration hasn't run yet,
     // the column is missing — fall back to created_at so the feed still loads.
@@ -356,7 +369,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       postRowsRaw = (withOcc.data ?? []) as unknown as PostRow[];
     }
     setHasOccurredAt(occ);
-    const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, commentMediaRes, profilesRes] = await others;
+    const [mediaRes, commentsRes, reactionsRes, tagsRes, commentMentionsRes, commentMediaRes, profilesRes, commentReactionsRes] = await others;
     // Pre-0173 fallback: thumbnail_url doesn't exist on this project yet — retry
     // without it rather than losing post/comment media entirely (an unknown
     // column makes the whole select error, so `mediaRes.data` would otherwise
@@ -462,6 +475,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
     for (const r of (reactionsRes.data ?? []) as unknown as ReactionRow[]) (reByPost[r.post_id] ||= []).push(r);
     setDbReactions(reByPost);
 
+    const reByComment: Record<string, CommentReactionRow[]> = {};
+    for (const r of (commentReactionsRes.data ?? []) as unknown as CommentReactionRow[]) (reByComment[r.comment_id] ||= []).push(r);
+    setDbCommentReactions(reByComment);
+
     setFeedLoaded(true);
 
     // Persist a TRIMMED snapshot for the next cold open: just the top of the
@@ -531,6 +548,7 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comment_mentions" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_comment_media" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_reactions" }, fire)
+      .on("postgres_changes", { event: "*", schema: "public", table: "comment_reactions" }, fire)
       .on("postgres_changes", { event: "*", schema: "public", table: "post_tags" }, fire)
       .subscribe();
     return () => {
@@ -816,6 +834,39 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
         }
       });
     reactionChain.current.set(postId, op);
+    await op;
+  };
+
+  // Comment reactions: same optimistic/chained toggle as `react` above, keyed
+  // by comment id.
+  const pendingCommentReaction = useRef(new Map<string, string | null>());
+  const commentReactionChain = useRef(new Map<string, Promise<void>>());
+  const [optimisticCommentReaction, setOptimisticCommentReaction] = useState<Record<string, string | null>>({});
+  const dbCommentReaction = (commentId: string) => dbCommentReactions[commentId]?.find((r) => r.user_id === uid)?.emoji ?? null;
+  const myCommentReaction = (commentId: string) =>
+    commentId in optimisticCommentReaction ? optimisticCommentReaction[commentId] : dbCommentReaction(commentId);
+  const reactToComment = async (commentId: string, emoji: string) => {
+    setCommentPickerFor(null);
+    if (!supabase || !uid) { promptSignIn(); return; }
+    const current = pendingCommentReaction.current.has(commentId) ? pendingCommentReaction.current.get(commentId)! : dbCommentReaction(commentId);
+    const next = current === emoji ? null : emoji;
+    pendingCommentReaction.current.set(commentId, next);
+    setOptimisticCommentReaction((prev) => ({ ...prev, [commentId]: next }));
+    const op = (commentReactionChain.current.get(commentId) ?? Promise.resolve())
+      .then(() => toggleReaction({ table: "comment_reactions", idColumn: "comment_id", itemId: commentId, userId: uid, emoji, current }))
+      .then(() => refetch())
+      .catch(() => {})
+      .finally(() => {
+        if (commentReactionChain.current.get(commentId) === op) {
+          commentReactionChain.current.delete(commentId);
+          pendingCommentReaction.current.delete(commentId);
+          setOptimisticCommentReaction((prev) => {
+            const { [commentId]: _done, ...rest } = prev;
+            return rest;
+          });
+        }
+      });
+    commentReactionChain.current.set(commentId, op);
     await op;
   };
 
@@ -1274,7 +1325,10 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
 
               {(postComments.length > 0 || user) && (
                 <div className="space-y-3 border-t border-border px-4 py-3">
-                  {postComments.map((c) => (
+                  {postComments.map((c) => {
+                    const cMine = myCommentReaction(c.id);
+                    const cSummary = reactionCounts(dbCommentReactions[c.id] ?? []);
+                    return (
                     <div key={c.id} id={`comment-${c.id}`} className="flex items-start gap-2">
                       <button type="button" onClick={() => openMember(c.authorId, c.author, c.authorAvatar)} className="press mt-0.5 shrink-0">
                         <Avatar name={c.author} url={c.authorAvatar} size={28} />
@@ -1289,15 +1343,60 @@ export function PostsView({ seed, showHeading = true }: { seed: Post[]; showHead
                         {c.media.length > 0 && <CommentMedia media={c.media} onOpenPhoto={openPhoto} />}
                         <div className="mt-1 flex items-center gap-3 px-3 text-[11px] text-faint">
                           <span>{timeAgo(c.ts)}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCommentPickerFor(commentPickerFor === c.id ? null : c.id)}
+                            className={`press font-medium hover:text-primary ${cMine ? "text-primary" : ""}`}
+                            aria-expanded={commentPickerFor === c.id}
+                            aria-label={cMine ? `Your reaction ${cMine}, change` : "React to comment"}
+                          >
+                            {cMine ?? "React"}
+                          </button>
                           {isAdmin || (!!uid && c.authorId === uid) ? (
                             <button onClick={() => removeComment(c.id)} className="press font-medium hover:text-primary">Delete</button>
                           ) : configured ? (
                             <ReportButton entity="comment" entityId={c.id} needsSignIn={requireSignIn} variant="comment" />
                           ) : null}
                         </div>
+                        {commentPickerFor === c.id && (
+                          <div className="mt-1 flex gap-1 px-3">
+                            {REACTIONS.map((emoji) => (
+                              <button key={emoji} onClick={() => reactToComment(c.id, emoji)} className={`press rounded-full px-2 py-1 text-base ring-1 ring-border ${cMine === emoji ? "bg-primary/15" : "bg-background"}`} aria-label={`React ${emoji}`}>
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {cSummary.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1 px-3">
+                            {cSummary.map(([emoji, count]) => {
+                              const open = commentReactorsFor?.commentId === c.id && commentReactorsFor.emoji === emoji;
+                              return (
+                                <button
+                                  key={emoji}
+                                  onClick={() => setCommentReactorsFor(open ? null : { commentId: c.id, emoji })}
+                                  className={`press rounded-full px-2 py-0.5 text-[11px] ring-1 ${cMine === emoji ? "bg-primary/10 text-primary ring-primary/30" : "bg-background text-foreground/60 ring-border"} ${open ? "ring-2 ring-primary/50" : ""}`}
+                                  aria-label={`See who reacted ${emoji}`}
+                                >
+                                  {emoji} {count}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {commentReactorsFor?.commentId === c.id && (
+                          <p className="mt-1 px-3 text-[11px] text-muted">
+                            <span className="mr-1">{commentReactorsFor.emoji}</span>
+                            {(dbCommentReactions[c.id] ?? [])
+                              .filter((r) => r.emoji === commentReactorsFor.emoji)
+                              .map((r) => nameById(r.user_id))
+                              .join(", ")}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   <button
                     type="button"
                     onClick={() => setCommentSheetFor(p.id)}
