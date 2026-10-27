@@ -110,6 +110,14 @@ existing `Lightbox`. Moderation mirrors post/chat media: `hold_comment_on_flagge
 routed to `post_comments` in `moderation_queue()`/`set_content_status()` (0128),
 so neither needed a change.
 
+**Comment reactions (migration 0223).** Each comment in the Posts feed has a
+small "React" link in its meta row (opens the same six-emoji picker as posts)
+and tappable count chips under it. Table `comment_reactions` mirrors
+`post_reactions` (PK `(comment_id, user_id)`, one emoji per member, approved
+members read, own-row writes, realtime). `PostsView` reuses `toggleReaction`
+with `idColumn: "comment_id"` and the same optimistic/chained toggle as post
+reactions. Pre-migration the select errors and comments just show no reactions.
+
 **Committee chat** ([`CommitteeChat`](components/CommitteeChat.tsx)) `@mentions`
 are scoped to **that committee's roster only** — you can only tag people who can
 see the room (Beautification members can tag Beautification members, etc.).
