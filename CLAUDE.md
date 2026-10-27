@@ -112,7 +112,7 @@ so neither needed a change.
 
 **Comment reactions (migration 0223).** Each comment in the Posts feed has a
 small "React" link in its meta row (opens the same six-emoji picker as posts)
-and tappable count chips under it. Table `comment_reactions` mirrors
+and count chips under it (tap a chip to see who reacted, as on posts; react via the picker). Table `comment_reactions` mirrors
 `post_reactions` (PK `(comment_id, user_id)`, one emoji per member, approved
 members read, own-row writes, realtime). `PostsView` reuses `toggleReaction`
 with `idColumn: "comment_id"` and the same optimistic/chained toggle as post
