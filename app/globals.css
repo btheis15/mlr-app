@@ -133,6 +133,19 @@ body {
    `.ff-section` (the content box) and `html[data-ff]` (the outer page canvas,
    toggled by FestThemeSync — see below) paint the identical wash without
    duplicating the gradient. */
+/* Top safe-area inset. iOS 26.1+ Home Screen web apps report
+   env(safe-area-inset-top) = 0 while the status bar's soft fade still overlaps
+   the top ~24px (WebKit bug 301994), so standalone gets a 28px floor. Use
+   var(--safe-top) for every top inset; bottom/left/right stay on env(). */
+:root {
+  --safe-top: env(safe-area-inset-top);
+}
+@media (display-mode: standalone) {
+  :root {
+    --safe-top: max(env(safe-area-inset-top), 28px);
+  }
+}
+
 :root {
   --ff-ambient-bg: #f4ecd8;
   --ff-ambient-image:
