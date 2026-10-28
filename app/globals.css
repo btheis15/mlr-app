@@ -133,17 +133,30 @@ body {
    `.ff-section` (the content box) and `html[data-ff]` (the outer page canvas,
    toggled by FestThemeSync — see below) paint the identical wash without
    duplicating the gradient. */
-/* Top safe-area inset. iOS 26.1+ Home Screen web apps report
-   env(safe-area-inset-top) = 0 while the status bar's soft fade still overlaps
-   the top ~24px (WebKit bug 301994), so standalone gets a 28px floor. Use
-   var(--safe-top) for every top inset; bottom/left/right stay on env(). */
+/* Single place to tune the top inset: every top inset uses var(--safe-top).
+   The iOS 26 Home Screen "scroll edge" fade (WebKit bug 301994) is skipped when
+   a fixed, full-width, solid opaque box sits at the top edge — that's the
+   .ios-top-band in the root layout, shown only in standalone (status bar style
+   is "default", so content starts below the bar and env top is 0). --band-h is
+   the band's height; #app-scroll pads by the same amount so it covers empty
+   space only. */
 :root {
   --safe-top: env(safe-area-inset-top);
+  --band-h: 0px;
 }
 @media (display-mode: standalone) {
   :root {
-    --safe-top: max(env(safe-area-inset-top), 28px);
+    --band-h: 12px;
   }
+}
+.ios-top-band {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--band-h);
+  background-color: var(--color-background);
+  z-index: 45;
 }
 
 :root {
