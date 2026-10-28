@@ -75,7 +75,7 @@ export function FamilyFestNav() {
       // Full-bleed within the layout's px-4, sticky so it rides the top of the
       // viewport as the page scrolls; the translucent parchment + blur keeps
       // content readable as it slides underneath.
-      className="sticky top-0 z-30 -mx-4 bg-background/90 backdrop-blur"
+      className="sticky top-[var(--band-h)] z-30 -mx-4 bg-background/90 backdrop-blur"
     >
       <LayoutGroup id="ff-nav">
         <div className="flex gap-1.5 overflow-x-auto px-4 py-2">

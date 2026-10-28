@@ -64,7 +64,7 @@ export default function GuidePage() {
 
       <nav
         aria-label="Jump to a section"
-        className="sticky top-0 z-30 -mx-4 bg-background/90 backdrop-blur"
+        className="sticky top-[var(--band-h)] z-30 -mx-4 bg-background/90 backdrop-blur"
       >
         <div className="flex gap-1.5 overflow-x-auto px-4 py-2">
           {SECTIONS.map((s) => (
