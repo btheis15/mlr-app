@@ -140,7 +140,7 @@ function PhotoCarousel({
       role="dialog"
       aria-modal="true"
     >
-      <div className="flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
+      <div className="flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,var(--safe-top))] text-white">
         <button
           onClick={close}
           className="press flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white"

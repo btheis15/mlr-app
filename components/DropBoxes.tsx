@@ -920,7 +920,7 @@ function FolderCarousel({
     <ModalPortal>
     <div className="fixed inset-0 z-[65] flex flex-col bg-black">
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
+      <div className="flex items-center justify-between gap-2 p-3 pt-[max(0.75rem,var(--safe-top))] text-white">
         <button aria-label="Close" onClick={onClose} className="press rounded-full bg-white/10 px-3 py-1.5 text-sm">
           ✕
         </button>

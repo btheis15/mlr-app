@@ -91,6 +91,7 @@ export default async function RootLayout({
             {/* App-open splash: logo pops, holds until auth resolves, then flies
                 into the header — inside IdentityProvider so it can wait on
                 `authReady` and avoid a post-splash member/guest shift. */}
+            <div className="ios-top-band" aria-hidden="true" />
             <SplashIntro />
             <FestThemeSync />
             <InstallHint />
@@ -106,7 +107,7 @@ export default async function RootLayout({
           <main
             id="app-scroll"
             className="h-full w-full overflow-y-auto"
-            style={{ paddingTop: "env(safe-area-inset-top)" }}
+            style={{ paddingTop: "calc(var(--safe-top) + var(--band-h))" }}
           >
             {/* The bottom spacing that clears the fixed TabBar lives HERE, on the
                 inner content wrapper — NOT as padding-bottom on #app-scroll.
