@@ -14,6 +14,7 @@ import {
   poolLabels,
   poolStageComplete,
   hasKnockoutBracket,
+  isPlayed,
   type Tournament,
   type TournamentMatch,
   type TournamentHost,
@@ -133,6 +134,12 @@ function TournamentCard({
   const [openMatch, setOpenMatch] = useState<TournamentMatch | null>(null);
   const [rearranging, setRearranging] = useState(false);
   const [selected, setSelected] = useState<{ matchId: string; slot: 1 | 2 } | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<{
+    a: { matchId: string; slot: 1 | 2 };
+    b: { matchId: string; slot: 1 | 2 };
+  } | null>(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  const [rearrangeError, setRearrangeError] = useState<string | null>(null);
 
   const onSlotTap = async (m: TournamentMatch, slot: 1 | 2) => {
     const entrantHere = slot === 1 ? m.slot1EntrantId : m.slot2EntrantId;
@@ -147,9 +154,38 @@ function TournamentCard({
     }
     const src = selected;
     setSelected(null);
+    setRearrangeError(null);
+    // Moving someone out of a played game (or a bye that already advanced into a
+    // played game) erases that result and everything decided after it — ask first.
+    if (slotChangeDestroys(src.matchId) || slotChangeDestroys(m.id)) {
+      setPendingSwap({ a: src, b: { matchId: m.id, slot } });
+      return;
+    }
+    await doSwap(src, { matchId: m.id, slot }, false);
+  };
+
+  const slotChangeDestroys = (matchId: string): boolean => {
+    const x = tournament.matches.find((mm) => mm.id === matchId);
+    if (!x) return false;
+    if (isPlayed(x)) return true;
+    if (x.winnerEntrantId && x.nextMatchId) {
+      const n = tournament.matches.find((mm) => mm.id === x.nextMatchId);
+      if (n && isPlayed(n)) return true;
+    }
+    return false;
+  };
+
+  const doSwap = async (
+    a: { matchId: string; slot: 1 | 2 },
+    b: { matchId: string; slot: 1 | 2 },
+    force: boolean,
+  ) => {
+    setSwapBusy(true);
     // swap works for both move-into-empty and swap-two (a null just moves over).
-    await swapMatchEntrants(src.matchId, src.slot, m.id, slot);
+    const { error } = await swapMatchEntrants(a.matchId, a.slot, b.matchId, b.slot, force);
+    if (error) setRearrangeError(error);
     await reload();
+    setSwapBusy(false);
   };
 
   const nameFor = useMemo(() => {
@@ -214,7 +250,7 @@ function TournamentCard({
           const showTabs = isRR || isPools || !isComplete;
           const effTab = !isRR && !isPools && isComplete ? "bracket" : tab;
           const knockoutReady = hasKnockoutBracket(tournament);
-          const canRearrange = effTab === "bracket" && !isRR && (!isPools || knockoutReady);
+          const canRearrange = effTab === "bracket" && !isRR && !isComplete && (!isPools || knockoutReady);
           return (
             <div className="mt-3 space-y-3">
               {showTabs && (
@@ -291,6 +327,36 @@ function TournamentCard({
                             {selected ? "Tap a spot to move/swap" : "Tap a team to move it"}
                           </span>
                         )}
+                      </div>
+                    )}
+                    {rearrangeError && <p className="text-sm text-accent">{rearrangeError}</p>}
+                    {pendingSwap && (
+                      <div className="rounded-xl bg-accent/10 p-3 ring-1 ring-accent/30">
+                        <p className="mb-2 text-sm font-medium">
+                          One of these games already has a result. Moving a player will erase that result and every
+                          game decided after it. A saved copy is kept so it can be restored.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={swapBusy}
+                            onClick={async () => {
+                              const p = pendingSwap;
+                              setPendingSwap(null);
+                              await doSwap(p.a, p.b, true);
+                            }}
+                            className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                          >
+                            Erase and move
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingSwap(null)}
+                            className="rounded-xl bg-background px-4 text-sm font-medium text-foreground/60 ring-1 ring-border"
+                          >
+                            Keep as is
+                          </button>
+                        </div>
                       </div>
                     )}
                     <TournamentBracket

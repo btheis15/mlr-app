@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { Avatar } from "@/components/Avatar";
 import { TournamentSection } from "@/components/TournamentView";
 import { useSheetDismiss } from "@/lib/hooks";
+import { fetchTournamentsForActivity, playedMatchCount } from "@/lib/tournaments";
 import type { MemberOption } from "@/components/PrivateActivityComposer";
 import {
   addPrivateActivityMember,
@@ -55,6 +56,18 @@ export function PrivateActivitySheet({
   const [typing, setTyping] = useState("");
   const [search, setSearch] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Recorded results on this activity's tournament(s), so the delete confirm can say so.
+  const [playedResults, setPlayedResults] = useState(0);
+  useEffect(() => {
+    if (!confirmDelete) return;
+    let alive = true;
+    void fetchTournamentsForActivity(activity.id).then((ts) => {
+      if (alive) setPlayedResults(ts.reduce((n, t) => n + playedMatchCount(t), 0));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [confirmDelete, activity.id]);
   const [editing, setEditing] = useState(false);
 
   // edit-details fields
@@ -263,7 +276,11 @@ export function PrivateActivitySheet({
             </button>
             {confirmDelete ? (
               <div className="rounded-xl bg-accent/10 p-3 ring-1 ring-accent/30">
-                <p className="mb-2 text-sm font-medium">Delete this activity for everyone? This can&rsquo;t be undone.</p>
+                <p className="mb-2 text-sm font-medium">
+                  Delete this activity for everyone? This can&rsquo;t be undone.
+                  {playedResults > 0 &&
+                    ` Its tournament has ${playedResults} recorded result${playedResults === 1 ? "" : "s"}, which will be deleted with it.`}
+                </p>
                 <div className="flex gap-2">
                   <button type="button" disabled={busy} onClick={async () => { setBusy(true); await deletePrivateActivity(activity.id); await refresh(); close(); }} className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white disabled:opacity-40">Delete</button>
                   <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-xl bg-background px-4 text-sm font-medium text-foreground/60 ring-1 ring-border">Keep</button>

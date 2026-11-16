@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Sheet, SectionLabel, FIELD } from "@/components/Sheet";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { useSheetDismiss } from "@/lib/hooks";
+import { timeAgo } from "@/lib/format";
 import {
   createTournamentForHost,
   importEntrantsForHost,
@@ -12,6 +13,10 @@ import {
   generateBracket,
   generateRoundRobin,
   resetBracket,
+  fetchTournamentSnapshots,
+  restoreTournamentSnapshot,
+  playedMatchCount,
+  type TournamentSnapshot,
   addParticipant,
   removeParticipant,
   removeEntrant,
@@ -65,11 +70,35 @@ export function TournamentSetupSheet({
   const [order, setOrder] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
 
-  // Keep the local seed order in sync with the tournament's entrants.
-  const entrantIds = tournament?.entrants.map((e) => e.id).join(",") ?? "";
+  // Keep the local seed order while the sheet is open. A realtime refetch must
+  // not discard an unsaved reorder, so only re-sync when the SET of entrants
+  // actually changed: keep the current order for ids still present, append new
+  // ones in server order.
+  const entrantSet = tournament ? tournament.entrants.map((e) => e.id).sort().join(",") : "";
   useEffect(() => {
-    if (tournament) setOrder(tournament.entrants.map((e) => e.id));
-  }, [entrantIds]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!tournament) return;
+    setOrder((cur) => {
+      const serverIds = tournament.entrants.map((e) => e.id);
+      const present = new Set(serverIds);
+      const kept = cur.filter((id) => present.has(id));
+      const keptSet = new Set(kept);
+      return [...kept, ...serverIds.filter((id) => !keptSet.has(id))];
+    });
+  }, [entrantSet]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Safety: start over + saved copies (migration 0224)
+  const [confirmStartOver, setConfirmStartOver] = useState(false);
+  const [snapshots, setSnapshots] = useState<TournamentSnapshot[]>([]);
+  const [confirmRestore, setConfirmRestore] = useState<TournamentSnapshot | null>(null);
+  const tournamentId = tournament?.id ?? null;
+  const loadSnapshots = useCallback(async () => {
+    if (!tournamentId) return;
+    const res = await fetchTournamentSnapshots(tournamentId);
+    setSnapshots(res.available ? res.snapshots : []);
+  }, [tournamentId]);
+  useEffect(() => {
+    void loadSnapshots();
+  }, [loadSnapshots]);
   useEffect(() => {
     if (tournament) setByeStrategy(tournament.byeStrategy);
   }, [tournament?.byeStrategy]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -201,6 +230,115 @@ export function TournamentSetupSheet({
   const readyCount = tournament.entrantType === "individual" ? n + tournament.pool.length : n;
   const preview = firstRoundPreview(orderedEntrants.map((e) => e.displayName), byeStrategy);
 
+  const locked = tournament.status !== "setup";
+  const playedCount = playedMatchCount(tournament);
+
+  const startOver = async () => {
+    const ok = await run(() => resetBracket(tournament.id, true), "Started over. The earlier copy is saved under Restore.");
+    setConfirmStartOver(false);
+    if (ok) await loadSnapshots();
+  };
+  const restore = async (snap: TournamentSnapshot) => {
+    const ok = await run(() => restoreTournamentSnapshot(snap.id), "Restored the earlier copy.");
+    setConfirmRestore(null);
+    if (ok) await loadSnapshots();
+  };
+
+  const startOverBlock = (
+    <section className="space-y-2 border-t border-border pt-4">
+      <SectionLabel>Start over</SectionLabel>
+      {confirmStartOver ? (
+        <div className="rounded-xl bg-accent/10 p-3 ring-1 ring-accent/30">
+          <p className="mb-2 text-sm font-medium">
+            {playedCount > 0
+              ? `This erases ${playedCount} recorded result${playedCount === 1 ? "" : "s"} and clears the seeding and bracket. A saved copy is kept so you can restore it.`
+              : "This clears the seeding and bracket. Nothing has been played yet."}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={startOver}
+              className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              Start over
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmStartOver(false)}
+              className="rounded-xl bg-background px-4 text-sm font-medium text-foreground/60 ring-1 ring-border"
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setConfirmStartOver(true)}
+          className="w-full rounded-xl bg-card py-2.5 text-sm font-medium text-accent ring-1 ring-accent/30"
+        >
+          Start over (clear seeding &amp; bracket)
+        </button>
+      )}
+    </section>
+  );
+
+  const restoreBlock =
+    snapshots.length > 0 ? (
+      <section className="space-y-2 border-t border-border pt-4">
+        <SectionLabel>Restore an earlier copy</SectionLabel>
+        <ul className="space-y-1.5">
+          {snapshots.map((snap) => (
+            <li key={snap.id} className="rounded-xl bg-card px-3 py-2 ring-1 ring-border">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm capitalize">{snap.reason}</p>
+                  <p className="text-[11px] text-foreground/50">
+                    {timeAgo(snap.takenAt) === "just now" ? "just now" : `${timeAgo(snap.takenAt)} ago`} · {snap.playedMatches} game{snap.playedMatches === 1 ? "" : "s"} played
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmRestore(snap)}
+                  className="shrink-0 rounded-full bg-background px-3 py-1.5 text-xs font-semibold text-primary ring-1 ring-border"
+                >
+                  Restore
+                </button>
+              </div>
+              {confirmRestore?.id === snap.id && (
+                <div className="mt-2 rounded-xl bg-accent/10 p-3 ring-1 ring-accent/30">
+                  <p className="mb-2 text-sm font-medium">
+                    Replace the tournament as it is now with this copy ({snap.playedMatches} game
+                    {snap.playedMatches === 1 ? "" : "s"} played)? The current state is saved first, so this can be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => restore(snap)}
+                      className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                    >
+                      Restore this copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRestore(null)}
+                      className="rounded-xl bg-background px-4 text-sm font-medium text-foreground/60 ring-1 ring-border"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
   const move = (idx: number, dir: -1 | 1) => {
     setOrder((cur) => {
       const next = cur.slice();
@@ -222,6 +360,38 @@ export function TournamentSetupSheet({
     );
     if (ok) close();
   };
+
+  if (locked) {
+    return (
+      <Sheet
+        closing={closing}
+        onDismiss={close}
+        labelledBy="tourn-manage-title"
+        header={
+          <div>
+            <h2 id="tourn-manage-title" className="text-lg font-bold">{tournament.title}</h2>
+            <p className="text-xs text-foreground/50">{isTeam ? `Teams of ${tournament.teamSize}` : "Individuals"}</p>
+          </div>
+        }
+        footer={
+          error || note ? (
+            <div className="space-y-2">
+              {error && <p className="text-center text-sm text-accent">{error}</p>}
+              {note && <p className="text-center text-sm text-primary">{note}</p>}
+            </div>
+          ) : undefined
+        }
+      >
+        <div className="space-y-5">
+          <p className="rounded-xl bg-card p-3 text-sm text-foreground/70 ring-1 ring-border">
+            This tournament is under way. The bracket is locked so nothing gets reshuffled by accident.
+          </p>
+          {restoreBlock}
+          {startOverBlock}
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet
@@ -444,14 +614,8 @@ export function TournamentSetupSheet({
           </section>
         )}
 
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => run(() => resetBracket(tournament.id))}
-          className="w-full text-center text-xs font-medium text-foreground/40"
-        >
-          Clear seeding &amp; bracket
-        </button>
+        {restoreBlock}
+        {startOverBlock}
       </div>
     </Sheet>
   );
