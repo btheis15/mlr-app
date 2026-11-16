@@ -162,6 +162,34 @@ function toParticipant(r: ParticipantRow): TournamentParticipant {
   return { id: r.id, entrantId: r.entrant_id, userId: r.user_id, name: r.name, position: r.position };
 }
 
+/** Deterministic orderings so a realtime refetch can never reshuffle the screen
+ *  (Postgres returns embedded rows in no guaranteed order). Entrants: seed (nulls
+ *  last), position, id. Matches: stage (pool before bracket), pool, round,
+ *  position, id. */
+export function compareEntrants(
+  a: { seed: number | null; position: number; id: string },
+  b: { seed: number | null; position: number; id: string },
+): number {
+  return (
+    (a.seed ?? Number.MAX_SAFE_INTEGER) - (b.seed ?? Number.MAX_SAFE_INTEGER) ||
+    a.position - b.position ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+export function compareMatches(
+  a: { stage: MatchStage; pool: string | null; round: number; position: number; id: string },
+  b: { stage: MatchStage; pool: string | null; round: number; position: number; id: string },
+): number {
+  const stageRank = (x: MatchStage) => (x === "pool" ? 0 : 1);
+  return (
+    stageRank(a.stage) - stageRank(b.stage) ||
+    (a.pool ?? "").localeCompare(b.pool ?? "") ||
+    a.round - b.round ||
+    a.position - b.position ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
 function assemble(row: TournamentRow): Tournament {
   const parts = (row.tournament_participants ?? []).map(toParticipant);
   const byEntrant = new Map<string, TournamentParticipant[]>();
@@ -186,7 +214,7 @@ function assemble(row: TournamentRow): Tournament {
       withdrawnAt: e.withdrawn_at,
       members: (byEntrant.get(e.id) ?? []).slice().sort((a, b) => a.position - b.position),
     }))
-    .sort((a, b) => (a.seed ?? 1e9) - (b.seed ?? 1e9) || a.position - b.position);
+    .sort(compareEntrants);
   const matches = (row.tournament_matches ?? [])
     .map(
       (m): TournamentMatch => ({
@@ -208,7 +236,7 @@ function assemble(row: TournamentRow): Tournament {
         reminderMinutes: m.reminder_minutes ?? [],
       }),
     )
-    .sort((a, b) => a.round - b.round || a.position - b.position);
+    .sort(compareMatches);
   return {
     id: row.id,
     scheduleItemId: row.schedule_item_id ?? null,
@@ -304,9 +332,10 @@ export async function fetchTournament(id: string): Promise<Tournament | null> {
 
 /** Return a copy of the tournament with `matchId` decided for `winnerId` (+
  *  optional scores) and the winner advanced into its next match — the local
- *  paint before the RPC confirms. Does NOT model the override cascade-clear
- *  (that's rare and reconciled by the realtime reload); a first-time result and
- *  its one-step advance are covered. */
+ *  paint before the RPC confirms. Mirrors the server's cascade: when the winner
+ *  changes, every downstream result that depended on the old winner is cleared
+ *  (and a cleared final takes the tournament out of 'complete'), so the screen
+ *  never shows stale later rounds. */
 export function applyMatchResult(
   t: Tournament,
   matchId: string,
@@ -314,28 +343,51 @@ export function applyMatchResult(
   score1: number | null,
   score2: number | null,
 ): Tournament {
-  const m = t.matches.find((x) => x.id === matchId);
-  if (!m) return t;
-  const matches = t.matches.map((x) => {
-    if (x.id === matchId) {
-      return { ...x, winnerEntrantId: winnerId, slot1Score: score1, slot2Score: score2, status: "complete" as MatchStatus };
-    }
-    if (m.nextMatchId && x.id === m.nextMatchId) {
-      const next = { ...x };
-      if (m.nextSlot === 1) next.slot1EntrantId = winnerId;
-      else if (m.nextSlot === 2) next.slot2EntrantId = winnerId;
-      next.status = next.slot1EntrantId && next.slot2EntrantId ? "ready" : "pending";
-      return next;
-    }
-    return x;
-  });
-  const isFinal = !m.nextMatchId;
-  return {
-    ...t,
-    matches,
-    status: isFinal ? "complete" : t.status,
-    winnerEntrantId: isFinal ? winnerId : t.winnerEntrantId,
+  if (!t.matches.some((x) => x.id === matchId)) return t;
+  const byId = new Map(t.matches.map((x) => [x.id, { ...x }]));
+  let finalCleared = false;
+
+  const settle = (x: TournamentMatch) => {
+    if (x.winnerEntrantId) return;
+    x.status = x.slot1EntrantId && x.slot2EntrantId ? "ready" : "pending";
   };
+  // Put `entrant` into a slot; if that changes who is there and the game had a
+  // result, erase it and keep cascading.
+  const place = (id: string, slot: 1 | 2, entrant: string | null) => {
+    const n = byId.get(id);
+    if (!n) return;
+    const key = slot === 1 ? "slot1EntrantId" : "slot2EntrantId";
+    if (n[key] === entrant) return;
+    n[key] = entrant;
+    if (n.winnerEntrantId) {
+      n.winnerEntrantId = null;
+      n.slot1Score = null;
+      n.slot2Score = null;
+      if (!n.nextMatchId) finalCleared = true;
+      else if (n.nextSlot) place(n.nextMatchId, n.nextSlot, null);
+    }
+    settle(n);
+  };
+
+  const m = byId.get(matchId)!;
+  m.winnerEntrantId = winnerId;
+  m.slot1Score = score1;
+  m.slot2Score = score2;
+  m.status = "complete";
+  if (m.nextMatchId && m.nextSlot) place(m.nextMatchId, m.nextSlot, winnerId);
+
+  const matches = t.matches.map((x) => byId.get(x.id)!);
+  const isFinal = !m.nextMatchId;
+  let status = t.status;
+  let winnerEntrantId = t.winnerEntrantId;
+  if (isFinal) {
+    status = "complete";
+    winnerEntrantId = winnerId;
+  } else if (finalCleared && t.status === "complete" && t.format !== "round_robin") {
+    status = "live";
+    winnerEntrantId = null;
+  }
+  return { ...t, matches, status, winnerEntrantId };
 }
 
 // ── Pure bracket math (mirrors the SQL; used for the setup preview) ───────────
@@ -825,15 +877,107 @@ export function generatePools(
 export function generateBracketFromPools(id: string): Promise<Res> {
   return rpc("generate_bracket_from_pools", { p_tournament: id });
 }
-export function resetBracket(id: string): Promise<Res> {
-  return rpc("reset_bracket", { p_tournament: id });
+/** Start over. The server refuses when results exist unless `confirm` is true,
+ *  and keeps a snapshot either way. `p_confirm` is sent only when true so the
+ *  call also works against the pre-0224 one-argument function. */
+export function resetBracket(id: string, confirm?: boolean): Promise<Res> {
+  return rpc("reset_bracket", confirm ? { p_tournament: id, p_confirm: true } : { p_tournament: id });
 }
 
-export function setMatchEntrant(matchId: string, slot: 1 | 2, entrantId: string | null): Promise<Res> {
-  return rpc("set_match_entrant", { p_match: matchId, p_slot: slot, p_entrant_id: entrantId });
+/** `force` acknowledges that the move erases a recorded result and everything
+ *  decided after it; sent only when true (works against pre-0224 too). */
+export function setMatchEntrant(
+  matchId: string,
+  slot: 1 | 2,
+  entrantId: string | null,
+  force?: boolean,
+): Promise<Res> {
+  const params: Record<string, unknown> = { p_match: matchId, p_slot: slot, p_entrant_id: entrantId };
+  if (force) params.p_force = true;
+  return rpc("set_match_entrant", params);
 }
-export function swapMatchEntrants(matchA: string, slotA: 1 | 2, matchB: string, slotB: 1 | 2): Promise<Res> {
-  return rpc("swap_match_entrants", { p_match_a: matchA, p_slot_a: slotA, p_match_b: matchB, p_slot_b: slotB });
+export function swapMatchEntrants(
+  matchA: string,
+  slotA: 1 | 2,
+  matchB: string,
+  slotB: 1 | 2,
+  force?: boolean,
+): Promise<Res> {
+  const params: Record<string, unknown> = { p_match_a: matchA, p_slot_a: slotA, p_match_b: matchB, p_slot_b: slotB };
+  if (force) params.p_force = true;
+  return rpc("swap_match_entrants", params);
+}
+
+// ── Safety snapshots (migration 0224) ─────────────────────────────────────────
+
+export interface TournamentSnapshot {
+  id: string;
+  tournamentId: string;
+  reason: string;
+  takenBy: string | null;
+  takenAt: string;
+  playedMatches: number;
+}
+
+/** Saved copies of a tournament, newest first. Never selects `data` (the full
+ *  copy). `available` is false when the table doesn't exist yet (pre-0224). */
+export async function fetchTournamentSnapshots(
+  tournamentId: string,
+): Promise<{ snapshots: TournamentSnapshot[]; available: boolean; error?: string }> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb || !tournamentId) return { snapshots: [], available: false };
+  try {
+    const { data, error } = await sb
+      .from("tournament_snapshots")
+      .select("id, tournament_id, reason, taken_by, taken_at, played_matches")
+      .eq("tournament_id", tournamentId)
+      .order("taken_at", { ascending: false });
+    if (error) {
+      const missing = isMissingTable(error) || (error as { code?: string }).code === "PGRST205";
+      return missing
+        ? { snapshots: [], available: false }
+        : { snapshots: [], available: true, error: error.message };
+    }
+    const rows = (data ?? []) as {
+      id: string;
+      tournament_id: string;
+      reason: string;
+      taken_by: string | null;
+      taken_at: string;
+      played_matches: number;
+    }[];
+    return {
+      available: true,
+      snapshots: rows.map((r) => ({
+        id: r.id,
+        tournamentId: r.tournament_id,
+        reason: r.reason,
+        takenBy: r.taken_by,
+        takenAt: r.taken_at,
+        playedMatches: r.played_matches,
+      })),
+    };
+  } catch {
+    return { snapshots: [], available: false };
+  }
+}
+
+/** Put a saved copy back (the current state is snapshotted first server-side). */
+export function restoreTournamentSnapshot(id: string): Promise<Res> {
+  return rpc("restore_tournament_snapshot", { p_snapshot: id });
+}
+
+/** Games with a real result (both sides known and decided, or a scored tie) —
+ *  mirrors the server's "played" test. */
+export function playedMatchCount(t: Tournament): number {
+  return t.matches.filter((m) => isPlayed(m)).length;
+}
+export function isPlayed(m: TournamentMatch): boolean {
+  return (
+    !!m.slot1EntrantId &&
+    !!m.slot2EntrantId &&
+    (!!m.winnerEntrantId || (m.status === "complete" && m.slot1Score != null && m.slot2Score != null))
+  );
 }
 
 /** Record a result. Winner is required; scores optional. */

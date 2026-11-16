@@ -185,8 +185,10 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   (group play seeds a cross-seeded knockout). Migrations
   [`0144`](supabase/migrations/0144_tournaments.sql)–[`0146`](supabase/migrations/0146_tournament_pools.sql),
   seam [`lib/tournaments.ts`](lib/tournaments.ts), UI
-  [`TournamentView`](components/TournamentView.tsx). See CLAUDE.md → **Tournament
-  brackets**.
+  [`TournamentView`](components/TournamentView.tsx). Since [`0224`](supabase/migrations/0224_tournament_safety.sql)
+  a started bracket can't be regenerated, reset or rearranged by accident: the server
+  refuses, destructive actions ask first, and earlier copies can be restored. See CLAUDE.md → **Tournament
+  brackets** / **Tournament safety**.
 - **Private activities** — **any member** can tap **"🎉 Create an activity"** in the
   Events tab to spin up a private, invite-only game/get-together (e.g. a weekend
   ping-pong or baggo tournament) shared with only the people they add — including

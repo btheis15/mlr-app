@@ -2230,6 +2230,34 @@ resolves the item and defers to that existing predicate.
   get none (no `user_id`).
 - 📱 **No iOS parity yet** — web-only; shared schema/RPCs.
 
+### Tournament safety (migration [`0224`](supabase/migrations/0224_tournament_safety.sql))
+
+A real tournament was wiped and reseeded halfway through: "Generate bracket" stayed on
+the setup sheet after the start and the server never refused it; "Clear seeding &
+bracket" and Rearrange had no confirmation. The rules now live on the server (an old
+build or the other client can't skip them):
+
+- `generate_bracket` / `generate_round_robin` / `generate_pools` run **only in `setup`**;
+  `generate_bracket_from_pools` refuses over a knockout that has results.
+- `reset_bracket(p_confirm)`, `set_match_entrant(p_force)` and `swap_match_entrants(p_force)`
+  refuse to erase recorded results unless the flag is true. ⚠️ The client sends the flag
+  **only when true** (`lib/tournaments.ts`), so it still works against the old signatures
+  if the migration lands after the deploy.
+- Every destructive operation (and both deletes) first writes a full copy to
+  `tournament_snapshots` (managers read; no FK so it outlives a deleted tournament);
+  `restore_tournament_snapshot()` puts one back and snapshots the current state first.
+  The client lists them with `fetchTournamentSnapshots` (never selects `data`; a missing
+  table reads as `available: false`).
+- Clearing the final's result takes the tournament out of `complete`.
+- **UI:** once the status isn't `setup`, [`TournamentSetupSheet`](components/TournamentSetupSheet.tsx)
+  shows a locked note instead of Generate/format/re-sync/team/remove controls, plus a
+  separated **Start over** (confirm states how many results will be erased) and
+  **Restore an earlier copy**. Rearrange is hidden once complete and asks before touching
+  a played game. `applyMatchResult` now clears downstream results like the server cascade,
+  and matches/entrants are sorted deterministically (`compareMatches`/`compareEntrants`)
+  so a realtime refetch can't reorder them. The private-activity delete confirm warns
+  when its tournament has results.
+
 ## Private activities (migration 0150)
 
 A **member-created, invite-only** one-off get-together that lives in the **Events**
