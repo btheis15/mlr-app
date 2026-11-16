@@ -121,8 +121,9 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
 - **Navigation** — the `TABS` array in [`components/TabBar.tsx`](components/TabBar.tsx).
 - **A tab's content** — its `app/<tab>/page.tsx`.
 - **Local Places** — the nearby-businesses list at `/local-places` (linked from
-  Home); add or edit spots in [`lib/places.ts`](lib/places.ts) and the page
-  renders them. Inshalla hands off to the in-app `/tee-times` screen.
+  Home); admins add, edit, reorder, hide and delete spots in-app at
+  `/admin/local-places` (table `local_places`, migration 0225;
+  [`lib/places.ts`](lib/places.ts) is only the offline fallback). Inshalla hands off to the in-app `/tee-times` screen.
 - **Events & attendance** — the resort calendar + RSVP at `/events`, with the
   nearest event spotlighted on Home. Admins create events; members tap
   Going / Maybe / Can't make (Family Fest has an optional per-day picker). Data
@@ -199,7 +200,7 @@ photo viewing · **iCloud Shared Photo Library** album for Fest photos ·
   See CLAUDE.md → **Private activities**.
 - **Admin dashboard** — `/admin` is the front door for every admin tool: Members,
   Alerts & Notifications, Notification Test, Content review, Committees & join
-  requests, Houses, Cabin requests, Help contact, Sign-ins, and View as — each
+  requests, Houses, Cabin requests, Help contact, Local Places, Sign-ins, and View as — each
   its own `/admin/*`
   sub-page behind [`AdminGuard`](app/admin/AdminGuard.tsx), replacing the ~9
   nested accordions that used to live in Profile → Admin (Profile itself is now

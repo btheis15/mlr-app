@@ -33,6 +33,7 @@ const CARDS: {
   { href: "/admin/cabins", emoji: "🏡", tile: "bg-lake/12", title: "Cabin requests", sub: "Approve room stay requests" },
   { href: "/admin/event-chats", emoji: "🗄️", tile: "bg-dusk/12", title: "Event chats", sub: "Reopen an archived event chat" },
   { href: "/admin/help-contact", emoji: "☎️", tile: "bg-campfire/12", title: "Help contact", sub: "Who the Help page says to text or call" },
+  { href: "/admin/local-places", emoji: "📍", tile: "bg-primary/12", title: "Local Places", sub: "Edit nearby golf, food & coffee spots" },
   { href: "/admin/signins", emoji: "🔐", tile: "bg-dusk/12", title: "Sign-ins", sub: "Who joined & recent sign-ins" },
   { href: "/admin/system", emoji: "🖥️", tile: "bg-primary/12", title: "Media server", sub: "Pull latest code & restart the mac mini", ownerOnly: true },
   { href: "/admin/preview", emoji: "👁️", tile: "bg-sun/12", title: "View as", sub: "Preview the app as a member or guest" },

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { LocalPlace, PlaceAccent } from "@/lib/places";
+import { mediaSrc } from "@/lib/mediaToken";
 
 /**
  * A Local Places card: an accent-tinted icon chip + name/category/blurb, then a
@@ -11,7 +12,7 @@ import type { LocalPlace, PlaceAccent } from "@/lib/places";
  *  - External business: a cluster of equal icon+label pills — Menu, Order, Call,
  *    Website — showing only the ones that place actually has.
  *
- * Presentational + link-only (no state), so it stays a Server Component.
+ * Presentational + link-only (no state).
  */
 
 // Literal class strings (not interpolated) so Tailwind's scanner emits them.
@@ -26,6 +27,15 @@ const ACCENT: Record<PlaceAccent, string> = {
 export function LocalPlaceCard({ place }: { place: LocalPlace }) {
   return (
     <div className="rounded-2xl bg-card p-4 ring-1 ring-border transition-shadow hover:shadow-sm">
+      {place.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={mediaSrc(place.imageUrl)}
+          alt={place.name}
+          loading="lazy"
+          className="-mt-1 mb-3 h-36 w-full rounded-xl object-cover ring-1 ring-border"
+        />
+      )}
       <div className="flex items-start gap-3">
         <span
           className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ${ACCENT[place.accent]}`}
@@ -36,9 +46,10 @@ export function LocalPlaceCard({ place }: { place: LocalPlace }) {
         <div className="min-w-0 flex-1">
           <h3 className="text-[15px] font-semibold leading-tight">{place.name}</h3>
           <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-faint">
-            {place.category} · {place.locality}
+            {[place.category, place.locality].filter(Boolean).join(" · ")}
           </p>
-          <p className="mt-1 text-xs leading-snug text-foreground/70">{place.blurb}</p>
+          {place.address && <p className="mt-0.5 text-xs text-foreground/60">{place.address}</p>}
+          {place.blurb && <p className="mt-1 text-xs leading-snug text-foreground/70">{place.blurb}</p>}
         </div>
       </div>
 
@@ -153,12 +164,12 @@ function PlaceActions({ place }: { place: LocalPlace }) {
  * A "get directions" link that opens the phone's maps app to the place. Uses
  * Google Maps' universal directions URL (destination = the place's name +
  * locality); on a phone it hands off to the installed Google Maps app, and
- * falls back to the web map otherwise. No street addresses live in the data,
- * so the name + town query is what resolves the pin.
+ * falls back to the web map otherwise. When an address is set it is used;
+ * otherwise the name + town query resolves the pin.
  */
 function mapsHref(place: LocalPlace): string {
   const locality = place.locality.replace(/\s*·\s*/g, ", ");
-  const query = `${place.name}, ${locality}`;
+  const query = place.address ? `${place.name}, ${place.address}` : `${place.name}, ${locality}`;
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
 }
 
