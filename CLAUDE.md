@@ -1266,6 +1266,23 @@ enough — nothing is writable until an admin verifies you.**
   calling `promptSignIn()`) when `awaitingVerification`: they're already signed
   in, so a sign-in sheet is a loop.
 
+### App Review sandbox (migration [`0226`](supabase/migrations/0226_app_review_sandbox.sql))
+
+The App Store review account lives in `public.sandboxed_accounts(user_id)`; nothing it
+does may be visible to, or notify, other members. Mechanisms: restrictive select
+policies named `sandbox: hide from others` on 57 content tables; one BEFORE INSERT
+trigger on `notifications`; email claim-column pre-stamp triggers (so `alert-mailer`
+sees the row as already sent); an event-chat hide trigger; `is_sandboxed(uid)` RPC.
+
+Rules for future work:
+- A **new content table with an actor column** needs the `sandbox: hide from others`
+  policy added by hand.
+- A **new sender** (push/APNs/email running as service role) must call
+  `isSandboxed(sb, actorId)` from `media-server/sandbox.js` and return early
+  (cached 5 min, fails open if the table is missing).
+- **SECURITY DEFINER read functions bypass RLS**, so they must filter `is_sandboxed` themselves.
+- The sender part needs `git pull` + a restart of the media server on the mini.
+
 ## Admin dashboard
 
 `/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for

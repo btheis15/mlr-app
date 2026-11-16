@@ -53,6 +53,7 @@ function fmtStay(checkIn, checkOut) {
   return `${fmtDay(checkIn)} → ${fmtDay(checkOut)}`;
 }
 
+const { isSandboxed } = require("./sandbox");
 async function start() {
   const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -123,6 +124,7 @@ async function start() {
       .eq("id", mid)
       .maybeSingle();
     if (!msg) return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[push] skipped: sandboxed actor"); return; }
 
     const [committeeRes, mediaRes, muteRes] = await Promise.all([
       sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle(),
@@ -218,6 +220,7 @@ async function start() {
       .eq("id", mid)
       .maybeSingle();
     if (!msg || msg.deleted_at) return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[push] skipped: sandboxed actor"); return; }
 
     const [houseRes, mediaRes, membersRes, muteRes] = await Promise.all([
       sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle(),
@@ -299,6 +302,7 @@ async function start() {
     if (!msg || msg.deleted_at) return;
     // Held by moderation ⇒ it isn't visible in the room, so it must not push.
     if (msg.status && msg.status !== "visible") return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[push] skipped: sandboxed actor"); return; }
 
     const [eventRes, mediaRes, goingRes, muteRes] = await Promise.all([
       sb.from("events").select("id, title, emoji").eq("id", msg.event_id).maybeSingle(),
@@ -357,11 +361,12 @@ async function start() {
 
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
-    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending").eq("id", alertId).maybeSingle();
+    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending, author_id").eq("id", alertId).maybeSingle();
     if (!a) return;
     // An "email only" send (migration 0126's show_banner:false) never shows a
     // banner, so it shouldn't buzz phones either — push rides with the banner.
     if (a.show_banner === false) return;
+    if (await isSandboxed(sb, a.author_id)) { console.log("[push] skipped: sandboxed actor"); return; }
     // Everyone who opted into broadcast alerts (push_types contains 'alerts').
     const { data: profs } = await sb.from("profiles").select("id").contains("push_types", ["alerts"]);
     // Same "not going" exclusion as the banner/Activity-tab/email channels
@@ -553,6 +558,7 @@ async function start() {
   const handleNewMember = async (id, nameFromRow) => {
     if (!id) return;
     if (!once(`nm:${id}`)) return;
+    if (await isSandboxed(sb, id)) { console.log("[push] skipped: sandboxed actor"); return; }
 
     const { data: admins } = await sb
       .from("profiles")
@@ -624,6 +630,7 @@ async function start() {
       .eq("id", id)
       .maybeSingle();
     if (!b || b.status !== "pending" || b.request_notify === false) return;
+    if (await isSandboxed(sb, b.user_id)) { console.log("[push] skipped: sandboxed actor"); return; }
 
     const [cabinRes, reqRes, adminRes] = await Promise.all([
       sb.from("cabins").select("name, approver_user_id").eq("id", b.cabin_id).maybeSingle(),

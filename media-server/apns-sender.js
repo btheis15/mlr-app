@@ -157,6 +157,7 @@ function createApnsDelivery() {
 
 // ── Listener (forked from push-sender.js; APNs-only) ───────────────────────────
 
+const { isSandboxed } = require("./sandbox");
 async function start() {
   const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -185,6 +186,7 @@ async function start() {
     const { data: msg } = await sb.from("committee_messages")
       .select("id, committee_id, author_id, text, area").eq("id", mid).maybeSingle();
     if (!msg) return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[apns] skipped: sandboxed actor"); return; }
     const { data: committee } = await sb.from("committees").select("slug, name, emoji").eq("id", msg.committee_id).maybeSingle();
     if (!committee) return;
 
@@ -247,6 +249,7 @@ async function start() {
     const { data: msg } = await sb.from("house_messages")
       .select("id, house_id, author_id, text, deleted_at").eq("id", mid).maybeSingle();
     if (!msg || msg.deleted_at) return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[apns] skipped: sandboxed actor"); return; }
     const { data: house } = await sb.from("houses").select("slug, name, emoji").eq("id", msg.house_id).maybeSingle();
     if (!house) return;
 
@@ -301,6 +304,7 @@ async function start() {
     if (!msg || msg.deleted_at) return;
     // Held by moderation ⇒ not visible in the room, so it must not push.
     if (msg.status && msg.status !== "visible") return;
+    if (await isSandboxed(sb, msg.author_id)) { console.log("[apns] skipped: sandboxed actor"); return; }
     const { data: ev } = await sb.from("events").select("id, title, emoji").eq("id", msg.event_id).maybeSingle();
     if (!ev) return;
 
@@ -337,11 +341,12 @@ async function start() {
   // alerts — broadcast announcements (gated on push_types 'alerts')
   const handleAlert = async (alertId) => {
     if (!once(`a:${alertId}`)) return;
-    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending").eq("id", alertId).maybeSingle();
+    const { data: a } = await sb.from("announcements").select("id, title, body, show_banner, event_id, exclude_not_attending, author_id").eq("id", alertId).maybeSingle();
     if (!a) return;
     // An "email only" send (migration 0126's show_banner:false) never shows a
     // banner, so it shouldn't buzz phones either — push rides with the banner.
     if (a.show_banner === false) return;
+    if (await isSandboxed(sb, a.author_id)) { console.log("[apns] skipped: sandboxed actor"); return; }
     const { data: profs } = await sb.from("profiles").select("id").contains("push_types", ["alerts"]);
     // Same "not going" exclusion as the banner/Activity-tab/email channels
     // (migration 0096/0127) — an alert linked to an event skips anyone who
@@ -462,6 +467,7 @@ async function start() {
   const handleNewMember = async (id, nameFromRow) => {
     if (!id) return;
     if (!once(`nm:${id}`)) return;
+    if (await isSandboxed(sb, id)) { console.log("[apns] skipped: sandboxed actor"); return; }
 
     const { data: admins } = await sb
       .from("profiles")
