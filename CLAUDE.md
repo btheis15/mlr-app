@@ -134,7 +134,7 @@ not just the UI (migration [`0023`](supabase/migrations/0023_committee_message_e
 | `/notifications` | [`app/notifications/page.tsx`](app/notifications/page.tsx) | **Activity** tab (bell icon) — a per-member Notifications feed ([`NotificationsView`](components/NotificationsView.tsx)). Members only |
 | `/people` | [`app/people/page.tsx`](app/people/page.tsx) | **People** — the member directory ([`PeopleDirectory`](components/PeopleDirectory.tsx)): everyone with an account, searchable, each with a quick Text / Call / pay bar + tap-through to their full profile ([`MemberSheet`](components/MemberSheet.tsx)), plus **email a group** ([`EmailMembersSection`](components/EmailMembersSection.tsx) → [`EmailMembers`](components/EmailMembers.tsx)) — pick specific people, a committee you're in (once its members have assigned areas, e.g. Family Fest, the composer's "By Role" tab lets you narrow to just that role/subcommittee — roles now ride on `committee_member_recipients`, migration [`0124`](supabase/migrations/0124_email_roles_and_admins.sql)), your house, App Admins, or Everyone. Members-only (`SignInWall`). **Not a tab** — reached from the People tile in [`HomeQuickActions`](components/HomeQuickActions.tsx) |
 | `/profile` | [`app/profile/page.tsx`](app/profile/page.tsx) | Identity, avatar, contact/pay settings, email-alert opt-in, in-app notification prefs ([`NotifPrefs`](components/NotifPrefs.tsx)), Ask-for-Help opt-in, text size, sign out. Now **flattened** — the old nine nested admin accordions moved to the standalone **`/admin` dashboard** (a single `RowLink` here for admins); Preview-As moved to `/admin/preview`. **The last bottom tab** — it moved back here from the header avatar, which was removed |
-| `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in [`lib/places.ts`](lib/places.ts); linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
+| `/local-places` | [`app/local-places/page.tsx`](app/local-places/page.tsx) | **Local Places** — nearby businesses with quick Menu/Order/Call/Website links ([`LocalPlaceCard`](components/LocalPlaceCard.tsx)), data in the `local_places` table (migration 0225; [`lib/places.ts`](lib/places.ts) is the fallback + helpers), admin-editable at `/admin/local-places`; linked from Home. Inshalla hands off to the in-app `/tee-times` screen |
 | `/events` | [`app/events/page.tsx`](app/events/page.tsx) | **Events** — the resort calendar + RSVP. Every upcoming gathering with a Going / Maybe / Can't-make control ([`AttendanceControl`](components/AttendanceControl.tsx)), a tap-through to who's coming + a per-day drill-down for Family Fest ([`EventSheet`](components/EventSheet.tsx)); admins create/edit ([`EventComposer`](components/EventComposer.tsx)). Linked from Home; nearest event is also spotlighted on Home ([`UpcomingEvents`](components/UpcomingEvents.tsx)). See **Resort events & attendance** |
 | `/help` | [`app/help/page.tsx`](app/help/page.tsx) | **Help & how-to** — non-technical onboarding: what the app is, browse-vs-sign-in, "I didn't get my code" troubleshooting, add-to-home-screen ([`InstallButton`](components/InstallButton.tsx)), a **text-size control** ([`TextSizeControl`](components/TextSizeControl.tsx)), and a **"Take a quick tour"** link to the guided-tour walkthrough ([`/guide`](app/guide/page.tsx) — an in-app viewer that embeds `public/mlr-app-guide.pdf`, the portrait presenter/onboarding deck, keeping the TabBar + a Back button so it's never a dead-end; also surfaced as its own card in Home's "App & help" group). Leads with a human escape hatch (text/email `HELP_CONTACT` in [`lib/help.ts`](lib/help.ts)). Linked from Profile + the sign-in sheet. Not a tab |
 
@@ -1292,7 +1292,7 @@ in Profile → Admin. Each card links to its own `/admin/*` sub-page mounting
 the same component that used to live in the accordion (unchanged data flow,
 just less nesting). One card (Media server) is `ownerOnly` — filtered out of
 the grid for every admin except `lib/owner.ts`'s `OWNER_EMAIL`, see **Mac-mini
-media server**'s "Remote restart" — so most admins see 9:
+media server**'s "Remote restart" — so most admins see 10:
 
 | Card | Route | Component |
 |---|---|---|
@@ -1304,6 +1304,7 @@ media server**'s "Remote restart" — so most admins see 9:
 | Houses | `/admin/houses` | [`AdminHouses`](components/AdminHouses.tsx) |
 | Cabin requests | `/admin/cabins` | [`AdminCabinBookings`](components/AdminCabinBookings.tsx) |
 | Help contact | `/admin/help-contact` | [`AdminHelpContact`](components/AdminHelpContact.tsx) — see **Help contact** |
+| Local Places | `/admin/local-places` | [`AdminLocalPlaces`](components/AdminLocalPlaces.tsx) — see **Local Places (migration 0225)** |
 | Sign-ins | `/admin/signins` | [`AdminSignins`](components/AdminSignins.tsx) |
 | Media server (owner-only) | `/admin/system` | [`AdminMediaServer`](components/AdminMediaServer.tsx) — one-tap "pull latest + restart" for the mac mini, see **Mac-mini media server** |
 | View as | `/admin/preview` | [`PreviewAs`](components/PreviewAs.tsx) |
@@ -1346,6 +1347,25 @@ never as the real admin dressed up as them). The `lib/*` seams that accept an
 optional `asUserId` (`fetchMyBookings`, `fetchMyAttendance`) exist
 for exactly this — pass the effective id rather than letting the seam resolve
 the session itself.
+
+## Local Places (migration 0225)
+
+The `/local-places` list is the `local_places` table (migration
+[`0225`](supabase/migrations/0225_local_places.sql)), seeded from the old
+hard-coded list (14 places) and edited in-app by admins at `/admin/local-places`
+([`AdminLocalPlaces`](components/AdminLocalPlaces.tsx)): every field, add,
+delete (confirm), hide/show (`is_active`), reorder within a section, photo
+upload to `site-assets/local-places/` (the 0055 write policy already covers
+admins; nothing loosened). Read = active rows for everyone (anon too), admins
+also see hidden; writes admin-only by RLS (`profiles.is_admin`). RLS has real
+policies on purpose (see the `committee_areas`/0170 incident above).
+[`lib/places.ts`](lib/places.ts) `fetchLocalPlaces()` falls back to the in-code
+`PLACES` ONLY when the read **errors** (table missing/offline), never when the
+table is empty. `place_group` is any string: golf/food/coffee keep their labels,
+others render as their own title-cased section. The editor normalises phones to
+E.164 (US default), auto-formats the display number when left blank, and
+requires http(s) URLs. A wrong phone number is the worst bug here. Apply the
+migration out-of-band like the others.
 
 ## Help contact
 

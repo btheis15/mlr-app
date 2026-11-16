@@ -12,9 +12,20 @@
  * Contact data (phones, menu/order URLs, addresses) was fetched from each
  * business's official site and independently re-verified — keep it accurate; a
  * wrong phone number is the worst bug here. Phones are E.164 so tel: works
- * everywhere. Add new spots to PLACES; the page renders them automatically.
+ * everywhere.
+ *
+ * SOURCE OF TRUTH: since migration 0225 the list lives in the `local_places`
+ * table and admins edit it in-app (/admin/local-places). `PLACES` below is now
+ * ONLY the offline / first-paint fallback (and the migration's seed): it is used
+ * when the table read ERRORS (table missing, offline), never when the table is
+ * merely empty. Changing a phone number? Do it in the admin editor, not here.
  */
 
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { prepareImageForUpload } from "@/lib/media";
+
+/** Known groups keep their labels; the DB allows any string (an unknown one
+ *  renders as its own title-cased section). */
 export type PlaceGroup = "golf" | "food" | "coffee";
 
 /** One of the Northwoods palette tokens (see globals.css @theme). Picks the
@@ -24,6 +35,8 @@ export type PlaceGroup = "golf" | "food" | "coffee";
 export type PlaceAccent = "primary" | "lake" | "campfire" | "sun" | "dusk";
 
 export interface LocalPlace {
+  /** DB row id (absent on the in-code fallback list). */
+  id?: string;
   slug: string;
   name: string;
   /** Short "what it is" line, e.g. "Pizza & Sports Bar". */
@@ -34,7 +47,16 @@ export interface LocalPlace {
   blurb: string;
   emoji: string;
   accent: PlaceAccent;
-  group: PlaceGroup;
+  /** golf | food | coffee, or any other string (its own section). */
+  group: string;
+  /** Street address, shown on the card when present. */
+  address?: string;
+  /** Optional photo (site-assets public URL). */
+  imageUrl?: string;
+  /** Sort order within the group. */
+  position?: number;
+  /** False = hidden from everyone but admins. */
+  isActive?: boolean;
 
   // ── External business (omit all of these for an in-app hand-off) ──
   website?: string;
@@ -268,3 +290,283 @@ export const PLACES: LocalPlace[] = [
     phoneTel: "+17159661311",
   },
 ];
+
+// ── DB (migration 0225) ──────────────────────────────────────────────────────
+
+const ACCENTS: PlaceAccent[] = ["primary", "lake", "campfire", "sun", "dusk"];
+const SITE_BUCKET = "site-assets";
+const nn = (v: string | null | undefined): string | undefined => (v && v.trim() ? v : undefined);
+
+export const KNOWN_GROUPS: Record<string, { title: string; emoji: string; accent: PlaceAccent }> = {
+  golf: { title: "Golf", emoji: "⛳", accent: "primary" },
+  food: { title: "Food & Drink", emoji: "🍔", accent: "campfire" },
+  coffee: { title: "Coffee & Cafés", emoji: "☕", accent: "dusk" },
+};
+const GROUP_ORDER = ["golf", "food", "coffee"];
+
+/** Section title for any group string ("pizza-places" -> "Pizza Places"). */
+export function groupTitle(group: string): string {
+  const known = KNOWN_GROUPS[group];
+  if (known) return known.title;
+  return group
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** Group keys present in `places`: known ones first (golf, food, coffee), then
+ *  the rest in first-seen order (the query is ordered by place_group). */
+export function groupKeys(places: LocalPlace[]): string[] {
+  const seen = Array.from(new Set(places.map((p) => p.group)));
+  return [...GROUP_ORDER.filter((g) => seen.includes(g)), ...seen.filter((g) => !GROUP_ORDER.includes(g))];
+}
+
+export interface LocalPlaceRow {
+  id: string;
+  slug: string;
+  name: string;
+  category: string | null;
+  place_group: string;
+  locality: string | null;
+  address: string | null;
+  blurb: string | null;
+  emoji: string | null;
+  accent: string;
+  image_url: string | null;
+  website: string | null;
+  menu_url: string | null;
+  order_url: string | null;
+  phone_display: string | null;
+  phone_tel: string | null;
+  internal_href: string | null;
+  internal_cta: string | null;
+  booking_url: string | null;
+  booking_cta: string | null;
+  rates_url: string | null;
+  rates_cta: string | null;
+  position: number;
+  is_active: boolean;
+}
+
+export function placeFromRow(r: LocalPlaceRow): LocalPlace {
+  return {
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    category: r.category ?? "",
+    locality: r.locality ?? "",
+    blurb: r.blurb ?? "",
+    emoji: r.emoji || "📍",
+    accent: (ACCENTS as string[]).includes(r.accent) ? (r.accent as PlaceAccent) : "primary",
+    group: r.place_group,
+    address: nn(r.address),
+    imageUrl: nn(r.image_url),
+    website: nn(r.website),
+    menuUrl: nn(r.menu_url),
+    orderUrl: nn(r.order_url),
+    phoneDisplay: nn(r.phone_display),
+    phoneTel: nn(r.phone_tel),
+    internalHref: nn(r.internal_href),
+    internalCta: nn(r.internal_cta),
+    bookingUrl: nn(r.booking_url),
+    bookingCta: nn(r.booking_cta),
+    ratesUrl: nn(r.rates_url),
+    ratesCta: nn(r.rates_cta),
+    position: r.position,
+    isActive: r.is_active,
+  };
+}
+
+/** Read the list. Falls back to the in-code PLACES ONLY when the read errors
+ *  (no backend, table missing, offline) — an empty table is a real, empty list. */
+export async function fetchLocalPlaces(): Promise<{ places: LocalPlace[]; fromDb: boolean }> {
+  const sb = supabase;
+  if (!isSupabaseConfigured || !sb) return { places: PLACES, fromDb: false };
+  try {
+    const { data, error } = await sb
+      .from("local_places")
+      .select("*")
+      .order("place_group", { ascending: true })
+      .order("position", { ascending: true })
+      .order("name", { ascending: true });
+    if (error || !data) return { places: PLACES, fromDb: false };
+    return { places: (data as LocalPlaceRow[]).map(placeFromRow), fromDb: true };
+  } catch {
+    return { places: PLACES, fromDb: false };
+  }
+}
+
+/** Editable fields as typed in the admin form (empty string = blank). */
+export interface LocalPlaceInput {
+  id?: string;
+  slug: string;
+  name: string;
+  category: string;
+  group: string;
+  locality: string;
+  address: string;
+  blurb: string;
+  emoji: string;
+  accent: PlaceAccent;
+  imageUrl: string;
+  website: string;
+  menuUrl: string;
+  orderUrl: string;
+  phoneDisplay: string;
+  phoneTel: string;
+  internalHref: string;
+  internalCta: string;
+  bookingUrl: string;
+  bookingCta: string;
+  ratesUrl: string;
+  ratesCta: string;
+  position: number;
+  isActive: boolean;
+}
+
+const orNull = (s: string): string | null => (s.trim() ? s.trim() : null);
+
+/** "(715) 453-3130" / "715.453.3130" / "1-715-453-3130" -> "+17154533130".
+ *  US default for 10 digits; an explicit "+" keeps its country code. Returns
+ *  null when it can't be a valid number. */
+export function normalizePhoneTel(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const digits = t.replace(/\D/g, "");
+  if (t.startsWith("+")) return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+/** "+17154533130" -> "(715) 453-3130" (US numbers); otherwise the E.164 itself. */
+export function formatPhoneDisplay(tel: string): string {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(tel);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : tel;
+}
+
+export function isHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** "Billy Bob's Pizza" -> "billy-bobs-pizza". */
+export function slugifyPlace(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['\u2019]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** Validate + normalise the form. Returns an error string or the clean input. */
+export function validateLocalPlace(i: LocalPlaceInput): { error: string } | { input: LocalPlaceInput } {
+  const name = i.name.trim();
+  if (!name) return { error: "A name is required." };
+  const group = i.group.trim().toLowerCase();
+  if (!group) return { error: "Pick a section." };
+  for (const [label, v] of [
+    ["Website", i.website],
+    ["Menu link", i.menuUrl],
+    ["Order link", i.orderUrl],
+    ["Booking link", i.bookingUrl],
+    ["Rates link", i.ratesUrl],
+  ] as const) {
+    if (v.trim() && !isHttpUrl(v)) return { error: `${label} must start with http:// or https://` };
+  }
+  let phoneTel = "";
+  let phoneDisplay = i.phoneDisplay.trim();
+  if (i.phoneTel.trim()) {
+    const tel = normalizePhoneTel(i.phoneTel);
+    if (!tel) return { error: "That phone number doesn't look right (10 digits, or +country code)." };
+    phoneTel = tel;
+    if (!phoneDisplay) phoneDisplay = formatPhoneDisplay(tel);
+  }
+  const slug = slugifyPlace(i.slug.trim() || name);
+  if (!slug) return { error: "Couldn't make a short id from that name." };
+  return { input: { ...i, name, group, slug, phoneTel, phoneDisplay } };
+}
+
+function toRow(i: LocalPlaceInput, uid: string | null) {
+  return {
+    slug: i.slug,
+    name: i.name,
+    category: orNull(i.category),
+    place_group: i.group,
+    locality: orNull(i.locality),
+    address: orNull(i.address),
+    blurb: orNull(i.blurb),
+    emoji: orNull(i.emoji),
+    accent: i.accent,
+    image_url: orNull(i.imageUrl),
+    website: orNull(i.website),
+    menu_url: orNull(i.menuUrl),
+    order_url: orNull(i.orderUrl),
+    phone_display: orNull(i.phoneDisplay),
+    phone_tel: orNull(i.phoneTel),
+    internal_href: orNull(i.internalHref),
+    internal_cta: orNull(i.internalCta),
+    booking_url: orNull(i.bookingUrl),
+    booking_cta: orNull(i.bookingCta),
+    rates_url: orNull(i.ratesUrl),
+    rates_cta: orNull(i.ratesCta),
+    position: i.position,
+    is_active: i.isActive,
+    updated_by: uid,
+  };
+}
+
+/** Insert (no id) or update (id) a place. Returns the real Postgres error text. */
+export async function saveLocalPlace(input: LocalPlaceInput): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const v = validateLocalPlace(input);
+  if ("error" in v) return { error: v.error };
+  const uid = (await sb.auth.getUser()).data.user?.id ?? null;
+  const row = toRow(v.input, uid);
+  const { error } = v.input.id
+    ? await sb.from("local_places").update(row).eq("id", v.input.id)
+    : await sb.from("local_places").insert(row);
+  if (!error) return {};
+  return { error: error.code === "23505" ? "Another place already uses that short id." : error.message };
+}
+
+export async function deleteLocalPlace(id: string): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  const { error } = await sb.from("local_places").delete().eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+/** Persist a new order: position = index within the given (single-group) id list. */
+export async function saveLocalPlaceOrder(orderedIds: string[]): Promise<{ error?: string }> {
+  const sb = supabase;
+  if (!sb) return { error: "Not available." };
+  for (let idx = 0; idx < orderedIds.length; idx++) {
+    const { error } = await sb.from("local_places").update({ position: idx }).eq("id", orderedIds[idx]);
+    if (error) return { error: error.message };
+  }
+  return {};
+}
+
+/** Upload a place photo to the public `site-assets` bucket under `local-places/`
+ *  (same approach as lib/appImages.ts uploadSiteImage) and return its URL. */
+export async function uploadLocalPlaceImage(file: File): Promise<string> {
+  const sb = supabase;
+  if (!sb) throw new Error("Sign-in isn't available.");
+  const compressed = await prepareImageForUpload(file);
+  const path = `local-places/${crypto.randomUUID()}.jpg`;
+  const { error } = await sb.storage
+    .from(SITE_BUCKET)
+    .upload(path, compressed, { contentType: compressed.type || "image/jpeg", upsert: false });
+  if (error) throw new Error(error.message);
+  return sb.storage.from(SITE_BUCKET).getPublicUrl(path).data.publicUrl;
+}
