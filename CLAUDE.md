@@ -1289,6 +1289,10 @@ Rules for future work:
 
 `fest_config.theme_icons text[]` (max 5 emoji) and `fest_config.theme_icon_url text` (logo in `site-assets` under `fest/<year>/`). Both nullable, written by direct update under the existing `can_edit_fest()` policy, read via `select *`. The iOS app shows them on the Family Fest card and tiles (image wins, then emoji, then an automatic pick from the theme text). The web app ignores them today; `save_fest_config` does not touch them.
 
+### Home-logo seasonal effects schedule (migration [`0229`](supabase/migrations/0229_logo_fx_settings.sql))
+
+`resort_config.logo_fx jsonb` (nullable) holds the admin-editable schedule for the iOS Home-logo effect (leaves, snow): `{ enabled, seasons: { winter|spring|summer|autumn: { enabled, start: "MM-DD", end: "MM-DD" } } }`. Null or missing keys = the app's built-in defaults (winter starts Dec 1). Admin-only write under the existing `resort_config` policy; edited in the iOS Admin dashboard → Logo effects. The web app ignores it.
+
 ## Admin dashboard
 
 `/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for
