@@ -1283,6 +1283,12 @@ Rules for future work:
 - **SECURITY DEFINER read functions bypass RLS**, so they must filter `is_sandboxed` themselves.
 - The sender part needs `git pull` + a restart of the media server on the mini.
 
+- **0227** dropped 0158's three `app_review_block_*_reaction` triggers: with 0226 hiding the rows from everyone else, the review account keeps (and sees) its own reactions.
+
+### Fest theme icons (migration [`0228`](supabase/migrations/0228_fest_theme_icons.sql))
+
+`fest_config.theme_icons text[]` (max 5 emoji) and `fest_config.theme_icon_url text` (logo in `site-assets` under `fest/<year>/`). Both nullable, written by direct update under the existing `can_edit_fest()` policy, read via `select *`. The iOS app shows them on the Family Fest card and tiles (image wins, then emoji, then an automatic pick from the theme text). The web app ignores them today; `save_fest_config` does not touch them.
+
 ## Admin dashboard
 
 `/admin` ([`app/admin/page.tsx`](app/admin/page.tsx)) is the front door for
